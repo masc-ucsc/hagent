@@ -5,6 +5,7 @@ import yaml
 import datetime
 import os
 
+
 class Step:
     def __init__(self, test=None):
         if test is None:
@@ -18,23 +19,23 @@ class Step:
 
         i = 0
         while i < len(args):
-            if args[i].startswith("-o"):
-                if args[i] == "-o":
+            if args[i].startswith('-o'):
+                if args[i] == '-o':
                     i += 1
                     if i < len(args):
                         output_file = args[i]
                     else:
-                        print("Error: Missing output file after -o")
+                        print('Error: Missing output file after -o')
                         sys.exit(1)
                 else:
                     output_file = args[i][2:]
-            elif not args[i].startswith("-"):
+            elif not args[i].startswith('-'):
                 input_file = args[i]
             i += 1
 
         if not output_file or not input_file:
             program_name = sys.argv[0]
-            print(f"Usage: {program_name} -o<output_file> <input_file>")
+            print(f'Usage: {program_name} -o<output_file> <input_file>')
             sys.exit(1)
 
         return output_file, input_file
@@ -45,9 +46,7 @@ class Step:
             with open(self.input_file, 'r') as f:
                 data = yaml.safe_load(f)
         except Exception as e:
-            return {
-                'error': f"{sys.argv[0]} {datetime.datetime.now().isoformat()} - Error loading input file: {e}"
-            }
+            return {'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} - Error loading input file: {e}'}
 
         return data
 
@@ -64,7 +63,7 @@ class Step:
                     return {k: process_multiline_strings(v) for k, v in obj.items()}
                 elif isinstance(obj, list):
                     return [process_multiline_strings(i) for i in obj]
-                elif isinstance(obj, str) and "\n" in obj:
+                elif isinstance(obj, str) and '\n' in obj:
                     return LiteralStr(obj)
                 return obj
 
@@ -77,7 +76,7 @@ class Step:
 
     def run(self, data):
         # To be implemented in the subclass
-        raise NotImplementedError("Subclasses should implement this!")
+        raise NotImplementedError('Subclasses should implement this!')
 
     def test(self, out_file, inp_file):
         self.input_file = os.path.join('tests', inp_file)
@@ -94,7 +93,7 @@ class Step:
         input_data = self.read_input()
         if 'error' in input_data:
             # Error occurred during reading input, write output_data as is
-            print("WARNING: error field in input yaml, just propagating")
+            print('WARNING: error field in input yaml, just propagating')
             self.write_output(input_data)
             return
 
@@ -107,9 +106,6 @@ class Step:
             output_data.update(result_data)
         except Exception as e:
             # Handle exceptions during run
-            output_data.update({
-                'error': f"{sys.argv[0]} {datetime.datetime.now().isoformat()} - unable to write yaml: {e}"
-            })
-            print(f"ERROR: unable to write yaml: {e}")
+            output_data.update({'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} - unable to write yaml: {e}'})
+            print(f'ERROR: unable to write yaml: {e}')
         self.write_output(output_data)
-
