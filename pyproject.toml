@@ -1,0 +1,25 @@
+ [tool.poetry]
+name = "hagent"
+version = "0.1.1"
+description = ""
+authors = ["Farzaneh Rabiei <frabieik@ucsc.edu>" , "Jose Renau <renau@ucsc.edu>"]
+readme = "README.md"
+
+[tool.poetry.group.dev.dependencies]
+pytest-cov = "^6.0.0"
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pyyaml = "^6.0.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
