@@ -1,0 +1,12 @@
+*.log
+*.swp
+htmlcov
+.pytest_cache
+.coverage
+__pycache__
+env/
+tmp*
+logs
+dist
+poetry.lock
+*aider

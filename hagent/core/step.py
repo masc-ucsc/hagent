@@ -92,10 +92,10 @@ class Step:
 
     def main(self):
         input_data = self.read_input()
-        if 'error' in output_data:
+        if 'error' in input_data:
             # Error occurred during reading input, write output_data as is
             print("WARNING: error field in input yaml, just propagating")
-            self.write_output(output_data)
+            self.write_output(input_data)
             return
 
         output_data = {}

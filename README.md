@@ -58,6 +58,17 @@ Run the trivial test (hagent/step/tests/test_trivial.py)
 poetry run pytest -k "test_trivial"
 ```
 
+Run a command line trivial.py pass with specific input:
+```
+mkdir tmp
+cd tmp
+poetry run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -ofoo.yaml
+cat foo.yaml
+description: |
+  test1
+  2nd line
+```
+
 Gather coverage information about your step (htmlcov):
 ```
 poetry run pytest --cov=hagent/step/trivial
