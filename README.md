@@ -51,6 +51,12 @@ Dumping coverage information:
 poetry run pytest --cov=hagent
 ```
 
+Check issues and format with ruff:
+```
+poetry run ruff check hagent
+poetry run ruff format hagent
+```
+
 #### Trivial
 
 Run the trivial test (hagent/step/tests/test_trivial.py)

@@ -3,6 +3,7 @@
 import os
 from hagent.step.trivial.trivial import Trivial
 
+
 def test_trivial():
     test_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -11,4 +12,3 @@ def test_trivial():
 
     trivial_step = Trivial(test=True)
     trivial_step.test(inp_file=inp_file, out_file=expected_out_file)
-
