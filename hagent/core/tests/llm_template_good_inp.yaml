@@ -1,0 +1,16 @@
+- role: system
+  content: "This is a {xx} agreement"
+
+- role: user
+  content: "{xx} are not vegetables"
+
+- role: assistant
+  content: Certainly
+
+- role: user
+  content: |
+    This is
+    a longer
+    text with {xx}
+    in the middle
+

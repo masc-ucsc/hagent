@@ -1,0 +1,11 @@
+- role: system
+  content: "This is a potato agreement"
+
+- role: user
+  content: "potato are not vegetables"
+
+- role: assistant
+  content: Certainly
+
+- role: user
+  content: "This is\na longer\ntext with potato\nin the middle\n"
