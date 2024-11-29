@@ -90,7 +90,7 @@ HAgent code is divided into four key components:
 
 - **step**: Has a subdirectory for each HAgent compiler step.
   - Each step has a stand-alone Python executable that matches the directory name.
-  - Each step only reads and writes YAML files.
+  - Each step only reads and writes YAML files. There may also exist a log file that matches the output YAML name.
   - Each step should be hermetic, relying only on the input YAML files or calling tools.
   - Each step inherits from a core Step class and provides basic functionality.
   - **Examples**: `trivial`, `get_spec_io`

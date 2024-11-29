@@ -79,11 +79,14 @@ class Step:
         raise NotImplementedError('Subclasses should implement this!')
 
     def test(self, out_file, inp_file):
-        self.input_file = os.path.join('tests', inp_file)
-        expected_output_yaml = os.path.join('tests', out_file)
+        self.input_file = inp_file
+        expected_output_yaml = out_file
         expected_output = {}
         with open(expected_output_yaml, 'r') as f:
             expected_output = yaml.safe_load(f)
+
+        assert expected_output != None
+        assert expected_output != {}
 
         input_data = self.read_input()
         result_data = self.run(input_data)
