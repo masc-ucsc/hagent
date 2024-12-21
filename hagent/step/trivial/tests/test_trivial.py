@@ -13,5 +13,6 @@ def test_trivial():
     trivial_step = Trivial(test=True)
     trivial_step.test(inp_file=inp_file, out_file=expected_out_file)
 
-if __name__ == '__main__': # pragma: no cover
+
+if __name__ == '__main__':  # pragma: no cover
     test_trivial()
