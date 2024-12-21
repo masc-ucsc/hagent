@@ -1,12 +1,13 @@
 # See LICENSE for details
 
+from typing import List, Dict
 import yaml
 import os
 # from jinja2 import Environment
 
 
 class LLM_template:
-    def validate_template(self, data):
+    def validate_template(self, data):  # No type check, because it generates errors for incorrect types
         if not isinstance(data, list):
             return 'the data is not a list'
 
@@ -52,26 +53,20 @@ class LLM_template:
                 self.template_dict = {'error': f"LLM_template, file '{data}' does not exist"}
             except yaml.YAMLError as e:
                 self.template_dict = {'error': f"LLM_template, file '{data}' did not parse correctly: {e}"}
-        elif isinstance(data, dict):
-            self.template_dict = data
+        elif isinstance(data, list):
+            self.template_dict = data # Should be a list of dicts, but checked in validate_template
         else:
             self.template_dict = {'error': 'LLM_template could not process {str}'}
 
         if 'error' not in self.template_dict:
             err = self.validate_template(self.template_dict)
-            if err != None:
+            if err is not None:
                 self.template_dict = {'error': f'LLM_template file {data} fails because {err}'}
 
         if 'error' in self.template_dict:
             print('ERROR:', self.template_dict.get('error'))
 
-        # self.jinja_env = Environment(
-        #     variable_start_string='{',
-        #     variable_end_string='}',
-        #     autoescape=False,
-        # )
-
-    def format(self, context):
+    def format(self, context: Dict) -> List[Dict]:
         if 'error' in self.template_dict:
             return self.template_dict
 

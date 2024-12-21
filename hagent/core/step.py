@@ -3,7 +3,6 @@
 import sys
 import yaml
 import datetime
-import os
 
 
 class Step:
@@ -85,7 +84,7 @@ class Step:
         with open(expected_output_yaml, 'r') as f:
             expected_output = yaml.safe_load(f)
 
-        assert expected_output != None
+        assert expected_output is not None
         assert expected_output != {}
 
         input_data = self.read_input()
