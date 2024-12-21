@@ -4,19 +4,20 @@ import yaml
 import os
 # from jinja2 import Environment
 
+
 class LLM_template:
     def validate_template(self, data):
         if not isinstance(data, list):
-            return "the data is not a list"
+            return 'the data is not a list'
 
         if not data:
-            return "the list is empty."
+            return 'the list is empty.'
 
         allowed_roles = {'user', 'system', 'assistant'}
 
         for index, item in enumerate(data):
             if not isinstance(item, dict):
-                return f"item at index {index} is not a dictionary."
+                return f'item at index {index} is not a dictionary.'
 
             # Check for 'role' and 'content' keys
             if 'role' not in item:
@@ -36,7 +37,7 @@ class LLM_template:
         return None
 
     def __init__(self, data):
-        self.file_name = ""
+        self.file_name = ''
         if isinstance(data, str):
             if not os.path.exists(data):
                 dir = os.path.dirname(os.path.abspath(__file__))
@@ -48,21 +49,21 @@ class LLM_template:
                     self.template_dict = yaml.safe_load(f)
                 self.file_name = data
             except FileNotFoundError:
-                self.template_dict = {"error": f"LLM_template, file '{data}' does not exist"}
+                self.template_dict = {'error': f"LLM_template, file '{data}' does not exist"}
             except yaml.YAMLError as e:
-                self.template_dict = {"error": f"LLM_template, file '{data}' did not parse correctly: {e}"}
+                self.template_dict = {'error': f"LLM_template, file '{data}' did not parse correctly: {e}"}
         elif isinstance(data, dict):
             self.template_dict = data
         else:
-            self.template_dict = {"error": "LLM_template could not process {str}"}
+            self.template_dict = {'error': 'LLM_template could not process {str}'}
 
-        if "error" not in self.template_dict:
+        if 'error' not in self.template_dict:
             err = self.validate_template(self.template_dict)
             if err != None:
-                self.template_dict = {"error": f"LLM_template file {data} fails because {err}"}
+                self.template_dict = {'error': f'LLM_template file {data} fails because {err}'}
 
-        if "error" in self.template_dict:
-            print("ERROR:", self.template_dict.get("error"))
+        if 'error' in self.template_dict:
+            print('ERROR:', self.template_dict.get('error'))
 
         # self.jinja_env = Environment(
         #     variable_start_string='{',
@@ -71,7 +72,7 @@ class LLM_template:
         # )
 
     def format(self, context):
-        if "error" in self.template_dict:
+        if 'error' in self.template_dict:
             return self.template_dict
 
         result = []
@@ -84,15 +85,14 @@ class LLM_template:
                         try:
                             fmt = value.format(**context)
                         except KeyError as e:
-                            txt = f"LLM_template::format {self.file_name} has undefined variable {e}"
-                            print(f"ERROR: {txt}")
-                            return [{"error": txt}]
+                            txt = f'LLM_template::format {self.file_name} has undefined variable {e}'
+                            print(f'ERROR: {txt}')
+                            return [{'error': txt}]
                         ctx[key] = fmt
                     else:
                         ctx[key] = value
                 result.append(ctx)
             else:
-                assert False, "The template_dict should be validate before, so it should not fail now"
+                assert False, 'The template_dict should be validate before, so it should not fail now'
 
         return result
-
