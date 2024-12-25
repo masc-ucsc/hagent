@@ -2,6 +2,7 @@
 # See LICENSE for details
 
 import os
+from unittest.mock import patch, MagicMock
 from hagent.core.llm_wrap import LLM_wrap
 from hagent.core.llm_template import LLM_template
 
@@ -39,6 +40,38 @@ def test_llm_wrap_n():
     assert res[0] == res[3]
     assert res[0] == res[4]
 
+def test_llm_wrap_empty_config():
+    lw = LLM_wrap(
+        name='test_empty_config',
+        log_file='test_empty_config.log',
+        conf_file='nonexistent.yaml',
+        init_template=MagicMock(spec=LLM_template),
+        chat_template=MagicMock(spec=LLM_template)
+    )
+
+    assert lw.llm_args == {}
+    assert "conf_file:nonexistent.yaml must specify llm \"model\"" in lw.last_error
+
+
+
+def test_llm_wrap_template_format_error():
+    mock_template = MagicMock(spec=LLM_template)
+    mock_template.format.side_effect = Exception("Formatting error")
+
+    lw = LLM_wrap(
+        name='test_template_format_error',
+        log_file='test_template_format_error.log',
+        conf_file='nonexistent.yaml',
+        init_template=mock_template,
+        chat_template=mock_template
+    )
+
+    result = lw.inference({}, n=1)
+    assert result == [], "Expected empty result when template formatting fails"
+    assert "template formatting error" in lw.last_error
+
 if __name__ == '__main__':  # pragma: no cover
     test_llm_wrap_caching()
     # test_llm_wrap_n()
+    test_llm_wrap_empty_config()
+    test_llm_wrap_template_format_error()
