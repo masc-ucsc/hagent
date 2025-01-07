@@ -40,6 +40,21 @@ def test_llm_wrap_n():
     assert res[0] == res[3]
     assert res[0] == res[4]
 
+def test_llm_wrap_n_diff():
+    conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
+
+    templ = LLM_template([{'role': 'system', 'content': "just provide a numeric answer"}, {'role': "user", 'content':"Give me a random number between 1 and 3000000"}])
+
+    lw = LLM_wrap(
+        name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file, init_template=templ, chat_template=templ
+    )
+
+    res = lw.inference({}, n=3)
+    assert len(res) == 3
+
+    assert res[0] != res[1]
+    assert res[0] != res[2]
+
 def test_llm_wrap_empty_config():
     lw = LLM_wrap(
         name='test_empty_config',
@@ -72,6 +87,7 @@ def test_llm_wrap_template_format_error():
 
 if __name__ == '__main__':  # pragma: no cover
     test_llm_wrap_caching()
-    # test_llm_wrap_n()
+    test_llm_wrap_n()
+    test_llm_wrap_n_diff()
     test_llm_wrap_empty_config()
     test_llm_wrap_template_format_error()
