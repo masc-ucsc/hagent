@@ -24,21 +24,26 @@ def test_llm_wrap_caching():
     assert jokes1 == jokes2
 
 def test_llm_wrap_n():
-    conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
-
-    templ = LLM_template([{'role': 'system', 'content': "just provide a numeric answer"}, {'role': "user", 'content':"How much is 2+2"}])
+    conf_file = "nonexistent.yaml"
+    templ = MagicMock(spec=LLM_template)
+    templ.format.return_value = [{"role": "user", "content": "mocked prompt"}]
 
     lw = LLM_wrap(
-        name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file, init_template=templ, chat_template=templ
+        name="test_n",
+        log_file="mocked_log_file.log",
+        conf_file=conf_file,
+        init_template=templ,
+        chat_template=templ,
     )
 
-    res = lw.inference({}, n=5)
-    assert len(res) == 5
-
-    assert res[0] == res[1]
-    assert res[0] == res[2]
-    assert res[0] == res[3]
-    assert res[0] == res[4]
+    with patch("litellm.completion", return_value={
+        "choices": [{"message": {"content": "response"}}] * 5,
+        "cost": 0.1,
+        "tokens": 50,
+    }):
+        res = lw.inference({}, n=5)
+        assert len(res) == 5, f"Expected 5 results, got {len(res)}"
+        assert all(r == "response" for r in res), "All responses should match 'response'"
 
 def test_llm_wrap_n_diff():
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
