@@ -82,7 +82,7 @@ class LLM_wrap:
 
     def _log_event(self, event_type: str, data: Dict):
         entry = {
-            'timestamp': datetime.datetime.utcnow().isoformat(),  # include microseconds
+            'timestamp': datetime.datetime.now(datetime.UTC).isoformat(),  # include microseconds
             'type': event_type,
         }
         entry.update(data)
