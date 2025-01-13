@@ -54,7 +54,7 @@ class LLM_template:
             except yaml.YAMLError as e:
                 self.template_dict = {'error': f"LLM_template, file '{data}' did not parse correctly: {e}"}
         elif isinstance(data, list):
-            self.template_dict = data # Should be a list of dicts, but checked in validate_template
+            self.template_dict = data  # Should be a list of dicts, but checked in validate_template
         else:
             self.template_dict = {'error': 'LLM_template could not process {str}'}
 

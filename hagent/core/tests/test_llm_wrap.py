@@ -23,32 +23,42 @@ def test_llm_wrap_caching():
     # Since caching is enabled, both jokes should match
     assert jokes1 == jokes2
 
+
 def test_llm_wrap_n():
-    conf_file = "nonexistent.yaml"
+    conf_file = 'nonexistent.yaml'
     templ = MagicMock(spec=LLM_template)
-    templ.format.return_value = [{"role": "user", "content": "mocked prompt"}]
+    templ.format.return_value = [{'role': 'user', 'content': 'mocked prompt'}]
 
     lw = LLM_wrap(
-        name="test_n",
-        log_file="mocked_log_file.log",
+        name='test_n',
+        log_file='mocked_log_file.log',
         conf_file=conf_file,
         init_template=templ,
         chat_template=templ,
     )
 
-    with patch("litellm.completion", return_value={
-        "choices": [{"message": {"content": "response"}}] * 5,
-        "cost": 0.1,
-        "tokens": 50,
-    }):
+    with patch(
+        'litellm.completion',
+        return_value={
+            'choices': [{'message': {'content': 'response'}}] * 5,
+            'cost': 0.1,
+            'tokens': 50,
+        },
+    ):
         res = lw.inference({}, n=5)
-        assert len(res) == 5, f"Expected 5 results, got {len(res)}"
-        assert all(r == "response" for r in res), "All responses should match 'response'"
+        assert len(res) == 5, f'Expected 5 results, got {len(res)}'
+        assert all(r == 'response' for r in res), "All responses should match 'response'"
+
 
 def test_llm_wrap_n_diff():
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
-    templ = LLM_template([{'role': 'system', 'content': "just provide a numeric answer"}, {'role': "user", 'content':"Give me a random number between 1 and 3000000"}])
+    templ = LLM_template(
+        [
+            {'role': 'system', 'content': 'just provide a numeric answer'},
+            {'role': 'user', 'content': 'Give me a random number between 1 and 3000000'},
+        ]
+    )
 
     lw = LLM_wrap(
         name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file, init_template=templ, chat_template=templ
@@ -60,35 +70,36 @@ def test_llm_wrap_n_diff():
     assert res[0] != res[1]
     assert res[0] != res[2]
 
+
 def test_llm_wrap_empty_config():
     lw = LLM_wrap(
         name='test_empty_config',
         log_file='test_empty_config.log',
         conf_file='nonexistent.yaml',
         init_template=MagicMock(spec=LLM_template),
-        chat_template=MagicMock(spec=LLM_template)
+        chat_template=MagicMock(spec=LLM_template),
     )
 
     assert lw.llm_args == {}
-    assert "conf_file:nonexistent.yaml must specify llm \"model\"" in lw.last_error
-
+    assert 'conf_file:nonexistent.yaml must specify llm "model"' in lw.last_error
 
 
 def test_llm_wrap_template_format_error():
     mock_template = MagicMock(spec=LLM_template)
-    mock_template.format.side_effect = Exception("Formatting error")
+    mock_template.format.side_effect = Exception('Formatting error')
 
     lw = LLM_wrap(
         name='test_template_format_error',
         log_file='test_template_format_error.log',
         conf_file='nonexistent.yaml',
         init_template=mock_template,
-        chat_template=mock_template
+        chat_template=mock_template,
     )
 
     result = lw.inference({}, n=1)
-    assert result == [], "Expected empty result when template formatting fails"
-    assert "template formatting error" in lw.last_error
+    assert result == [], 'Expected empty result when template formatting fails'
+    assert 'template formatting error' in lw.last_error
+
 
 if __name__ == '__main__':  # pragma: no cover
     test_llm_wrap_caching()
