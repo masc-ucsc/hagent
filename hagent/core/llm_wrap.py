@@ -105,7 +105,7 @@ class LLM_wrap:
         # Format prompt
         try:
             formatted = template.format(prompt_dict)
-            assert isinstance(formatted, list), "Data should be a list"
+            assert isinstance(formatted, list), 'Data should be a list'
         except Exception as e:
             self._set_error(f'template formatting error: {e}')
             data = {'error': self.last_error}
@@ -157,7 +157,14 @@ class LLM_wrap:
         self.total_time_ms += time_ms
 
         event_type = f'{self.name}:LLM_wrap.chat' if is_chat else f'{self.name}:LLM_wrap.inference'
-        data = {'model': llm_call_args.get('model', ''), 'prompt': formatted, 'answers': answers, 'cost': cost, 'tokens': tokens, 'time_ms': time_ms}
+        data = {
+            'model': llm_call_args.get('model', ''),
+            'prompt': formatted,
+            'answers': answers,
+            'cost': cost,
+            'tokens': tokens,
+            'time_ms': time_ms,
+        }
 
         if self.last_error:
             data['error'] = self.last_error
