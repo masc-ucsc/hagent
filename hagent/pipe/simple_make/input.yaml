@@ -1,0 +1,9 @@
+code: |
+  void main() {
+    for(int i=0;i<2;i++)
+      printf("hello world\n");
+  }
+
+llm:
+  model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct" # Cheap fireworks model
+
