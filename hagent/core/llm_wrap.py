@@ -41,7 +41,32 @@ class LLM_wrap:
 
         return {}
 
-    def __init__(self, name: str, conf_file: str, log_file: str, init_template: LLM_template, chat_template: LLM_template):
+    def from_dict(self, name: str, conf_dict: Dict, prompt: LLM_template):
+        self.name = name
+        self.log_file = f'{name}.log'
+        self.init_template = prompt
+        self.chat_template = prompt
+
+        self.last_error = ''
+        self.chat_history = []  # Stores messages as [{"role": "...", "content": "..."}]
+        self.total_cost = 0.0
+        self.total_tokens = 0
+        self.total_time_ms = 0.0
+
+        # Initialize litellm cache
+        litellm.cache = litellm.Cache(type='disk')
+
+        self.llm_args = conf_dict
+        if 'model' not in self.llm_args:
+            self._set_error('conf_dict must specify llm "model"')
+        else:
+            try:
+                with open(self.log_file, 'a', encoding='utf-8'):
+                    pass
+            except Exception as e:
+                self._set_error(f'creating/opening log file: {e}')
+
+    def from_file(self, name: str, conf_file: str, log_file: str, init_template: LLM_template, chat_template: LLM_template):
         self.name = name
         self.conf_file = conf_file
         self.log_file = log_file

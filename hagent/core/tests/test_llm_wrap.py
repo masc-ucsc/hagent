@@ -13,7 +13,8 @@ def test_llm_wrap_caching():
 
     templ = LLM_template(templ_file)
 
-    lw = LLM_wrap(
+    lw = LLM_wrap()
+    lw.from_file(
         name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file, init_template=templ, chat_template=templ
     )
 
@@ -29,7 +30,8 @@ def test_llm_wrap_n():
     templ = MagicMock(spec=LLM_template)
     templ.format.return_value = [{'role': 'user', 'content': 'mocked prompt'}]
 
-    lw = LLM_wrap(
+    lw = LLM_wrap()
+    lw.from_file(
         name='test_n',
         log_file='mocked_log_file.log',
         conf_file=conf_file,
@@ -60,7 +62,8 @@ def test_llm_wrap_n_diff():
         ]
     )
 
-    lw = LLM_wrap(
+    lw = LLM_wrap()
+    lw.from_file(
         name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file, init_template=templ, chat_template=templ
     )
 
@@ -72,7 +75,8 @@ def test_llm_wrap_n_diff():
 
 
 def test_llm_wrap_empty_config():
-    lw = LLM_wrap(
+    lw = LLM_wrap()
+    lw.from_file(
         name='test_empty_config',
         log_file='test_empty_config.log',
         conf_file='nonexistent.yaml',
@@ -88,7 +92,8 @@ def test_llm_wrap_template_format_error():
     mock_template = MagicMock(spec=LLM_template)
     mock_template.format.side_effect = Exception('Formatting error')
 
-    lw = LLM_wrap(
+    lw = LLM_wrap()
+    lw.from_file(
         name='test_template_format_error',
         log_file='test_template_format_error.log',
         conf_file='nonexistent.yaml',
