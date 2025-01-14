@@ -35,6 +35,8 @@ class Replicate_code(Step):
 
         res = self.lw.inference({'code': code}, n=2)
 
+        # res_code = self.filter_markdown_snippet(res)
+
         result = data.copy()
         result['optimized'] = res
 
