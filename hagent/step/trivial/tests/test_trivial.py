@@ -10,8 +10,12 @@ def test_trivial():
     inp_file = os.path.join(test_dir, 'input1.yaml')
     expected_out_file = os.path.join(test_dir, 'expected_output1.yaml')
 
-    trivial_step = Trivial(test=True)
-    trivial_step.test(inp_file=inp_file, out_file=expected_out_file)
+    trivial_step = Trivial()
+
+    trivial_step.set_io(inp_file=inp_file, out_file='test_trivial_output.yaml')
+    # No trivial_step.parse_arguments() -- Unit test
+
+    trivial_step.test(exp_file=expected_out_file)
 
 
 if __name__ == '__main__':  # pragma: no cover

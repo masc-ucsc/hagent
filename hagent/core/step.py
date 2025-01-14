@@ -6,13 +6,18 @@ import datetime
 
 
 class Step:
-    def __init__(self, test=None):
-        if test is None:
-            self.output_file, self.input_file = self.parse_arguments()
+    def __init__(self):
+        self.input_file = None
+        self.output_file = None
+        self.setup_called = False
+
+    def set_io(self, inp_file: str, out_file: str):
+        self.input_file = inp_file
+        self.output_file = out_file
 
     def parse_arguments(self):
-        output_file = None
-        input_file = None
+        self.input_file = None
+        self.output_file = None
 
         args = sys.argv[1:]
 
@@ -22,25 +27,26 @@ class Step:
                 if args[i] == '-o':
                     i += 1
                     if i < len(args):
-                        output_file = args[i]
+                        self.output_file = args[i]
                     else:
                         print('Error: Missing output file after -o')
                         sys.exit(1)
                 else:
-                    output_file = args[i][2:]
+                    self.output_file = args[i][2:]
             elif not args[i].startswith('-'):
-                input_file = args[i]
+                self.input_file = args[i]
             i += 1
 
-        if not output_file or not input_file:
+        if self.output_file is None or self.input_file is None:
             program_name = sys.argv[0]
-            print(f'Usage: {program_name} -o<output_file> <input_file>')
+            print(f'Usage: {program_name} -o<output_yaml_file> <input_yaml_file>')
             sys.exit(1)
-
-        return output_file, input_file
 
     def read_input(self):
         data = {}
+        if self.input_file is None:
+            return {'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} - unset input_file (missing setup?):'}
+
         try:
             with open(self.input_file, 'r') as f:
                 data = yaml.safe_load(f)
@@ -73,13 +79,24 @@ class Step:
         with open(self.output_file, 'w') as f:
             write_yaml_with_block_style(data, f)
 
+    def setup(self):
+        self.setup_called = True
+        if self.output_file is None:
+            self.error('must call parse_arguments or set_io before setup')
+
+        self.input_data = self.read_input()
+        if 'error' in self.input_data:
+            # Error occurred during reading input, write output_data as is
+            print('WARNING: error field in input yaml, just propagating')
+            self.write_output(self.input_data)
+            exit(4)
+
     def run(self, data):
         # To be implemented in the subclass
         raise NotImplementedError('Subclasses should implement this!')
 
-    def test(self, out_file, inp_file):
-        self.input_file = inp_file
-        expected_output_yaml = out_file
+    def test(self, exp_file):
+        expected_output_yaml = exp_file
         expected_output = {}
         with open(expected_output_yaml, 'r') as f:
             expected_output = yaml.safe_load(f)
@@ -87,21 +104,34 @@ class Step:
         assert expected_output is not None
         assert expected_output != {}
 
-        input_data = self.read_input()
-        result_data = self.run(input_data)
+        self.input_data = self.read_input()
+        self.setup()
+        result_data = self.run(self.input_data)
+        if result_data != expected_output:
+            print(f'input_data:{self.input_data}')
+            print(f'result_data:{result_data}')
+            print(f'expect_data:{expected_output}')
+
         assert result_data == expected_output
 
-    def main(self):
-        input_data = self.read_input()
-        if 'error' in input_data:
-            # Error occurred during reading input, write output_data as is
-            print('WARNING: error field in input yaml, just propagating')
-            self.write_output(input_data)
-            return
+    def error(self, msg: str):
+        if self.input_data is None:
+            output_data = {}
+        else:
+            output_data = self.input_data.copy()
+
+        output_data.update({'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} {msg}'})
+        print(f'ERROR: {sys.argv[0]} : {msg}')
+        self.write_output(self.input_data)
+        exit(3)
+
+    def step(self):
+        if not self.setup_called:
+            raise NotImplementedError('must call setup before step')
 
         output_data = {}
         try:
-            result_data = self.run(input_data)
+            result_data = self.run(self.input_data)
             if result_data is None:
                 result_data = {}
             # Propagate all fields from input to output unless overridden
@@ -111,3 +141,5 @@ class Step:
             output_data.update({'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} - unable to write yaml: {e}'})
             print(f'ERROR: unable to write yaml: {e}')
         self.write_output(output_data)
+
+        return output_data
