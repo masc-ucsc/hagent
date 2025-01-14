@@ -123,7 +123,7 @@ class Step:
         output_data.update({'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} {msg}'})
         print(f'ERROR: {sys.argv[0]} : {msg}')
         self.write_output(self.input_data)
-        exit(3)
+        raise ValueError(msg)
 
     def step(self):
         if not self.setup_called:
