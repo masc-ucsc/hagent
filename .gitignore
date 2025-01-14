@@ -10,3 +10,4 @@ logs
 dist
 poetry.lock
 *aider
+.litellm_cache

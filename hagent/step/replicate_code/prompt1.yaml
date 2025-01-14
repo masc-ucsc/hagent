@@ -1,0 +1,7 @@
+- role: user
+  content: |
+    Give an improved version of the following code snippet
+    ```
+    {code}
+    ```
+
