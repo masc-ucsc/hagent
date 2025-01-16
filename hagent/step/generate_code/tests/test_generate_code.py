@@ -31,9 +31,9 @@ def test_generate_code():
     res = gen_step.step()
 
     generated = res.get('generated_code')
-    assert isinstance(generated, list), "Expected 'generated_code' to be a list"
-    assert len(generated) == 1, "Expected exactly one snippet from the LLM"
-
+    assert isinstance(generated, list)
+    assert len(generated) == 1
+    
     snippet = generated[0].strip()
     assert snippet, "LLM returned an empty code snippet"
     # xx = res['generated_code']
@@ -56,10 +56,6 @@ def test_generate_code():
     print(f"bench_stage: {bench_stage}")
 
 def test_generate_custom_module_name(clean_generated_dir):
-    """
-    Test scenario when 'name' is specified in YAML.
-    We expect the code to be written to <module_name>/<module_name>.v
-    """
     test_dir = os.path.dirname(os.path.abspath(__file__))
 
     # Suppose we have a YAML that sets 'name: my_custom_module'
@@ -82,10 +78,6 @@ def test_generate_custom_module_name(clean_generated_dir):
     assert os.path.exists(verilog_file), f"{verilog_file} was not created"
 
 def test_generate_empty_description(clean_generated_dir):
-    """
-    Test scenario: if description is empty, does the pass still run?
-    We might either expect an error or produce a minimal file.
-    """
     test_dir = os.path.dirname(os.path.abspath(__file__))
 
     # Suppose 'empty_desc.yaml' includes an llm section, but no 'description' or it's empty
