@@ -1,6 +1,7 @@
 # See LICENSE for details
 
 import os
+import shutil
 import pytest
 
 from hagent.step.generate_code.generate_code import Generate_code
@@ -18,11 +19,24 @@ def test_generate_missing_llm():
         trivial_step.setup()
         trivial_step.step()
 
+@pytest.fixture
+def clean_generated_dir():
+    # Setup code (if any) goes here
+    yield  # Test functions run after this line
+
+    # Teardown code: remove any directories you know are created, e.g. 'default_module'
+    if os.path.exists('default_module'):
+        shutil.rmtree('default_module')
+    if os.path.exists('my_custom_module'):
+        shutil.rmtree('my_custom_module')
+    if os.path.exists('empty_desc_module'):
+        shutil.rmtree('empty_desc_module')
+
 
 def test_generate_code():
     test_dir = os.path.dirname(os.path.abspath(__file__))
 
-    inp_file = os.path.join(test_dir, 'input1.yaml')
+    inp_file = os.path.join(test_dir, 'full_adder.yaml')
 
     gen_step  = Generate_code()
     gen_step.set_io(inp_file=inp_file, out_file='test_generate_code_output.yaml')
@@ -76,6 +90,7 @@ def test_generate_custom_module_name(clean_generated_dir):
     assert os.path.basename(folder_name) == "my_custom_module"
     assert filename == "my_custom_module.v"
     assert os.path.exists(verilog_file), f"{verilog_file} was not created"
+
 
 def test_generate_empty_description(clean_generated_dir):
     test_dir = os.path.dirname(os.path.abspath(__file__))

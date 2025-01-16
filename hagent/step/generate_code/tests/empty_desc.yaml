@@ -1,0 +1,11 @@
+name: empty_desc_module
+description: ""  # intentionally empty
+llm:
+  model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct"
+
+interface: |
+  module empty_desc_module (input wire clk, output wire rst);
+
+bench_response: ""
+bench_stage: "1"
+
