@@ -1,0 +1,21 @@
+description: 'Design a 1-bit full adder. The inputs are: [0:0]a, [0:0]b, [0:0]cin and the outputs are: [0:0]sum, [0:0]cout.        '
+name: "full_adder"
+interface: |-
+  module full_adder (input a, input b, input cin, output sum, output cout);
+bench_response: |
+  module full_adder (
+      input a,
+      input b,
+      input cin,
+      output sum,
+      output cout
+  );
+    assign sum  = a ^ b ^ cin;
+    assign cout = (a & b) | (cin & (a ^ b));
+  endmodule
+bench_stage: '0'
+
+llm:
+  model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct" # Cheap fireworks model
+
+  

@@ -1,0 +1,24 @@
+description: 'Design a 1-bit full adder. The inputs are: [0:0]a, [0:0]b, [0:0]cin
+  and the outputs are: [0:0]sum, [0:0]cout.        '
+name: full_adder
+interface: module full_adder (input a, input b, input cin, output sum, output cout);
+bench_response: |
+  module full_adder (
+      input a,
+      input b,
+      input cin,
+      output sum,
+      output cout
+  );
+    assign sum  = a ^ b ^ cin;
+    assign cout = (a & b) | (cin & (a ^ b));
+  endmodule
+bench_stage: '0'
+llm:
+  model: fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct
+generated_code:
+- "```verilog\nmodule full_adder(\n    input [0:0] a,\n    input [0:0] b,\n    input\
+  \ [0:0] cin,\n    output [0:0] sum,\n    output [0:0] cout\n);\n    \n    assign\
+  \ sum = ((a == 1 && b == 1) || (a == 1 && cin == 1) || (b == 1 && cin == 1));\n\
+  \    assign cout = (a == 1 && b == 0 && cin == 0);\nendmodule\n```"
+verilog_file: full_adder/full_adder.v
