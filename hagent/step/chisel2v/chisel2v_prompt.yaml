@@ -1,0 +1,39 @@
+- role: system
+  content: |
+    You are an agentic programming assistant. You transform Chisel code to reflect structural or logical updates from Verilog.
+
+- role: user
+  content: |
+    I have an original Chisel source code for a module in the Rocket Chip project.
+    Then, I made changes in the corresponding Verilog code that reflect structural
+    or logical updates. Now I want to incorporate those same modifications back
+    into the original Chisel.
+
+    Below, I provide:
+
+    1. The original Chisel code.
+    2. The modified Verilog code (which represents the desired changes).
+
+    Your task is to produce a single, syntactically correct Chisel file that:
+    - Reflects all the modifications shown in the modified Verilog.
+    - Compiles without errors.
+    - Passes LEC (Logical Equivalence Check) against the updated Verilog netlist.
+    - Follows standard Chisel/Scala formatting conventions.
+
+    Original Chisel Code:
+    ```
+    {original_chisel}
+    ```
+
+    Modified Verilog Code (desired changes reflected):
+    ```
+    {modified_verilog}
+    ```
+
+    What I want you to do:
+    1. Compare the original Chisel to the modified Verilog code.
+    2. Identify all the additions, deletions, or updates implied by the Verilog changes.
+    3. Generate a final Chisel source that applies these updates to the original.
+    4. Return only the completed code (no explanations).
+
+    Make sure the final code is valid, logically equivalent, and ready for LEC.

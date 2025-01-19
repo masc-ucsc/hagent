@@ -1,0 +1,27 @@
+
+read_verilog /home/farzaneh/hagent/equiv_check/gold_oddj81c9.v
+prep -top top
+rename top gold
+design -stash gold
+
+read_verilog /home/farzaneh/hagent/equiv_check/gate_im0itl00.v
+prep -top top
+rename top gate
+design -stash gate
+
+design -copy-from gold -as gold gold; design -copy-from gate -as gate gate;
+
+# Create an equivalence-check "miter" that instantiates both designs
+equiv_make gold gate eq_miter
+
+# Prepare and set eq_miter as the top for the equivalence passes
+prep -top eq_miter
+
+# Perform a simple structural equivalence pass
+equiv_simple
+
+# Optionally, try an inductive proof to catch certain sequential differences
+equiv_induct
+
+# Check equivalence status and assert (fail with non-zero exit if not equivalent)
+equiv_status -assert

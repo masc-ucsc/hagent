@@ -1,0 +1,30 @@
+description: |
+  test1
+  2nd line
+code: |
+  void main() {
+    for(int i=0;i<2;i++)
+      printf("hello world\n");
+  }
+llm:
+  model: fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct
+optimized:
+- |-
+  ```c
+  #include <stdio.h>
+
+  int main() {
+    for (int i = 0; i < 2; i++) {
+      printf("hello world\n");
+    }
+    return 0;
+  }
+  ```
+- |-
+  ```c
+  void main() {
+    const int iterations = 2;
+    for (int i = 0; i < iterations; i++)
+      printf("hello world\n");
+  }
+  ```
