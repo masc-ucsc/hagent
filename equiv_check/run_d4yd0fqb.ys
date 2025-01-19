@@ -1,0 +1,17 @@
+
+read_verilog /home/farzaneh/hagent/equiv_check/gold_oddj81c9.v
+prep -top top
+rename top gold
+design -stash gold
+
+read_verilog /home/farzaneh/hagent/equiv_check/gate_im0itl00.v
+prep -top top
+rename top gate
+design -stash gate
+
+design -copy-from gold -as gold gold; design -copy-from gate -as gate gate;
+
+miter -equiv -flatten -make_outputs -ignore_gold_x gold gate miter
+hierarchy -top miter
+write_verilog trace2.v
+sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -ignore_unknown_cells -show-ports miter
