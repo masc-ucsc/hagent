@@ -1,1 +1,0 @@
-module top(); assign x = 1'b1; endmodule
