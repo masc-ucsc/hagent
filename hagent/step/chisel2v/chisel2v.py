@@ -7,6 +7,7 @@ from hagent.core.step import Step
 from hagent.core.llm_template import LLM_template
 from hagent.core.llm_wrap import LLM_wrap
 
+
 class Chisel2V(Step):
     def setup(self):
         """
@@ -30,27 +31,24 @@ class Chisel2V(Step):
         self.setup_called = True
 
     def run(self, data):
-        if "original_chisel" not in data or "modified_verilog" not in data:
-            self.error("Missing original_chisel or modified_verilog in the input YAML")
+        if 'original_chisel' not in data or 'modified_verilog' not in data:
+            self.error('Missing original_chisel or modified_verilog in the input YAML')
 
-        original_chisel  = data.get('original_chisel', '')
+        original_chisel = data.get('original_chisel', '')
         modified_verilog = data.get('modified_verilog', '')
-        module_name      = data.get('name', 'updated_chisel')
+        module_name = data.get('name', 'updated_chisel')
 
         # Create folder
         os.makedirs(module_name, exist_ok=True)
-        out_path = os.path.join(module_name, f"{module_name}.scala")
+        out_path = os.path.join(module_name, f'{module_name}.scala')
 
         # Prepare prompt data
-        prompt_dict = {
-            'original_chisel':  original_chisel,
-            'modified_verilog': modified_verilog
-        }
+        prompt_dict = {'original_chisel': original_chisel, 'modified_verilog': modified_verilog}
 
         # Call the LLM
         result_list = self.lw.inference(prompt_dict, n=1)
         if not result_list:
-            self.error("LLM returned an empty response")
+            self.error('LLM returned an empty response')
 
         updated_chisel_code = result_list[0]
 
@@ -65,8 +63,9 @@ class Chisel2V(Step):
         # Prepare final output
         result = data.copy()
         result['updated_chisel'] = updated_chisel_code
-        result['chisel_file']    = out_path
+        result['chisel_file'] = out_path
         return result
+
 
 if __name__ == '__main__':  # pragma: no cover
     pass_obj = Chisel2V()
