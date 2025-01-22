@@ -5,6 +5,7 @@ import pytest
 
 from hagent.step.chisel2v.chisel2v import Chisel2V
 
+
 def test_chisel2v_missing_llm():
     """
     If the input YAML doesn't have 'llm', the pass should call exit(4),
@@ -39,18 +40,19 @@ def test_chisel2v_happy_path():
 
     # Check the updated Chisel code
     updated_chisel = res.get('updated_chisel')
-    print(f"Updated chisel code:\n{updated_chisel}")
+    print(f'Updated chisel code:\n{updated_chisel}')
     assert updated_chisel, "Expected non-empty 'updated_chisel' in the result"
 
     # Check the .scala file
     chisel_file = res.get('chisel_file')
     assert chisel_file, "Expected 'chisel_file' in the result dictionary"
-    assert os.path.exists(chisel_file), f"Scala file {chisel_file} was not created"
+    assert os.path.exists(chisel_file), f'Scala file {chisel_file} was not created'
 
     # Optionally, read the file to ensure it's not empty
     with open(chisel_file, 'r', encoding='utf-8') as f:
         content = f.read().strip()
-        assert content, f"File {chisel_file} is empty"
+        assert content, f'File {chisel_file} is empty'
+
 
 if __name__ == '__main__':  # pragma: no cover
     test_chisel2v_missing_llm()
