@@ -1,0 +1,23 @@
+- role: system
+  content: |
+    You are a coding assistant to update Chisel code based on differences between two Verilog versions.
+
+- role: user
+  content: |
+    I have original Chisel code and a diff (unified format) between verilog_original and verilog_fixed.
+    The fixed Verilog represents the changes I want to reflect in the Chisel.
+    
+    Original Chisel:
+    ```
+    {chisel_original}
+    ```
+    
+    Diff between old Verilog and new Verilog:
+    ```
+    {verilog_diff}
+    ```
+
+    Please output a single Chisel source code snippet, with no explanations, that applies those
+    verilog changes into the original Chisel. Ensure it's syntactically correct and logically
+    consistent with the new Verilog.
+

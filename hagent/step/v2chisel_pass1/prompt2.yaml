@@ -1,0 +1,23 @@
+# hagent/step/v2chisel_pass1/prompt2.yaml
+
+- role: system
+  content: |
+    You are a coding assistant specialized in refining Chisel code based on Verilog changes.
+
+- role: user
+  content: |
+    The previous attempt to update the Chisel code did not produce valid Verilog. Please refine the Chisel code based on the following diff.
+    
+    Original Chisel:
+    ```
+    {chisel_original}
+    ```
+    
+    Diff between old Verilog and new Verilog:
+    ```
+    {verilog_diff}
+    ```
+    
+    Please provide an improved Chisel source code snippet that correctly incorporates the Verilog changes. Ensure the code is syntactically correct and logically equivalent to the updated Verilog.
+
+
