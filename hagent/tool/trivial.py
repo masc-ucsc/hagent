@@ -25,6 +25,7 @@ class Trivial:
         if some_path == '.':
             self.trivial_path_only = True
             self._some_path = '.'
+            self.error_message = ''
             return True
 
         self._some_path = '/'
@@ -32,8 +33,8 @@ class Trivial:
         self.error_message = f'Used an invalid setup option: {some_path}'
         return False
 
-    def some_method_related_to_the_tool(self, arg: str):
-        self._some_private_method(arg)
+    def some_method_related_to_the_tool(self, arg: str) -> str:
+        return self._some_private_method(txt=arg)
 
-    def _some_private_method(self, txt: str):
+    def _some_private_method(self, txt: str) -> str:
         return txt + self._some_path
