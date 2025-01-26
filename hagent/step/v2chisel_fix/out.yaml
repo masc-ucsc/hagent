@@ -64,15 +64,13 @@ chisel_fixed:
     }
   refined_chisel: |-
     package example
-
     import chisel3._
 
     class Foo extends Module {
-      val in  = Input(Bits(8.W))
-      val out = Output(Bits(8.W))
-
-      val wire = Wire(Bits(8.W))
-      wire := ~in
-      out <> wire
+      val io = IO(new Bundle {
+        val in  = Input(UInt(8.W))
+        val out = Output(UInt(8.W))
+      })
+      io.out := ~(io.in)
     }
-  equiv_passed: false
+  equiv_passed: true
