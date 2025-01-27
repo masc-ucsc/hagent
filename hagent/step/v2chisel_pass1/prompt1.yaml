@@ -19,5 +19,5 @@
 
     Please output a single Chisel source code snippet, with no explanations, that applies those
     verilog changes into the original Chisel. Ensure it's syntactically correct and logically
-    consistent with the new Verilog.
+    consistent with the new Verilog. please prvide only valid code no explaniations and notes.
 

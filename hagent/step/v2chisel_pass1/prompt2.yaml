@@ -6,18 +6,31 @@
 
 - role: user
   content: |
-    The previous attempt to update the Chisel code did not produce valid Verilog. Please refine the Chisel code based on the following diff.
-    
+    The previous attempt to update the Chisel code did not produce valid Verilog. 
+    Here is the error:
+    ```
+    {error_msg}
+    ```
+
+    Below is the original Verilog (before changes):
+    ```
+    {verilog_original}
+    ```
+
+    And here is the updated Verilog (the "fixed" version):
+    ```
+    {verilog_fixed}
+    ```
+
     Original Chisel:
     ```
     {chisel_original}
     ```
-    
+
     Diff between old Verilog and new Verilog:
     ```
     {verilog_diff}
     ```
-    
-    Please provide an improved Chisel source code snippet that correctly incorporates the Verilog changes. Ensure the code is syntactically correct and logically equivalent to the updated Verilog.
 
-
+    Please refine the Chisel code so it is valid and logically consistent with the updated Verilog. 
+    Output *only* the corrected Chisel source, with no additional explanations or commentary.

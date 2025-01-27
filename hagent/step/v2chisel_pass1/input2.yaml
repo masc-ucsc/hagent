@@ -1,0 +1,91 @@
+llm:
+  model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct"
+
+verilog_original: |
+  module Counter(
+    input        enable,
+    input        reset,
+    output [3:0] count
+    );
+    reg [3:0] countReg;
+
+    // Initialize the count register
+    initial begin
+      countReg = 4'b0000;
+    end
+
+    // Define the counter behavior
+    always @(posedge enable or posedge reset) begin
+      if (reset) begin
+        countReg <= 4'b0000;
+      end else begin
+        countReg <= countReg + 1'b1;
+      end
+    end
+
+    // Connect the count register to the output
+    assign count = countReg;
+  endmodule
+
+
+verilog_fixed: |
+  module Counter(
+    input        enable,
+    input        reset,
+    output [3:0] count
+    );
+    reg [3:0] countReg;
+
+    // Initialize the count register
+    initial begin
+      countReg = 4'b0000;
+    end
+
+    // Define the counter behavior
+    always @(posedge enable or posedge reset) begin
+      if (reset) begin
+        countReg <= 4'b0000;
+      end else begin
+        countReg <= countReg - 1'b1;
+      end
+    end
+
+    // Connect the count register to the output
+    assign count = countReg;
+  endmodule
+
+chisel_original: |
+  // Import Chisel library
+    import chisel3._
+    import chisel3.util._
+    
+    // Define the Counter module
+    class Counter extends Module {
+      val io = IO(new Bundle {
+        val enable = Input(Bool())
+        val reset  = Input(Bool())
+        val count  = Output(UInt(4.W))
+      })
+    
+      // Initialize the count register
+      val countReg = RegInit(0.U(4.W))
+    
+      // Define the counter behavior
+      when (io.reset) {
+        countReg := 0.U
+      } .elsewhen (io.enable) {
+        countReg := countReg + 1.U
+      }
+    
+      // Connect the count register to the output
+      io.count := countReg
+    }
+    
+    // Generate the Verilog code
+    object CounterDriver extends App {
+      emitVerilog(new Counter())
+    }
+
+
+name: counter
+
