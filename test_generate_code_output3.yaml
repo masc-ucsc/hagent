@@ -1,0 +1,27 @@
+name: empty_desc_module
+description: ''
+llm:
+  model: fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct
+interface: |
+  module empty_desc_module (input wire clk, output wire rst);
+bench_response: ''
+bench_stage: '1'
+generated_code:
+- |-
+  ```verilog
+  module empty_desc_module #(parameter WIDTH = 1) (
+      input logic clk,
+      output logic rst
+  );
+
+  logic rst_bit;
+
+  always @(posedge clk) begin
+      rst_bit <= 1'b0;
+  end
+
+   ASSIGN rst = rst_bit;
+
+  endmodule
+  ```
+verilog_file: empty_desc_module/empty_desc_module.v

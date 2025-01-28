@@ -1,0 +1,14 @@
+name: my_custom_module
+description: |
+  A simple pass-through module
+llm:
+  model: fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct
+interface: |
+  module my_custom_module (input wire [3:0] a, output wire [3:0] b);
+bench_response: ''
+bench_stage: '0'
+generated_code:
+- "```verilog\nmodule my_custom_module (input wire [3:0] a, output wire [3:0] b);\n\
+  \    wire [3:0] b_out;\n    \n    assign b_out = a;\n    assign b  = b_out;\nendmodule\n\
+  ```"
+verilog_file: my_custom_module/my_custom_module.v
