@@ -112,8 +112,6 @@ class V2ChiselPass1(Step):
         return result
 
     def _strip_markdown_fences(self, code_str: str) -> str:
-        import re
-
         code_str = re.sub(r'```[a-zA-Z]*', '', code_str)
         code_str = code_str.replace('```', '').strip()
         return code_str
@@ -140,8 +138,6 @@ class V2ChiselPass1(Step):
             return (False, None, str(e))
 
     def _find_chisel_classname(self, chisel_code: str) -> str:
-        import re
-
         m = re.search(r'class\s+([A-Za-z0-9_]+)\s+extends\s+Module', chisel_code)
         return m.group(1) if m else ''
 
