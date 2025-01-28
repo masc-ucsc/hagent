@@ -3,6 +3,7 @@ import os
 import time
 import datetime
 import litellm
+import sys
 from typing import List, Dict
 
 from hagent.core.llm_template import LLM_template
@@ -66,6 +67,32 @@ class LLM_wrap:
             except Exception as e:
                 self._set_error(f'creating/opening log file: {e}')
 
+    def check_env_keys(self, model: str)->bool:
+        if model.startswith("fireworks"):
+            required_key = "FIREWORKS_AI_API_KEY"
+        elif model.startswith("openai"):
+            required_key = "OPENAI_API_KEY"
+        elif model.startswith("anthropic"):
+            required_key = "ANTHROPIC_API_KEY"
+        elif model.startswith("replicate"):
+            required_key = "REPLICATE_API_KEY"
+        elif model.startswith("cohere"):
+            required_key = "COHERE_API_KEY"
+        elif model.startswith("together_ai"):
+            required_key = "TOGETHER_AI_API_KEY"
+        # Add more providers as needed...
+        else:
+            # No specific key required for this model type (or you can raise an error if unknown)
+            print(f"ERROR: No environment variable check defined for model: {model}", file=sys.stderr)
+            return False
+
+        if os.environ.get(required_key) is None:
+            error_message = f"Error: Environment variable '{required_key}' is not set for model '{model}'."
+            print(error_message, file=sys.stderr)  # Print to stderr
+            raise ValueError(error_message)
+
+        return True
+
     def from_file(self, name: str, conf_file: str, log_file: str, init_template: LLM_template, chat_template: LLM_template):
         self.name = name
         self.conf_file = conf_file
@@ -96,6 +123,7 @@ class LLM_wrap:
 
     def _set_error(self, msg: str):
         self.last_error = msg
+        print(msg, file=sys.stderr)
 
     def clear_history(self):
         self.chat_history.clear()
@@ -182,8 +210,18 @@ class LLM_wrap:
         self.total_time_ms += time_ms
 
         event_type = f'{self.name}:LLM_wrap.chat' if is_chat else f'{self.name}:LLM_wrap.inference'
+
+        model = llm_call_args.get('model', '')
+        if model == "":
+            self._set_error(f"empty model name. No default model used")
+            return ""
+
+        if not self.check_env_keys(model):
+            self._set_error(f"environment keys not set for {model}")
+            return ""
+
         data = {
-            'model': llm_call_args.get('model', ''),
+            'model': model,
             'prompt': formatted,
             'answers': answers,
             'cost': cost,
