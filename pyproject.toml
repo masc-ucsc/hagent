@@ -35,6 +35,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 omit = [
-    "tests/*",      # Exclude the entire tests directory
-    "tests/**",     # Also exclude subdirectories under tests
+    "hagent/core/tests/*",
+    "hagent/step/**/tests/*",
+    "hagent/tool/**/tests/*",
 ]
