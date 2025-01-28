@@ -127,8 +127,7 @@ class Chisel2v:
             raise RuntimeError('Chisel2v not ready; call setup() first')
 
         # Create a unique temp dir
-        work_dir = tempfile.mkdtemp(dir=os.getcwd(),prefix='chisel2v_')
-        print(f"Chisel2v working directory:{work_dir}")
+        work_dir = tempfile.mkdtemp(dir=os.getcwd(), prefix='chisel2v_')
 
         try:
             # Copy the build.sbt template
@@ -169,12 +168,11 @@ class Chisel2v:
                 else:
                     raise RuntimeError('No .v or .sv file produced by sbt run')
 
-            with open(generated_v, "r") as file:
+            with open(generated_v, 'r') as file:
                 return file.read()
-
 
         except Exception as ex:
             raise RuntimeError(f'Failed to generate Verilog: {ex}') from ex
-        #finally:
-            # Cleanup
-            # shutil.rmtree(work_dir, ignore_errors=True)
+        # finally:
+        # Cleanup
+        # shutil.rmtree(work_dir, ignore_errors=True)

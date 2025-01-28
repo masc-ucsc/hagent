@@ -33,11 +33,11 @@ class V2ChiselFix(Step):
                 prompt3_template = LLM_template(self.prompt3_path)
                 self.refine_llm = LLM_wrap()
                 self.refine_llm.from_dict(name='v2chisel_fix_refine', conf_dict=llm_args, prompt=prompt3_template)
-                print("[INFO] Loaded prompt3.yaml and initialized LLM for refinement.")
+                print('[INFO] Loaded prompt3.yaml and initialized LLM for refinement.')
             else:
                 print("[WARN] prompt3.yaml found but no 'llm' config. Can't refine automatically.")
         else:
-            print("[WARN] prompt3.yaml not found, cannot refine if LEC fails.")
+            print('[WARN] prompt3.yaml not found, cannot refine if LEC fails.')
 
         # Provide a default iteration limit (could also read from input_data if desired)
         self.lec_limit = 10
@@ -56,14 +56,14 @@ class V2ChiselFix(Step):
         verilog_candidate = pass1_info.get('verilog_candidate', '')
         was_valid = pass1_info.get('was_valid', False)
 
-        print(f"[INFO] v2chisel_fix: Starting LEC check. was_valid={was_valid}")
+        print(f'[INFO] v2chisel_fix: Starting LEC check. was_valid={was_valid}')
 
         # Step 1: compare 'verilog_candidate' to 'verilog_fixed'
         verilog_fixed = data.get('verilog_fixed', '')
         if not verilog_fixed:
             print("[WARN] No 'verilog_fixed' in input. Skipping initial LEC check.")
             is_equiv = False
-            lec_error = "No verilog_fixed provided"
+            lec_error = 'No verilog_fixed provided'
         else:
             is_equiv, lec_error = self._check_equivalence(verilog_fixed, verilog_candidate)
 
@@ -72,52 +72,52 @@ class V2ChiselFix(Step):
 
         # Step 2: If LEC fails, refine iteratively
         if not is_equiv:
-            print(f"[WARN] LEC check failed/skipped. Attempting up to {self.lec_limit} refinements.")
+            print(f'[WARN] LEC check failed/skipped. Attempting up to {self.lec_limit} refinements.')
             for attempt in range(1, self.lec_limit + 1):
                 iteration_count = attempt
-                print(f"\n[DEBUG] ------------- Refinement Attempt {attempt}/{self.lec_limit} ----------")
+                print(f'\n[DEBUG] ------------- Refinement Attempt {attempt}/{self.lec_limit} ----------')
                 print(f"[DEBUG] Current LEC error: {lec_error or 'None'}")
 
                 # (A) Possibly refine code with LLM
                 new_chisel = self._refine_chisel_code(refined_chisel, lec_error)
                 if not new_chisel or new_chisel.strip() == refined_chisel.strip():
-                    print("[INFO] LLM did not improve or returned empty code. Stopping refinement here.")
+                    print('[INFO] LLM did not improve or returned empty code. Stopping refinement here.')
                     break
 
                 refined_chisel = new_chisel
-                print(f"[DEBUG] Updated refined_chisel:\n{refined_chisel}")
+                print(f'[DEBUG] Updated refined_chisel:\n{refined_chisel}')
 
                 # (B) Generate new Verilog from refined code
-                new_verilog, gen_error = self._generate_verilog(refined_chisel, "my_chisel2v_shared")
+                new_verilog, gen_error = self._generate_verilog(refined_chisel, 'my_chisel2v_shared')
                 if not new_verilog:
-                    lec_error = gen_error or "Chisel2v failed"
-                    print(f"[ERROR] Verilog generation failed on iteration {attempt}: {lec_error}")
+                    lec_error = gen_error or 'Chisel2v failed'
+                    print(f'[ERROR] Verilog generation failed on iteration {attempt}: {lec_error}')
                     continue
-                print(f"[DEBUG] Generated new Verilog:\n{new_verilog}")
+                print(f'[DEBUG] Generated new Verilog:\n{new_verilog}')
 
                 # (C) Check equivalence again
                 is_equiv, lec_error = self._check_equivalence(verilog_fixed, new_verilog)
                 if is_equiv:
-                    print(f"[INFO] LEC check passed after refinement on iteration {attempt}!")
+                    print(f'[INFO] LEC check passed after refinement on iteration {attempt}!')
                     verilog_candidate = new_verilog
                     break
                 else:
-                    print(f"[DEBUG] LEC still failing after iteration {attempt}. lec_error={lec_error}")
+                    print(f'[DEBUG] LEC still failing after iteration {attempt}. lec_error={lec_error}')
 
             if not is_equiv:
                 if iteration_count < self.lec_limit:
-                    print(f"[WARN] Exiting early on iteration {iteration_count} due to error or no improvement.")
+                    print(f'[WARN] Exiting early on iteration {iteration_count} due to error or no improvement.')
                 else:
-                    print(f"[WARN] Reached maximum attempts ({self.lec_limit}) without passing LEC.")
+                    print(f'[WARN] Reached maximum attempts ({self.lec_limit}) without passing LEC.')
         else:
-            print("[INFO] Code is already equivalent, no refinement needed.")
+            print('[INFO] Code is already equivalent, no refinement needed.')
 
         # Step 3: Write final 'chisel_fixed' to output
         result = data.copy()
         result['chisel_fixed'] = {
             'original_chisel': data.get('chisel_original', ''),
             'refined_chisel': refined_chisel,
-            'equiv_passed': is_equiv
+            'equiv_passed': is_equiv,
         }
         print("[INFO] v2chisel_fix: Done. 'chisel_fixed' written to output YAML.")
         return result
@@ -131,31 +131,31 @@ class V2ChiselFix(Step):
         Logs debug info about Yosys result.
         """
         if not gold_code.strip() or not reference_code.strip():
-            return (False, "Missing code for equivalence check")
+            return (False, 'Missing code for equivalence check')
 
         eq_checker = Equiv_check()
         if not eq_checker.setup():
-            err = eq_checker.get_error() or "Yosys not found"
-            print(f"[ERROR] Equiv_check setup failed: {err}")
+            err = eq_checker.get_error() or 'Yosys not found'
+            print(f'[ERROR] Equiv_check setup failed: {err}')
             return (False, err)
 
         try:
             result = eq_checker.check_equivalence(gold_code, reference_code)
             if result is True:
-                print("[INFO] LEC check: Designs are equivalent!")
+                print('[INFO] LEC check: Designs are equivalent!')
                 return (True, None)
             elif result is False:
                 cex_info = eq_checker.get_counterexample()
-                print("[WARN] LEC check: Designs are NOT equivalent.")
+                print('[WARN] LEC check: Designs are NOT equivalent.')
                 if cex_info:
-                    print(f"[DEBUG] LEC Counterexample info: {cex_info}")
-                return (False, cex_info or "LEC mismatch")
+                    print(f'[DEBUG] LEC Counterexample info: {cex_info}')
+                return (False, cex_info or 'LEC mismatch')
             else:
-                err = eq_checker.get_error() or "LEC result is None/inconclusive"
-                print(f"[ERROR] LEC result is None. {err}")
+                err = eq_checker.get_error() or 'LEC result is None/inconclusive'
+                print(f'[ERROR] LEC result is None. {err}')
                 return (False, err)
         except Exception as e:
-            print(f"[ERROR] LEC threw exception: {e}")
+            print(f'[ERROR] LEC threw exception: {e}')
             return (False, str(e))
 
     # ---------------------------------------------------------------------
@@ -167,37 +167,33 @@ class V2ChiselFix(Step):
         Returns the new refined code, or the same code if none/improvement is empty.
         """
         if not self.refine_llm:
-            print("[WARN] No LLM available for refinement.")
+            print('[WARN] No LLM available for refinement.')
             return current_code
 
         # This dictionary matches the placeholders in prompt3.yaml:
         #   {chisel_code}
         #   {lec_output}
-        prompt_dict = {
-            'chisel_code': current_code,
-            'lec_output': lec_error or "LEC failed"
-        }
+        prompt_dict = {'chisel_code': current_code, 'lec_output': lec_error or 'LEC failed'}
 
-        print(f"[DEBUG] prompt_dict to LLM (using prompt3.yaml): {prompt_dict}")
+        print(f'[DEBUG] prompt_dict to LLM (using prompt3.yaml): {prompt_dict}')
 
         # We use `chat(...)` so that we maintain a single conversation.
         response_text = self.refine_llm.chat(prompt_dict)
-        print(f"[DEBUG] LLM raw chat response:\n{response_text}")
+        print(f'[DEBUG] LLM raw chat response:\n{response_text}')
 
         # If there's no response or it's empty, do not update the code.
         if not response_text.strip():
-            print("[ERROR] LLM returned empty chat response. Keeping old code.")
+            print('[ERROR] LLM returned empty chat response. Keeping old code.')
             return current_code
 
         # Strip markdown fences or triple backticks from the code
         new_code = self._strip_markdown_fences(response_text.strip())
         if not new_code:
-            print("[ERROR] After removing backticks/fences, code is empty. Keeping old code.")
+            print('[ERROR] After removing backticks/fences, code is empty. Keeping old code.')
             return current_code
 
-        print("[INFO] LLM provided a refined Chisel snippet (single conversation).")
+        print('[INFO] LLM provided a refined Chisel snippet (single conversation).')
         return new_code
-
 
     # ---------------------------------------------------------------------
     # Helper: Convert refined Chisel code => Verilog
@@ -208,23 +204,23 @@ class V2ChiselFix(Step):
         Includes debug printing for clarity.
         """
         if not chisel_code.strip():
-            return (None, "No Chisel code to generate Verilog from.")
+            return (None, 'No Chisel code to generate Verilog from.')
 
         c2v = Chisel2v()
         c2v.working_dir = os.path.join(os.getcwd(), shared_dir)
         os.makedirs(c2v.working_dir, exist_ok=True)
 
         if not c2v.setup():
-            return (None, c2v.error_message or "Chisel2v setup failed")
+            return (None, c2v.error_message or 'Chisel2v setup failed')
 
         try:
             module_name = self._find_chisel_classname(chisel_code)
             verilog_output = c2v.generate_verilog(chisel_code, module_name)
-            if "module" not in verilog_output:
+            if 'module' not in verilog_output:
                 return (None, "Generated Verilog missing 'module' keyword.")
             return (verilog_output, None)
         except Exception as e:
-            return (None, f"Exception in Chisel2v: {e}")
+            return (None, f'Exception in Chisel2v: {e}')
 
     # ---------------------------------------------------------------------
     # Helper: parse 'class MyFoo extends Module'
@@ -233,7 +229,7 @@ class V2ChiselFix(Step):
         match = re.search(r'class\s+([A-Za-z0-9_]+)\s+extends\s+Module', chisel_code)
         if match:
             return match.group(1)
-        return "MyModule"  # fallback name
+        return 'MyModule'  # fallback name
 
     # ---------------------------------------------------------------------
     # Internal helper to remove triple backticks from the LLM response
