@@ -41,9 +41,19 @@ The `HAgent` script provides several commands to help you generate multiple Ninj
 
 ### Examples
 
+Regression test use FIREWORKS for unit testing. As such, you need to set:
+```
+export FIREWORKS_AI_API_KEY=whatever_key_you_like_most
+```
+
 To run all the hagent tests:
 ```
 poetry run pytest
+```
+
+To verbose model:
+```
+poetry run pytest -v
 ```
 
 Dumping coverage information:

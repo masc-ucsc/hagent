@@ -27,7 +27,14 @@ diskcache = "^5.6.3"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
- [tool.pytest.ini_options]
+[tool.pytest.ini_options]
 filterwarnings = [
     "ignore::DeprecationWarning",
+   "ignore::UserWarning"
+]
+
+[tool.coverage.run]
+omit = [
+    "tests/*",      # Exclude the entire tests directory
+    "tests/**",     # Also exclude subdirectories under tests
 ]
