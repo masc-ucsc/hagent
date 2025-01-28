@@ -1,6 +1,5 @@
 # See LICENSE file for details
 
-import pytest
 from hagent.tool.trivial import Trivial
 
 
@@ -9,8 +8,8 @@ def test_used_dot():
 
     assert dut._some_path == '/'
     assert dut.error_message == ''
-    t =  dut.some_method_related_to_the_tool('xx')
-    assert t == "xx/"
+    t = dut.some_method_related_to_the_tool('xx')
+    assert t == 'xx/'
     assert dut.some_method_related_to_the_tool('xx') == 'xx/'
 
     x1 = dut.setup('potato')

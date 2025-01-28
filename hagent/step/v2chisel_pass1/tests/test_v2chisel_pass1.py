@@ -5,6 +5,7 @@ import pytest
 
 from hagent.step.v2chisel_pass1.v2chisel_pass1 import V2ChiselPass1
 
+
 def test_v2chisel_missing_llm():
     """
     If the input YAML doesn't have 'llm', the pass should raise ValueError.
@@ -36,7 +37,7 @@ def test_v2chisel_code():
 
     # The pass stores final data in 'chisel_pass1' by design
     chisel_data = res.get('chisel_pass1', {})
-    print(f"[TEST] chisel_pass1:\n{chisel_data}")
+    print(f'[TEST] chisel_pass1:\n{chisel_data}')
 
     # Check that we got something
     assert chisel_data, "Expected 'chisel_pass1' key in output"
@@ -49,8 +50,8 @@ def test_v2chisel_code():
     # Optional: check that was_valid is True or that there's some minimal snippet
     # If there's no real LLM or chisel2v environment, this might fail or produce empty strings
     # because it can't generate real code. But let's do a minimal check:
-    assert chisel_data['chisel_changed'], "chisel_changed is empty"
-    assert chisel_data['verilog_candidate'], "verilog_candidate is empty"
+    assert chisel_data['chisel_changed'], 'chisel_changed is empty'
+    assert chisel_data['verilog_candidate'], 'verilog_candidate is empty'
 
 
 if __name__ == '__main__':  # pragma: no cover
