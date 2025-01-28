@@ -213,7 +213,7 @@ class LLM_wrap:
 
         model = llm_call_args.get('model', '')
         if model == "":
-            self._set_error(f"empty model name. No default model used")
+            self._set_error("empty model name. No default model used")
             return ""
 
         if not self.check_env_keys(model):
