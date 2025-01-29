@@ -220,3 +220,119 @@ class TopModule extends Module {
     chisel_data2 = res2["chisel_pass1"]
     assert chisel_data2["was_valid"] is True
     assert "MyModule" in chisel_data2["verilog_candidate"]
+
+def test_missing_llm_section(tmp_path):
+    """
+    Test that an error is raised when 'llm' section is missing in input YAML.
+    """
+    # Create input YAML without 'llm'
+    missing_llm_input = {
+        "verilog_original": "module mymodule(input clk, rst); endmodule",
+        "verilog_fixed": "module mymodule(input clk, rst); // fixed changes endmodule",
+        "chisel_original": "class MyModule extends Module { val io = IO(new Bundle {}) }"
+    }
+    inp_file = tmp_path / "input_missing_llm.yaml"
+    with open(inp_file, 'w') as f:
+        import yaml
+        yaml.safe_dump(missing_llm_input, f)
+
+    out_file = tmp_path / "output_missing_llm.yaml"
+
+    gen_step = V2ChiselPass1()
+    gen_step.set_io(inp_file=str(inp_file), out_file=str(out_file))
+
+    # Patch the 'error' method to raise ValueError
+    with patch.object(V2ChiselPass1, 'error', side_effect=ValueError("Missing 'llm' section in input YAML")):
+        with pytest.raises(ValueError, match="Missing 'llm' section in input YAML"):
+            gen_step.setup()
+
+def test_missing_prompt1_file(step_with_io, tmp_path):
+    """
+    Test that an error is raised when 'prompt1.yaml' file is missing.
+    """
+    import hagent.step.v2chisel_pass1.v2chisel_pass1
+    prompt1_path = os.path.join(
+        os.path.dirname(os.path.abspath(hagent.step.v2chisel_pass1.v2chisel_pass1.__file__)),
+        'prompt1.yaml'
+    )
+
+    # Patch 'os.path.exists' to return False for 'prompt1.yaml'
+    with patch("hagent.step.v2chisel_pass1.v2chisel_pass1.os.path.exists", return_value=False), \
+         patch("hagent.core.step.Step.error", side_effect=ValueError(f"Prompt file not found: {prompt1_path}")):
+        with pytest.raises(ValueError, match=f"Prompt file not found: {prompt1_path}"):
+            step_with_io.setup()
+
+
+def test_llm_returns_empty_response(step_with_io):
+    """
+    Test handling when LLM returns an empty response.
+    """
+    step_with_io.setup()
+
+    # Mock LLM_wrap.inference to return an empty list
+    with patch.object(step_with_io.lw, "inference", return_value=[]), \
+         patch("builtins.print") as mock_print:
+        res = step_with_io.run({
+            "verilog_original": "module mymodule(input clk, rst); endmodule",
+            "verilog_fixed": "module mymodule(input clk, rst); // fixed changes endmodule",
+            "chisel_original": "class MyModule extends Module { val io = IO(new Bundle {}) }",
+            "llm": {
+                "model": "test-model",
+                "other_config": "value"
+            }
+        })
+
+    # Check that the print statement was called
+    mock_print.assert_any_call('\n=== LLM RESPONSE: EMPTY ===\n')
+
+    # Verify that 'chisel_pass1' reflects the continued state
+    chisel_data = res["chisel_pass1"]
+    assert chisel_data["was_valid"] is False
+    assert chisel_data["chisel_changed"] == "No valid snippet generated."
+
+def test_missing_prompt1_file(step_with_io, tmp_path):
+    """
+    Test that an error is raised when 'prompt1.yaml' file is missing.
+    """
+    import hagent.step.v2chisel_pass1.v2chisel_pass1
+    
+    # Determine the correct path to 'prompt1.yaml'
+    prompt1_path = os.path.join(
+        os.path.dirname(os.path.abspath(hagent.step.v2chisel_pass1.v2chisel_pass1.__file__)),
+        'prompt1.yaml'
+    )
+
+    # Patch 'os.path.exists' to return False for 'prompt1.yaml'
+    with patch("hagent.step.v2chisel_pass1.v2chisel_pass1.os.path.exists") as mock_exists:
+        mock_exists.side_effect = lambda path: False if path == prompt1_path else True
+
+        # Patch the 'error' method in the Step class to raise ValueError
+        with patch("hagent.core.step.Step.error", side_effect=ValueError(f"Prompt file not found: {prompt1_path}")):
+            with pytest.raises(ValueError, match=f"Prompt file not found: {prompt1_path}"):
+                step_with_io.setup()
+
+def test_chisel2v_setup_failure(step_with_io):
+    """
+    Test that an error is returned when Chisel2v.setup() fails.
+    """
+    from hagent.tool.chisel2v import Chisel2v
+    from unittest.mock import MagicMock
+
+    step_with_io.setup()
+
+    # Create a mock instance of Chisel2v
+    mock_c2v = MagicMock(spec=Chisel2v)
+    mock_c2v.setup.return_value = False
+    mock_c2v.error_message = 'Initialization failed'
+
+    # Patch the Chisel2v constructor to return the mock instance
+    with patch("hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v", return_value=mock_c2v):
+        # Mock the inference method to return a valid Chisel snippet
+        with patch.object(step_with_io.lw, "inference", return_value=["```chisel\nclass MyModule extends Module {}\n```"]):
+            res = step_with_io.step()
+
+    # Verify that 'chisel_pass1' reflects the setup failure
+    chisel_data = res["chisel_pass1"]
+    assert chisel_data["was_valid"] is False
+    assert chisel_data["chisel_changed"] == "No valid snippet generated."
+    assert chisel_data["verilog_candidate"] is None
