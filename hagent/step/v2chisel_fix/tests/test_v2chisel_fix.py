@@ -158,7 +158,6 @@ verilog_fixed: |
     if os.path.exists(prompt3_path):
         os.remove(prompt3_path)
 
-
 def test_already_equiv_no_refine(step_with_io):
     """
     - LEC passes initially => no refine
@@ -181,135 +180,142 @@ def test_lec_fails_refine_succeeds(step_with_io, tmp_path):
     """
     - LEC fails at first, we refine => new snippet => verilog => success
     """
-    # Make a minimal prompt3.yaml...
-    test_dir = os.path.dirname(__file__)
-    prompt3_path = os.path.join(test_dir, "prompt3.yaml")
+    import hagent.step.v2chisel_fix.v2chisel_fix as fix_mod
+    module_dir = os.path.dirname(os.path.abspath(fix_mod.__file__))
+    prompt3_path = os.path.join(module_dir, "prompt3.yaml")
+
+    # Write a valid prompt3.yaml (top-level list)
     with open(prompt3_path, "w") as pf:
-        pf.write("""messages:
-  - role: system
-    content: "Refinement system message"
+        pf.write("""\
+- role: system
+  content: "Refinement system message"
 """)
 
-    step_with_io.setup()
+    try:
+        step_with_io.setup()
 
-    mock_eq_inst = MagicMock()
-    mock_eq_inst.setup.return_value = True
-    # First call fails, second passes
-    mock_eq_inst.check_equivalence.side_effect = [False, True]
+        mock_eq_inst = MagicMock()
+        mock_eq_inst.setup.return_value = True
+        # LEC fails on first check, passes on second
+        mock_eq_inst.check_equivalence.side_effect = [False, True]
 
-    # This LLM mock refines "MyModule" -> "MyModule_attempt1"
-    def mock_chat_side_effect(prompt_dict):
-        code_in = prompt_dict["chisel_code"]
-        if "attempt1" in code_in:
+        def mock_chat_side_effect(prompt_dict):
+            code_in = prompt_dict["chisel_code"]
+            # On first refinement => replace "MyModule" => "MyModule_attempt1"
+            if "attempt1" not in code_in:
+                return "```chisel\nclass MyModule_attempt1 extends Module {}\n```"
             return code_in  # no further change
-        return code_in.replace("MyModule", "MyModule_attempt1")
 
-    # IMPORTANT: return two values (verilog_code, err_str) to match real _generate_verilog
-    def mock_generate_verilog(chisel_code, module_name):
-        if "attempt1" in chisel_code:
-            return ("module refined_attempt1(); endmodule", None)
-        return ("module original(); endmodule", None)
+        def mock_generate_verilog(chisel_code, module_name):
+            # If code has "attempt1" => produce refined verilog
+            if "attempt1" in chisel_code:
+                return ("module refined_attempt1(); endmodule", None)
+            return ("module original(); endmodule", None)
 
-    # Patch out yaml.dump so we don't actually write a file
-    with patch("hagent.core.step.yaml.dump", return_value=None), \
-         patch("hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check", return_value=mock_eq_inst), \
-         patch.object(step_with_io, "_generate_verilog", side_effect=mock_generate_verilog), \
-         patch.object(step_with_io.refine_llm, "chat", side_effect=mock_chat_side_effect):
+        with patch("hagent.core.step.yaml.dump", return_value=None), \
+             patch("hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check", return_value=mock_eq_inst), \
+             patch.object(step_with_io, "_generate_verilog", side_effect=mock_generate_verilog), \
+             patch.object(step_with_io.refine_llm, "chat", side_effect=mock_chat_side_effect):
 
-        res = step_with_io.step()
+            res = step_with_io.step()
 
-    # Now the final result should not have an error; it should contain "chisel_fixed"
-    assert "chisel_fixed" in res
-    cf = res["chisel_fixed"]
-    assert cf["equiv_passed"] is True
-    assert "MyModule_attempt1" in cf["refined_chisel"]
+        # Check final result => must have succeeded on second attempt
+        cf = res["chisel_fixed"]
+        assert cf["equiv_passed"] is True, "Expected success after second equivalence check"
+        assert "MyModule_attempt1" in cf["refined_chisel"]
+    finally:
+        if os.path.exists(prompt3_path):
+            os.remove(prompt3_path)
 
-    if os.path.exists(prompt3_path):
-        os.remove(prompt3_path)
 
 
 
 def test_lec_fails_all_attempts(step_with_io, tmp_path):
     """
-    - LEC fails for all attempts, but code changes each time
+    - LEC fails for all attempts, code changes each time
     - after lec_limit => final result equiv_passed=False
     """
-    test_dir = os.path.dirname(__file__)
-    prompt3_path = os.path.join(test_dir, "prompt3.yaml")
+    import hagent.step.v2chisel_fix.v2chisel_fix as fix_mod
+    module_dir = os.path.dirname(os.path.abspath(fix_mod.__file__))
+    prompt3_path = os.path.join(module_dir, "prompt3.yaml")
+
     with open(prompt3_path, "w") as f:
-        f.write("messages:\n - role: system\n   content: 'Refine'")
+        f.write("""\
+- role: system
+  content: "Refine"
+""")
 
-    step_with_io.setup()
-    step_with_io.lec_limit = 2  # reduce attempts for test speed
+    try:
+        step_with_io.setup()
+        step_with_io.lec_limit = 2  # shorten attempts
 
-    mock_eq_inst = MagicMock()
-    mock_eq_inst.setup.return_value = True
-    mock_eq_inst.check_equivalence.return_value = False  # always fails
+        mock_eq_inst = MagicMock()
+        mock_eq_inst.setup.return_value = True
+        mock_eq_inst.check_equivalence.return_value = False  # always fails
 
-    # Each refine => add "X" to code
-    def mock_chat_side_effect(prompt_dict):
-        code_in = prompt_dict["chisel_code"]
-        return code_in + "X"
+        def mock_chat_side_effect(prompt_dict):
+            # Append X => code changes each attempt
+            code_in = prompt_dict["chisel_code"]
+            return "```chisel\n" + code_in + "X\n```"
 
-    # Return two values: (verilog_code, error_str). 
-    # We'll always produce valid verilog but LEC fails anyway.
-    def mock_gen_verilog(chisel_code, module_name):
-        return ("module changed(); endmodule", None)
+        def mock_gen_verilog(chisel_code, module_name):
+            return ("module changed(); endmodule", None)
 
-    with patch("hagent.core.step.yaml.dump", return_value=None), \
-         patch("hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check", return_value=mock_eq_inst), \
-         patch.object(step_with_io.refine_llm, "chat", side_effect=mock_chat_side_effect), \
-         patch.object(step_with_io, "_generate_verilog", side_effect=mock_gen_verilog):
+        with patch("hagent.core.step.yaml.dump", return_value=None), \
+             patch("hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check", return_value=mock_eq_inst), \
+             patch.object(step_with_io.refine_llm, "chat", side_effect=mock_chat_side_effect), \
+             patch.object(step_with_io, "_generate_verilog", side_effect=mock_gen_verilog):
 
-        res = step_with_io.step()
+            res = step_with_io.step()
 
-    # Now no "too many values" error => final result is 'chisel_fixed' with failed equivalence
-    assert "chisel_fixed" in res, "Result does not contain 'chisel_fixed' key."
-    cf = res["chisel_fixed"]
-    assert cf["equiv_passed"] is False
-    # Code changed after each refine => ends with XX
-    assert cf["refined_chisel"].endswith("XX")
+        cf = res["chisel_fixed"]
+        assert cf["equiv_passed"] is False, "Should remain false after max attempts"
+        # code changed each iteration => ends with "XX"
+        assert cf["refined_chisel"].endswith("XX")
+    finally:
+        if os.path.exists(prompt3_path):
+            os.remove(prompt3_path)
 
-    if os.path.exists(prompt3_path):
-        os.remove(prompt3_path)
 
 
 
 def test_lec_fails_refine_cannot_improve(step_with_io, tmp_path):
     """
-    - LEC fails, LLM returns the exact same code => break out
-    - Ensure final 'equiv_passed' is False
+    - LEC fails, LLM returns the same code => break out => final 'equiv_passed' False
     """
-    # Create prompt3.yaml
-    test_dir = os.path.dirname(__file__)
-    prompt3_path = os.path.join(test_dir, "prompt3.yaml")
+    import hagent.step.v2chisel_fix.v2chisel_fix as fix_mod
+    module_dir = os.path.dirname(os.path.abspath(fix_mod.__file__))
+    prompt3_path = os.path.join(module_dir, "prompt3.yaml")
+
     with open(prompt3_path, "w") as f:
-        f.write("messages:\n - role: system\n   content: 'Refinement prompt'")
+        f.write("""\
+- role: system
+  content: "Refinement prompt"
+""")
 
-    step_with_io.setup()
+    try:
+        step_with_io.setup()
 
-    # Force fail from equivalence
-    mock_eq_inst = MagicMock()
-    mock_eq_inst.setup.return_value = True
-    mock_eq_inst.check_equivalence.return_value = False
+        mock_eq_inst = MagicMock()
+        mock_eq_inst.setup.return_value = True
+        mock_eq_inst.check_equivalence.return_value = False  # fails
 
-    # LLM returns the same snippet => no improvement => break
-    def mock_chat_side_effect(prompt_dict):
-        return prompt_dict["chisel_code"]  # same code => no improvement
+        def mock_chat_side_effect(prompt_dict):
+            # Return the same code => no improvement => break
+            return prompt_dict["chisel_code"]
 
-    # Mock generate_verilog => it doesn't matter, won't pass LEC
-    with patch("hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check", return_value=mock_eq_inst), \
-         patch.object(step_with_io.refine_llm, "chat", side_effect=mock_chat_side_effect), \
-         patch.object(step_with_io, "_generate_verilog", return_value=("module x(); endmodule", None)):
+        with patch("hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check", return_value=mock_eq_inst), \
+             patch.object(step_with_io.refine_llm, "chat", side_effect=mock_chat_side_effect), \
+             patch.object(step_with_io, "_generate_verilog", return_value=("module x(); endmodule", None)):
 
-        res = step_with_io.step()
+            res = step_with_io.step()
 
-    cf = res["chisel_fixed"]
-    assert cf["equiv_passed"] is False
-    # Because LLM didn't change code => we bail early
+        cf = res["chisel_fixed"]
+        assert cf["equiv_passed"] is False
+    finally:
+        if os.path.exists(prompt3_path):
+            os.remove(prompt3_path)
 
-    if os.path.exists(prompt3_path):
-        os.remove(prompt3_path)
 
 
 def test_refine_llm_not_present(step_with_io):
@@ -521,3 +527,347 @@ class Foo extends Module {}
     assert "```" not in out
     assert "scala" not in out
     assert "class Foo extends Module" in out
+
+
+def test_setup_no_prompt3_warning(tmp_path):
+    """
+    Test that a warning is printed when 'prompt3.yaml' is not found.
+    Ensures that 'refine_llm' remains None.
+    """
+    # Create an input YAML with 'chisel_pass1' and 'llm'
+    content = """\
+chisel_pass1:
+  chisel_changed: |
+    class MyModule extends Module {
+      val io = IO(new Bundle {})
+    }
+  verilog_candidate: |
+    module mymodule();
+    endmodule
+  was_valid: true
+
+verilog_fixed: |
+  module mymodule();
+  // new changes
+  endmodule
+
+llm:
+  model: "test-model"
+"""
+    input_file = tmp_path / "input_no_prompt3.yaml"
+    input_file.write_text(content)
+
+    step_obj = V2ChiselFix()
+    out_file = tmp_path / "output_no_prompt3.yaml"
+    step_obj.set_io(inp_file=str(input_file), out_file=str(out_file))
+
+    # Ensure 'prompt3.yaml' does not exist
+    with patch("hagent.step.v2chisel_fix.v2chisel_fix.os.path.exists", return_value=False), \
+         patch("builtins.print") as mock_print:
+        step_obj.setup()
+
+        # Verify that the warning was printed
+        mock_print.assert_any_call('[WARN] prompt3.yaml not found, cannot refine if LEC fails.')
+        assert step_obj.refine_llm is None
+
+
+def test_run_missing_verilog_fixed(step_with_io, tmp_path):
+    """
+    Test that a warning is printed and LEC is skipped when 'verilog_fixed' is missing.
+    """
+    # Prepare input data without 'verilog_fixed'
+    input_data = {
+        "chisel_pass1": {
+            "chisel_changed": "class MyModule extends Module { val io = IO(new Bundle {}) }",
+            "verilog_candidate": "module mymodule(); endmodule",
+            "was_valid": True
+        },
+        # 'verilog_fixed' is missing
+        "llm": {
+            "model": "test-model"
+        }
+    }
+
+    # Mock Equiv_check to ensure it's not called
+    with patch("hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check") as mock_eq, \
+         patch("builtins.print") as mock_print:
+        step_with_io.setup()
+        res = step_with_io.run(input_data)
+
+        # Verify warning was printed
+        mock_print.assert_any_call("[WARN] No 'verilog_fixed' in input. Skipping initial LEC check.")
+
+        # Verify 'chisel_fixed' reflects the skipped LEC
+        assert "chisel_fixed" in res
+        cf = res["chisel_fixed"]
+        assert cf["equiv_passed"] is False
+        assert cf["refined_chisel"] == "class MyModule extends Module { val io = IO(new Bundle {}) }"
+        assert cf.get("verilog_candidate") is None
+
+
+        # Ensure Equiv_check was not called
+        mock_eq.assert_not_called()
+
+
+def test_run_equiv_check_setup_failure(step_with_io):
+    """
+    Test that an error is printed and equivalence check fails when Equiv_check.setup() fails.
+    """
+    # Import the module to determine the path for 'prompt3.yaml' (if needed)
+    import hagent.step.v2chisel_fix.v2chisel_fix as v2chisel_fix_module
+
+    module_dir = os.path.dirname(os.path.abspath(v2chisel_fix_module.__file__))
+    prompt3_path = os.path.join(module_dir, "prompt3.yaml")
+
+    # Ensure 'prompt3.yaml' is present to initialize refine_llm, but it will not be used since LEC fails
+    with open(prompt3_path, "w") as f:
+        f.write("""
+  - role: system
+    content: "Refinement system message"
+""")
+
+    try:
+        step_with_io.setup()
+
+        # Mock Equiv_check to fail setup
+        with patch("hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check") as mock_eq, \
+             patch("builtins.print") as mock_print:
+
+            mock_eq_inst = MagicMock()
+            mock_eq_inst.setup.return_value = False
+            mock_eq_inst.get_error.return_value = "Yosys not found"
+            mock_eq.return_value = mock_eq_inst
+
+            res = step_with_io.run({
+                "chisel_pass1": {
+                    "chisel_changed": "class MyModule extends Module { val io = IO(new Bundle {}) }",
+                    "verilog_candidate": "module mymodule(); endmodule",
+                    "was_valid": True
+                },
+                "verilog_fixed": "module mymodule(); // fixed changes endmodule",
+                "llm": {
+                    "model": "test-model"
+                }
+            })
+
+            # Verify error was printed
+            mock_print.assert_any_call('[ERROR] Equiv_check setup failed: Yosys not found')
+
+            # Verify 'chisel_fixed' reflects the setup failure
+            cf = res["chisel_fixed"]
+            assert cf["equiv_passed"] is False
+            assert cf["refined_chisel"] == "class MyModule extends Module { val io = IO(new Bundle {}) }"
+            assert cf.get("verilog_candidate") is None
+
+    finally:
+        # Cleanup: Remove 'prompt3.yaml' after the test
+        if os.path.exists(prompt3_path):
+            os.remove(prompt3_path)
+
+
+def test_refine_chisel_code_empty_after_strip(step_with_io):
+    """
+    Test that an error is printed and original code is kept
+    when LLM returns empty code after stripping backticks.
+    """
+    import hagent.step.v2chisel_fix.v2chisel_fix as fix_mod
+    module_dir = os.path.dirname(os.path.abspath(fix_mod.__file__))
+    prompt3_path = os.path.join(module_dir, "prompt3.yaml")
+
+    # Create valid prompt3.yaml => top-level list
+    with open(prompt3_path, "w") as f:
+        f.write("""\
+- role: system
+  content: "Refinement system message"
+""")
+
+    try:
+        step_with_io.setup()
+
+        with patch.object(step_with_io.refine_llm, "chat", return_value="```chisel\n\n```"), \
+             patch("builtins.print") as mock_print:
+
+            original_code = "class MyModule extends Module { val io = IO(new Bundle {}) }"
+            refined_code = step_with_io._refine_chisel_code(original_code, "Some LEC error")
+
+            mock_print.assert_any_call('[ERROR] After removing backticks/fences, code is empty. Keeping old code.')
+            assert refined_code == original_code
+    finally:
+        if os.path.exists(prompt3_path):
+            os.remove(prompt3_path)
+
+
+def test_generate_verilog_setup_failure(step_with_io):
+    """
+    Test that _generate_verilog returns (None, error_message) when Chisel2v.setup() fails.
+    """
+    step_with_io.setup()
+
+    from hagent.tool.chisel2v import Chisel2v
+
+    # Create a mock instance of Chisel2v with setup failing
+    mock_c2v = MagicMock(spec=Chisel2v)
+    mock_c2v.setup.return_value = False
+    mock_c2v.error_message = 'Chisel2v setup failed due to missing dependencies.'
+
+    with patch("hagent.step.v2chisel_fix.v2chisel_fix.Chisel2v", return_value=mock_c2v):
+        verilog_output, error = step_with_io._generate_verilog("class MyModule extends Module {}", "shared_dir")
+
+        # Verify the outputs
+        assert verilog_output is None
+        assert error == 'Chisel2v setup failed due to missing dependencies.'
+
+def test_generate_verilog_missing_module_keyword(step_with_io):
+    """
+    Test that _generate_verilog returns an error when generated Verilog lacks 'module' keyword.
+    """
+    step_with_io.setup()
+
+    # Mock Chisel2v.generate_verilog to return Verilog without 'module'
+    with patch("hagent.step.v2chisel_fix.v2chisel_fix.Chisel2v.setup", return_value=True), \
+         patch("hagent.step.v2chisel_fix.v2chisel_fix.Chisel2v.generate_verilog", return_value="// No mod keyword here"), \
+         patch("builtins.print") as mock_print:
+
+        verilog_output, error = step_with_io._generate_verilog("class MyModule extends Module {}", "shared_dir")
+
+        # Verify that an error is returned
+        assert verilog_output is None
+        assert error == "Generated Verilog missing 'module' keyword."
+
+def test_refinement_with_verilog_generation_failure(step_with_io, tmp_path):
+    """
+    Test the scenario where Verilog generation fails during the refinement loop,
+    triggering the error message and continuation.
+    """
+    step_with_io.setup()
+    step_with_io.lec_limit = 3  # Allows multiple iterations for testing
+
+    # Mock LLM to return refined code that triggers a Verilog generation failure
+    step_with_io.refine_llm = MagicMock()
+    step_with_io.refine_llm.chat.return_value = "refined Chisel code"
+
+    # Mock Equiv_check to initially fail and then not be called again due to generation failure
+    mock_eq_inst = MagicMock()
+    mock_eq_inst.setup.return_value = True
+    mock_eq_inst.check_equivalence.return_value = (False, "LEC mismatch")  # Initial LEC failure
+
+    # Mock _generate_verilog to fail during refinement attempts
+    def mock_generate_verilog(chisel_code, shared_dir):
+        if "refined" in chisel_code:
+            return (None, 'Chisel2v failed')
+        return ("module valid_verilog(); endmodule", None)
+
+    with patch.object(step_with_io, "_generate_verilog", side_effect=mock_generate_verilog), \
+         patch("builtins.print") as mock_print:
+
+        # Setup input data for the run method
+        input_data = {
+            "chisel_pass1": {
+                "chisel_changed": "initial Chisel code",
+                "verilog_candidate": "initial Verilog",
+                "was_valid": True
+            },
+            "verilog_fixed": "module fixed_verilog(); endmodule"
+        }
+
+        # Run the run method
+        res = step_with_io.run(input_data)
+
+        # Check that the appropriate error message was printed
+        mock_print.assert_any_call("[ERROR] Verilog generation failed on iteration 1: Chisel2v failed")
+
+        # Check final result
+        cf = res["chisel_fixed"]
+        assert cf["equiv_passed"] is False, "Expected equivalence check to fail due to Verilog generation failure"
+        assert "refined Chisel code" in cf["refined_chisel"], "Refined Chisel code should be present despite failure"
+
+
+def test_successful_verilog_generation_no_error(step_with_io):
+    """
+    Test _generate_verilog function to handle successful Verilog generation with no error message.
+    """
+    step_with_io.setup()
+
+    # Simulate successful Verilog generation
+    with patch.object(step_with_io, "_generate_verilog", return_value=("module successful_verilog(); endmodule", None)) as mock_gen:
+        verilog_output, error = step_with_io._generate_verilog("class MyModule extends Module {}", "shared_dir")
+
+        # Verify that the Verilog output is correct and error is None
+        assert verilog_output == "module successful_verilog(); endmodule"
+        assert error is None
+
+
+
+def test_setup_prompt3_exists_but_empty_llm_config(tmp_path):
+    """
+    If prompt3.yaml exists and 'llm' config is empty => print warning and refine_llm=None
+    """
+    import sys
+    from hagent.step.v2chisel_fix.v2chisel_fix import V2ChiselFix
+
+    # Get the module's directory
+    module = sys.modules[V2ChiselFix.__module__]
+    class_dir = os.path.dirname(os.path.abspath(module.__file__))
+    prompt3_path = os.path.join(class_dir, "prompt3.yaml")
+    prompt3_path_contents = """\
+messages:
+  - role: system
+    content: "This is prompt3 for refinement."
+"""
+    with open(prompt3_path, "w") as f:
+        f.write(prompt3_path_contents)
+
+    try:
+        # Create an input file with 'llm' key but empty
+        content = """\
+chisel_pass1:
+  chisel_changed: |
+    class MyModule extends Module { val io = IO(new Bundle {}) }
+  verilog_candidate: |
+    module mymodule();
+    endmodule
+  was_valid: true
+
+verilog_fixed: |
+  module mymodule();
+  endmodule
+
+llm: {}
+"""
+        input_file = tmp_path / "input_empty_llm.yaml"
+        input_file.write_text(content)
+
+        step_obj = V2ChiselFix()
+        out_file = tmp_path / "output_empty_llm.yaml"
+        step_obj.set_io(inp_file=str(input_file), out_file=str(out_file))
+
+        with patch("builtins.print") as mock_print:
+            step_obj.setup()
+
+            # Verify that the specific warning was printed
+            mock_print.assert_any_call("[WARN] prompt3.yaml found but no 'llm' config. Can't refine automatically.")
+            assert step_obj.refine_llm is None
+    finally:
+        if os.path.exists(prompt3_path):
+            os.remove(prompt3_path)
+
+
+def test_generate_verilog_success(step_with_io):
+    """
+    Test _generate_verilog successfully returns (verilog_output, None)
+    """
+    step_with_io.setup()
+    
+    with patch("hagent.step.v2chisel_fix.v2chisel_fix.Chisel2v.setup", return_value=True), \
+         patch("hagent.step.v2chisel_fix.v2chisel_fix.Chisel2v.generate_verilog", return_value="module successful(); endmodule"):
+        
+        verilog_output, error = step_with_io._generate_verilog("class MyModule extends Module {}", "shared_dir")
+        
+        assert verilog_output == "module successful(); endmodule"
+        assert error is None
+
+
+
+
+
+
