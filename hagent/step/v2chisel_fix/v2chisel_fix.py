@@ -55,6 +55,7 @@ class V2ChiselFix(Step):
         chisel_changed = pass1_info.get('chisel_changed', '')
         verilog_candidate = pass1_info.get('verilog_candidate', '')
         was_valid = pass1_info.get('was_valid', False)
+        self.verilog_fixed = data.get('verilog_fixed', '')
 
         print(f'[INFO] v2chisel_fix: Starting LEC check. was_valid={was_valid}')
 
@@ -173,9 +174,23 @@ class V2ChiselFix(Step):
         # This dictionary matches the placeholders in prompt3.yaml:
         #   {chisel_code}
         #   {lec_output}
-        prompt_dict = {'chisel_code': current_code, 'lec_output': lec_error or 'LEC failed'}
+        prompt_dict = {
+            'chisel_code': current_code,
+            'lec_output': lec_error or 'LEC failed',
+            'verilog_fixed': self.verilog_fixed
+        }
 
-        print(f'[DEBUG] prompt_dict to LLM (using prompt3.yaml): {prompt_dict}')
+        # print(f'[DEBUG] prompt_dict to LLM (using prompt3.yaml): {prompt_dict}')
+
+        # --- Print the EXACT text about to be sent to the LLM ---
+        formatted = self.refine_llm.chat_template.format(prompt_dict)
+        print("\n----- LLM FINAL MESSAGES TO SEND (prompt3.yaml) -----")
+        for chunk in formatted:
+            print(f"Role: {chunk['role']}")
+            print("Content:")
+            print(chunk['content'])
+            print("--------------------------------------------------")
+    
 
         # We use `chat(...)` so that we maintain a single conversation.
         response_text = self.refine_llm.chat(prompt_dict)

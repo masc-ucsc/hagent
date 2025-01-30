@@ -51,27 +51,3 @@ chisel_pass1:
     endmodule
 
   was_valid: true
-chisel_fixed:
-  original_chisel: |
-    package example
-    import chisel3._
-    class Foo extends Module {
-      val io = IO(new Bundle {
-        val in  = Input(UInt(8.W))
-        val out = Output(UInt(8.W))
-      })
-      io.out := io.in
-    }
-  refined_chisel: |-
-    package example
-    import chisel3._
-
-    class Foo extends Module {
-      val io = IO(new Bundle {
-        val in  = Input(UInt(8 bits))
-        val out = Output(UInt(8 bits))
-      })
-
-      io.out <= ~(io.in)
-    }
-  equiv_passed: false
