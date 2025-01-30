@@ -4,8 +4,6 @@ V2ChiselFix is a step in the hardware design automation pipeline that refines Ch
 
 ## Table of Contents
 - Features
-- Prerequisites
-- Installation
 - Usage
   - Running the Pass
 - Input and Output
@@ -24,22 +22,6 @@ V2ChiselFix is a step in the hardware design automation pipeline that refines Ch
 - **Iterative Refinement**: Uses an LLM to iteratively refine Chisel code when LEC detects discrepancies.
 - **Single Chat Session with LLM**: Maintains a single conversation context with the LLM across iterations to leverage historical feedback.
 - **Automated Verilog Generation**: Converts refined Chisel code into Verilog using Chisel2v.
-
-## Prerequisites
-- **Python 3.11.10**
-- **Poetry** for dependency management
-- Required tools and libraries as specified in the `pyproject.toml`
-
-## Installation
-Clone the Repository:
-```bash
-git clone <repository-url>
-cd hagent
-```
-Install Dependencies with Poetry:
-```bash
-poetry install
-```
 
 ## Usage
 
