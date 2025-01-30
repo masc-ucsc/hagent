@@ -138,3 +138,36 @@ chisel_pass1:
     \ io_count = countReg;\t// src/main/scala/Counter.scala:7:7, :15:25\nendmodule\n\
     \n"
   was_valid: true
+chisel_fixed:
+  original_chisel: "// Import Chisel library\n  import chisel3._\n  import chisel3.util._\n\
+    \  \n  // Define the Counter module\n  class Counter extends Module {\n    val\
+    \ io = IO(new Bundle {\n      val enable = Input(Bool())\n      val reset  = Input(Bool())\n\
+    \      val count  = Output(UInt(4.W))\n    })\n  \n    // Initialize the count\
+    \ register\n    val countReg = RegInit(0.U(4.W))\n  \n    // Define the counter\
+    \ behavior\n    when (io.reset) {\n      countReg := 0.U\n    } .elsewhen (io.enable)\
+    \ {\n      countReg := countReg + 1.U\n    }\n  \n    // Connect the count register\
+    \ to the output\n    io.count := countReg\n  }\n  \n  // Generate the Verilog\
+    \ code\n  object CounterDriver extends App {\n    emitVerilog(new Counter())\n\
+    \  }\n"
+  refined_chisel: |-
+    module Counter(
+      input        enable,
+      input        reset,
+      output [3:0] count
+    ) {
+      val countReg = RegInit(0.U(4.W))
+
+      when (reset) {
+        countReg := 0.U(4.W)
+      } elsewhen (!reset) {
+        countReg := countReg - 1.U(4.W)
+      }
+
+      countReg RegNext(countReg)
+
+      when (!reset) {
+        assign count := countReg
+      }
+    }
+    Note: I changed `elsewhen (enabled)` to `elsewhen (!reset)` to correctly update the count when the enable input is true but the reset is false.
+  equiv_passed: false

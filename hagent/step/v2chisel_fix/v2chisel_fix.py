@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 # See LICENSE for details
 
+"""
+# V2ChiselFix
+
+**V2ChiselFix** is a step in the hardware design automation pipeline designed to refine Chisel code based on Logic Equivalence Check (LEC) results. It leverages a Language Model (LLM) to iteratively improve Chisel code when discrepancies are found between generated Verilog and fixed Verilog specifications.
+
+## Usage
+
+Run the pass using Poetry:
+
+```bash
+poetry run python3 hagent/step/v2chisel_fix/v2chisel_fix.py -o hagent/step/v2chisel_fix/out2.yaml hagent/step/v2chisel_pass1/out2.yaml
+"""
+
 import os
 import re
 from hagent.core.step import Step
@@ -13,55 +26,63 @@ from hagent.tool.chisel2v import Chisel2v
 
 class V2ChiselFix(Step):
     def setup(self):
-        """
-        1) Calls parent setup() to read self.input_data from YAML.
-        2) Verifies that 'chisel_pass1' is present in the YAML.
-        3) Loads a new prompt (prompt3.yaml) for refining code if LEC fails.
-        """
         super().setup()  # Reads self.input_data from YAML
 
         if 'chisel_pass1' not in self.input_data:
             self.error("Missing 'chisel_pass1' in input YAML (did you run v2chisel_pass1 first?)")
 
-        # Attempt to load prompt3.yaml for refinement if needed
         self.prompt3_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt3.yaml')
         self.refine_llm = None
+        # Keep a local copy for use in _refine_chisel_code
+        self.verilog_fixed_str = self.input_data.get("verilog_fixed", "")
 
         if os.path.exists(self.prompt3_path):
             llm_args = self.input_data.get('llm', {})
             if llm_args:
                 prompt3_template = LLM_template(self.prompt3_path)
                 self.refine_llm = LLM_wrap()
-                self.refine_llm.from_dict(name='v2chisel_fix_refine', conf_dict=llm_args, prompt=prompt3_template)
+                self.refine_llm.from_dict(
+                    name='v2chisel_fix_refine',
+                    conf_dict=llm_args,
+                    prompt=prompt3_template
+                )
                 print('[INFO] Loaded prompt3.yaml and initialized LLM for refinement.')
             else:
                 print("[WARN] prompt3.yaml found but no 'llm' config. Can't refine automatically.")
         else:
             print('[WARN] prompt3.yaml not found, cannot refine if LEC fails.')
 
-        # Provide a default iteration limit (could also read from input_data if desired)
+        # Provide a default iteration limit
         self.lec_limit = 10
         self.setup_called = True
 
     def run(self, data):
         """
-        Main pass logic:
-          1) Reads 'chisel_pass1' data (the code we want to fix or verify).
-          2) Calls LEC (via equiv_check) to see if the code is logically equivalent.
-          3) If LEC fails, refine code up to lec_limit times (LLM + chisel2v + eq check).
-          4) Writes final 'chisel_fixed' field to the YAML.
+        1) Reads 'chisel_pass1' data.
+        2) Calls LEC to see if verilog_candidate == verilog_fixed.
+        3) If LEC fails, iteratively refine via LLM up to lec_limit times.
+        4) Return final data with "chisel_fixed" in the YAML.
         """
+        # Prepare a "safe" result dict with default chisel_fixed
+        result = data.copy()
         pass1_info = data['chisel_pass1']
+
         chisel_changed = pass1_info.get('chisel_changed', '')
         verilog_candidate = pass1_info.get('verilog_candidate', '')
         was_valid = pass1_info.get('was_valid', False)
-        self.verilog_fixed = data.get('verilog_fixed', '')
+
+        # Store final chisel code + equivalence status here:
+        # (tests expect 'refined_chisel' to eventually reflect any LLM modifications)
+        result['chisel_fixed'] = {
+            'original_chisel': data.get('chisel_original', ""),
+            'refined_chisel': chisel_changed,  # will update if refinements happen
+            'equiv_passed': False,
+        }
 
         print(f'[INFO] v2chisel_fix: Starting LEC check. was_valid={was_valid}')
 
-        # Step 1: compare 'verilog_candidate' to 'verilog_fixed'
         verilog_fixed = data.get('verilog_fixed', '')
-        if not verilog_fixed:
+        if not verilog_fixed.strip():
             print("[WARN] No 'verilog_fixed' in input. Skipping initial LEC check.")
             is_equiv = False
             lec_error = 'No verilog_fixed provided'
@@ -69,9 +90,8 @@ class V2ChiselFix(Step):
             is_equiv, lec_error = self._check_equivalence(verilog_fixed, verilog_candidate)
 
         refined_chisel = chisel_changed
-        iteration_count = 0  # track how many times we refine
+        iteration_count = 0
 
-        # Step 2: If LEC fails, refine iteratively
         if not is_equiv:
             print(f'[WARN] LEC check failed/skipped. Attempting up to {self.lec_limit} refinements.')
             for attempt in range(1, self.lec_limit + 1):
@@ -79,7 +99,7 @@ class V2ChiselFix(Step):
                 print(f'\n[DEBUG] ------------- Refinement Attempt {attempt}/{self.lec_limit} ----------')
                 print(f"[DEBUG] Current LEC error: {lec_error or 'None'}")
 
-                # (A) Possibly refine code with LLM
+                # Attempt LLM refinement
                 new_chisel = self._refine_chisel_code(refined_chisel, lec_error)
                 if not new_chisel or new_chisel.strip() == refined_chisel.strip():
                     print('[INFO] LLM did not improve or returned empty code. Stopping refinement here.')
@@ -88,15 +108,16 @@ class V2ChiselFix(Step):
                 refined_chisel = new_chisel
                 print(f'[DEBUG] Updated refined_chisel:\n{refined_chisel}')
 
-                # (B) Generate new Verilog from refined code
+                # Generate new Verilog
                 new_verilog, gen_error = self._generate_verilog(refined_chisel, 'my_chisel2v_shared')
                 if not new_verilog:
                     lec_error = gen_error or 'Chisel2v failed'
                     print(f'[ERROR] Verilog generation failed on iteration {attempt}: {lec_error}')
+                    # Continue to next iteration (if any remain)
                     continue
-                print(f'[DEBUG] Generated new Verilog:\n{new_verilog}')
 
-                # (C) Check equivalence again
+                print(f'[DEBUG] Generated new Verilog:\n{new_verilog}')
+                # Check equivalence again
                 is_equiv, lec_error = self._check_equivalence(verilog_fixed, new_verilog)
                 if is_equiv:
                     print(f'[INFO] LEC check passed after refinement on iteration {attempt}!')
@@ -105,32 +126,23 @@ class V2ChiselFix(Step):
                 else:
                     print(f'[DEBUG] LEC still failing after iteration {attempt}. lec_error={lec_error}')
 
+            # We might exit loop without success
             if not is_equiv:
                 if iteration_count < self.lec_limit:
-                    print(f'[WARN] Exiting early on iteration {iteration_count} due to error or no improvement.')
+                    print(f'[WARN] Exiting early on iteration {iteration_count} due to no improvement or error.')
                 else:
                     print(f'[WARN] Reached maximum attempts ({self.lec_limit}) without passing LEC.')
         else:
             print('[INFO] Code is already equivalent, no refinement needed.')
 
-        # Step 3: Write final 'chisel_fixed' to output
-        result = data.copy()
-        result['chisel_fixed'] = {
-            'original_chisel': data.get('chisel_original', ''),
-            'refined_chisel': refined_chisel,
-            'equiv_passed': is_equiv,
-        }
+        # Update final fields:
+        result['chisel_fixed']['refined_chisel'] = refined_chisel
+        result['chisel_fixed']['equiv_passed'] = is_equiv
+
         print("[INFO] v2chisel_fix: Done. 'chisel_fixed' written to output YAML.")
         return result
 
-    # ---------------------------------------------------------------------
-    # Helper: Check equivalence with verilog_fixed vs. verilog_candidate
-    # ---------------------------------------------------------------------
     def _check_equivalence(self, gold_code: str, reference_code: str):
-        """
-        Returns (is_equiv: bool, lec_error: str or None).
-        Logs debug info about Yosys result.
-        """
         if not gold_code.strip() or not reference_code.strip():
             return (False, 'Missing code for equivalence check')
 
@@ -159,65 +171,53 @@ class V2ChiselFix(Step):
             print(f'[ERROR] LEC threw exception: {e}')
             return (False, str(e))
 
-    # ---------------------------------------------------------------------
-    # Helper: Use LLM to refine Chisel code (if available)
-    # ---------------------------------------------------------------------
     def _refine_chisel_code(self, current_code: str, lec_error: str):
-        """
-        Provide the code + LEC error to the LLM (prompt3.yaml) in a single conversation.
-        Returns the new refined code, or the same code if none/improvement is empty.
-        """
         if not self.refine_llm:
             print('[WARN] No LLM available for refinement.')
             return current_code
 
-        # This dictionary matches the placeholders in prompt3.yaml:
-        #   {chisel_code}
-        #   {lec_output}
         prompt_dict = {
             'chisel_code': current_code,
             'lec_output': lec_error or 'LEC failed',
-            'verilog_fixed': self.verilog_fixed
+            'verilog_fixed': self.verilog_fixed_str
         }
 
-        # print(f'[DEBUG] prompt_dict to LLM (using prompt3.yaml): {prompt_dict}')
+        # Safely attempt to format and show the final LLM prompt
+        try:
+            formatted = self.refine_llm.chat_template.format(prompt_dict)
+            print("\n----- LLM FINAL MESSAGES TO SEND (prompt3.yaml) -----")
+            if isinstance(formatted, list):
+                for chunk in formatted:
+                    if isinstance(chunk, dict):
+                        print(f"Role: {chunk.get('role','?')}")
+                        print(f"Content:\n{chunk.get('content','')}") 
+                    else:
+                        print(chunk)
+            else:
+                # Just print raw if it's not a list
+                print(formatted)
+        except Exception as ex:
+            # If the template is invalid, do not bail out completely; just keep old code
+            print(f"[ERROR] LLM template formatting error: {ex}")
+            return current_code
 
-        # --- Print the EXACT text about to be sent to the LLM ---
-        formatted = self.refine_llm.chat_template.format(prompt_dict)
-        print("\n----- LLM FINAL MESSAGES TO SEND (prompt3.yaml) -----")
-        for chunk in formatted:
-            print(f"Role: {chunk['role']}")
-            print("Content:")
-            print(chunk['content'])
-            print("--------------------------------------------------")
-    
-
-        # We use `chat(...)` so that we maintain a single conversation.
+        # Now get the actual response from the LLM:
         response_text = self.refine_llm.chat(prompt_dict)
         print(f'[DEBUG] LLM raw chat response:\n{response_text}')
 
-        # If there's no response or it's empty, do not update the code.
         if not response_text.strip():
             print('[ERROR] LLM returned empty chat response. Keeping old code.')
             return current_code
 
-        # Strip markdown fences or triple backticks from the code
         new_code = self._strip_markdown_fences(response_text.strip())
         if not new_code:
             print('[ERROR] After removing backticks/fences, code is empty. Keeping old code.')
             return current_code
 
-        print('[INFO] LLM provided a refined Chisel snippet (single conversation).')
+        print('[INFO] LLM provided a refined Chisel snippet.')
         return new_code
 
-    # ---------------------------------------------------------------------
-    # Helper: Convert refined Chisel code => Verilog
-    # ---------------------------------------------------------------------
     def _generate_verilog(self, chisel_code, shared_dir):
-        """
-        Runs Chisel2v on the given code. Returns (verilog_str, error_str).
-        Includes debug printing for clarity.
-        """
         if not chisel_code.strip():
             return (None, 'No Chisel code to generate Verilog from.')
 
@@ -237,20 +237,13 @@ class V2ChiselFix(Step):
         except Exception as e:
             return (None, f'Exception in Chisel2v: {e}')
 
-    # ---------------------------------------------------------------------
-    # Helper: parse 'class MyFoo extends Module'
-    # ---------------------------------------------------------------------
     def _find_chisel_classname(self, chisel_code: str) -> str:
         match = re.search(r'class\s+([A-Za-z0-9_]+)\s+extends\s+Module', chisel_code)
         if match:
             return match.group(1)
-        return 'MyModule'  # fallback name
+        return 'MyModule'  # fallback
 
-    # ---------------------------------------------------------------------
-    # Internal helper to remove triple backticks from the LLM response
-    # ---------------------------------------------------------------------
     def _strip_markdown_fences(self, code_str: str) -> str:
-        """Remove ```scala, ```verilog, or generic triple backticks from code_str."""
         code_str = re.sub(r'```[a-zA-Z]*\n?', '', code_str)
         code_str = re.sub(r'\n?```', '', code_str)
         return code_str.strip()
