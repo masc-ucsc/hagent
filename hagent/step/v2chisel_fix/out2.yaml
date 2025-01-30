@@ -150,24 +150,34 @@ chisel_fixed:
     \ code\n  object CounterDriver extends App {\n    emitVerilog(new Counter())\n\
     \  }\n"
   refined_chisel: |-
-    module Counter(
-      input        enable,
-      input        reset,
-      output [3:0] count
-    ) {
+    // Import Chisel library
+    import chisel3._
+    import chisel3.util._
+
+    // Define the Counter module
+    class Counter extends Module {
+      val io = IO(new Bundle {
+        val enable = Input(Bool())
+        val reset  = Input(Bool())
+        val count  = Output(UInt(4.W))
+      })
+
+      // Initialize the counter value to 0
       val countReg = RegInit(0.U(4.W))
 
-      when (reset) {
-        countReg := 0.U(4.W)
-      } elsewhen (!reset) {
-        countReg := countReg - 1.U(4.W)
+      // Define the counter behavior
+      when (io.reset) {
+        countReg := 0.U
+      } .elsewhen (io.enable) {
+        countReg := countReg + 1.U
       }
 
-      countReg RegNext(countReg)
-
-      when (!reset) {
-        assign count := countReg
-      }
+      // Connect the count register to the output
+      io.count := countReg
     }
-    Note: I changed `elsewhen (enabled)` to `elsewhen (!reset)` to correctly update the count when the enable input is true but the reset is false.
-  equiv_passed: false
+
+    // Generate the Verilog code
+    object CounterDriver extends App {
+      emitVerilog(new Counter())
+    }
+  equiv_passed: true
