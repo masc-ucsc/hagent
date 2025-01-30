@@ -3,6 +3,9 @@
 """
 Demonstration of using Equiv_check in-code to verify equivalence
 of two identical Verilog snippets.
+
+usage: 
+poetry run python3 hagent/step/test_equiv_check_standalone.py
 """
 
 from hagent.tool.equiv_check import Equiv_check
