@@ -2,7 +2,7 @@ import os
 import re
 import subprocess
 import tempfile
-from typing import Optional
+from typing import Optional, Tuple
 
 
 class Equiv_check:
@@ -34,30 +34,52 @@ class Equiv_check:
 
     def setup(self, yosys_path: Optional[str] = None) -> bool:
         """
-        Checks if Yosys is installed and accessible. If yosys_path is provided,
-        use that binary instead of relying on system PATH.
+        Checks if Yosys is installed, accessible, and meets the minimum version 0.4.
+        If yosys_path is provided, that binary is used; otherwise, the system PATH is used.
 
-        Returns True if Yosys is available, False otherwise.
+        Returns True if Yosys is available and its version >= 0.4, False otherwise.
         """
-        if yosys_path:
-            command = [yosys_path, '-V']
-        else:
-            command = ['yosys', '-V']
+        command = [yosys_path, '-V'] if yosys_path else ['yosys', '-V']
 
         try:
-            subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+            # Run the command and capture stdout and stderr
+            result = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True
+            )
+            # Attempt to extract version number (e.g., "0.4" or "0.4.1") from stdout
+            match = re.search(r'(\d+\.\d+(?:\.\d+)?)', result.stdout)
+            if not match:
+                self.yosys_installed = False
+                self.error_message = f'Unable to parse Yosys version output: {result.stdout}'
+                return False
+
+            version_str = match.group(1)
+            # Convert version string into a tuple of integers for comparison
+            version_tuple = tuple(map(int, version_str.split(".")))
+            required_version = (0, 40)
+
+            if version_tuple < required_version:
+                self.yosys_installed = False
+                self.error_message = f'Yosys version {version_str} is below the required version 0.4'
+                return False
+
             self.yosys_installed = True
             return True
+
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
             self.yosys_installed = False
             self.error_message = f'Yosys not found or not accessible: {e}'
             return False
 
-    def check_equivalence(self, gold_code: str, gate_top: str) -> Optional[bool]:
+    def check_equivalence(self, gold_code: str, gate_code: str) -> Optional[bool]:
         """
         Checks the equivalence of two Verilog designs:
-          - gold_code:   The 'gold' version to match
-          - gate_top: The 'gate' version
+          - gold_code: The 'gold' version to match
+          - gate_code: The 'gate' version
 
         Both must define exactly one module each. If either file defines more or zero modules,
         we raise an exception. We rename the gold top to 'gold', and the gate top to 'gate'.
@@ -72,24 +94,24 @@ class Equiv_check:
 
         # 1) Validate each snippet has exactly one module
         gold_top = self._extract_single_module_name(gold_code)
-        gate_top = self._extract_single_module_name(gate_top)
+        gate_top = self._extract_single_module_name(gate_code)
 
         # 2) Write each design to a temp file
         #
         # Create a subdirectory for working files
         work_dir = tempfile.mkdtemp(dir=os.getcwd(), prefix='equiv_check_')
         gold_v_filename = self._write_temp_verilog(work_dir, gold_code, 'gold')
-        gate_v_filename = self._write_temp_verilog(work_dir, gate_top, 'gate')
+        gate_v_filename = self._write_temp_verilog(work_dir, gate_code, 'gate')
 
         # 3) Run standard 'equiv -assert' approach
-        code_equiv, out_equiv, err_equiv = self._run_equiv_method(gold_v_filename, gate_v_filename, gold_top, gate_top)
+        code_equiv, out_equiv, err_equiv = self._run_equiv_method(work_dir, gold_v_filename, gate_v_filename, gold_top, gate_top)
         method1_result = self._analyze_yosys_result(code_equiv, out_equiv, err_equiv, method='equiv')
         if method1_result is not None:
             self.equivalence_check_result = method1_result
             return method1_result
 
         # 4) If method 1 inconclusive, do the SMT-based approach
-        code_smt, out_smt, err_smt = self._run_smt_method(gold_v_filename, gate_v_filename, gold_top, gate_top)
+        code_smt, out_smt, err_smt = self._run_smt_method(work_dir, gold_v_filename, gate_v_filename, gold_top, gate_top)
         method2_result = self._analyze_yosys_result(code_smt, out_smt, err_smt, method='smt')
         self.equivalence_check_result = method2_result
         return method2_result
@@ -128,40 +150,41 @@ class Equiv_check:
             f.write(verilog_code)
         return filename
 
-    def _run_equiv_method(self, gold_v_filename: str, gate_v_filename: str, gold_top: str, gate_top: str):
+    def _run_equiv_method(self, work_dir: str, gold_v_filename: str, gate_v_filename: str, gold_top: str, gate_top: str) -> Tuple[int, str, str]:
         """
-        Build a Yosys command string for standard 'equiv -assert' approach,
-        then run yoysys with -p.
+        Build a Yosys command string for standard 'equiv -assert' approach
         """
         cmd = [
-            'read_verilog ' + gold_v_filename,
+            f"read_verilog -sv {gold_v_filename}",
             f'prep -top {gold_top}',
             f'rename {gold_top} gold',
             'design -stash gold',
-            f'read_verilog {gate_v_filename}',
+            f'read_verilog -sv {gate_v_filename}',
             f'prep -top {gate_top}',
             f'rename {gate_top} gate',
             'design -stash gate',
-            'design -copy-from gold -as gold gold; design -copy-from gate -as gate gate;',
+            'design -copy-from gold -as gold gold; design -copy-from gate -as gate gate',
             "# Create an equivalence-check 'miter'",
             'equiv_make gold gate eq_miter',
             '# Prepare eq_miter',
             'prep -top eq_miter',
             '# structural equivalence pass',
-            'equiv_simple',
+            'equiv_simple -undef -seq 2',
             '# optional inductive check',
-            'equiv_induct',
+            'equiv_induct -undef',
             '# final equivalence status assert (non-zero if mismatch)',
             'equiv_status -assert',
         ]
-        full_cmd = '; '.join(cmd)
+        full_cmd = ';\n'.join(cmd)
+        filename = os.path.join(work_dir, "check1.s")
+        with open(filename, 'w') as f:
+            f.write(full_cmd)
 
-        return self._run_yosys_command(full_cmd)
+        return self._run_yosys_command(filename)
 
-    def _run_smt_method(self, gold_v_filename: str, gate_v_filename: str, gold_top: str, gate_top: str):
+    def _run_smt_method(self, work_dir: str, gold_v_filename: str, gate_v_filename: str, gold_top: str, gate_top: str) -> Tuple[int, str, str]:
         """
         Build a Yosys command string for the simple SMT-based approach,
-        then run yoysys with -p.
         """
         cmd = [
             f'read_verilog {gold_v_filename}',
@@ -175,22 +198,25 @@ class Equiv_check:
             'design -copy-from gold -as gold gold; design -copy-from gate -as gate gate;',
             'miter -equiv -flatten -make_outputs -ignore_gold_x gold gate miter',
             'hierarchy -top miter',
-            'write_verilog trace2.v',
             'sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs'
             ' -ignore_unknown_cells -show-ports miter',
         ]
-        full_cmd = '; '.join(cmd)
+        full_cmd = ';\n'.join(cmd)
+        filename = os.path.join(work_dir, "check2.s")
+        with open(filename, 'w') as f:
+            f.write(full_cmd)
 
-        return self._run_yosys_command(full_cmd)
+        return self._run_yosys_command(filename)
 
-    def _run_yosys_command(self, command_str: str):
+    def _run_yosys_command(self, filename: str) -> Tuple[int, str, str]:
         """
         Actually call 'yosys -p "command_str"'
         Return (exit_code, stdout, stderr).
         """
+
         try:
             proc = subprocess.run(
-                ['yosys', '-p', command_str],
+                ['yosys', '-s', filename],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -198,7 +224,7 @@ class Equiv_check:
             )
             return proc.returncode, proc.stdout, proc.stderr
         except subprocess.TimeoutExpired as te:
-            self.error_message = f'Yosys call timed out after {self.timeout_seconds}s: {te}'
+            self.error_message = f'Yosys call timeout after {self.timeout_seconds}s: {te}'
             return 1, '', self.error_message
         except Exception as e:
             self.error_message = f'Yosys execution error: {e}'
@@ -209,23 +235,20 @@ class Equiv_check:
         If code == 0 => success => designs equivalent
         If code != 0 => possible mismatch or unknown
         """
-        if code == 0:
-            return True
-
-        combined = out + '\n' + err
-
-        # typical mismatch
-        if 'Assert failed' in combined or 'equiv_check' in combined:
-            self.counterexample_info = f'(Method: {method}) A possible counterexample was found.'
+        if 'ERROR' in err:
             return False
 
-        # some smt flows
-        if 'SAT proof failed' in combined or 'SAT proof finished' in combined:
-            if 'unsat' in combined or 'proved' in combined:
-                return True  # no violation => eq
-            else:
-                self.counterexample_info = f'(Method: {method}) A possible cex from SAT-based check.'
-                return False
+        if 'timeout' in err:
+            return None
+
+        if method == "smt":
+            pattern = re.compile(r'^SAT.*FAIL.*$', flags=re.MULTILINE)
+            # Find all matching lines
+            matching_lines = pattern.findall(out)
+            print(f"matching:{matching_lines}")
+            return len(matching_lines) == 0
+        elif method == "equiv":
+            return code == 0
 
         # no definitive pass/fail => unknown
         self.error_message = f'Yosys returned code {code} with output:\n{combined}'

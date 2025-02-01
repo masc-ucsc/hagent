@@ -14,13 +14,13 @@ from hagent.tool.equiv_check import Equiv_check
 def main():
     # Two identical verilog modules named 'top'
     gold_code = """
-module top();
-    assign x = 1'b1;
+module top(output x,input a);
+    assign x = ~a;
 endmodule
 """
     ref_code = """
-module top();
-    assign x = 1'b1;
+module top(output x,input a);
+    assign x = a;
 endmodule
 """
 
