@@ -69,12 +69,14 @@ def main():
     try:
         verilog_output = chisel2v_tool.generate_verilog(chisel_code, module_name)
         print('Verilog generation successful.')
+        print("Generated Verilog code:\n")
+        print(verilog_output)
     except RuntimeError as re:
         print(f'Error during Verilog generation: {re}', file=sys.stderr)
         sys.exit(1)
 
     # Update the YAML data with the generated Verilog
-    yaml_data['verilog_fixed'] = verilog_output
+    yaml_data['verilog_original'] = verilog_output
 
     # Write the updated YAML back to the output file
     try:

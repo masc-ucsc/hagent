@@ -8,35 +8,66 @@ verilog_original: |
   
 
 chisel_original: |
-  // Import Chisel library
-    import chisel3._
-    import chisel3.util._
-    
-    // Define the Counter module
-    class Counter extends Module {
-      val io = IO(new Bundle {
-        val enable = Input(Bool())
-        val reset  = Input(Bool())
-        val count  = Output(UInt(4.W))
-      })
-    
-      // Initialize the count register
-      val countReg = RegInit(0.U(4.W))
-    
-      // Define the counter behavior
-      when (io.reset) {
-        countReg := 0.U
-      } .elsewhen (io.enable) {
-        countReg := countReg + 1.U
+  // Import Chisel libraries
+  import chisel3._
+  import chisel3.util._
+  
+  // Define the CPU module
+  class SimpleRISCVCpu extends Module {
+  val io = IO(new Bundle {
+    val pcOut = Output(UInt(32.W))
+    // you can expose other signals as needed
+  })
+  
+    // Program Counter
+    val pc = RegInit(0.U(32.W))
+  
+    // Instruction Memory (for simplicity, using a Vec; in practice, use a separate memory)
+    val instrMem = VecInit(
+      "b00000000000000000000000000010011".U(32.W), // Example instruction
+      "b00000000000100000000000010110011".U(32.W)  // Example instruction
+    )
+  
+    // Fetch stage
+    val instruction = instrMem(pc(1, 0)) // Use only the lower 2 bits of the PC for indexing
+  
+    // Decode stage
+    val opcode = instruction(6, 0)
+    val rd     = instruction(11, 7)
+    val funct3 = instruction(14, 12)
+    val rs1    = instruction(19, 15)
+    val rs2    = instruction(24, 20)
+    val funct7 = instruction(31, 25)
+  
+    // Register File
+    val regFile = RegInit(VecInit(Seq.fill(32)(0.S(32.W))))
+    val rs1Data = regFile(rs1)
+    val rs2Data = regFile(rs2)
+  
+    // Execute stage
+    val aluResult = WireDefault(0.S(32.W))
+    switch(opcode) {
+      is("b0110011".U) { // R-type
+        switch(funct3) {
+          is("b000".U) { aluResult := rs1Data + rs2Data }
+          is("b111".U) { aluResult := rs1Data & rs2Data }
+        }
       }
-    
-      // Connect the count register to the output
-      io.count := countReg
+      is("b0010011".U) { // I-type (e.g., ADDI)
+        // Fix: remove parentheses from .asSInt
+        aluResult := rs1Data + instruction(31, 20).asSInt
+      }
     }
-    
-    // Generate the Verilog code
-    object CounterDriver extends App {
-      emitVerilog(new Counter())
+
+    // Write Back stage
+    when(opcode === "b0110011".U || opcode === "b0010011".U) {
+      regFile(rd) := aluResult
     }
+  
+    // Update PC
+    pc := pc + 4.U
+    io.pcOut := pc
+  }
+
 
 name: simple_module

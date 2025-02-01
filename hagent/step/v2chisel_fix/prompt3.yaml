@@ -1,0 +1,22 @@
+# hagent/step/v2chisel_fix/prompt3.yaml
+- role: system
+  content: |
+    You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
+- role: user
+  content: |
+    The previously generated Chisel code is not logically equivalent to the target design.
+    The final Verilog we want to match is here:
+    ```
+    {verilog_fixed}
+    ```
+    Here is the Chisel code that is failing LEC:
+    Chisel code:
+    ```
+    {chisel_code}
+    ```
+    The last LEC error or reason for failure was:
+    ```
+    {lec_output}
+    ```
+    
+    Please fix the Chisel code so it compiles and passes equivalence. Output only the corrected code, with no triple backticks or markdown fences.

@@ -15,7 +15,7 @@ def main():
     # Two identical verilog modules named 'top'
     gold_code = """
 module top(output x,input a);
-    assign x = ~a;
+    assign x = a;
 endmodule
 """
     ref_code = """
