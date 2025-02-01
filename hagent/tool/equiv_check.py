@@ -251,5 +251,5 @@ class Equiv_check:
             return code == 0
 
         # no definitive pass/fail => unknown
-        self.error_message = f'Yosys returned code {code} with output:\n{combined}'
+        self.error_message = f'Yosys returned code {code} with error:\n{err}'
         return None
