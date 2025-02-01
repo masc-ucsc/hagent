@@ -50,7 +50,7 @@ Some common characteristics for all the tools:
 * a `setup` method that returns True/False depending on the setup and depencences. It should be called only once per execution.
 * `error_message` containts either an empty string or the error message from the last call.
 * List of custom methods per tool.
-* The setup does not raise exceptions, but failures in the custom methods raise `RuntimeError` exceptions.
+* The setup does not raise exceptions.
 * Each file should have a corresponding unit test checking the API.
 
 An example of Trivial.py test in the `tests/test_trivial.py` file.

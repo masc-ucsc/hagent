@@ -56,9 +56,10 @@ To verbose model:
 poetry run pytest -v
 ```
 
-Dumping coverage information:
+Samples with coverage information:
 ```
 poetry run pytest --cov=hagent
+poetry run pytest --cov=hagent/tool --cov-report=html
 ```
 
 Check issues and format with ruff:
@@ -145,4 +146,25 @@ When you create a new code file, it should include "See LICENSE for details." in
 ## Support
 
 If you encounter any issues or have questions, please open an issue on GitHub.
+
+## Build Flow
+
+HAgent is mostly build with AI tools as a way to learn insights/ideas for HAgent flow. A typical
+class creation follows these steps:
+
+1. Iterate for each class to build a plan
+  To start, include the hagent/spec.md and then tools or step/spec.md as high level. Something like:
+"""
+Create a PLAN for a Hagent tool (a Python class) that needs to <very high level description of the tool>
+
+Some background information:
+<include hagent/spec.md>
+
+This class is a HAgent tool, as such this is a relevant information and example:
+<include hagent/tool/spec.md>
+"""
+2. After iterating over the plan, tell the AI to extract the API. Check that it is consistent in names and style with other
+tools/steps, and that you are happy with it.
+3. Integrate the API with the Plan and generate the code and unit test
+4. If there are issues update the plan, try to not update the code directly.
 
