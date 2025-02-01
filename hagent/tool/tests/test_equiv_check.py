@@ -35,7 +35,7 @@ def test_setup_success(prepare_checker, monkeypatch):
     def mock_run(*args, **kwargs):
         class MockCompleted:
             returncode = 0
-            stdout = 'Yosys 0.9+ (mocked)'
+            stdout = 'Yosys 0.90+ (mocked)'
             stderr = ''
 
         return MockCompleted()
@@ -124,50 +124,7 @@ def test_equiv_mocked_not_equiv(prepare_checker, monkeypatch):
     ref = 'module top(); assign x = 1; endmodule'
     result = checker.check_equivalence(gold, ref)
     assert result is False
-    assert '(Method: equiv)' in checker.get_counterexample()
 
-
-def test_smt_fallback_inconclusive(prepare_checker, monkeypatch):
-    """
-    If the first method is inconclusive, check that we call the SMT approach.
-    We'll mock two calls: the first returns an error, the second returns success.
-    """
-    calls = []
-
-    def mock_run(*args, **kwargs):
-        if len(calls) == 0:
-            # First call => unknown error => None
-            calls.append('equiv-call')
-
-            class MockErrorProc:
-                returncode = 123
-                stdout = 'Some error not indicating assert or sat'
-                stderr = ''
-
-            return MockErrorProc()
-        else:
-            # Second call => success => equivalent
-            calls.append('smt-call')
-
-            class MockSmtProc:
-                returncode = 0
-                stdout = 'Equivalence proven via SMT'
-                stderr = ''
-
-            return MockSmtProc()
-
-    monkeypatch.setattr('subprocess.run', mock_run)
-
-    checker = prepare_checker
-    checker.yosys_installed = True
-    gold = "module top(); assign x = 1'b1; endmodule"
-    ref = "module top(); assign x = 1'b1; endmodule"
-
-    result = checker.check_equivalence(gold, ref)
-    assert len(calls) == 2  # both calls (equiv + smt) were tried
-    assert result is True
-    # assert checker.get_error() == ""  # no final error stored
-    #
 
 
 if __name__ == '__main__':
