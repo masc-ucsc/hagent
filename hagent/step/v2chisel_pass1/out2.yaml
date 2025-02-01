@@ -1,5 +1,6 @@
 llm:
-  model: fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct
+  # model: fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct
+  model: openai/gpt-4-turbo-preview
 verilog_original: |
   module Counter(
     input        enable,
@@ -74,13 +75,13 @@ chisel_pass1:
         val count  = Output(UInt(4.W))
       })
 
-      // Initialize the counter value to 0
-      val countReg = RegInit(0.U(4.W))
+      // Initialize the count register
+      val countReg = RegInit(4.U(4.W))
 
       // Define the counter behavior
-      when (io.reset) {
-        countReg := 0.U
-      } .elsewhen (io.enable) {
+      when(io.reset) {
+        countReg := 4.U(4.W)
+      }.otherwise {
         countReg := countReg + 1.U
       }
 
@@ -119,10 +120,10 @@ chisel_pass1:
     \               io_reset,\t// src/main/scala/Counter.scala:8:14\n  output [3:0]\
     \ io_count\t// src/main/scala/Counter.scala:8:14\n);\n\n  reg [3:0] countReg;\t\
     // src/main/scala/Counter.scala:15:25\n  always @(posedge clock) begin\t// src/main/scala/Counter.scala:7:7\n\
-    \    if (reset)\t// src/main/scala/Counter.scala:7:7\n      countReg <= 4'h0;\t\
+    \    if (reset)\t// src/main/scala/Counter.scala:7:7\n      countReg <= 4'h4;\t\
     // src/main/scala/Counter.scala:15:25\n    else if (io_reset)\t// src/main/scala/Counter.scala:8:14\n\
-    \      countReg <= 4'h0;\t// src/main/scala/Counter.scala:15:25\n    else if (io_enable)\t\
-    // src/main/scala/Counter.scala:8:14\n      countReg <= countReg + 4'h1;\t// src/main/scala/Counter.scala:15:25,\
+    \      countReg <= 4'h4;\t// src/main/scala/Counter.scala:15:25\n    else\t//\
+    \ src/main/scala/Counter.scala:8:14\n      countReg <= countReg + 4'h1;\t// src/main/scala/Counter.scala:15:25,\
     \ :21:26\n  end // always @(posedge)\n  `ifdef ENABLE_INITIAL_REG_\t// src/main/scala/Counter.scala:7:7\n\
     \    `ifdef FIRRTL_BEFORE_INITIAL\t// src/main/scala/Counter.scala:7:7\n     \
     \ `FIRRTL_BEFORE_INITIAL\t// src/main/scala/Counter.scala:7:7\n    `endif // FIRRTL_BEFORE_INITIAL\n\
