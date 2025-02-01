@@ -24,7 +24,7 @@ def test_llm_wrap_caching():
     # Since caching is enabled, both jokes should match
     assert len(jokes1) == 1
     assert len(jokes2) == 1
-    assert jokes1[0].endswith(jokes2[0]), f"{jokes1} vs {jokes2}"
+    assert jokes1[0].endswith(jokes2[0]), f'{jokes1} vs {jokes2}'
 
 
 def test_llm_wrap_n_bad_conf():

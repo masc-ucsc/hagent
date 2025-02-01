@@ -4,7 +4,7 @@
 Demonstration of using Equiv_check in-code to verify equivalence
 of two identical Verilog snippets.
 
-usage: 
+usage:
 poetry run python3 hagent/step/test_equiv_check_standalone.py
 """
 

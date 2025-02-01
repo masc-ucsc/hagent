@@ -22,28 +22,30 @@ def test_generate_missing_llm(tmp_path):
     """
     # Create a bad_input.yaml without 'llm'
     bad_input = {
-        "description": "Some description",
-        "interface": "interface details",
+        'description': 'Some description',
+        'interface': 'interface details',
     }
-    inp_file = tmp_path / "bad_input.yaml"
+    inp_file = tmp_path / 'bad_input.yaml'
     with open(inp_file, 'w') as f:
         import yaml
+
         yaml.safe_dump(bad_input, f)
-    
-    out_file = tmp_path / "test_generate_code_output.yaml"
-    
+
+    out_file = tmp_path / 'test_generate_code_output.yaml'
+
     gen_step = Generate_code()
     gen_step.set_io(inp_file=str(inp_file), out_file=str(out_file))
-    
+
     # Mock yaml.dump to prevent actual file writing
-    with patch("hagent.core.step.yaml.dump") as mock_yaml_dump:
+    with patch('hagent.core.step.yaml.dump') as mock_yaml_dump:
         # Expect ValueError due to missing 'llm'
-        with pytest.raises(ValueError, match="llm arguments not set in input file"):
+        with pytest.raises(ValueError, match='llm arguments not set in input file'):
             gen_step.setup()
             gen_step.step()
-        
+
         # Verify yaml.dump was called with error information
         mock_yaml_dump.assert_called_once()
+
 
 def test_generate_code(tmp_path):
     """
@@ -51,58 +53,57 @@ def test_generate_code(tmp_path):
     """
     # Create full_adder.yaml with all necessary fields including 'llm'
     full_adder_input = {
-        "llm": {
-            "model": "test-model",
-            "other_config": "value"
-        },
-        "description": "Generate a full adder in Verilog",
-        "interface": "input a, b; output sum, carry;",
-        "bench_response": "some response",
-        "bench_stage": "stage1",
-        "name": "full_adder"
+        'llm': {'model': 'test-model', 'other_config': 'value'},
+        'description': 'Generate a full adder in Verilog',
+        'interface': 'input a, b; output sum, carry;',
+        'bench_response': 'some response',
+        'bench_stage': 'stage1',
+        'name': 'full_adder',
     }
-    inp_file = tmp_path / "full_adder.yaml"
+    inp_file = tmp_path / 'full_adder.yaml'
     with open(inp_file, 'w') as f:
         import yaml
+
         yaml.safe_dump(full_adder_input, f)
 
-    out_file = tmp_path / "test_generate_code_output.yaml"
+    out_file = tmp_path / 'test_generate_code_output.yaml'
 
     gen_step = Generate_code()
     gen_step.set_io(inp_file=str(inp_file), out_file=str(out_file))
 
     # Mock LLM_template and LLM_wrap
-    with patch("hagent.step.generate_code.generate_code.LLM_template") as mock_llm_template, \
-         patch("hagent.step.generate_code.generate_code.LLM_wrap") as mock_llm_wrap, \
-         patch("hagent.core.step.yaml.dump") as mock_yaml_dump:
-
+    with (
+        patch('hagent.step.generate_code.generate_code.LLM_template') as mock_llm_template,
+        patch('hagent.step.generate_code.generate_code.LLM_wrap') as mock_llm_wrap,
+        patch('hagent.core.step.yaml.dump') as mock_yaml_dump,
+    ):
         # Mock the template's format method
         mock_template_instance = MagicMock()
-        mock_template_instance.format.return_value = "formatted prompt with potato"
+        mock_template_instance.format.return_value = 'formatted prompt with potato'
         mock_llm_template.return_value = mock_template_instance
 
         # Mock LLM_wrap's methods
         mock_lw_instance = MagicMock()
         mock_llm_wrap.return_value = mock_lw_instance
-        mock_lw_instance.inference.return_value = ["```verilog\nmodule full_adder(a, b, sum, carry);\nendmodule\n```"]
+        mock_lw_instance.inference.return_value = ['```verilog\nmodule full_adder(a, b, sum, carry);\nendmodule\n```']
 
         # Run setup and step
         gen_step.setup()
         res = gen_step.step()
 
         # Assertions
-        assert "generated_code" in res, "'generated_code' not found in result."
-        assert "verilog_file" in res, "'verilog_file' not found in result."
-        assert "bench_response" in res, "'bench_response' not found in result."
-        assert "bench_stage" in res, "'bench_stage' not found in result."
+        assert 'generated_code' in res, "'generated_code' not found in result."
+        assert 'verilog_file' in res, "'verilog_file' not found in result."
+        assert 'bench_response' in res, "'bench_response' not found in result."
+        assert 'bench_stage' in res, "'bench_stage' not found in result."
 
         generated = res['generated_code']
         assert isinstance(generated, list), "'generated_code' should be a list."
-        assert len(generated) == 1, "Expected one generated code snippet."
+        assert len(generated) == 1, 'Expected one generated code snippet.'
         snippet = generated[0].strip()
-        
+
         # Optionally, assert on raw generated_code
-        expected_raw_snippet = "```verilog\nmodule full_adder(a, b, sum, carry);\nendmodule\n```"
+        expected_raw_snippet = '```verilog\nmodule full_adder(a, b, sum, carry);\nendmodule\n```'
         assert snippet == expected_raw_snippet, "Raw 'generated_code' snippet does not match expected format."
 
         # Read the processed verilog file
@@ -110,7 +111,9 @@ def test_generate_code(tmp_path):
         assert os.path.exists(verilog_file), f"Verilog file '{verilog_file}' was not created."
         with open(verilog_file, 'r') as f:
             file_contents = f.read().strip()
-            assert file_contents.startswith("module full_adder"), "Verilog file does not start with the expected module definition."
+            assert file_contents.startswith(
+                'module full_adder'
+            ), 'Verilog file does not start with the expected module definition.'
 
         # Check that yaml.dump was called to write the output
         mock_yaml_dump.assert_called_once()
@@ -122,58 +125,57 @@ def test_generate_custom_module_name(tmp_path):
     """
     # Create input2.yaml with 'name' set to 'my_custom_module'
     input2 = {
-        "llm": {
-            "model": "test-model",
-            "other_config": "value"
-        },
-        "description": "Generate a custom module",
-        "interface": "input x, y; output z;",
-        "bench_response": "response",
-        "bench_stage": "stage2",
-        "name": "my_custom_module"
+        'llm': {'model': 'test-model', 'other_config': 'value'},
+        'description': 'Generate a custom module',
+        'interface': 'input x, y; output z;',
+        'bench_response': 'response',
+        'bench_stage': 'stage2',
+        'name': 'my_custom_module',
     }
-    inp_file = tmp_path / "input2.yaml"
+    inp_file = tmp_path / 'input2.yaml'
     with open(inp_file, 'w') as f:
         import yaml
+
         yaml.safe_dump(input2, f)
 
-    out_file = tmp_path / "test_generate_code_output2.yaml"
+    out_file = tmp_path / 'test_generate_code_output2.yaml'
 
     gen_step = Generate_code()
     gen_step.set_io(inp_file=str(inp_file), out_file=str(out_file))
 
     # Mock LLM_template and LLM_wrap
-    with patch("hagent.step.generate_code.generate_code.LLM_template") as mock_llm_template, \
-         patch("hagent.step.generate_code.generate_code.LLM_wrap") as mock_llm_wrap, \
-         patch("hagent.core.step.yaml.dump") as mock_yaml_dump:
-
+    with (
+        patch('hagent.step.generate_code.generate_code.LLM_template') as mock_llm_template,
+        patch('hagent.step.generate_code.generate_code.LLM_wrap') as mock_llm_wrap,
+        patch('hagent.core.step.yaml.dump') as mock_yaml_dump,
+    ):
         # Mock the template's format method
         mock_template_instance = MagicMock()
-        mock_template_instance.format.return_value = "formatted prompt with potato"
+        mock_template_instance.format.return_value = 'formatted prompt with potato'
         mock_llm_template.return_value = mock_template_instance
 
         # Mock LLM_wrap's methods
         mock_lw_instance = MagicMock()
         mock_llm_wrap.return_value = mock_lw_instance
-        mock_lw_instance.inference.return_value = ["```verilog\nmodule my_custom_module(x, y, z);\nendmodule\n```"]
+        mock_lw_instance.inference.return_value = ['```verilog\nmodule my_custom_module(x, y, z);\nendmodule\n```']
 
         # Run setup and step
         gen_step.setup()
         res = gen_step.step()
 
         # Assertions
-        assert "generated_code" in res, "'generated_code' not found in result."
-        assert "verilog_file" in res, "'verilog_file' not found in result."
-        assert "bench_response" in res, "'bench_response' not found in result."
-        assert "bench_stage" in res, "'bench_stage' not found in result."
+        assert 'generated_code' in res, "'generated_code' not found in result."
+        assert 'verilog_file' in res, "'verilog_file' not found in result."
+        assert 'bench_response' in res, "'bench_response' not found in result."
+        assert 'bench_stage' in res, "'bench_stage' not found in result."
 
         generated = res['generated_code']
         assert isinstance(generated, list), "'generated_code' should be a list."
-        assert len(generated) == 1, "Expected one generated code snippet."
+        assert len(generated) == 1, 'Expected one generated code snippet.'
         snippet = generated[0].strip()
-        
+
         # Optionally, assert on raw generated_code
-        expected_raw_snippet = "```verilog\nmodule my_custom_module(x, y, z);\nendmodule\n```"
+        expected_raw_snippet = '```verilog\nmodule my_custom_module(x, y, z);\nendmodule\n```'
         assert snippet == expected_raw_snippet, "Raw 'generated_code' snippet does not match expected format."
 
         # Read the processed verilog file
@@ -181,10 +183,13 @@ def test_generate_custom_module_name(tmp_path):
         assert os.path.exists(verilog_file), f"Verilog file '{verilog_file}' was not created."
         with open(verilog_file, 'r') as f:
             file_contents = f.read().strip()
-            assert file_contents.startswith("module my_custom_module"), "Verilog file does not start with the expected module definition."
+            assert file_contents.startswith(
+                'module my_custom_module'
+            ), 'Verilog file does not start with the expected module definition.'
 
         # Check that yaml.dump was called to write the output
         mock_yaml_dump.assert_called_once()
+
 
 def test_generate_empty_description(tmp_path):
     """
@@ -192,58 +197,57 @@ def test_generate_empty_description(tmp_path):
     """
     # Create empty_desc.yaml with 'description' empty
     empty_desc_input = {
-        "llm": {
-            "model": "test-model",
-            "other_config": "value"
-        },
-        "description": "",
-        "interface": "input a; output b;",
-        "bench_response": "response_empty",
-        "bench_stage": "stage_empty",
-        "name": "empty_desc_module"
+        'llm': {'model': 'test-model', 'other_config': 'value'},
+        'description': '',
+        'interface': 'input a; output b;',
+        'bench_response': 'response_empty',
+        'bench_stage': 'stage_empty',
+        'name': 'empty_desc_module',
     }
-    inp_file = tmp_path / "empty_desc.yaml"
+    inp_file = tmp_path / 'empty_desc.yaml'
     with open(inp_file, 'w') as f:
         import yaml
+
         yaml.safe_dump(empty_desc_input, f)
 
-    out_file = tmp_path / "test_generate_code_output3.yaml"
+    out_file = tmp_path / 'test_generate_code_output3.yaml'
 
     gen_step = Generate_code()
     gen_step.set_io(inp_file=str(inp_file), out_file=str(out_file))
 
     # Mock LLM_template and LLM_wrap
-    with patch("hagent.step.generate_code.generate_code.LLM_template") as mock_llm_template, \
-         patch("hagent.step.generate_code.generate_code.LLM_wrap") as mock_llm_wrap, \
-         patch("hagent.core.step.yaml.dump") as mock_yaml_dump:
-
+    with (
+        patch('hagent.step.generate_code.generate_code.LLM_template') as mock_llm_template,
+        patch('hagent.step.generate_code.generate_code.LLM_wrap') as mock_llm_wrap,
+        patch('hagent.core.step.yaml.dump') as mock_yaml_dump,
+    ):
         # Mock the template's format method
         mock_template_instance = MagicMock()
-        mock_template_instance.format.return_value = "formatted prompt with potato"
+        mock_template_instance.format.return_value = 'formatted prompt with potato'
         mock_llm_template.return_value = mock_template_instance
 
         # Mock LLM_wrap's methods
         mock_lw_instance = MagicMock()
         mock_llm_wrap.return_value = mock_lw_instance
-        mock_lw_instance.inference.return_value = ["```verilog\nmodule empty_desc_module(a, b);\nendmodule\n```"]
+        mock_lw_instance.inference.return_value = ['```verilog\nmodule empty_desc_module(a, b);\nendmodule\n```']
 
         # Run setup and step
         gen_step.setup()
         res = gen_step.step()
 
         # Assertions
-        assert "generated_code" in res, "'generated_code' not found in result."
-        assert "verilog_file" in res, "'verilog_file' not found in result."
-        assert "bench_response" in res, "'bench_response' not found in result."
-        assert "bench_stage" in res, "'bench_stage' not found in result."
+        assert 'generated_code' in res, "'generated_code' not found in result."
+        assert 'verilog_file' in res, "'verilog_file' not found in result."
+        assert 'bench_response' in res, "'bench_response' not found in result."
+        assert 'bench_stage' in res, "'bench_stage' not found in result."
 
         generated = res['generated_code']
         assert isinstance(generated, list), "'generated_code' should be a list."
-        assert len(generated) == 1, "Expected one generated code snippet."
+        assert len(generated) == 1, 'Expected one generated code snippet.'
         snippet = generated[0].strip()
-        
+
         # Optionally, assert on raw generated_code
-        expected_raw_snippet = "```verilog\nmodule empty_desc_module(a, b);\nendmodule\n```"
+        expected_raw_snippet = '```verilog\nmodule empty_desc_module(a, b);\nendmodule\n```'
         assert snippet == expected_raw_snippet, "Raw 'generated_code' snippet does not match expected format."
 
         # Read the processed verilog file
@@ -251,10 +255,13 @@ def test_generate_empty_description(tmp_path):
         assert os.path.exists(verilog_file), f"Verilog file '{verilog_file}' was not created."
         with open(verilog_file, 'r') as f:
             file_contents = f.read().strip()
-            assert file_contents.startswith("module empty_desc_module"), "Verilog file does not start with the expected module definition."
+            assert file_contents.startswith(
+                'module empty_desc_module'
+            ), 'Verilog file does not start with the expected module definition.'
 
         # Check that yaml.dump was called to write the output
         mock_yaml_dump.assert_called_once()
+
 
 def test_generate_empty_llm_response(tmp_path):
     """
@@ -262,35 +269,34 @@ def test_generate_empty_llm_response(tmp_path):
     """
     # Create input YAML with 'llm' and other necessary fields
     empty_response_input = {
-        "llm": {
-            "model": "test-model",
-            "other_config": "value"
-        },
-        "description": "Generate a module with empty LLM response",
-        "interface": "input a; output b;",
-        "bench_response": "response_empty",
-        "bench_stage": "stage_empty",
-        "name": "empty_response_module"
+        'llm': {'model': 'test-model', 'other_config': 'value'},
+        'description': 'Generate a module with empty LLM response',
+        'interface': 'input a; output b;',
+        'bench_response': 'response_empty',
+        'bench_stage': 'stage_empty',
+        'name': 'empty_response_module',
     }
-    inp_file = tmp_path / "empty_response.yaml"
+    inp_file = tmp_path / 'empty_response.yaml'
     with open(inp_file, 'w') as f:
         import yaml
+
         yaml.safe_dump(empty_response_input, f)
 
-    out_file = tmp_path / "test_generate_code_output_empty_response.yaml"
+    out_file = tmp_path / 'test_generate_code_output_empty_response.yaml'
 
     gen_step = Generate_code()
     gen_step.set_io(inp_file=str(inp_file), out_file=str(out_file))
 
     # Mock LLM_template and LLM_wrap, and patch the 'error' method on the instance
-    with patch("hagent.step.generate_code.generate_code.LLM_template") as mock_llm_template, \
-         patch("hagent.step.generate_code.generate_code.LLM_wrap") as mock_llm_wrap, \
-         patch("hagent.core.step.yaml.dump") as mock_yaml_dump, \
-         patch.object(gen_step, 'error') as mock_error:
-
+    with (
+        patch('hagent.step.generate_code.generate_code.LLM_template') as mock_llm_template,
+        patch('hagent.step.generate_code.generate_code.LLM_wrap') as mock_llm_wrap,
+        patch('hagent.core.step.yaml.dump') as mock_yaml_dump,
+        patch.object(gen_step, 'error') as mock_error,
+    ):
         # Mock the template's format method
         mock_template_instance = MagicMock()
-        mock_template_instance.format.return_value = "formatted prompt with potato"
+        mock_template_instance.format.return_value = 'formatted prompt with potato'
         mock_llm_template.return_value = mock_template_instance
 
         # Mock LLM_wrap's methods to return an empty list
@@ -305,10 +311,7 @@ def test_generate_empty_llm_response(tmp_path):
         gen_step.step()
 
         # Ensure error was called with the correct message
-        mock_error.assert_called_once_with("LLM returned an empty response.")
+        mock_error.assert_called_once_with('LLM returned an empty response.')
 
         # Ensure yaml.dump was called to write the error
         mock_yaml_dump.assert_called_once()
-
-
-

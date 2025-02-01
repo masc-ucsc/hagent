@@ -34,18 +34,14 @@ class V2ChiselFix(Step):
         self.prompt3_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt3.yaml')
         self.refine_llm = None
         # Keep a local copy for use in _refine_chisel_code
-        self.verilog_fixed_str = self.input_data.get("verilog_fixed", "")
+        self.verilog_fixed_str = self.input_data.get('verilog_fixed', '')
 
         if os.path.exists(self.prompt3_path):
             llm_args = self.input_data.get('llm', {})
             if llm_args:
                 prompt3_template = LLM_template(self.prompt3_path)
                 self.refine_llm = LLM_wrap()
-                self.refine_llm.from_dict(
-                    name='v2chisel_fix_refine',
-                    conf_dict=llm_args,
-                    prompt=prompt3_template
-                )
+                self.refine_llm.from_dict(name='v2chisel_fix_refine', conf_dict=llm_args, prompt=prompt3_template)
                 print('[INFO] Loaded prompt3.yaml and initialized LLM for refinement.')
             else:
                 print("[WARN] prompt3.yaml found but no 'llm' config. Can't refine automatically.")
@@ -74,7 +70,7 @@ class V2ChiselFix(Step):
         # Store final chisel code + equivalence status here:
         # (tests expect 'refined_chisel' to eventually reflect any LLM modifications)
         result['chisel_fixed'] = {
-            'original_chisel': data.get('chisel_original', ""),
+            'original_chisel': data.get('chisel_original', ''),
             'refined_chisel': chisel_changed,  # will update if refinements happen
             'equiv_passed': False,
         }
@@ -179,18 +175,18 @@ class V2ChiselFix(Step):
         prompt_dict = {
             'chisel_code': current_code,
             'lec_output': lec_error or 'LEC failed',
-            'verilog_fixed': self.verilog_fixed_str
+            'verilog_fixed': self.verilog_fixed_str,
         }
 
         # Safely attempt to format and show the final LLM prompt
         try:
             formatted = self.refine_llm.chat_template.format(prompt_dict)
-            print("\n----- LLM FINAL MESSAGES TO SEND (prompt3.yaml) -----")
+            print('\n----- LLM FINAL MESSAGES TO SEND (prompt3.yaml) -----')
             if isinstance(formatted, list):
                 for chunk in formatted:
                     if isinstance(chunk, dict):
                         print(f"Role: {chunk.get('role','?')}")
-                        print(f"Content:\n{chunk.get('content','')}") 
+                        print(f"Content:\n{chunk.get('content','')}")
                     else:
                         print(chunk)
             else:
@@ -198,7 +194,7 @@ class V2ChiselFix(Step):
                 print(formatted)
         except Exception as ex:
             # If the template is invalid, do not bail out completely; just keep old code
-            print(f"[ERROR] LLM template formatting error: {ex}")
+            print(f'[ERROR] LLM template formatting error: {ex}')
             return current_code
 
         # Now get the actual response from the LLM:

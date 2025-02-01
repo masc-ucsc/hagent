@@ -17,14 +17,12 @@ def extract_module_name(chisel_code: str) -> str:
     if match:
         return match.group(1)
     else:
-        raise ValueError("Unable to find module name in Chisel code.")
+        raise ValueError('Unable to find module name in Chisel code.')
 
 
 def main():
     # Set up argument parsing
-    parser = argparse.ArgumentParser(
-        description='Convert Chisel code in a YAML file to Verilog using Chisel2v tool.'
-    )
+    parser = argparse.ArgumentParser(description='Convert Chisel code in a YAML file to Verilog using Chisel2v tool.')
     parser.add_argument('input_yaml', type=str, help='Path to the input YAML file.')
     parser.add_argument('output_yaml', type=str, help='Path to the output YAML file.')
     args = parser.parse_args()
@@ -55,24 +53,24 @@ def main():
     # Extract the module name from the Chisel code
     try:
         module_name = extract_module_name(chisel_code)
-        print(f"Extracted module name: {module_name}")
+        print(f'Extracted module name: {module_name}')
     except ValueError as ve:
-        print(f"Error: {ve}", file=sys.stderr)
+        print(f'Error: {ve}', file=sys.stderr)
         sys.exit(1)
 
     # Initialize Chisel2v and set it up
     chisel2v_tool = Chisel2v()
     if not chisel2v_tool.setup():
-        print(f"Error setting up Chisel2v: {chisel2v_tool.error_message}", file=sys.stderr)
+        print(f'Error setting up Chisel2v: {chisel2v_tool.error_message}', file=sys.stderr)
         sys.exit(1)
-    print("Chisel2v setup successful.")
+    print('Chisel2v setup successful.')
 
     # Generate Verilog
     try:
         verilog_output = chisel2v_tool.generate_verilog(chisel_code, module_name)
-        print("Verilog generation successful.")
+        print('Verilog generation successful.')
     except RuntimeError as re:
-        print(f"Error during Verilog generation: {re}", file=sys.stderr)
+        print(f'Error during Verilog generation: {re}', file=sys.stderr)
         sys.exit(1)
 
     # Update the YAML data with the generated Verilog
