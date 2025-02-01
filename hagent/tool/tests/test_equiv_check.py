@@ -170,6 +170,5 @@ def test_smt_fallback_inconclusive(prepare_checker, monkeypatch):
     #
 
 
-if __name__ == "__main__":
-    pytest.main(['-v', '-s', '--tb=long',__file__])
-
+if __name__ == '__main__':
+    pytest.main(['-v', '-s', '--tb=long', __file__])

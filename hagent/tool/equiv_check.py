@@ -43,13 +43,7 @@ class Equiv_check:
 
         try:
             # Run the command and capture stdout and stderr
-            result = subprocess.run(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=True
-            )
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
             # Attempt to extract version number (e.g., "0.4" or "0.4.1") from stdout
             match = re.search(r'(\d+\.\d+(?:\.\d+)?)', result.stdout)
             if not match:
@@ -59,7 +53,7 @@ class Equiv_check:
 
             version_str = match.group(1)
             # Convert version string into a tuple of integers for comparison
-            version_tuple = tuple(map(int, version_str.split(".")))
+            version_tuple = tuple(map(int, version_str.split('.')))
             required_version = (0, 40)
 
             if version_tuple < required_version:
@@ -150,12 +144,14 @@ class Equiv_check:
             f.write(verilog_code)
         return filename
 
-    def _run_equiv_method(self, work_dir: str, gold_v_filename: str, gate_v_filename: str, gold_top: str, gate_top: str) -> Tuple[int, str, str]:
+    def _run_equiv_method(
+        self, work_dir: str, gold_v_filename: str, gate_v_filename: str, gold_top: str, gate_top: str
+    ) -> Tuple[int, str, str]:
         """
         Build a Yosys command string for standard 'equiv -assert' approach
         """
         cmd = [
-            f"read_verilog -sv {gold_v_filename}",
+            f'read_verilog -sv {gold_v_filename}',
             f'prep -top {gold_top}',
             f'rename {gold_top} gold',
             'design -stash gold',
@@ -176,13 +172,15 @@ class Equiv_check:
             'equiv_status -assert',
         ]
         full_cmd = ';\n'.join(cmd)
-        filename = os.path.join(work_dir, "check1.s")
+        filename = os.path.join(work_dir, 'check1.s')
         with open(filename, 'w') as f:
             f.write(full_cmd)
 
         return self._run_yosys_command(filename)
 
-    def _run_smt_method(self, work_dir: str, gold_v_filename: str, gate_v_filename: str, gold_top: str, gate_top: str) -> Tuple[int, str, str]:
+    def _run_smt_method(
+        self, work_dir: str, gold_v_filename: str, gate_v_filename: str, gold_top: str, gate_top: str
+    ) -> Tuple[int, str, str]:
         """
         Build a Yosys command string for the simple SMT-based approach,
         """
@@ -202,7 +200,7 @@ class Equiv_check:
             ' -ignore_unknown_cells -show-ports miter',
         ]
         full_cmd = ';\n'.join(cmd)
-        filename = os.path.join(work_dir, "check2.s")
+        filename = os.path.join(work_dir, 'check2.s')
         with open(filename, 'w') as f:
             f.write(full_cmd)
 
@@ -231,23 +229,19 @@ class Equiv_check:
             return 1, '', self.error_message
 
     def _analyze_yosys_result(self, code: int, out: str, err: str, method: str) -> Optional[bool]:
-        """
-        If code == 0 => success => designs equivalent
-        If code != 0 => possible mismatch or unknown
-        """
         if 'ERROR' in err:
             return False
 
         if 'timeout' in err:
             return None
 
-        if method == "smt":
+        if method == 'smt':
             pattern = re.compile(r'^SAT.*FAIL.*$', flags=re.MULTILINE)
             # Find all matching lines
             matching_lines = pattern.findall(out)
-            print(f"matching:{matching_lines}")
+            print(f'matching:{matching_lines}')
             return len(matching_lines) == 0
-        elif method == "equiv":
+        elif method == 'equiv':
             return code == 0
 
         # no definitive pass/fail => unknown
