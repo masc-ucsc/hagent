@@ -268,3 +268,46 @@ chisel_pass1:
     \ io_count = countReg;\t// src/main/scala/Counter.scala:7:7, :15:25\nendmodule\n\
     \n"
   was_valid: true
+chisel_fixed:
+  original_chisel: "// Import Chisel library\n  import chisel3._\n  import chisel3.util._\n\
+    \  \n  // Define the Counter module\n  class Counter extends Module {\n    val\
+    \ io = IO(new Bundle {\n      val enable = Input(Bool())\n      val reset  = Input(Bool())\n\
+    \      val count  = Output(UInt(4.W))\n    })\n  \n    // Initialize the count\
+    \ register\n    val countReg = RegInit(0.U(4.W))\n  \n    // Define the counter\
+    \ behavior\n    when (io.reset) {\n      countReg := 0.U\n    } .elsewhen (io.enable)\
+    \ {\n      countReg := countReg + 1.U\n    }\n  \n    // Connect the count register\
+    \ to the output\n    io.count := countReg\n  }\n  \n  // Generate the Verilog\
+    \ code\n  object CounterDriver extends App {\n    emitVerilog(new Counter())\n\
+    \  }\n"
+  refined_chisel: |-
+    // Import Chisel library
+    import chisel3._
+    import chisel3.util._
+
+    // Define the Counter module
+    class Counter extends Module {
+      val io = IO(new Bundle {
+        val enable = Input(Bool())
+        val reset  = Input(Bool())
+        val count  = Output(UInt(4.W))
+      })
+
+      // Initialize the count register
+      val countReg = RegInit(0.U(4.W))
+
+      // Define the counter behavior
+      when (io.reset) {
+        countReg := 0.U
+      } .elsewhen (io.enable) {
+        countReg := countReg - 1.U
+      }
+
+      // Connect the count register to the output
+      io.count := countReg
+    }
+
+    // Generate the Verilog code
+    object CounterDriver extends App {
+      emitVerilog(new Counter())
+    }
+  equiv_passed: true
