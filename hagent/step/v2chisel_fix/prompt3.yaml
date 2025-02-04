@@ -5,18 +5,36 @@
 - role: user
   content: |
     The previously generated Chisel code is not logically equivalent to the target design.
-    The final Verilog we want to match is here:
+    We have two Verilog snippets:
+    1) The **original** Verilog (old design).
+    2) The **fixed** Verilog (new design).
+
+    Here is the **fixed** Verilog we want to match:
     ```
     {verilog_fixed}
     ```
+    
+    Below is a **unified diff** (`verilog_diff`) showing how the Verilog changed from the old design:
+    ```
+    {verilog_diff}
+    ```
+
     Here is the Chisel code that is failing LEC:
     Chisel code:
     ```
     {chisel_code}
     ```
+
     The last LEC error or reason for failure was:
     ```
     {lec_output}
     ```
     
-    Please fix the Chisel code so it compiles and passes equivalence. Output only the corrected code, with no triple backticks or markdown fences.
+    We need a new, correct Chisel snippet that compiles and is logically equivalent to **the fixed Verilog**. 
+
+    **Important instructions**:
+    - Return *only* the updated Chisel code (no markdown fences, no triple backticks, no explanation).
+    - Keep the module name and port definitions consistent.
+    - Fix the code so it compiles, and passes LEC with the new Verilog design.
+    - If you must add or remove lines, do so carefully. 
+    - No extra commentary or disclaimers. Just the corrected code in plain text.

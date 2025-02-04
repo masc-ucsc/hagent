@@ -16,6 +16,7 @@ poetry run python3 hagent/step/v2chisel_fix/v2chisel_fix.py -o hagent/step/v2chi
 
 import os
 import re
+import difflib
 from hagent.core.step import Step
 from hagent.core.llm_template import LLM_template
 from hagent.core.llm_wrap import LLM_wrap
@@ -35,6 +36,9 @@ class V2ChiselFix(Step):
         self.refine_llm = None
         # Keep a local copy for use in _refine_chisel_code
         self.verilog_fixed_str = self.input_data.get('verilog_fixed', '')
+        self.verilog_original_str = self.input_data.get('verilog_original', '')
+        self.verilog_diff_str = self.input_data.get('verilog_diff', '')
+
 
         if os.path.exists(self.prompt3_path):
             llm_args = self.input_data.get('llm', {})
@@ -66,6 +70,7 @@ class V2ChiselFix(Step):
         chisel_changed = pass1_info.get('chisel_changed', '')
         verilog_candidate = pass1_info.get('verilog_candidate', '')
         was_valid = pass1_info.get('was_valid', False)
+        original_chisel = pass1_info.get('original_chisel', '')
 
         # Store final chisel code + equivalence status here:
         # (tests expect 'refined_chisel' to eventually reflect any LLM modifications)
@@ -84,6 +89,7 @@ class V2ChiselFix(Step):
             lec_error = 'No verilog_fixed provided'
         else:
             is_equiv, lec_error = self._check_equivalence(verilog_fixed, verilog_candidate)
+            print("here is the diff of the code:", self._generate_diff(chisel_changed, original_chisel))
 
         refined_chisel = chisel_changed
         iteration_count = 0
@@ -137,6 +143,21 @@ class V2ChiselFix(Step):
 
         print("[INFO] v2chisel_fix: Done. 'chisel_fixed' written to output YAML.")
         return result
+    
+    def _generate_diff(self, old_code: str, new_code: str) -> str:
+        """
+        Generate a unified diff string comparing old_code vs. new_code.
+        """
+        old_lines = old_code.splitlines()
+        new_lines = new_code.splitlines()
+        diff_lines = difflib.unified_diff(
+            old_lines,
+            new_lines,
+            fromfile='verilog_original.v',
+            tofile='verilog_fixed.v',
+            lineterm=''
+        )
+        return '\n'.join(diff_lines)
 
     def _check_equivalence(self, gold_code: str, reference_code: str):
         if not gold_code.strip() or not reference_code.strip():
@@ -176,6 +197,8 @@ class V2ChiselFix(Step):
             'chisel_code': current_code,
             'lec_output': lec_error or 'LEC failed',
             'verilog_fixed': self.verilog_fixed_str,
+            'verilog_original': self.verilog_original_str,
+            'verilog_diff': self.verilog_diff_str,
         }
 
         # Safely attempt to format and show the final LLM prompt
