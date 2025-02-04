@@ -31,6 +31,21 @@ class V2ChiselPass1(Step):
 
         self.setup_called = True
 
+    def _generate_diff(self, old_code: str, new_code: str) -> str:
+        """
+        Generate a unified diff string comparing old_code vs. new_code.
+        """
+        old_lines = old_code.splitlines()
+        new_lines = new_code.splitlines()
+        diff_lines = difflib.unified_diff(
+            old_lines,
+            new_lines,
+            fromfile='verilog_original.v',
+            tofile='verilog_fixed.v',
+            lineterm=''
+        )
+        return '\n'.join(diff_lines)
+    
     def run(self, data):
         verilog_original = data.get('verilog_original', '')
         verilog_fixed = data.get('verilog_fixed', '')
@@ -39,6 +54,8 @@ class V2ChiselPass1(Step):
         # Compute a naive diff for verilog
         verilog_diff_list = list(difflib.unified_diff(verilog_original.splitlines(), verilog_fixed.splitlines(), lineterm=''))
         verilog_diff_text = '\n'.join(verilog_diff_list)
+
+        verilog_diff_text = self._generate_diff(verilog_original, verilog_fixed)
 
         max_iterations = 5
         was_valid = False
@@ -109,6 +126,7 @@ class V2ChiselPass1(Step):
             'verilog_candidate': verilog_candidate_final,
             'was_valid': was_valid,
         }
+        result['verilog_diff'] = verilog_diff_text
         return result
 
     def _strip_markdown_fences(self, code_str: str) -> str:

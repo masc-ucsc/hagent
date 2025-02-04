@@ -1,0 +1,1983 @@
+llm:
+  model: openai/gpt-4-turbo-preview
+verilog_original: |
+  // [Original Verilog code goes here]
+  module SimpleRISCVCpu(
+  input         clock,
+                reset,
+  output [31:0] io_pcOut,
+                io_aluOut,
+                io_instrOut,
+  output [6:0]  io_opcodeOut,
+  output [4:0]  io_rdOut,
+  output [2:0]  io_funct3Out,
+  output [31:0] io_rs1DataOut,
+                io_rs2DataOut,
+                io_immOut,
+  output        io_branchTaken
+  );
+
+    wire [3:0][31:0]  _GEN = '{32'h1000063, 32'h208233, 32'hA08113, 32'h400093};
+    reg  [31:0]       pc;
+    wire [31:0]       io_instrOut_0 = _GEN[pc[3:2]];
+    reg  [31:0]       regFile_0;
+    reg  [31:0]       regFile_1;
+    reg  [31:0]       regFile_2;
+    reg  [31:0]       regFile_3;
+    reg  [31:0]       regFile_4;
+    reg  [31:0]       regFile_5;
+    reg  [31:0]       regFile_6;
+    reg  [31:0]       regFile_7;
+    reg  [31:0]       regFile_8;
+    reg  [31:0]       regFile_9;
+    reg  [31:0]       regFile_10;
+    reg  [31:0]       regFile_11;
+    reg  [31:0]       regFile_12;
+    reg  [31:0]       regFile_13;
+    reg  [31:0]       regFile_14;
+    reg  [31:0]       regFile_15;
+    reg  [31:0]       regFile_16;
+    reg  [31:0]       regFile_17;
+    reg  [31:0]       regFile_18;
+    reg  [31:0]       regFile_19;
+    reg  [31:0]       regFile_20;
+    reg  [31:0]       regFile_21;
+    reg  [31:0]       regFile_22;
+    reg  [31:0]       regFile_23;
+    reg  [31:0]       regFile_24;
+    reg  [31:0]       regFile_25;
+    reg  [31:0]       regFile_26;
+    reg  [31:0]       regFile_27;
+    reg  [31:0]       regFile_28;
+    reg  [31:0]       regFile_29;
+    reg  [31:0]       regFile_30;
+    reg  [31:0]       regFile_31;
+    wire [31:0][31:0] _GEN_0 =
+      {{regFile_31},
+       {regFile_30},
+       {regFile_29},
+       {regFile_28},
+       {regFile_27},
+       {regFile_26},
+       {regFile_25},
+       {regFile_24},
+       {regFile_23},
+       {regFile_22},
+       {regFile_21},
+       {regFile_20},
+       {regFile_19},
+       {regFile_18},
+       {regFile_17},
+       {regFile_16},
+       {regFile_15},
+       {regFile_14},
+       {regFile_13},
+       {regFile_12},
+       {regFile_11},
+       {regFile_10},
+       {regFile_9},
+       {regFile_8},
+       {regFile_7},
+       {regFile_6},
+       {regFile_5},
+       {regFile_4},
+       {regFile_3},
+       {regFile_2},
+       {regFile_1},
+       {regFile_0}};
+    wire [31:0]       io_rs1DataOut_0 = _GEN_0[io_instrOut_0[19:15]];
+    wire [31:0]       io_rs2DataOut_0 = _GEN_0[io_instrOut_0[24:20]];
+    wire              branchTaken = io_rs1DataOut_0 == io_rs2DataOut_0;
+    wire              _GEN_1 = io_instrOut_0[6:0] == 7'h33;
+    wire              _GEN_2 = io_instrOut_0[14:12] == 3'h0;
+    wire [31:0]       _aluResult_T = io_rs1DataOut_0 + io_rs2DataOut_0;
+    wire [31:0]       _aluResult_T_3 = io_rs1DataOut_0 & io_rs2DataOut_0;
+    wire              _GEN_3 = io_instrOut_0[6:0] == 7'h13;
+    wire [31:0]       _GEN_4 = {{20{io_instrOut_0[31]}}, io_instrOut_0[31:20]};
+    wire [31:0]       _aluResult_T_5 = io_rs1DataOut_0 + _GEN_4;
+    always @(posedge clock) begin
+      if (reset) begin
+        pc <= 32'h0;
+        regFile_0 <= 32'h0;
+        regFile_1 <= 32'h0;
+        regFile_2 <= 32'h0;
+        regFile_3 <= 32'h0;
+        regFile_4 <= 32'h0;
+        regFile_5 <= 32'h0;
+        regFile_6 <= 32'h0;
+        regFile_7 <= 32'h0;
+        regFile_8 <= 32'h0;
+        regFile_9 <= 32'h0;
+        regFile_10 <= 32'h0;
+        regFile_11 <= 32'h0;
+        regFile_12 <= 32'h0;
+        regFile_13 <= 32'h0;
+        regFile_14 <= 32'h0;
+        regFile_15 <= 32'h0;
+        regFile_16 <= 32'h0;
+        regFile_17 <= 32'h0;
+        regFile_18 <= 32'h0;
+        regFile_19 <= 32'h0;
+        regFile_20 <= 32'h0;
+        regFile_21 <= 32'h0;
+        regFile_22 <= 32'h0;
+        regFile_23 <= 32'h0;
+        regFile_24 <= 32'h0;
+        regFile_25 <= 32'h0;
+        regFile_26 <= 32'h0;
+        regFile_27 <= 32'h0;
+        regFile_28 <= 32'h0;
+        regFile_29 <= 32'h0;
+        regFile_30 <= 32'h0;
+        regFile_31 <= 32'h0;
+      end
+      else begin
+        automatic logic _GEN_5 = (_GEN_1 | _GEN_3) & (|(io_instrOut_0[11:7]));
+        if (io_instrOut_0[6:0] == 7'h63 & branchTaken)
+          pc <= pc + _GEN_4;
+        else
+          pc <= pc + 32'h4;
+        if (_GEN_5 & ~(|(io_instrOut_0[11:7]))) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_0 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_0 <= _aluResult_T_3;
+            else
+              regFile_0 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_0 <= _aluResult_T_5;
+          else
+            regFile_0 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_1 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_1 <= _aluResult_T_3;
+            else
+              regFile_1 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_1 <= _aluResult_T_5;
+          else
+            regFile_1 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h2) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_2 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_2 <= _aluResult_T_3;
+            else
+              regFile_2 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_2 <= _aluResult_T_5;
+          else
+            regFile_2 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h3) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_3 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_3 <= _aluResult_T_3;
+            else
+              regFile_3 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_3 <= _aluResult_T_5;
+          else
+            regFile_3 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h4) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_4 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_4 <= _aluResult_T_3;
+            else
+              regFile_4 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_4 <= _aluResult_T_5;
+          else
+            regFile_4 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h5) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_5 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_5 <= _aluResult_T_3;
+            else
+              regFile_5 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_5 <= _aluResult_T_5;
+          else
+            regFile_5 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h6) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_6 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_6 <= _aluResult_T_3;
+            else
+              regFile_6 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_6 <= _aluResult_T_5;
+          else
+            regFile_6 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h7) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_7 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_7 <= _aluResult_T_3;
+            else
+              regFile_7 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_7 <= _aluResult_T_5;
+          else
+            regFile_7 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h8) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_8 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_8 <= _aluResult_T_3;
+            else
+              regFile_8 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_8 <= _aluResult_T_5;
+          else
+            regFile_8 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h9) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_9 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_9 <= _aluResult_T_3;
+            else
+              regFile_9 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_9 <= _aluResult_T_5;
+          else
+            regFile_9 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hA) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_10 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_10 <= _aluResult_T_3;
+            else
+              regFile_10 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_10 <= _aluResult_T_5;
+          else
+            regFile_10 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hB) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_11 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_11 <= _aluResult_T_3;
+            else
+              regFile_11 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_11 <= _aluResult_T_5;
+          else
+            regFile_11 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hC) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_12 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_12 <= _aluResult_T_3;
+            else
+              regFile_12 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_12 <= _aluResult_T_5;
+          else
+            regFile_12 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hD) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_13 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_13 <= _aluResult_T_3;
+            else
+              regFile_13 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_13 <= _aluResult_T_5;
+          else
+            regFile_13 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hE) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_14 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_14 <= _aluResult_T_3;
+            else
+              regFile_14 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_14 <= _aluResult_T_5;
+          else
+            regFile_14 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hF) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_15 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_15 <= _aluResult_T_3;
+            else
+              regFile_15 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_15 <= _aluResult_T_5;
+          else
+            regFile_15 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h10) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_16 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_16 <= _aluResult_T_3;
+            else
+              regFile_16 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_16 <= _aluResult_T_5;
+          else
+            regFile_16 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h11) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_17 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_17 <= _aluResult_T_3;
+            else
+              regFile_17 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_17 <= _aluResult_T_5;
+          else
+            regFile_17 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h12) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_18 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_18 <= _aluResult_T_3;
+            else
+              regFile_18 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_18 <= _aluResult_T_5;
+          else
+            regFile_18 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h13) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_19 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_19 <= _aluResult_T_3;
+            else
+              regFile_19 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_19 <= _aluResult_T_5;
+          else
+            regFile_19 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h14) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_20 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_20 <= _aluResult_T_3;
+            else
+              regFile_20 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_20 <= _aluResult_T_5;
+          else
+            regFile_20 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h15) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_21 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_21 <= _aluResult_T_3;
+            else
+              regFile_21 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_21 <= _aluResult_T_5;
+          else
+            regFile_21 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h16) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_22 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_22 <= _aluResult_T_3;
+            else
+              regFile_22 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_22 <= _aluResult_T_5;
+          else
+            regFile_22 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h17) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_23 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_23 <= _aluResult_T_3;
+            else
+              regFile_23 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_23 <= _aluResult_T_5;
+          else
+            regFile_23 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h18) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_24 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_24 <= _aluResult_T_3;
+            else
+              regFile_24 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_24 <= _aluResult_T_5;
+          else
+            regFile_24 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h19) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_25 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_25 <= _aluResult_T_3;
+            else
+              regFile_25 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_25 <= _aluResult_T_5;
+          else
+            regFile_25 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1A) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_26 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_26 <= _aluResult_T_3;
+            else
+              regFile_26 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_26 <= _aluResult_T_5;
+          else
+            regFile_26 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1B) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_27 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_27 <= _aluResult_T_3;
+            else
+              regFile_27 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_27 <= _aluResult_T_5;
+          else
+            regFile_27 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1C) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_28 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_28 <= _aluResult_T_3;
+            else
+              regFile_28 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_28 <= _aluResult_T_5;
+          else
+            regFile_28 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1D) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_29 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_29 <= _aluResult_T_3;
+            else
+              regFile_29 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_29 <= _aluResult_T_5;
+          else
+            regFile_29 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1E) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_30 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_30 <= _aluResult_T_3;
+            else
+              regFile_30 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_30 <= _aluResult_T_5;
+          else
+            regFile_30 <= 32'h0;
+        end
+        if (_GEN_5 & (&(io_instrOut_0[11:7]))) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_31 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_31 <= _aluResult_T_3;
+            else
+              regFile_31 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_31 <= _aluResult_T_5;
+          else
+            regFile_31 <= 32'h0;
+        end
+      end
+    end // always @(posedge)
+    assign io_pcOut = pc;
+    assign io_aluOut =
+      _GEN_1
+        ? (_GEN_2 ? _aluResult_T : (&(io_instrOut_0[14:12])) ? _aluResult_T_3 : 32'h0)
+        : _GEN_3 ? _aluResult_T_5 : 32'h0;
+    assign io_instrOut = io_instrOut_0;
+    assign io_opcodeOut = io_instrOut_0[6:0];
+    assign io_rdOut = io_instrOut_0[11:7];
+    assign io_funct3Out = io_instrOut_0[14:12];
+    assign io_rs1DataOut = io_rs1DataOut_0;
+    assign io_rs2DataOut = io_rs2DataOut_0;
+    assign io_immOut = {{20{io_instrOut_0[31]}}, io_instrOut_0[31:20]};
+    assign io_branchTaken = branchTaken;
+  endmodule
+verilog_fixed: |
+  // [Modified Verilog code goes here, with changes highlighted]
+  // in the I-type instruction, the ALU operation has changed from addition to subtraction.
+  module SimpleRISCVCpu(
+  input         clock,
+                reset,
+  output [31:0] io_pcOut,
+                io_aluOut,
+                io_instrOut,
+  output [6:0]  io_opcodeOut,
+  output [4:0]  io_rdOut,
+  output [2:0]  io_funct3Out,
+  output [31:0] io_rs1DataOut,
+                io_rs2DataOut,
+                io_immOut,
+  output        io_branchTaken
+  );
+
+    wire [3:0][31:0]  _GEN = '{32'h1000063, 32'h208233, 32'hA08113, 32'h400093};
+    reg  [31:0]       pc;
+    wire [31:0]       io_instrOut_0 = _GEN[pc[3:2]];
+    reg  [31:0]       regFile_0;
+    reg  [31:0]       regFile_1;
+    reg  [31:0]       regFile_2;
+    reg  [31:0]       regFile_3;
+    reg  [31:0]       regFile_4;
+    reg  [31:0]       regFile_5;
+    reg  [31:0]       regFile_6;
+    reg  [31:0]       regFile_7;
+    reg  [31:0]       regFile_8;
+    reg  [31:0]       regFile_9;
+    reg  [31:0]       regFile_10;
+    reg  [31:0]       regFile_11;
+    reg  [31:0]       regFile_12;
+    reg  [31:0]       regFile_13;
+    reg  [31:0]       regFile_14;
+    reg  [31:0]       regFile_15;
+    reg  [31:0]       regFile_16;
+    reg  [31:0]       regFile_17;
+    reg  [31:0]       regFile_18;
+    reg  [31:0]       regFile_19;
+    reg  [31:0]       regFile_20;
+    reg  [31:0]       regFile_21;
+    reg  [31:0]       regFile_22;
+    reg  [31:0]       regFile_23;
+    reg  [31:0]       regFile_24;
+    reg  [31:0]       regFile_25;
+    reg  [31:0]       regFile_26;
+    reg  [31:0]       regFile_27;
+    reg  [31:0]       regFile_28;
+    reg  [31:0]       regFile_29;
+    reg  [31:0]       regFile_30;
+    reg  [31:0]       regFile_31;
+    wire [31:0][31:0] _GEN_0 =
+      {{regFile_31},
+       {regFile_30},
+       {regFile_29},
+       {regFile_28},
+       {regFile_27},
+       {regFile_26},
+       {regFile_25},
+       {regFile_24},
+       {regFile_23},
+       {regFile_22},
+       {regFile_21},
+       {regFile_20},
+       {regFile_19},
+       {regFile_18},
+       {regFile_17},
+       {regFile_16},
+       {regFile_15},
+       {regFile_14},
+       {regFile_13},
+       {regFile_12},
+       {regFile_11},
+       {regFile_10},
+       {regFile_9},
+       {regFile_8},
+       {regFile_7},
+       {regFile_6},
+       {regFile_5},
+       {regFile_4},
+       {regFile_3},
+       {regFile_2},
+       {regFile_1},
+       {regFile_0}};
+    wire [31:0]       io_rs1DataOut_0 = _GEN_0[io_instrOut_0[19:15]];
+    wire [31:0]       io_rs2DataOut_0 = _GEN_0[io_instrOut_0[24:20]];
+    wire              branchTaken = io_rs1DataOut_0 == io_rs2DataOut_0;
+    wire              _GEN_1 = io_instrOut_0[6:0] == 7'h33;
+    wire              _GEN_2 = io_instrOut_0[14:12] == 3'h0;
+    wire [31:0]       _aluResult_T = io_rs1DataOut_0 + io_rs2DataOut_0;
+    wire [31:0]       _aluResult_T_3 = io_rs1DataOut_0 & io_rs2DataOut_0;
+    wire              _GEN_3 = io_instrOut_0[6:0] == 7'h13;
+    wire [31:0]       _GEN_4 = {{20{io_instrOut_0[31]}}, io_instrOut_0[31:20]};
+    wire [31:0]       _aluResult_T_5 = io_rs1DataOut_0 - _GEN_4; //make a small change here (+ --> -)
+    always @(posedge clock) begin
+      if (reset) begin
+        pc <= 32'h0;
+        regFile_0 <= 32'h0;
+        regFile_1 <= 32'h0;
+        regFile_2 <= 32'h0;
+        regFile_3 <= 32'h0;
+        regFile_4 <= 32'h0;
+        regFile_5 <= 32'h0;
+        regFile_6 <= 32'h0;
+        regFile_7 <= 32'h0;
+        regFile_8 <= 32'h0;
+        regFile_9 <= 32'h0;
+        regFile_10 <= 32'h0;
+        regFile_11 <= 32'h0;
+        regFile_12 <= 32'h0;
+        regFile_13 <= 32'h0;
+        regFile_14 <= 32'h0;
+        regFile_15 <= 32'h0;
+        regFile_16 <= 32'h0;
+        regFile_17 <= 32'h0;
+        regFile_18 <= 32'h0;
+        regFile_19 <= 32'h0;
+        regFile_20 <= 32'h0;
+        regFile_21 <= 32'h0;
+        regFile_22 <= 32'h0;
+        regFile_23 <= 32'h0;
+        regFile_24 <= 32'h0;
+        regFile_25 <= 32'h0;
+        regFile_26 <= 32'h0;
+        regFile_27 <= 32'h0;
+        regFile_28 <= 32'h0;
+        regFile_29 <= 32'h0;
+        regFile_30 <= 32'h0;
+        regFile_31 <= 32'h0;
+      end
+      else begin
+        automatic logic _GEN_5 = (_GEN_1 | _GEN_3) & (|(io_instrOut_0[11:7]));
+        if (io_instrOut_0[6:0] == 7'h63 & branchTaken)
+          pc <= pc + _GEN_4;
+        else
+          pc <= pc + 32'h4;
+        if (_GEN_5 & ~(|(io_instrOut_0[11:7]))) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_0 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_0 <= _aluResult_T_3;
+            else
+              regFile_0 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_0 <= _aluResult_T_5;
+          else
+            regFile_0 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_1 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_1 <= _aluResult_T_3;
+            else
+              regFile_1 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_1 <= _aluResult_T_5;
+          else
+            regFile_1 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h2) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_2 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_2 <= _aluResult_T_3;
+            else
+              regFile_2 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_2 <= _aluResult_T_5;
+          else
+            regFile_2 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h3) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_3 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_3 <= _aluResult_T_3;
+            else
+              regFile_3 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_3 <= _aluResult_T_5;
+          else
+            regFile_3 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h4) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_4 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_4 <= _aluResult_T_3;
+            else
+              regFile_4 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_4 <= _aluResult_T_5;
+          else
+            regFile_4 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h5) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_5 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_5 <= _aluResult_T_3;
+            else
+              regFile_5 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_5 <= _aluResult_T_5;
+          else
+            regFile_5 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h6) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_6 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_6 <= _aluResult_T_3;
+            else
+              regFile_6 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_6 <= _aluResult_T_5;
+          else
+            regFile_6 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h7) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_7 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_7 <= _aluResult_T_3;
+            else
+              regFile_7 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_7 <= _aluResult_T_5;
+          else
+            regFile_7 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h8) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_8 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_8 <= _aluResult_T_3;
+            else
+              regFile_8 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_8 <= _aluResult_T_5;
+          else
+            regFile_8 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h9) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_9 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_9 <= _aluResult_T_3;
+            else
+              regFile_9 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_9 <= _aluResult_T_5;
+          else
+            regFile_9 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hA) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_10 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_10 <= _aluResult_T_3;
+            else
+              regFile_10 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_10 <= _aluResult_T_5;
+          else
+            regFile_10 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hB) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_11 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_11 <= _aluResult_T_3;
+            else
+              regFile_11 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_11 <= _aluResult_T_5;
+          else
+            regFile_11 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hC) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_12 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_12 <= _aluResult_T_3;
+            else
+              regFile_12 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_12 <= _aluResult_T_5;
+          else
+            regFile_12 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hD) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_13 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_13 <= _aluResult_T_3;
+            else
+              regFile_13 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_13 <= _aluResult_T_5;
+          else
+            regFile_13 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hE) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_14 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_14 <= _aluResult_T_3;
+            else
+              regFile_14 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_14 <= _aluResult_T_5;
+          else
+            regFile_14 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'hF) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_15 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_15 <= _aluResult_T_3;
+            else
+              regFile_15 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_15 <= _aluResult_T_5;
+          else
+            regFile_15 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h10) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_16 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_16 <= _aluResult_T_3;
+            else
+              regFile_16 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_16 <= _aluResult_T_5;
+          else
+            regFile_16 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h11) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_17 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_17 <= _aluResult_T_3;
+            else
+              regFile_17 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_17 <= _aluResult_T_5;
+          else
+            regFile_17 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h12) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_18 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_18 <= _aluResult_T_3;
+            else
+              regFile_18 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_18 <= _aluResult_T_5;
+          else
+            regFile_18 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h13) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_19 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_19 <= _aluResult_T_3;
+            else
+              regFile_19 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_19 <= _aluResult_T_5;
+          else
+            regFile_19 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h14) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_20 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_20 <= _aluResult_T_3;
+            else
+              regFile_20 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_20 <= _aluResult_T_5;
+          else
+            regFile_20 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h15) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_21 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_21 <= _aluResult_T_3;
+            else
+              regFile_21 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_21 <= _aluResult_T_5;
+          else
+            regFile_21 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h16) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_22 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_22 <= _aluResult_T_3;
+            else
+              regFile_22 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_22 <= _aluResult_T_5;
+          else
+            regFile_22 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h17) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_23 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_23 <= _aluResult_T_3;
+            else
+              regFile_23 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_23 <= _aluResult_T_5;
+          else
+            regFile_23 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h18) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_24 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_24 <= _aluResult_T_3;
+            else
+              regFile_24 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_24 <= _aluResult_T_5;
+          else
+            regFile_24 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h19) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_25 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_25 <= _aluResult_T_3;
+            else
+              regFile_25 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_25 <= _aluResult_T_5;
+          else
+            regFile_25 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1A) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_26 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_26 <= _aluResult_T_3;
+            else
+              regFile_26 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_26 <= _aluResult_T_5;
+          else
+            regFile_26 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1B) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_27 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_27 <= _aluResult_T_3;
+            else
+              regFile_27 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_27 <= _aluResult_T_5;
+          else
+            regFile_27 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1C) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_28 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_28 <= _aluResult_T_3;
+            else
+              regFile_28 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_28 <= _aluResult_T_5;
+          else
+            regFile_28 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1D) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_29 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_29 <= _aluResult_T_3;
+            else
+              regFile_29 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_29 <= _aluResult_T_5;
+          else
+            regFile_29 <= 32'h0;
+        end
+        if (_GEN_5 & io_instrOut_0[11:7] == 5'h1E) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_30 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_30 <= _aluResult_T_3;
+            else
+              regFile_30 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_30 <= _aluResult_T_5;
+          else
+            regFile_30 <= 32'h0;
+        end
+        if (_GEN_5 & (&(io_instrOut_0[11:7]))) begin
+          if (_GEN_1) begin
+            if (_GEN_2)
+              regFile_31 <= _aluResult_T;
+            else if (&(io_instrOut_0[14:12]))
+              regFile_31 <= _aluResult_T_3;
+            else
+              regFile_31 <= 32'h0;
+          end
+          else if (_GEN_3)
+            regFile_31 <= _aluResult_T_5;
+          else
+            regFile_31 <= 32'h0;
+        end
+      end
+    end // always @(posedge)
+    assign io_pcOut = pc;
+    assign io_aluOut =
+      _GEN_1
+        ? (_GEN_2 ? _aluResult_T : (&(io_instrOut_0[14:12])) ? _aluResult_T_3 : 32'h0)
+        : _GEN_3 ? _aluResult_T_5 : 32'h0;
+    assign io_instrOut = io_instrOut_0;
+    assign io_opcodeOut = io_instrOut_0[6:0];
+    assign io_rdOut = io_instrOut_0[11:7];
+    assign io_funct3Out = io_instrOut_0[14:12];
+    assign io_rs1DataOut = io_rs1DataOut_0;
+    assign io_rs2DataOut = io_rs2DataOut_0;
+    assign io_immOut = {{20{io_instrOut_0[31]}}, io_instrOut_0[31:20]};
+    assign io_branchTaken = branchTaken;
+  endmodule
+chisel_original: |-
+  // START_CHISEL_SNIPPET // Import Chisel libraries
+  import chisel3._
+  import chisel3.util._
+
+  // Define the CPU module with extra branch logic and outputs
+  class SimpleRISCVCpu extends Module {
+    val io = IO(new Bundle {
+      val pcOut       = Output(UInt(32.W))
+      val aluOut      = Output(SInt(32.W))
+      // Extra outputs for increased connectivity:
+      val instrOut    = Output(UInt(32.W))   // Fetched instruction
+      val opcodeOut   = Output(UInt(7.W))    // Decoded opcode
+      val rdOut       = Output(UInt(5.W))    // Destination register (rd)
+      val funct3Out   = Output(UInt(3.W))    // Decoded funct3 field
+      val rs1DataOut  = Output(SInt(32.W))   // Data from rs1 register
+      val rs2DataOut  = Output(SInt(32.W))   // Data from rs2 register
+      val immOut      = Output(SInt(32.W))   // Computed immediate value
+      val branchTaken = Output(Bool())       // Branch condition: rs1 == rs2
+    })
+
+    // ------------------------------
+    // Program Counter
+    // ------------------------------
+    val pc = RegInit(0.U(32.W))
+
+    // ------------------------------
+    // Instruction Memory (4 instructions)
+    // ------------------------------
+    val instrMem = VecInit(Seq(
+      "h00400093".U(32.W), // addi x1, x0, 4   -> x1 = 4
+      "h00A08113".U(32.W), // addi x2, x1, 10  -> x2 = x1 + 10
+      "h00208233".U(32.W), // add  x4, x1, x2  -> x4 = x1 + x2
+      "h01000063".U(32.W)  // branch instruction (opcode 1100011)
+    ))
+
+    // ------------------------------
+    // Fetch Stage
+    // ------------------------------
+    // Use the lower 2 bits of (pc >> 2) as the index (works for 4 instructions)
+    val index = (pc >> 2)(1, 0)
+    val instruction = instrMem(index)
+
+    // ------------------------------
+    // Decode Stage
+    // ------------------------------
+    // Extract standard RISC-V fields:
+    //   opcode: bits [6:0], rd: bits [11:7], funct3: bits [14:12],
+    //   rs1: bits [19:15], rs2: bits [24:20], funct7: bits [31:25]
+    val opcode  = instruction(6, 0)
+    val rd      = instruction(11, 7)
+    val funct3  = instruction(14, 12)
+    val rs1     = instruction(19, 15)
+    val rs2     = instruction(24, 20)
+    val funct7  = instruction(31, 25)
+
+    // Compute a simplified immediate value (for I-type and branch)
+    // (Normally, branch immediates are extracted differently.)
+    val immVal = Cat(Fill(20, instruction(31)), instruction(31, 20)).asSInt
+
+    // ------------------------------
+    // Register File
+    // ------------------------------
+    // 32 registers of 32-bit signed numbers
+    val regFile = RegInit(VecInit(Seq.fill(32)(0.S(32.W))))
+    val rs1Data = regFile(rs1)
+    val rs2Data = regFile(rs2)
+
+    // ------------------------------
+    // Branch Comparator
+    // ------------------------------
+    // Compare rs1 and rs2; branchTaken is true if they are equal.
+    val branchTaken = rs1Data === rs2Data
+
+    // ------------------------------
+    // Execute Stage: ALU Operation
+    // ------------------------------
+    val aluResult = WireDefault(0.S(32.W))
+    when(opcode === "b0110011".U) { // R-type instruction
+      switch(funct3) {
+        is("b000".U) { aluResult := rs1Data + rs2Data } // ADD
+        is("b111".U) { aluResult := rs1Data & rs2Data }   // AND
+      }
+    } .elsewhen(opcode === "b0010011".U) { // I-type (e.g., ADDI)
+      aluResult := rs1Data + immVal
+    }
+
+    // ------------------------------
+    // Write-Back Stage
+    // ------------------------------
+    // Write ALU result to register file (ensure x0 stays zero)
+    when((opcode === "b0110011".U || opcode === "b0010011".U) && (rd =/= 0.U)) {
+      regFile(rd) := aluResult
+    }
+
+    // ------------------------------
+    // Update Program Counter with Branch Logic
+    // ------------------------------
+    // If the opcode indicates a branch (1100011) and the branch condition is met,
+    // update PC with (pc + immVal) (converted from SInt to UInt). Otherwise, increment by 4.
+    when(opcode === "b1100011".U && branchTaken) {
+      pc := (pc.asSInt + immVal).asUInt
+    } .otherwise {
+      pc := pc + 4.U
+    }
+
+    // ------------------------------
+    // Connect Internal Signals to Top-Level I/O
+    // ------------------------------
+    io.pcOut       := pc
+    io.aluOut      := aluResult
+    io.instrOut    := instruction
+    io.opcodeOut   := opcode
+    io.rdOut       := rd
+    io.funct3Out   := funct3
+    io.rs1DataOut  := rs1Data
+    io.rs2DataOut  := rs2Data
+    io.immOut      := immVal
+    io.branchTaken := branchTaken
+  }
+   // END_CHISEL_SNIPPET
+name: simple_module
+chisel_pass1:
+  chisel_changed: "// START_CHISEL_SNIPPET // Import Chisel libraries\nimport chisel3._\n\
+    import chisel3.util._\n\n// Define the CPU module with extra branch logic and\
+    \ outputs\nclass SimpleRISCVCpu extends Module {\n  val io = IO(new Bundle {\n\
+    \    val pcOut       = Output(UInt(32.W))\n    val aluOut      = Output(SInt(32.W))\n\
+    \    // Extra outputs for increased connectivity:\n    val instrOut    = Output(UInt(32.W))\
+    \   // Fetched instruction\n    val opcodeOut   = Output(UInt(7.W))    // Decoded\
+    \ opcode\n    val rdOut       = Output(UInt(5.W))    // Destination register (rd)\n\
+    \    val funct3Out   = Output(UInt(3.W))    // Decoded funct3 field\n    val rs1DataOut\
+    \  = Output(SInt(32.W))   // Data from rs1 register\n    val rs2DataOut  = Output(SInt(32.W))\
+    \   // Data from rs2 register\n    val immOut      = Output(SInt(32.W))   // Computed\
+    \ immediate value\n    val branchTaken = Output(Bool())       // Branch condition:\
+    \ rs1 == rs2\n  })\n\n  // ------------------------------\n  // Program Counter\n\
+    \  // ------------------------------\n  val pc = RegInit(0.U(32.W))\n\n  // ------------------------------\n\
+    \  // Instruction Memory (4 instructions)\n  // ------------------------------\n\
+    \  val instrMem = VecInit(Seq(\n    \"h00400093\".U(32.W), // addi x1, x0, 4 \
+    \  -> x1 = 4\n    \"h00A08113\".U(32.W), // addi x2, x1, 10  -> x2 = x1 + 10\n\
+    \    \"h00208233\".U(32.W), // add  x4, x1, x2  -> x4 = x1 + x2\n    \"h01000063\"\
+    .U(32.W)  // branch instruction (opcode 1100011)\n  ))\n\n  // ------------------------------\n\
+    \  // Fetch Stage\n  // ------------------------------\n  val index = (pc >> 2)(1,\
+    \ 0)\n  val instruction = instrMem(index)\n\n  // ------------------------------\n\
+    \  // Decode Stage\n  // ------------------------------\n  val opcode  = instruction(6,\
+    \ 0)\n  val rd      = instruction(11, 7)\n  val funct3  = instruction(14, 12)\n\
+    \  val rs1     = instruction(19, 15)\n  val rs2     = instruction(24, 20)\n  val\
+    \ funct7  = instruction(31, 25)\n  val immVal = Cat(Fill(20, instruction(31)),\
+    \ instruction(31, 20)).asSInt\n\n  // ------------------------------\n  // Register\
+    \ File\n  // ------------------------------\n  val regFile = RegInit(VecInit(Seq.fill(32)(0.S(32.W))))\n\
+    \  val rs1Data = regFile(rs1)\n  val rs2Data = regFile(rs2)\n\n  // ------------------------------\n\
+    \  // Branch Comparator\n  // ------------------------------\n  val branchTaken\
+    \ = rs1Data === rs2Data\n\n  // ------------------------------\n  // Execute Stage:\
+    \ ALU Operation\n  // ------------------------------\n  val aluResult = WireDefault(0.S(32.W))\n\
+    \  when(opcode === \"b0110011\".U) {\n    switch(funct3) {\n      is(\"b000\"\
+    .U) { aluResult := rs1Data + rs2Data }\n      is(\"b111\".U) { aluResult := rs1Data\
+    \ & rs2Data }   \n    }\n  } .elsewhen(opcode === \"b0010011\".U) {\n    aluResult\
+    \ := rs1Data - immVal // Modified: subtraction instead of addition for I-type\
+    \ instruction.\n  }\n\n  // ------------------------------\n  // Write-Back Stage\n\
+    \  // ------------------------------\n  when((opcode === \"b0110011\".U || opcode\
+    \ === \"b0010011\".U) && (rd =/= 0.U)) {\n    regFile(rd) := aluResult\n  }\n\n\
+    \  // ------------------------------\n  // Update Program Counter with Branch\
+    \ Logic\n  // ------------------------------\n  when(opcode === \"b1100011\".U\
+    \ && branchTaken) {\n    pc := (pc.asSInt + immVal).asUInt\n  } .otherwise {\n\
+    \    pc := pc + 4.U\n  }\n\n  // ------------------------------\n  // Connect\
+    \ Internal Signals to Top-Level I/O\n  // ------------------------------\n  io.pcOut\
+    \       := pc\n  io.aluOut      := aluResult\n  io.instrOut    := instruction\n\
+    \  io.opcodeOut   := opcode\n  io.rdOut       := rd\n  io.funct3Out   := funct3\n\
+    \  io.rs1DataOut  := rs1Data\n  io.rs2DataOut  := rs2Data\n  io.immOut      :=\
+    \ immVal\n  io.branchTaken := branchTaken\n}\n // END_CHISEL_SNIPPET"
+  verilog_candidate: |+
+    // Generated by CIRCT firtool-1.62.0
+    module SimpleRISCVCpu(
+      input         clock,
+                    reset,
+      output [31:0] io_pcOut,
+                    io_aluOut,
+                    io_instrOut,
+      output [6:0]  io_opcodeOut,
+      output [4:0]  io_rdOut,
+      output [2:0]  io_funct3Out,
+      output [31:0] io_rs1DataOut,
+                    io_rs2DataOut,
+                    io_immOut,
+      output        io_branchTaken
+    );
+
+      wire [3:0][31:0]  _GEN = '{32'h1000063, 32'h208233, 32'hA08113, 32'h400093};
+      reg  [31:0]       pc;
+      wire [31:0]       io_instrOut_0 = _GEN[pc[3:2]];
+      reg  [31:0]       regFile_0;
+      reg  [31:0]       regFile_1;
+      reg  [31:0]       regFile_2;
+      reg  [31:0]       regFile_3;
+      reg  [31:0]       regFile_4;
+      reg  [31:0]       regFile_5;
+      reg  [31:0]       regFile_6;
+      reg  [31:0]       regFile_7;
+      reg  [31:0]       regFile_8;
+      reg  [31:0]       regFile_9;
+      reg  [31:0]       regFile_10;
+      reg  [31:0]       regFile_11;
+      reg  [31:0]       regFile_12;
+      reg  [31:0]       regFile_13;
+      reg  [31:0]       regFile_14;
+      reg  [31:0]       regFile_15;
+      reg  [31:0]       regFile_16;
+      reg  [31:0]       regFile_17;
+      reg  [31:0]       regFile_18;
+      reg  [31:0]       regFile_19;
+      reg  [31:0]       regFile_20;
+      reg  [31:0]       regFile_21;
+      reg  [31:0]       regFile_22;
+      reg  [31:0]       regFile_23;
+      reg  [31:0]       regFile_24;
+      reg  [31:0]       regFile_25;
+      reg  [31:0]       regFile_26;
+      reg  [31:0]       regFile_27;
+      reg  [31:0]       regFile_28;
+      reg  [31:0]       regFile_29;
+      reg  [31:0]       regFile_30;
+      reg  [31:0]       regFile_31;
+      wire [31:0][31:0] _GEN_0 =
+        {{regFile_31},
+         {regFile_30},
+         {regFile_29},
+         {regFile_28},
+         {regFile_27},
+         {regFile_26},
+         {regFile_25},
+         {regFile_24},
+         {regFile_23},
+         {regFile_22},
+         {regFile_21},
+         {regFile_20},
+         {regFile_19},
+         {regFile_18},
+         {regFile_17},
+         {regFile_16},
+         {regFile_15},
+         {regFile_14},
+         {regFile_13},
+         {regFile_12},
+         {regFile_11},
+         {regFile_10},
+         {regFile_9},
+         {regFile_8},
+         {regFile_7},
+         {regFile_6},
+         {regFile_5},
+         {regFile_4},
+         {regFile_3},
+         {regFile_2},
+         {regFile_1},
+         {regFile_0}};
+      wire [31:0]       io_rs1DataOut_0 = _GEN_0[io_instrOut_0[19:15]];
+      wire [31:0]       io_rs2DataOut_0 = _GEN_0[io_instrOut_0[24:20]];
+      wire              branchTaken = io_rs1DataOut_0 == io_rs2DataOut_0;
+      wire              _GEN_1 = io_instrOut_0[6:0] == 7'h33;
+      wire              _GEN_2 = io_instrOut_0[14:12] == 3'h0;
+      wire [31:0]       _aluResult_T = io_rs1DataOut_0 + io_rs2DataOut_0;
+      wire [31:0]       _aluResult_T_3 = io_rs1DataOut_0 & io_rs2DataOut_0;
+      wire              _GEN_3 = io_instrOut_0[6:0] == 7'h13;
+      wire [31:0]       _GEN_4 = {{20{io_instrOut_0[31]}}, io_instrOut_0[31:20]};
+      wire [31:0]       _aluResult_T_5 = io_rs1DataOut_0 - _GEN_4;
+      always @(posedge clock) begin
+        if (reset) begin
+          pc <= 32'h0;
+          regFile_0 <= 32'h0;
+          regFile_1 <= 32'h0;
+          regFile_2 <= 32'h0;
+          regFile_3 <= 32'h0;
+          regFile_4 <= 32'h0;
+          regFile_5 <= 32'h0;
+          regFile_6 <= 32'h0;
+          regFile_7 <= 32'h0;
+          regFile_8 <= 32'h0;
+          regFile_9 <= 32'h0;
+          regFile_10 <= 32'h0;
+          regFile_11 <= 32'h0;
+          regFile_12 <= 32'h0;
+          regFile_13 <= 32'h0;
+          regFile_14 <= 32'h0;
+          regFile_15 <= 32'h0;
+          regFile_16 <= 32'h0;
+          regFile_17 <= 32'h0;
+          regFile_18 <= 32'h0;
+          regFile_19 <= 32'h0;
+          regFile_20 <= 32'h0;
+          regFile_21 <= 32'h0;
+          regFile_22 <= 32'h0;
+          regFile_23 <= 32'h0;
+          regFile_24 <= 32'h0;
+          regFile_25 <= 32'h0;
+          regFile_26 <= 32'h0;
+          regFile_27 <= 32'h0;
+          regFile_28 <= 32'h0;
+          regFile_29 <= 32'h0;
+          regFile_30 <= 32'h0;
+          regFile_31 <= 32'h0;
+        end
+        else begin
+          automatic logic _GEN_5 = (_GEN_1 | _GEN_3) & (|(io_instrOut_0[11:7]));
+          if (io_instrOut_0[6:0] == 7'h63 & branchTaken)
+            pc <= pc + _GEN_4;
+          else
+            pc <= pc + 32'h4;
+          if (_GEN_5 & ~(|(io_instrOut_0[11:7]))) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_0 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_0 <= _aluResult_T_3;
+              else
+                regFile_0 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_0 <= _aluResult_T_5;
+            else
+              regFile_0 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h1) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_1 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_1 <= _aluResult_T_3;
+              else
+                regFile_1 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_1 <= _aluResult_T_5;
+            else
+              regFile_1 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h2) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_2 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_2 <= _aluResult_T_3;
+              else
+                regFile_2 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_2 <= _aluResult_T_5;
+            else
+              regFile_2 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h3) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_3 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_3 <= _aluResult_T_3;
+              else
+                regFile_3 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_3 <= _aluResult_T_5;
+            else
+              regFile_3 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h4) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_4 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_4 <= _aluResult_T_3;
+              else
+                regFile_4 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_4 <= _aluResult_T_5;
+            else
+              regFile_4 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h5) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_5 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_5 <= _aluResult_T_3;
+              else
+                regFile_5 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_5 <= _aluResult_T_5;
+            else
+              regFile_5 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h6) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_6 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_6 <= _aluResult_T_3;
+              else
+                regFile_6 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_6 <= _aluResult_T_5;
+            else
+              regFile_6 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h7) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_7 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_7 <= _aluResult_T_3;
+              else
+                regFile_7 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_7 <= _aluResult_T_5;
+            else
+              regFile_7 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h8) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_8 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_8 <= _aluResult_T_3;
+              else
+                regFile_8 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_8 <= _aluResult_T_5;
+            else
+              regFile_8 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h9) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_9 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_9 <= _aluResult_T_3;
+              else
+                regFile_9 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_9 <= _aluResult_T_5;
+            else
+              regFile_9 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'hA) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_10 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_10 <= _aluResult_T_3;
+              else
+                regFile_10 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_10 <= _aluResult_T_5;
+            else
+              regFile_10 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'hB) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_11 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_11 <= _aluResult_T_3;
+              else
+                regFile_11 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_11 <= _aluResult_T_5;
+            else
+              regFile_11 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'hC) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_12 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_12 <= _aluResult_T_3;
+              else
+                regFile_12 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_12 <= _aluResult_T_5;
+            else
+              regFile_12 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'hD) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_13 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_13 <= _aluResult_T_3;
+              else
+                regFile_13 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_13 <= _aluResult_T_5;
+            else
+              regFile_13 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'hE) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_14 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_14 <= _aluResult_T_3;
+              else
+                regFile_14 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_14 <= _aluResult_T_5;
+            else
+              regFile_14 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'hF) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_15 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_15 <= _aluResult_T_3;
+              else
+                regFile_15 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_15 <= _aluResult_T_5;
+            else
+              regFile_15 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h10) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_16 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_16 <= _aluResult_T_3;
+              else
+                regFile_16 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_16 <= _aluResult_T_5;
+            else
+              regFile_16 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h11) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_17 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_17 <= _aluResult_T_3;
+              else
+                regFile_17 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_17 <= _aluResult_T_5;
+            else
+              regFile_17 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h12) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_18 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_18 <= _aluResult_T_3;
+              else
+                regFile_18 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_18 <= _aluResult_T_5;
+            else
+              regFile_18 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h13) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_19 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_19 <= _aluResult_T_3;
+              else
+                regFile_19 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_19 <= _aluResult_T_5;
+            else
+              regFile_19 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h14) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_20 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_20 <= _aluResult_T_3;
+              else
+                regFile_20 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_20 <= _aluResult_T_5;
+            else
+              regFile_20 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h15) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_21 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_21 <= _aluResult_T_3;
+              else
+                regFile_21 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_21 <= _aluResult_T_5;
+            else
+              regFile_21 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h16) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_22 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_22 <= _aluResult_T_3;
+              else
+                regFile_22 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_22 <= _aluResult_T_5;
+            else
+              regFile_22 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h17) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_23 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_23 <= _aluResult_T_3;
+              else
+                regFile_23 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_23 <= _aluResult_T_5;
+            else
+              regFile_23 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h18) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_24 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_24 <= _aluResult_T_3;
+              else
+                regFile_24 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_24 <= _aluResult_T_5;
+            else
+              regFile_24 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h19) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_25 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_25 <= _aluResult_T_3;
+              else
+                regFile_25 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_25 <= _aluResult_T_5;
+            else
+              regFile_25 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h1A) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_26 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_26 <= _aluResult_T_3;
+              else
+                regFile_26 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_26 <= _aluResult_T_5;
+            else
+              regFile_26 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h1B) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_27 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_27 <= _aluResult_T_3;
+              else
+                regFile_27 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_27 <= _aluResult_T_5;
+            else
+              regFile_27 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h1C) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_28 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_28 <= _aluResult_T_3;
+              else
+                regFile_28 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_28 <= _aluResult_T_5;
+            else
+              regFile_28 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h1D) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_29 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_29 <= _aluResult_T_3;
+              else
+                regFile_29 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_29 <= _aluResult_T_5;
+            else
+              regFile_29 <= 32'h0;
+          end
+          if (_GEN_5 & io_instrOut_0[11:7] == 5'h1E) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_30 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_30 <= _aluResult_T_3;
+              else
+                regFile_30 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_30 <= _aluResult_T_5;
+            else
+              regFile_30 <= 32'h0;
+          end
+          if (_GEN_5 & (&(io_instrOut_0[11:7]))) begin
+            if (_GEN_1) begin
+              if (_GEN_2)
+                regFile_31 <= _aluResult_T;
+              else if (&(io_instrOut_0[14:12]))
+                regFile_31 <= _aluResult_T_3;
+              else
+                regFile_31 <= 32'h0;
+            end
+            else if (_GEN_3)
+              regFile_31 <= _aluResult_T_5;
+            else
+              regFile_31 <= 32'h0;
+          end
+        end
+      end // always @(posedge)
+      assign io_pcOut = pc;
+      assign io_aluOut =
+        _GEN_1
+          ? (_GEN_2 ? _aluResult_T : (&(io_instrOut_0[14:12])) ? _aluResult_T_3 : 32'h0)
+          : _GEN_3 ? _aluResult_T_5 : 32'h0;
+      assign io_instrOut = io_instrOut_0;
+      assign io_opcodeOut = io_instrOut_0[6:0];
+      assign io_rdOut = io_instrOut_0[11:7];
+      assign io_funct3Out = io_instrOut_0[14:12];
+      assign io_rs1DataOut = io_rs1DataOut_0;
+      assign io_rs2DataOut = io_rs2DataOut_0;
+      assign io_immOut = {{20{io_instrOut_0[31]}}, io_instrOut_0[31:20]};
+      assign io_branchTaken = branchTaken;
+    endmodule
+
+  was_valid: true
+verilog_diff: |-
+  --- verilog_original.v
+  +++ verilog_fixed.v
+  @@ -91,7 +92,7 @@
+  -  wire [31:0]       _aluResult_T_5 = io_rs1DataOut_0 + _GEN_4;
+  +  wire [31:0]       _aluResult_T_5 = io_rs1DataOut_0 - _GEN_4; 

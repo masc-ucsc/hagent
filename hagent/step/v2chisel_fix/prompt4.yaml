@@ -1,0 +1,14 @@
+- role: system
+  content: |
+    You are an expert in digital hardware design and code translation. Your task is to update the Chisel code so that its behavior matches the modifications made in the Verilog design.
+- role: user
+  content: |
+    The Verilog design has been updated from `{verilog_original}` to `{verilog_fixed}`. 
+    Here is the Chisel code that is failing LEC:
+    Chisel code:
+    ```
+    {chisel_code}
+    ```
+    One important change is that the ALU operation in the I-type instruction has changed (for example, from addition to subtraction). Please update the Chisel code snippet so that it reflects this change. Please provide the whole chisel code snippet.
+    
+    Output only the updated Chisel code snippet (without any additional commentary or code fences).
