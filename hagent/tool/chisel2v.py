@@ -86,7 +86,7 @@ class Chisel2v:
                 f'\nobject Top extends App {{\n'
                 f'  ChiselStage.emitSystemVerilogFile(\n'
                 f'    new {classname},\n'
-                f'    firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info")\n'
+                f'    firtoolOpts = Array("-disable-all-randomization")\n'
                 f'  )\n'
                 f'}}\n'
             )

@@ -1,5 +1,5 @@
 llm:
-  model: openai/gpt-4-turbo-preview
+  model: openai/o3-mini-2025-01-31
 verilog_original: |
   // [Original Verilog code goes here]
   module SimpleRISCVCpu(
@@ -2101,30 +2101,34 @@ chisel_fixed:
     }
      // END_CHISEL_SNIPPET
   refined_chisel: "import chisel3._\nimport chisel3.util._\n\nclass SimpleRISCVCpu\
-    \ extends Module {\n  val io = IO(new Bundle {\n    val pcOut = Output(UInt(32.W))\n\
-    \    val aluOut = Output(UInt(32.W))\n    val instrOut = Output(UInt(32.W))\n\
-    \    val opcodeOut = Output(UInt(7.W))\n    val rdOut = Output(UInt(5.W))\n  \
-    \  val funct3Out = Output(UInt(3.W))\n    val rs1DataOut = Output(UInt(32.W))\n\
-    \    val rs2DataOut = Output(UInt(32.W))\n    val immOut = Output(UInt(32.W))\n\
-    \    val branchTaken = Output(Bool())\n  })\n\n  val pc = RegInit(0.U(32.W))\n\
-    \  val regFile = Reg(Vec(32, UInt(32.W)))\n\n  val instrMem = VecInit(\n    0x1000063.U(32.W),\
-    \ 0x208233.U(32.W), 0xA08113.U(32.W), 0x400093.U(32.W)\n  )\n\n  pc := Mux(reset.asBool(),\
-    \ 0.U, Mux(io.branchTaken, pc + io.immOut, pc + 4.U))\n\n  val instruction = MuxLookup(pc(3,\
-    \ 2), 0.U, Seq(\n    (0.U) -> instrMem(0),\n    (1.U) -> instrMem(1),\n    (2.U)\
-    \ -> instrMem(2),\n    (3.U) -> instrMem(3)\n  ))\n  \n  val rs1 = instruction(19,\
-    \ 15)\n  val rs2 = instruction(24, 20)\n  val rd = instruction(11, 7)\n  val funct3\
-    \ = instruction(14, 12)\n  val opcode = instruction(6, 0)\n  val imm = Cat(instruction(31,\
-    \ 20), Fill(12, instruction(31))).asUInt\n\n  val rs1Data = Mux(rs1 === 0.U, 0.U,\
-    \ regFile(rs1))\n  val rs2Data = Mux(rs2 === 0.U, 0.U, regFile(rs2))\n\n  val\
-    \ aluResult = Wire(UInt(32.W))\n  aluResult := 0.U\n\n  when(opcode === \"b0110011\"\
-    .U) {\n    when(funct3 === \"b000\".U) {\n      aluResult := rs1Data + rs2Data\n\
-    \    }.elsewhen(funct3 === \"b111\".U) {\n      aluResult := rs1Data & rs2Data\n\
-    \    }\n  }.elsewhen(opcode === \"b0010011\".U) {\n    aluResult := rs1Data -\
-    \ imm\n  }\n\n  when(opcode === \"b1100011\".U && (rs1Data === rs2Data)) {\n \
-    \   io.branchTaken := true.B\n    pc := pc + imm\n  }.otherwise {\n    io.branchTaken\
-    \ := false.B\n    pc := pc + 4.U\n  }\n\n  when(opcode === \"b0110011\".U || opcode\
-    \ === \"b0010011\".U) {\n    when(rd =/= 0.U) {\n      regFile(rd) := aluResult\n\
-    \    }\n  }\n\n  io.pcOut := pc\n  io.aluOut := aluResult\n  io.instrOut := instruction\n\
-    \  io.opcodeOut := opcode\n  io.rdOut := rd\n  io.funct3Out := funct3\n  io.rs1DataOut\
-    \ := rs1Data\n  io.rs2DataOut := rs2Data\n  io.immOut := imm\n}"
+    \ extends Module {\n  val io = IO(new Bundle {\n    val pcOut       = Output(UInt(32.W))\n\
+    \    val aluOut      = Output(UInt(32.W))\n    val instrOut    = Output(UInt(32.W))\n\
+    \    val opcodeOut   = Output(UInt(7.W))\n    val rdOut       = Output(UInt(5.W))\n\
+    \    val funct3Out   = Output(UInt(3.W))\n    val rs1DataOut  = Output(UInt(32.W))\n\
+    \    val rs2DataOut  = Output(UInt(32.W))\n    val immOut      = Output(UInt(32.W))\n\
+    \    val branchTaken = Output(Bool())\n  })\n\n  // Instruction ROM\n  val rom\
+    \ = VecInit(Seq(\n    \"h1000063\".U(32.W),\n    \"h208233\".U(32.W),\n    \"\
+    hA08113\".U(32.W),\n    \"h400093\".U(32.W)\n  ))\n\n  // Program counter register\
+    \ and instruction fetch\n  val pc = RegInit(0.U(32.W))\n  val instr = rom(pc(3,2))\n\
+    \n  // Decode instruction fields\n  val opcode   = instr(6,0)\n  val rd      \
+    \ = instr(11,7)\n  val funct3   = instr(14,12)\n  val rs1Field = instr(19,15)\n\
+    \  val rs2Field = instr(24,20)\n  val imm      = Cat(Fill(20, instr(31)), instr(31,20))\n\
+    \n  // Register file: 32 registers\n  val regFile = RegInit(VecInit(Seq.fill(32)(0.U(32.W))))\n\
+    \  \n  // Read registers with reversed mapping: _GEN_0(index) = regFile(31 - index)\n\
+    \  val rs1Data = regFile(31.U - rs1Field)\n  val rs2Data = regFile(31.U - rs2Field)\n\
+    \  val branchTaken = rs1Data === rs2Data\n\n  // Instruction type signals\n  val\
+    \ isRtype = opcode === \"h33\".U\n  val isItype = opcode === \"h13\".U\n\n  //\
+    \ ALU operations\n  val aluAdd = rs1Data + rs2Data\n  val aluAnd = rs1Data & rs2Data\n\
+    \  val aluSub = rs1Data - imm  // I-type: subtraction\n\n  // Compute ALU result\n\
+    \  val computed = Mux(isRtype,\n    Mux(funct3 === 0.U, aluAdd, Mux(funct3 ===\
+    \ \"b111\".U, aluAnd, 0.U)),\n    Mux(isItype, aluSub, 0.U)\n  )\n\n  // Update\
+    \ PC\n  when(opcode === \"h63\".U && branchTaken) {\n    pc := pc + imm\n  } .otherwise\
+    \ {\n    pc := pc + 4.U\n  }\n\n  // Update register file: destination mapping:\
+    \ if rd equals X, update regFile(31 - X)\n  // Only update if instruction is R-type\
+    \ or I-type and rd is nonzero.\n  for(i <- 0 until 32) {\n    regFile(i) := Mux(((rd\
+    \ =/= 0.U) && (rd === (31.U - i.U)) && (isRtype || isItype)), computed, 0.U)\n\
+    \  }\n\n  // Outputs\n  io.pcOut       := pc\n  io.aluOut      := computed\n \
+    \ io.instrOut    := instr\n  io.opcodeOut   := opcode\n  io.rdOut       := rd\n\
+    \  io.funct3Out   := funct3\n  io.rs1DataOut  := rs1Data\n  io.rs2DataOut  :=\
+    \ rs2Data\n  io.immOut      := imm\n  io.branchTaken := branchTaken\n}"
   equiv_passed: false
