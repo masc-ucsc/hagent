@@ -81,7 +81,16 @@ def main():
     # Write the updated YAML back to the output file
     try:
         with open(output_yaml_path, 'w', encoding='utf-8') as f:
-            yaml.dump(yaml_data, f, sort_keys=False)
+            # Manually write the YAML file to ensure proper formatting
+            f.write("llm:\n")
+            f.write(f"  model: {yaml_data['llm']['model']}\n")
+            f.write("verilog_original: |\n")
+            for line in verilog_output.splitlines():
+                f.write(f"    {line}\n")
+            f.write("chisel_original: |\n")
+            for line in yaml_data['chisel_original'].splitlines():
+                f.write(f"    {line}\n")
+            f.write(f"name: {yaml_data['name']}\n")
         print(f"Updated YAML written to '{output_yaml_path}'.")
     except Exception as e:
         print(f"Error writing to YAML file '{output_yaml_path}': {e}", file=sys.stderr)
