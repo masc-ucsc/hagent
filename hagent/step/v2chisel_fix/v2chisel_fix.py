@@ -192,6 +192,9 @@ class V2ChiselFix(Step):
         if not self.refine_llm:
             print('[WARN] No LLM available for refinement.')
             return current_code
+        
+        # Clear chat history to start a new conversation for each iteration.
+        self.refine_llm.clear_history()
 
         prompt_dict = {
             'chisel_code': current_code,
@@ -199,6 +202,7 @@ class V2ChiselFix(Step):
             'verilog_fixed': self.verilog_fixed_str,
             'verilog_original': self.verilog_original_str,
             'verilog_diff': self.verilog_diff_str,
+            'chisel_diff': self.chisel_diff_sttr,
         }
 
         # Safely attempt to format and show the final LLM prompt

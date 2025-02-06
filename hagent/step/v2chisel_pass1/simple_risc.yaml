@@ -1326,4 +1326,5 @@ chisel_original: |
     io.immOut      := immVal
     io.branchTaken := branchTaken
   }
+  
 name: simple_module
