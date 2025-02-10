@@ -20,10 +20,12 @@ def main():
         sys.exit(1)
 
     # Hard-code the Verilog diff here (you can copy and paste your diff)
-    verilog_diff = """598c598
-<     assign io_immOut = {{20{io_instrOut_0[31]}}, io_instrOut_0[31:20]};       // src/main/scala/SimpleRISCVCpu.scala:7:7, :50:28, :59:{19,24,40,58}
+    verilog_diff = """9c9
+<       assign io_out = io_in;  // src/main/scala/Foo.scala:5:7
 ---
->     assign io_immOut = {{20{io_instrOut_0[31]}}, io_instrOut_0[28:20]};       // src/main/scala/SimpleRISCVCpu.scala:7:7, :50:28, :59:{19,24,40,58}"""
+>       assign io_out = ~io_in; // src/main/scala/Foo.scala:5:7
+10a11
+>"""
 
     # Write the hard-coded diff to a temporary file so FilterLines can read it
     with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".diff") as temp_diff:

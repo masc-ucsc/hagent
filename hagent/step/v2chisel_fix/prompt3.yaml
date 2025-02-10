@@ -1,35 +1,33 @@
-# hagent/step/v2chisel_fix/prompt3.yaml
 - role: system
   content: |
     You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
 - role: user
   content: |
-    The previously generated Chisel code is not logically equivalent to the target design.
-    Here is the **fixed** Verilog we want to match:
-    ```
-    {verilog_fixed}
-    ```
-    
-    Below is a **unified diff** (`verilog_diff`) showing how the Verilog changed from the old design:
+    The provided Chisel code is not logically equivalent to the target Verilog design. The Verilog design has been updated, and a unified diff (verilog_diff) below shows the changes from the original design:
     ```
     {verilog_diff}
     ```
-
-    and here is the original verilog code:
-    ```
-    {verilog_original}
-    ```
-
-    The last LEC error or reason for failure was:
+    
+    A Logic Equivalence Check (LEC) was run and reported the following error or counterexample:
     ```
     {lec_output}
     ```
     
-    We need a new, correct Chisel snippet that compiles and is logically equivalent to **the fixed Verilog**. 
-
+    Additionally, here is a subset of the original Chisel code with "HERE:" markers indicating the lines most likely to require changes:
+    ```
+    {chisel_subset}
+    ```
+    
+    And here is the full original Chisel code that needs to be corrected:
+    ```
+    {chisel_original}
+    ```
+    
+    Your task is to produce a corrected version of the Chisel code that:
+      - Compiles successfully.
+      - Retains the same module name and port definitions.
+      - Implements the necessary changes so that the generated Verilog is logically equivalent to the updated design.
+    
     **Important instructions**:
-    - Return *only* the updated Chisel code (no markdown fences, no triple backticks, no explanation).
-    - Keep the module name and port definitions consistent.
-    - Fix the code so it compiles, and passes LEC with the new Verilog design.
-    - If you must add or remove lines, do so carefully. 
-    - No extra commentary or disclaimers. Just the corrected code in plain text.
+      - Return only the updated Chisel code as plain text.
+      - Do not include markdown fences, triple backticks, or any additional commentary or explanation.

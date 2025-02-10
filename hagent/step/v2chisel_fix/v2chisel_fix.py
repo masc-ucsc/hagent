@@ -39,7 +39,6 @@ class V2ChiselFix(Step):
         self.verilog_original_str = self.input_data.get('verilog_original', '')
         self.verilog_diff_str = self.input_data.get('verilog_diff', '')
 
-
         if os.path.exists(self.prompt3_path):
             llm_args = self.input_data.get('llm', {})
             if llm_args:
@@ -71,6 +70,10 @@ class V2ChiselFix(Step):
         verilog_candidate = pass1_info.get('verilog_candidate', '')
         was_valid = pass1_info.get('was_valid', False)
         original_chisel = pass1_info.get('original_chisel', '')
+
+        # Store the original chisel code and hint subset for refinement.
+        self.chisel_original = original_chisel
+        self.chisel_subset = pass1_info.get('chisel_subset', chisel_changed)
 
         # Store final chisel code + equivalence status here:
         # (tests expect 'refined_chisel' to eventually reflect any LLM modifications)
@@ -115,7 +118,6 @@ class V2ChiselFix(Step):
                 if not new_verilog:
                     lec_error = gen_error or 'Chisel2v failed'
                     print(f'[ERROR] Verilog generation failed on iteration {attempt}: {lec_error}')
-                    # Continue to next iteration (if any remain)
                     continue
 
                 print(f'[DEBUG] Generated new Verilog:\n{new_verilog}')
@@ -128,7 +130,6 @@ class V2ChiselFix(Step):
                 else:
                     print(f'[DEBUG] LEC still failing after iteration {attempt}. lec_error={lec_error}')
 
-            # We might exit loop without success
             if not is_equiv:
                 if iteration_count < self.lec_limit:
                     print(f'[WARN] Exiting early on iteration {iteration_count} due to no improvement or error.')
@@ -137,13 +138,12 @@ class V2ChiselFix(Step):
         else:
             print('[INFO] Code is already equivalent, no refinement needed.')
 
-        # Update final fields:
         result['chisel_fixed']['refined_chisel'] = refined_chisel
         result['chisel_fixed']['equiv_passed'] = is_equiv
 
         print("[INFO] v2chisel_fix: Done. 'chisel_fixed' written to output YAML.")
         return result
-    
+
     def _generate_diff(self, old_code: str, new_code: str) -> str:
         """
         Generate a unified diff string comparing old_code vs. new_code.
@@ -192,20 +192,16 @@ class V2ChiselFix(Step):
         if not self.refine_llm:
             print('[WARN] No LLM available for refinement.')
             return current_code
-        
-        # Clear chat history to start a new conversation for each iteration.
+
         self.refine_llm.clear_history()
 
         prompt_dict = {
-            'chisel_code': current_code,
+            'chisel_original': self.chisel_original,
+            'chisel_subset': self.chisel_subset,
             'lec_output': lec_error or 'LEC failed',
-            'verilog_fixed': self.verilog_fixed_str,
-            'verilog_original': self.verilog_original_str,
             'verilog_diff': self.verilog_diff_str,
-            'chisel_diff': self.chisel_diff_sttr,
         }
 
-        # Safely attempt to format and show the final LLM prompt
         try:
             formatted = self.refine_llm.chat_template.format(prompt_dict)
             print('\n----- LLM FINAL MESSAGES TO SEND (prompt3.yaml) -----')
@@ -217,14 +213,11 @@ class V2ChiselFix(Step):
                     else:
                         print(chunk)
             else:
-                # Just print raw if it's not a list
                 print(formatted)
         except Exception as ex:
-            # If the template is invalid, do not bail out completely; just keep old code
             print(f'[ERROR] LLM template formatting error: {ex}')
             return current_code
 
-        # Now get the actual response from the LLM:
         response_text = self.refine_llm.chat(prompt_dict)
         print(f'[DEBUG] LLM raw chat response:\n{response_text}')
 
@@ -234,7 +227,7 @@ class V2ChiselFix(Step):
 
         new_code = self._strip_markdown_fences(response_text.strip())
         if not new_code:
-            print('[ERROR] After removing backticks/fences, code is empty. Keeping old code.')
+            print('[ERROR] After removing markdown fences, code is empty. Keeping old code.')
             return current_code
 
         print('[INFO] LLM provided a refined Chisel snippet.')
@@ -264,7 +257,7 @@ class V2ChiselFix(Step):
         match = re.search(r'class\s+([A-Za-z0-9_]+)\s+extends\s+Module', chisel_code)
         if match:
             return match.group(1)
-        return 'MyModule'  # fallback
+        return 'MyModule'
 
     def _strip_markdown_fences(self, code_str: str) -> str:
         code_str = re.sub(r'```[a-zA-Z]*\n?', '', code_str)
