@@ -4,20 +4,18 @@
 
 - role: user
   content: |
-    I have original Chisel code and a diff (unified format) between verilog_original and verilog_fixed.
-    The fixed Verilog represents the changes I want to reflect in the Chisel.
+    I have a Scala program that generates Verilog. I made modifications to the Verilog code and now need to update the corresponding Chisel code.
     
-    Original Chisel:
-    ```
-    {chisel_original}
-    ```
-    
-    Diff between old Verilog and new Verilog:
+    The fixed Verilog represents the desired changes. Here is the unified diff between the original and fixed Verilog:
     ```
     {verilog_diff}
     ```
 
-    Please output a single Chisel source code snippet, with no explanations, that applies those
-    verilog changes into the original Chisel. Ensure it's syntactically correct and logically
-    consistent with the new Verilog. please prvide only valid code no explaniations and notes.
+    I also provide a subset of the Chisel code with hints "HERE:" marking the lines that are most likely to require changes:
+    ```
+    {chisel_subset}
+    ```
 
+    Can you give me a Chisel diff that could work? 
+    Output *only* the diff in **unified diff format** with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+    PLEASE No explanation, no Note. ONLY diff without HERE?, **unified diff format**
