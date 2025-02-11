@@ -28,6 +28,7 @@ pyslang = "^8.0.0"
 speechrecognition = "^3.14.1"
 sounddevice = "^0.5.1"
 numpy = "^2.2.2"
+rapidfuzz = "^3.12.1"
 
 [build-system]
 requires = ["poetry-core"]
