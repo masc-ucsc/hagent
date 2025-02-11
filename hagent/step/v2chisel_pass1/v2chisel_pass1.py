@@ -10,7 +10,9 @@ from hagent.core.llm_wrap import LLM_wrap
 
 from hagent.tool.chisel2v import Chisel2v
 from hagent.tool.chisel_diff_applier import ChiselDiffApplier
-from hagent.tool.filter_lines import FilterLines
+
+from hagent.tool.extract_verilog_diff_keywords import FuzzyGrepFilter
+from hagent.tool.fuzzy_grep import Fuzzy_grep
 import tempfile
 
 
@@ -51,36 +53,57 @@ class V2ChiselPass1(Step):
 
     def _extract_chisel_subset(self, chisel_code: str, verilog_diff: str) -> str:
         """
-        Extract candidate hint lines from the Chisel code using the FilterLines tool.
-        This function writes both the Verilog diff and the Chisel code to temporary files,
-        then calls FilterLines.filter_lines() to score and select candidate lines.
-        The returned string contains the candidate lines prefixed with "HERE:?" (plus optional context).
+        Extract candidate hint lines from the Chisel code.
+        Instead of using FilterLines, this function:
+          1. Extracts keywords from the Verilog diff using FuzzyGrepFilter.
+          2. Uses Fuzzy_grep to search for these keywords in the Chisel code.
+        Returns the matching hint lines as a string, with "->" marking central matches.
         """ 
+        # Step 1: Extract keywords from the Verilog diff.
+        keywords = FuzzyGrepFilter.extract_keywords_from_diff(verilog_diff)
+        print("------------------------------------------------")
+        print("Extracted keywords from verilog diff:")
+        print(keywords)
+        print("------------------------------------------------")
 
-        # Write the verilog diff to a temporary file.
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False, encoding="utf-8") as diff_temp:
-            diff_temp.write(verilog_diff)
-            diff_temp.flush()
-            diff_file = diff_temp.name
-
-        # Write the chisel code to a temporary file.
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False, encoding="utf-8") as chisel_temp:
-            chisel_temp.write(chisel_code)
-            chisel_temp.flush()
-            chisel_file = chisel_temp.name
-
-        # Create a FilterLines instance and get the candidate hint lines.
-        fl = FilterLines()
-        hints = fl.filter_lines(diff_file, chisel_file, context=0)
+        # # Step 2: Process keywords.
+        # processed_keywords = []
+        # for kw in keywords:
+        #     new_kw = kw
+        #     if new_kw.startswith("io_"):
+        #         new_kw = new_kw[3:]
+        #     if new_kw.endswith("_0"):
+        #         new_kw = new_kw[:-2]
+        #     processed_keywords.append(new_kw)
+        
+        # print("------------------------------------------------")
+        # print("Processed keywords (for fuzzy grep patterns):")
+        # print(processed_keywords)
+        # print("------------------------------------------------")
+        
+        # Step 3: Use Fuzzy_grep to search for these keywords in the Chisel code.
+        fg = Fuzzy_grep()
+        if not fg.setup("chisel"):
+            self.error("Fuzzy_grep setup failed: " + fg.error_message)
+        
+        # Use the processed keywords as the list of search patterns.
+        # Here we use a context of 1 and a threshold of 40.
+        search_results = fg.search(text=chisel_code, search_terms=keywords, context=1, threshold=40)
+        
+        hints = ""
+        if "text" in search_results:
+            matching_lines = []
+            for (lineno, line, central) in search_results["text"]:
+                marker = "->" if central else "  "
+                matching_lines.append(f"{marker}{lineno:4d}: {line}")
+            hints = "\n".join(matching_lines)
 
         print("------------------------------------------------")
-        print("Extracted hint lines:")
+        print("Extracted hint lines from chisel code via fuzzy grep:")
         print(hints)
         print("------------------------------------------------")
-
+        
         return hints
-
-
 
     def _strip_markdown_fences(self, code_str: str) -> str:
         """
@@ -132,6 +155,7 @@ class V2ChiselPass1(Step):
 
         # Step 2: Extract the subset (hints) from the original Chisel code.
         chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text)
+        data['chisel_subset'] = chisel_subset
 
         max_iterations = 5
         was_valid = False

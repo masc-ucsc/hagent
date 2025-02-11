@@ -20,10 +20,16 @@ def main():
         sys.exit(1)
 
     # Hard-code the Verilog diff here (you can copy and paste your diff)
-    verilog_diff = """68c68
-<         countReg <= countReg + 4'h1;      // src/main/scala/Counter.scala:15:27, :21:28
----
->         countReg <= countReg - 4'h1;      // src/main/scala/Counter.scala:15:27, :21:28"""
+    verilog_diff = """--- verilog_original.v
++++ verilog_fixed.v
+@@ -595,6 +595,6 @@
+   assign io_funct3Out = io_instrOut_0[14:12];  // src/main/scala/SimpleRISCVCpu.scala:7:7, :50:28, :52:28
+   assign io_rs1DataOut = io_rs1DataOut_0;      // src/main/scala/SimpleRISCVCpu.scala:7:7, :73:29
+   assign io_rs2DataOut = io_rs2DataOut_0;      // src/main/scala/SimpleRISCVCpu.scala:7:7, :73:29
+-  assign io_immOut = {{20{io_instrOut_0[31]}}, io_instrOut_0[31:20]};  // src/main/scala/SimpleRISCVCpu.scala:7:7, :50:28, :59:{19,24,40,58}
++  assign io_immOut = {{20{io_instrOut_0[31]}}, io_instrOut_0[28:20]};  // src/main/scala/SimpleRISCVCpu.scala:7:7, :50:28, :59:{19,24,40,58}
+   assign io_branchTaken = branchTaken; // src/main/scala/SimpleRISCVCpu.scala:7:7, :73:29
+ endmodule"""
 
     # Write the hard-coded diff to a temporary file so FilterLines can read it
     with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".diff") as temp_diff:
