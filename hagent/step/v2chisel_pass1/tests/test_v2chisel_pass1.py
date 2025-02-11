@@ -91,7 +91,7 @@ class MyModule extends Module {
 def test_no_valid_snippet_generated(step_with_io):
     """
     - LLM never produces valid code after all attempts (empty or invalid).
-    - We expect 'No valid snippet generated.' in chisel_changed and was_valid=False.
+    - We expect 'No valid snippet generated.' in chisel_updated and was_valid=False.
     """
     # Force all attempts to return invalid or empty
     mock_responses = [
@@ -114,7 +114,7 @@ def test_no_valid_snippet_generated(step_with_io):
 
     chisel_data = res['chisel_pass1']
     assert chisel_data['was_valid'] is False
-    assert chisel_data['chisel_changed'] == 'No valid snippet generated.'
+    assert chisel_data['chisel_updated'] == 'No valid snippet generated.'
 
 
 def test_chisel2v_empty_snippet(step_with_io):
@@ -134,7 +134,7 @@ def test_chisel2v_empty_snippet(step_with_io):
 def test_chisel2v_no_module_keyword(step_with_io):
     """
     Force all attempts to produce Verilog with *no* 'module' substring => remain invalid.
-    Expect final was_valid=False and "No valid snippet generated."
+    Expect final was_valid=False and "No valid snippet generated.".
     """
     step_with_io.setup()
 
@@ -153,14 +153,14 @@ def test_chisel2v_no_module_keyword(step_with_io):
 
     chisel_data = res['chisel_pass1']
     assert chisel_data['was_valid'] is False, "Should remain invalid if 'module' not found"
-    assert chisel_data['chisel_changed'] == 'No valid snippet generated.'
+    assert chisel_data['chisel_updated'] == 'No valid snippet generated.'
     assert chisel_data['verilog_candidate'] is None
 
 
 def test_chisel2v_exception(step_with_io):
     """
     Chisel2v.generate_verilog throws an exception every time => all 5 attempts fail.
-    Final snippet => 'No valid snippet generated.'
+    Final snippet => 'No valid snippet generated.'.
     """
     step_with_io.setup()
 
@@ -171,13 +171,14 @@ def test_chisel2v_exception(step_with_io):
 
     with patch.object(step_with_io.lw, 'inference', side_effect=side_effect):
         with patch(
-            'hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v.generate_verilog', side_effect=RuntimeError('some internal error')
+            'hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v.generate_verilog',
+            side_effect=RuntimeError('some internal error')
         ):
             res = step_with_io.step()
 
     chisel_data = res['chisel_pass1']
     assert chisel_data['was_valid'] is False
-    assert chisel_data['chisel_changed'] == 'No valid snippet generated.'
+    assert chisel_data['chisel_updated'] == 'No valid snippet generated.'
     assert chisel_data['verilog_candidate'] is None
 
 
@@ -196,7 +197,8 @@ class TopModule extends Module {
 
     with patch.object(step_with_io.lw, 'inference', return_value=[snippet]):
         with patch(
-            'hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v.generate_verilog', return_value='module TopModule(); endmodule'
+            'hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v.generate_verilog',
+            return_value='module TopModule(); endmodule'
         ):
             res = step_with_io.step()
 
@@ -208,7 +210,8 @@ class TopModule extends Module {
     snippet2 = '```chisel\n// no class definition\n```'
     with patch.object(step_with_io.lw, 'inference', return_value=[snippet2]):
         with patch(
-            'hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v.generate_verilog', return_value='module MyModule(); endmodule'
+            'hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v.generate_verilog',
+            return_value='module MyModule(); endmodule'
         ):
             res2 = step_with_io.step()
 
@@ -230,7 +233,6 @@ def test_missing_llm_section(tmp_path):
     inp_file = tmp_path / 'input_missing_llm.yaml'
     with open(inp_file, 'w') as f:
         import yaml
-
         yaml.safe_dump(missing_llm_input, f)
 
     out_file = tmp_path / 'output_missing_llm.yaml'
@@ -255,10 +257,8 @@ def test_missing_prompt1_file(step_with_io, tmp_path):
     )
 
     # Patch 'os.path.exists' to return False for 'prompt1.yaml'
-    with (
-        patch('hagent.step.v2chisel_pass1.v2chisel_pass1.os.path.exists', return_value=False),
-        patch('hagent.core.step.Step.error', side_effect=ValueError(f'Prompt file not found: {prompt1_path}')),
-    ):
+    with patch('hagent.step.v2chisel_pass1.v2chisel_pass1.os.path.exists', return_value=False), \
+         patch('hagent.core.step.Step.error', side_effect=ValueError(f'Prompt file not found: {prompt1_path}')):
         with pytest.raises(ValueError, match=f'Prompt file not found: {prompt1_path}'):
             step_with_io.setup()
 
@@ -286,28 +286,7 @@ def test_llm_returns_empty_response(step_with_io):
     # Verify that 'chisel_pass1' reflects the continued state
     chisel_data = res['chisel_pass1']
     assert chisel_data['was_valid'] is False
-    assert chisel_data['chisel_changed'] == 'No valid snippet generated.'
-
-
-def test_missing_prompt1_file(step_with_io, tmp_path):
-    """
-    Test that an error is raised when 'prompt1.yaml' file is missing.
-    """
-    import hagent.step.v2chisel_pass1.v2chisel_pass1
-
-    # Determine the correct path to 'prompt1.yaml'
-    prompt1_path = os.path.join(
-        os.path.dirname(os.path.abspath(hagent.step.v2chisel_pass1.v2chisel_pass1.__file__)), 'prompt1.yaml'
-    )
-
-    # Patch 'os.path.exists' to return False for 'prompt1.yaml'
-    with patch('hagent.step.v2chisel_pass1.v2chisel_pass1.os.path.exists') as mock_exists:
-        mock_exists.side_effect = lambda path: False if path == prompt1_path else True
-
-        # Patch the 'error' method in the Step class to raise ValueError
-        with patch('hagent.core.step.Step.error', side_effect=ValueError(f'Prompt file not found: {prompt1_path}')):
-            with pytest.raises(ValueError, match=f'Prompt file not found: {prompt1_path}'):
-                step_with_io.setup()
+    assert chisel_data['chisel_updated'] == 'No valid snippet generated.'
 
 
 def test_chisel2v_setup_failure(step_with_io):
@@ -333,5 +312,5 @@ def test_chisel2v_setup_failure(step_with_io):
     # Verify that 'chisel_pass1' reflects the setup failure
     chisel_data = res['chisel_pass1']
     assert chisel_data['was_valid'] is False
-    assert chisel_data['chisel_changed'] == 'No valid snippet generated.'
+    assert chisel_data['chisel_updated'] == 'No valid snippet generated.'
     assert chisel_data['verilog_candidate'] is None
