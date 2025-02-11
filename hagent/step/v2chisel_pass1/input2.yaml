@@ -102,24 +102,24 @@ verilog_fixed: |
       `define RANDOMIZE
     `endif // RANDOMIZE_REG_INIT
   `endif // not def RANDOMIZE
-  
+
   // RANDOM may be set to an expression that produces a 32-bit random unsigned value.
   `ifndef RANDOM
     `define RANDOM $random
   `endif // not def RANDOM
-  
+
   // Users can define INIT_RANDOM as general code that gets injected into the
   // initializer block for modules with registers.
   `ifndef INIT_RANDOM
     `define INIT_RANDOM
   `endif // not def INIT_RANDOM
-  
+
   // If using random initialization, you can also define RANDOMIZE_DELAY to
   // customize the delay used, otherwise 0.002 is used.
   `ifndef RANDOMIZE_DELAY
     `define RANDOMIZE_DELAY 0.002
   `endif // not def RANDOMIZE_DELAY
-  
+
   // Define INIT_RANDOM_PROLOG_ for use in our modules below.
   `ifndef INIT_RANDOM_PROLOG_
     `ifdef RANDOMIZE
@@ -132,21 +132,21 @@ verilog_fixed: |
       `define INIT_RANDOM_PROLOG_
     `endif // RANDOMIZE
   `endif // not def INIT_RANDOM_PROLOG_
-  
+
   // Include register initializers in init blocks unless synthesis is set
   `ifndef SYNTHESIS
     `ifndef ENABLE_INITIAL_REG_
       `define ENABLE_INITIAL_REG_
     `endif // not def ENABLE_INITIAL_REG_
   `endif // not def SYNTHESIS
-  
+
   // Include rmemory initializers in init blocks unless synthesis is set
   `ifndef SYNTHESIS
     `ifndef ENABLE_INITIAL_MEM_
       `define ENABLE_INITIAL_MEM_
     `endif // not def ENABLE_INITIAL_MEM_
   `endif // not def SYNTHESIS
-  
+
   module Counter( // src/main/scala/Counter.scala:7:9
     input        clock,   // src/main/scala/Counter.scala:7:9
                  reset,   // src/main/scala/Counter.scala:7:9
@@ -154,7 +154,7 @@ verilog_fixed: |
                  io_reset,        // src/main/scala/Counter.scala:8:16
     output [3:0] io_count // src/main/scala/Counter.scala:8:16
   );
-  
+
     reg [3:0] countReg;   // src/main/scala/Counter.scala:15:27
     always @(posedge clock) begin // src/main/scala/Counter.scala:7:9
       if (reset)  // src/main/scala/Counter.scala:7:9
@@ -162,7 +162,7 @@ verilog_fixed: |
       else if (io_reset)  // src/main/scala/Counter.scala:8:16
         countReg <= 4'h0; // src/main/scala/Counter.scala:15:27
       else if (io_enable) // src/main/scala/Counter.scala:8:16
-        countReg <= countReg - 4'h1;      // the smallest chnage
+        countReg <= countReg - 4'h1;      // src/main/scala/Counter.scala:15:27, :21:28
     end // always @(posedge)
     `ifdef ENABLE_INITIAL_REG_    // src/main/scala/Counter.scala:7:9
       `ifdef FIRRTL_BEFORE_INITIAL        // src/main/scala/Counter.scala:7:9
