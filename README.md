@@ -152,19 +152,50 @@ If you encounter any issues or have questions, please open an issue on GitHub.
 HAgent is mostly build with AI tools as a way to learn insights/ideas for HAgent flow. A typical
 class creation follows these steps:
 
-1. Iterate for each class to build a plan
-  To start, include the hagent/spec.md and then tools or step/spec.md as high level. Something like:
-"""
-Create a PLAN for a Hagent tool (a Python class) that needs to <very high level description of the tool>
+### Create the API
 
-Some background information:
+Use the following prompt, to create a first API, and iterate with Human-in-the-loop until happy with it.
+
+"""
+Build a new Hagent tool API. This is a high level explanation for HAgent:
 <include hagent/spec.md>
 
 This class is a HAgent tool, as such this is a relevant information and example:
 <include hagent/tool/spec.md>
-"""
-2. After iterating over the plan, tell the AI to extract the API. Check that it is consistent in names and style with other
-tools/steps, and that you are happy with it.
-3. Integrate the API with the Plan and generate the code and unit test
-4. If there are issues update the plan, try to not update the code directly.
 
+
+Create a high level plan and Class API without code for a Hagent tool using the following characteristics:
+<some explanation on what the tool should do>
+
+A sample code that can be used as a guide for how to use the tool:
+<some code snippets>
+"""
+
+### Create the Simple Example
+
+Use the following prompt, to create a simple use case example, and iterate with Human-in-the-loop until happy with it. If it requires to change the API, fix it.
+
+"""
+Assuming a HAgent class with the following API, create a simple use case example that demonstrates the class usage and has some simple testing. This is not a unit testing, just a sample to highligh the API usage.
+<API>
+
+As a reference, this is a simple test example for another HAgent tool
+<include hagent/tool/test/test_chisel2v_simple.py -- or another closer example>
+"""
+
+### Generate the code
+
+Use the API and the simple example, use the following prompt to implement the code.
+
+"""
+Build a Python implementation for the following class API:
+<API>
+
+This class is a HAgent tool, as such this is a relevant information and example:
+<include hagent/tool/spec.md>
+
+A sample usage for the class to implement is the following code:
+<test_xxx_simple.py>
+
+Create the class Python implementation, do not write unit test or explanation outside the class.
+"""
