@@ -20,12 +20,10 @@ def main():
         sys.exit(1)
 
     # Hard-code the Verilog diff here (you can copy and paste your diff)
-    verilog_diff = """9c9
-<       assign io_out = io_in;  // src/main/scala/Foo.scala:5:7
+    verilog_diff = """68c68
+<         countReg <= countReg + 4'h1;      // src/main/scala/Counter.scala:15:27, :21:28
 ---
->       assign io_out = ~io_in; // src/main/scala/Foo.scala:5:7
-10a11
->"""
+>         countReg <= countReg - 4'h1;      // src/main/scala/Counter.scala:15:27, :21:28"""
 
     # Write the hard-coded diff to a temporary file so FilterLines can read it
     with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".diff") as temp_diff:
