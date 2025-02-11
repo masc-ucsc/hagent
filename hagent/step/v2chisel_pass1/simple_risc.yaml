@@ -1202,7 +1202,7 @@ verilog_fixed: |
     assign io_funct3Out = io_instrOut_0[14:12];	// src/main/scala/SimpleRISCVCpu.scala:7:7, :50:28, :52:28
     assign io_rs1DataOut = io_rs1DataOut_0;	// src/main/scala/SimpleRISCVCpu.scala:7:7, :73:29
     assign io_rs2DataOut = io_rs2DataOut_0;	// src/main/scala/SimpleRISCVCpu.scala:7:7, :73:29
-    assign io_immOut = {{20{io_instrOut_0[31]}}, io_instrOut_0[31:20]};	// src/main/scala/SimpleRISCVCpu.scala:7:7, :50:28, :59:{19,24,40,58}
+    assign io_immOut = {{20{io_instrOut_0[31]}}, io_instrOut_0[28:20]};	// src/main/scala/SimpleRISCVCpu.scala:7:7, :50:28, :59:{19,24,40,58}
     assign io_branchTaken = branchTaken;	// src/main/scala/SimpleRISCVCpu.scala:7:7, :73:29
   endmodule
 

@@ -126,6 +126,10 @@ class V2ChiselPass1(Step):
 
         verilog_diff_text = self._generate_diff(verilog_original, verilog_fixed)
 
+        print("************************** Generated Verilog Diff **************************")
+        print(verilog_diff_text)
+        print("****************************************************")
+
         # Step 2: Extract the subset (hints) from the original Chisel code.
         chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text)
 
