@@ -86,9 +86,14 @@ class V2ChiselPass1(Step):
         if not fg.setup("chisel"):
             self.error("Fuzzy_grep setup failed: " + fg.error_message)
         
+        # Get threshold from input YAML file (default to 40 if not provided)
+        threshold_value = self.input_data.get("threshold", 40)
+        print("Using fuzzy grep threshold:", threshold_value)
         # Use the processed keywords as the list of search patterns.
-        # Here we use a context of 1 and a threshold of 40.
-        search_results = fg.search(text=chisel_code, search_terms=keywords, context=1, threshold=40)
+        context_value = self.input_data.get("context", 1)
+        print("Using fuzzy grep threshold:", context_value)
+
+        search_results = fg.search(text=chisel_code, search_terms=keywords, context=context_value, threshold=threshold_value)
         
         hints = ""
         if "text" in search_results:
