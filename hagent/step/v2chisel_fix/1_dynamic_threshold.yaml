@@ -1,0 +1,23 @@
+- role: system
+  content: |
+    You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
+- role: user
+  content: |
+    The updated Verilog design (verilog_fixed) reflects changes compared to the original design. A unified diff of these changes is provided:
+    ```
+    {verilog_diff}
+    ```
+    The original Chisel code is provided below:
+    ```
+    {chisel_original}
+    ```
+    A subset of the original Chisel code—identified as most likely needing modifications—has been extracted using a fuzzy matching process with a threshold of {threshold} (on a scale from 0 to 100, where lower values allow looser matching):
+    ```
+    {chisel_subset}
+    ```
+    Your task is to generate a corrected version of the Chisel code that:
+      - Compiles successfully.
+      - Retains the same module name and port definitions.
+      - Produces Verilog that is logically equivalent to the updated design.
+    If you suspect that the provided fuzzy matching threshold may be too low to capture all the necessary modifications, incorporate additional changes accordingly.
+    Return only the updated Chisel code as plain text without any markdown formatting, commentary, or extra text.
