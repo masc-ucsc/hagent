@@ -1,0 +1,22 @@
+- role: system
+  content: |
+    You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
+- role: user
+  content: |
+    The current Chisel code does not generate a Verilog design that meets the intended functionality. The fixed Verilog design (verilog_fixed) reflects the desired behavior. A unified diff of the changes is provided:
+    ```
+    {verilog_diff}
+    ```
+    The original Chisel code is provided below:
+    ```
+    {chisel_original}
+    ```
+    Additionally, for certain inputs the expected outputs are different from the actual outputs produced by the current design. The test cases are as follows:
+    ```
+    {test_cases_expected}
+    ```
+    Your task is to generate a corrected version of the Chisel code that:
+      - Compiles successfully.
+      - Retains the same module name and port definitions.
+      - Ensures that the generated Verilog produces the expected outputs for the given test cases.
+    Return only the updated Chisel code as plain text without any markdown formatting, commentary, or extra text.

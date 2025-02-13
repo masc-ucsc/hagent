@@ -7,6 +7,10 @@
 - role: user
   content: |
     The previous attempt to generate a Chisel diff did not produce valid Verilog. 
+    This is the currect chisel_diff:
+    ```
+    {chisel_diff}
+    ```
     Here is the error message:
     ```
     {error_msg}

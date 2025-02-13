@@ -51,7 +51,7 @@ class V2ChiselPass1(Step):
         )
         return '\n'.join(diff_lines)
 
-    def _extract_chisel_subset(self, chisel_code: str, verilog_diff: str) -> str:
+    def _extract_chisel_subset(self, chisel_code: str, verilog_diff: str,  threshold_override: int = None) -> str:
         """
         Extract candidate hint lines from the Chisel code.
         Instead of using FilterLines, this function:
@@ -87,11 +87,12 @@ class V2ChiselPass1(Step):
             self.error("Fuzzy_grep setup failed: " + fg.error_message)
         
         # Get threshold from input YAML file (default to 40 if not provided)
-        threshold_value = self.input_data.get("threshold", 40)
+        default_threshold = self.input_data.get("threshold", 40)
+        threshold_value = threshold_override if threshold_override is not None else default_threshold
         print("Using fuzzy grep threshold:", threshold_value)
         # Use the processed keywords as the list of search patterns.
         context_value = self.input_data.get("context", 1)
-        print("Using fuzzy grep threshold:", context_value)
+        print("Using fuzzy grep context:", context_value)
 
         search_results = fg.search(text=chisel_code, search_terms=keywords, context=context_value, threshold=threshold_value)
         
@@ -159,8 +160,10 @@ class V2ChiselPass1(Step):
         print("****************************************************")
 
         # Step 2: Extract the subset (hints) from the original Chisel code.
+        default_threshold = self.input_data.get("threshold", 40)
         chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text)
-        data['chisel_subset'] = chisel_subset
+        if not chisel_subset.strip():
+            self.error("No hint lines extracted from the Chisel code. Aborting LLM call.")
 
         max_iterations = 5
         was_valid = False
@@ -169,15 +172,35 @@ class V2ChiselPass1(Step):
         last_error_msg = ''
         generated_diff = ''
 
-        for attempt in range(1, max_iterations + 1):
-            # For attempts > 1, use prompt2.yaml if available.
-            if attempt > 1:
-                prompt2_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt2.yaml')
-                if os.path.exists(prompt2_file):
-                    prompt2_template = LLM_template(prompt2_file)
-                    self.lw.from_dict(name='v2chisel_pass1_retry', conf_dict=data['llm'], prompt=prompt2_template)
+        # Use exactly 4 attempts corresponding to the 4 prompts.
+        for attempt in range(1, 5):
+            # Select prompt based on the attempt number.
+            if attempt == 1:
+                prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt1.yaml')
+            elif attempt == 2:
+                prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt2.yaml')
+            elif attempt == 3:
+                prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt3.yaml')
+                # Increase the threshold for fuzzy grep hints.
+                increased_threshold = default_threshold + 20
+                chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text, threshold_override=increased_threshold)
+            else: #attempt == 4
+                prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt4.yaml')
+                # Decrease the threshold for fuzzy grep hints.
+                increased_threshold = default_threshold - 20
+                chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text, threshold_override=increased_threshold)
 
-            # Step 3: Build the prompt dictionary and call the LLM to generate a Chisel diff.
+            if not os.path.exists(prompt_file):
+                self.error(f'Prompt file not found: {prompt_file}')
+            prompt_template = LLM_template(prompt_file)
+            # Reconfigure the LLM wrap with the current prompt.
+            if attempt == 1:
+                self.lw.from_dict(name='v2chisel_pass1', conf_dict=data['llm'], prompt=prompt_template)
+            else:
+                # For subsequent attempts, use a retry name.
+                self.lw.from_dict(name=f'v2chisel_pass1_retry_{attempt}', conf_dict=data['llm'], prompt=prompt_template)
+
+            # Build the prompt dictionary.
             prompt_dict = {
                 'verilog_original': verilog_original,
                 'verilog_fixed': verilog_fixed,
@@ -186,6 +209,10 @@ class V2ChiselPass1(Step):
                 'verilog_diff': verilog_diff_text,
                 'error_msg': last_error_msg,
             }
+
+            # For attempts 2 and 3, include the previously generated chisel_diff.
+            if attempt > 1:
+                prompt_dict['chisel_diff'] = generated_diff
 
             formatted_prompt = self.lw.chat_template.format(prompt_dict)
             print('\n================ LLM QUERY (attempt {}) ================'.format(attempt))

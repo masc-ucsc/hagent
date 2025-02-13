@@ -1,0 +1,19 @@
+- role: system
+  content: |
+    You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
+- role: user
+  content: |
+    The Chisel code provided below currently does not generate a Verilog design that is logically equivalent to the updated design. A unified diff highlighting the changes in the Verilog is provided:
+    ```
+    {verilog_diff}
+    ```
+    A subset of the original Chisel code—identified as most likely needing modifications—has been extracted using a fuzzy matching process with a threshold of {threshold} (on a scale from 0 to 100, where lower values allow looser matching):
+    ```
+    {chisel_subset}
+    ```
+
+    Your task is to produce five alternative corrected versions of the Chisel code that:
+      - Compile successfully.
+      - Retain the same module name and port definitions.
+      - Generate Verilog that is logically equivalent to the updated design.
+    Return five alternatives, each separated by a clear delimiter (for example, a line with three hyphens). Output only the corrected Chisel code alternatives as plain text with no markdown formatting, commentary, or additional explanation.
