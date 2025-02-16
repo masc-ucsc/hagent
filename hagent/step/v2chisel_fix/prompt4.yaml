@@ -1,14 +1,29 @@
 - role: system
   content: |
-    You are an expert in digital hardware design and code translation. Your task is to update the Chisel code so that its behavior matches the modifications made in the Verilog design.
+    You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
 - role: user
   content: |
-    The Verilog design has been updated from `{verilog_original}` to `{verilog_fixed}`. 
-    Here is the Chisel code that is failing LEC:
-    Chisel code:
+    The previous refinement attempt using prompt3 did not yield a satisfactory fix.
+    The Logic Equivalence Check (LEC) reported the following error or counterexample:
     ```
-    {chisel_code}
+    {lec_output}
     ```
-    One important change is that the ALU operation in the I-type instruction has changed (for example, from addition to subtraction). Please update the Chisel code snippet so that it reflects this change. Please provide the whole chisel code snippet.
+    The Verilog diff between the fixed and candidate designs is as follows:
+    ```
+    {verilog_diff}
+    ```
+    The current Chisel diff between the original and the latest candidate code is as follows:
+    ```
+    {chisel_diff}
+    ```
+    Additionally, based on further code analysis, here are new hints extracted from the chisel_original with hints "->" marking the lines that are most likely to require changes:
+    ```
+    {new_hints}
+    ```
+    Can you give me a Chisel diff that could work? 
+    Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+    PLEASE No explanation, no Note. ONLY diff
     
-    Output only the updated Chisel code snippet (without any additional commentary or code fences).
+    **Important instructions**:
+      - Return only the updated Chisel code as plain text.
+      - Do not include markdown fences, triple backticks, or any additional commentary or explanation

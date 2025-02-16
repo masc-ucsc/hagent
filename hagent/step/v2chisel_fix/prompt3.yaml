@@ -13,7 +13,7 @@
     {lec_output}
     ```
     
-    Additionally, here is a subset of the original Chisel code with "HERE:" markers indicating the lines most likely to require changes:
+    I also provide a subset of the Chisel code with hints "->" marking the lines that are most likely to require changes:
     ```
     {chisel_subset}
     ```
@@ -23,10 +23,9 @@
     {chisel_original}
     ```
     
-    Your task is to produce a corrected version of the Chisel code that:
-      - Compiles successfully.
-      - Retains the same module name and port definitions.
-      - Implements the necessary changes so that the generated Verilog is logically equivalent to the updated design.
+    Can you give me a Chisel diff that could work? 
+    Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+    PLEASE No explanation, no Note. ONLY diff
     
     **Important instructions**:
       - Return only the updated Chisel code as plain text.
