@@ -1,0 +1,7 @@
+loaders:
+- type: python
+  search_path: ["hagent"]
+
+renderer:
+  type: markdown
+  render_toc: true
