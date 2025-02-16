@@ -39,6 +39,7 @@ class LLM_template:
 
     def __init__(self, data):
         self.file_name = ''
+        self.error = False
         if isinstance(data, str):
             if not os.path.exists(data):
                 dir = os.path.dirname(os.path.abspath(__file__))
@@ -52,6 +53,7 @@ class LLM_template:
             except FileNotFoundError:
                 self.template_dict = {'error': f"LLM_template, file '{data}' does not exist"}
             except yaml.YAMLError as e:
+                self.error = True
                 self.template_dict = {'error': f"LLM_template, file '{data}' did not parse correctly: {e}"}
         elif isinstance(data, list):
             self.template_dict = data  # Should be a list of dicts, but checked in validate_template
@@ -64,11 +66,12 @@ class LLM_template:
                 self.template_dict = {'error': f'LLM_template file {data} fails because {err}'}
 
         if 'error' in self.template_dict:
+            self.error = True
             print('ERROR:', self.template_dict.get('error'))
 
     def format(self, context: Dict) -> List[Dict]:
-        if 'error' in self.template_dict:
-            return self.template_dict
+        if self.error:
+            return []
 
         result = []
         for item in self.template_dict:
@@ -81,7 +84,7 @@ class LLM_template:
                             fmt = value.format(**context)
                         except KeyError as e:
                             txt = f'LLM_template::format {self.file_name} has undefined variable {e}'
-                            print(f'ERROR: {txt}')
+                            self.error = True
                             return [{'error': txt}]
                         ctx[key] = fmt
                     else:

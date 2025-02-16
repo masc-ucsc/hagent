@@ -1,0 +1,34 @@
+test_react_compile_slang_simple:
+  llm_wrap:
+    model: "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct"
+
+  direct_prompt:
+    - role: system
+      content: |
+        You are an expert Verilog programmer
+    - role: user
+      content: |
+        The following code has error in the comment that need to be fixed:
+        ```
+        {code}
+        ```
+        Do not provide explanations, and respond just with the fixed code and remove the comment for the error.
+
+  example_prompt:
+    - role: system
+      content: |
+        You are an expert Verilog programmer
+    - role: user
+      content: |
+        The following code has error in the comment that need to be fixed:
+        ```
+        {code}
+        ```
+        As a reference, a similar error for the following code:
+        {fix_question}
+        had the following correct answer:
+        {fix_answer}
+
+        Do not provide explanations, and respond just with the fixed code and remove the comment for the error.
+
+

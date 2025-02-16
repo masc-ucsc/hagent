@@ -3,6 +3,8 @@ This document has a dump of "potential" TODOs, many are likely to be bad ideas.
 
 # Small TODOs
 
+ Fix all the llm_wrap calls/configs
+ Create class to extract code from markdown from text and return in list
 
 # New Passes
 

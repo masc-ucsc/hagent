@@ -68,6 +68,12 @@ poetry run ruff check hagent
 poetry run ruff format hagent
 ```
 
+To generate the top level API specification:
+```
+ poetry run pydoc-markdown >spec.md
+ poetry run pydoc-markdown -p hagent/tool --render-toc  >spec_tool.md
+```
+
 #### Trivial
 
 Run the trivial test (hagent/step/tests/test_trivial.py)
@@ -91,6 +97,15 @@ Gather coverage information about your step (htmlcov):
 poetry run pytest --cov=hagent/step/trivial
 poetry run pytest --cov=hagent/step/trivial --cov-report=html
 ```
+
+## Example of some command line test cases using HAgent
+
+Agent to iterate over buggy Verilog to fix it until it complies correctly with slang:
+```
+cd tmp
+poetry run python3 ../hagent/tool/tests/test_react_compile_slang_simple.py ../hagent/tool/tests/buggy_verilog.v
+```
+
 
 ## Structure
 

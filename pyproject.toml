@@ -8,6 +8,7 @@ readme = "README.md"
 [tool.poetry.group.dev.dependencies]
 pytest-cov = "^6.0.0"
 ruff = "^0.9.0"
+pydoc-markdown = "^4.8.2"
 
 [tool.ruff]
 line-length = 130
@@ -29,6 +30,7 @@ speechrecognition = "^3.14.1"
 sounddevice = "^0.5.1"
 numpy = "^2.2.2"
 rapidfuzz = "^3.12.1"
+ruamel-yaml = "^0.18.10"
 
 [build-system]
 requires = ["poetry-core"]

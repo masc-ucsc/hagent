@@ -6,7 +6,8 @@ try:
 except ImportError:
     pyslang = None  # type: ignore
 
-Diagnostic = namedtuple('Diagnostic', ['msg', 'loc', 'hint'])
+from hagent.tool.compile import Diagnostic
+
 IO = namedtuple('IO', ['name', 'input', 'output', 'bits'])
 
 
@@ -220,22 +221,6 @@ class Compile_slang:
 
         return self._get_diagnostics(errors=True)
 
-    def _parse_error_message(self, error_str: str) -> Diagnostic:
-        parts = error_str.split('\n', 1)
-        main_msg = parts[0]
-        hint = parts[1] if len(parts) > 1 else ''
-
-        msg_parts = main_msg.split(':')
-        loc = int(msg_parts[1])
-
-        msg = msg_parts[-1].strip()
-        if 'error:' in main_msg:
-            msg = main_msg.split('error:')[-1].strip()
-        elif 'warning:' in main_msg:
-            msg = main_msg.split('error:')[-1].strip()
-
-        return Diagnostic(msg=msg, loc=loc, hint=hint)
-
     def _get_diagnostics(self, errors: bool) -> List[Diagnostic]:
         """Helper function to retrieve and format diagnostics."""
         if not self._compiler or not pyslang:
@@ -248,6 +233,6 @@ class Compile_slang:
         for msg in diags:
             if msg.isError() == errors:
                 txt = deng.reportAll(self._compiler.sourceManager, [msg])
-                diagnostics.append(self._parse_error_message(txt))
+                diagnostics.append(Diagnostic(txt))
 
         return diagnostics
