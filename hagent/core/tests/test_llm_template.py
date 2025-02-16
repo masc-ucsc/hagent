@@ -27,8 +27,8 @@ def test_llm_template_good():
 
 def test_llm_template_file_not_found():  # test for when yaml file dne
     temp = LLM_template('nonexistent.yaml')
-    assert 'error' in temp.template_dict
-    assert 'does not exist' in temp.template_dict['error']
+    assert temp.last_error
+    assert 'does not exist' in temp.last_error
 
 
 def test_llm_template_empty_string():  # test with an empty string as input
@@ -44,9 +44,8 @@ def test_llm_template_invalid_yaml():  # test when yaml contains invalid syntax
     with open(invalid_yaml, 'w') as f:
         f.write('invalid: [unclosed-bracket')
     temp = LLM_template(invalid_yaml)
-    assert 'error' in temp.template_dict
-    assert 'did not parse correctly' in temp.template_dict['error']
-    assert 'invalid_yaml.yaml' in temp.template_dict['error']
+    assert 'did not parse correctly' in temp.last_error
+    assert 'invalid_yaml.yaml' in temp.last_error
 
 
 def test_validate_template_direct():  # directly testing 'validate_template' method
@@ -81,35 +80,29 @@ def test_validate_template_unexpected_data():  # test validate_template with non
 
 def test_validate_template_missing_keys():  # test template that's missing required keys
     temp = LLM_template([{'role': 'user'}])
-    assert 'error' in temp.template_dict
-    assert "item at index 0 is missing the 'content' key" in temp.template_dict['error']
+    assert "item at index 0 is missing the 'content' key" in temp.last_error
 
 
 def test_validate_template_invalid_role():  # test template that contains invalid role
     temp = LLM_template([{'role': 'invalid', 'content': 'hello'}])
-    assert 'error' in temp.template_dict
-    assert "invalid role 'invalid' at index 0" in temp.template_dict['error']
+    assert "invalid role 'invalid' at index 0" in temp.last_error
 
 
 def test_validate_template_empty_list():  # test empty template list
     temp = LLM_template([])
-    assert 'error' in temp.template_dict
-    assert 'the list is empty' in temp.template_dict['error']
+    assert 'the list is empty' in temp.last_error
 
 
 def test_llm_template_unsupported_input():  # test when input is unsupported type
     temp = LLM_template(12345)
-    assert 'error' in temp.template_dict
-    assert 'could not process {str}' in temp.template_dict['error']
+    assert 'could not process' in temp.last_error
 
     # def test_llm_template_unsupported_data_type():  # test with unsupported types like float and bool
     temp = LLM_template(12.34)
-    assert 'error' in temp.template_dict
-    assert 'could not process {str}' in temp.template_dict['error']
+    assert 'could not process' in temp.last_error
 
     temp = LLM_template(True)
-    assert 'error' in temp.template_dict
-    assert 'could not process {str}' in temp.template_dict['error']
+    assert 'could not process' in temp.last_error
 
 
 def test_llm_template_format_undefined_variable():  # test when context is missing varibales required by templates
@@ -122,14 +115,12 @@ def test_llm_template_format_undefined_variable():  # test when context is missi
 
 def test_llm_template_format_on_invalid_template():  # test when trying to format invalid template
     temp = LLM_template([{'role': 'user'}])
-    result = temp.template_dict
-    assert 'error' in result
-    assert "item at index 0 is missing the 'content' key" in result['error']
+    assert "item at index 0 is missing the 'content' key" in temp.last_error
 
     temp = LLM_template('nonexistent.yaml')
     result = temp.format({'key': 'value'})
-    assert 'error' in result
-    assert 'does not exist' in result['error']
+    assert 'does not exist' in temp.last_error
+    assert 'does not exist' in result[0]['error']
 
 
 def test_llm_template_invalid_placeholder():  # test for invalid placeholders in the template

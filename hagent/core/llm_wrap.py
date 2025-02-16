@@ -14,7 +14,8 @@ from hagent.core.llm_template import LLM_template
 class LLM_wrap:
     def load_config(self) -> Tuple[Dict, Dict]:
         if not os.path.exists(self.conf_file):
-            return {}
+            self._set_error(f'unable to read conf_file: {self.conf_file}')
+            return {},{}
 
         try:
             yaml_loader = YAML(typ="safe")
@@ -92,11 +93,12 @@ class LLM_wrap:
         if os.environ.get(required_key) is None:
             error_message = f"Error: Environment variable '{required_key}' is not set for model '{model}'."
             print(error_message, file=sys.stderr)  # Print to stderr
+            self._set_error(error_message)
             raise ValueError(error_message)
 
         return True
 
-    def from_file(self, name: str, conf_file: str, log_file: str):
+    def from_file(self, name: str, conf_file: str, log_file: str)->bool:
         self.name = name
         self.conf_file = conf_file
         self.log_file = log_file
@@ -112,14 +114,22 @@ class LLM_wrap:
 
         # Load configuration if possible
         self.config , self.llm_args = self.load_config()
+        if not self.config:
+            return False
+
         if 'model' not in self.llm_args:
             self._set_error(f'conf_file:{conf_file} must specify llm "model"')
-        else:
-            try:
-                with open(self.log_file, 'a', encoding='utf-8'):
-                    pass
-            except Exception as e:
-                self._set_error(f'creating/opening log file: {e}')
+            return False
+
+        try:
+            with open(self.log_file, 'a', encoding='utf-8'):
+                pass
+        except Exception as e:
+            self._set_error(f'creating/opening log file: {e}')
+            return False
+
+        return True
+
 
     def _set_error(self, msg: str):
         self.last_error = msg
@@ -168,7 +178,9 @@ class LLM_wrap:
             self._set_error(f'unable to log: {e}')
 
     def _call_llm(self, prompt_dict: Dict, prompt_index: str, n: int, max_history: int) -> List[str]:
-        self.last_error = ''
+        if self.last_error:
+            return []
+
         start_time = time.time()
 
         template_dict = self.config.get(prompt_index, {})
