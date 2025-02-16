@@ -39,7 +39,7 @@ class LLM_template:
 
     def __init__(self, data):
         self.file_name = ''
-        self.error = False
+        self.last_error = ''
         if isinstance(data, str):
             if not os.path.exists(data):
                 dir = os.path.dirname(os.path.abspath(__file__))
@@ -51,27 +51,24 @@ class LLM_template:
                     self.template_dict = yaml.safe_load(f)
                 self.file_name = data
             except FileNotFoundError:
-                self.template_dict = {'error': f"LLM_template, file '{data}' does not exist"}
+                self.last_error = f"LLM_template, file '{data}' does not exist"
             except yaml.YAMLError as e:
-                self.error = True
-                self.template_dict = {'error': f"LLM_template, file '{data}' did not parse correctly: {e}"}
+                self.last_error = f"LLM_template, file '{data}' did not parse correctly: {e}"
         elif isinstance(data, list):
             self.template_dict = data  # Should be a list of dicts, but checked in validate_template
         else:
-            self.template_dict = {'error': 'LLM_template could not process {str}'}
+            self.last_error = 'LLM_template could not process template type (file or dictionary)'
 
-        if 'error' not in self.template_dict:
+        if not self.last_error:
             err = self.validate_template(self.template_dict)
             if err is not None:
-                self.template_dict = {'error': f'LLM_template file {data} fails because {err}'}
-
-        if 'error' in self.template_dict:
-            self.error = True
-            print('ERROR:', self.template_dict.get('error'))
+                self.last_error = f'LLM_template file {data} fails because {err}'
+        else:
+            print('ERROR:', self.last_error)
 
     def format(self, context: Dict) -> List[Dict]:
-        if self.error:
-            return []
+        if self.last_error:
+            return [{'error': self.last_error}]
 
         result = []
         for item in self.template_dict:
@@ -84,7 +81,7 @@ class LLM_template:
                             fmt = value.format(**context)
                         except KeyError as e:
                             txt = f'LLM_template::format {self.file_name} has undefined variable {e}'
-                            self.error = True
+                            self.last_error = txt
                             return [{'error': txt}]
                         ctx[key] = fmt
                     else:

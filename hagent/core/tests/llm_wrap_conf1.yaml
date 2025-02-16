@@ -3,4 +3,16 @@ test_caching:
     model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct" # Cheap fireworks model
     temperature: 0.7
     top_p: 0.9
+
   not_used_field: "xxx"
+
+  use_prompt1:
+  - role: user
+    content: "Tell me a random joke"
+
+  use_prompt_random:
+  - role: system
+    content: "Just provide a numeric answer"
+  - role: user
+    content: "Give me a random number between 1 and 3000000"
+
