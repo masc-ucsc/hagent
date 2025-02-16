@@ -20,7 +20,7 @@
     ```
     {verilog_diff}
     ```
-    Here is the subset of the Chisel code with hints "HERE:" indicating likely lines to change:
+    I also provide a subset of the Chisel code with hints "->" marking the lines that are most likely to require changes:
     ```
     {chisel_subset}
     ```
