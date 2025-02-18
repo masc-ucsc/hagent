@@ -51,7 +51,7 @@ class V2ChiselPass1(Step):
         )
         return '\n'.join(diff_lines)
 
-    def _extract_chisel_subset(self, chisel_code: str, verilog_diff: str,  threshold_override: int = None) -> str:
+    def _extract_chisel_subset(self, chisel_code: str, verilog_diff: str, threshold_override: int = None) -> str:
         """
         Extract candidate hint lines from the Chisel code.
         Instead of using FilterLines, this function:
@@ -66,31 +66,14 @@ class V2ChiselPass1(Step):
         print(keywords)
         print("------------------------------------------------")
 
-        # # Step 2: Process keywords.
-        # processed_keywords = []
-        # for kw in keywords:
-        #     new_kw = kw
-        #     if new_kw.startswith("io_"):
-        #         new_kw = new_kw[3:]
-        #     if new_kw.endswith("_0"):
-        #         new_kw = new_kw[:-2]
-        #     processed_keywords.append(new_kw)
-        
-        # print("------------------------------------------------")
-        # print("Processed keywords (for fuzzy grep patterns):")
-        # print(processed_keywords)
-        # print("------------------------------------------------")
-        
         # Step 3: Use Fuzzy_grep to search for these keywords in the Chisel code.
         fg = Fuzzy_grep()
         if not fg.setup("chisel"):
             self.error("Fuzzy_grep setup failed: " + fg.error_message)
         
-        # Get threshold from input YAML file (default to 40 if not provided)
         default_threshold = self.input_data.get("threshold", 40)
         threshold_value = threshold_override if threshold_override is not None else default_threshold
         print("Using fuzzy grep threshold:", threshold_value)
-        # Use the processed keywords as the list of search patterns.
         context_value = self.input_data.get("context", 1)
         print("Using fuzzy grep context:", context_value)
 
@@ -118,6 +101,13 @@ class V2ChiselPass1(Step):
         code_str = re.sub(r'```[a-zA-Z]*', '', code_str)
         code_str = code_str.replace('```', '').strip()
         return code_str
+
+    def _fix_formatting(self, code: str) -> str:
+        """
+        Replace literal escaped newline and tab sequences with actual newline and tab characters.
+        """
+        fixed = code.replace("\\n", "\n").replace("\\t", "\t")
+        return fixed
 
     def _run_chisel2v(self, chisel_code: str):
         """
@@ -174,33 +164,27 @@ class V2ChiselPass1(Step):
 
         # Use exactly 4 attempts corresponding to the 4 prompts.
         for attempt in range(1, 5):
-            # Select prompt based on the attempt number.
             if attempt == 1:
                 prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt1.yaml')
             elif attempt == 2:
                 prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt2.yaml')
             elif attempt == 3:
                 prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt3.yaml')
-                # Increase the threshold for fuzzy grep hints.
                 increased_threshold = default_threshold + 20
                 chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text, threshold_override=increased_threshold)
-            else: #attempt == 4
+            else:
                 prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt4.yaml')
-                # Decrease the threshold for fuzzy grep hints.
                 increased_threshold = default_threshold - 20
                 chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text, threshold_override=increased_threshold)
 
             if not os.path.exists(prompt_file):
                 self.error(f'Prompt file not found: {prompt_file}')
             prompt_template = LLM_template(prompt_file)
-            # Reconfigure the LLM wrap with the current prompt.
             if attempt == 1:
                 self.lw.from_dict(name='v2chisel_pass1', conf_dict=data['llm'], prompt=prompt_template)
             else:
-                # For subsequent attempts, use a retry name.
                 self.lw.from_dict(name=f'v2chisel_pass1_retry_{attempt}', conf_dict=data['llm'], prompt=prompt_template)
 
-            # Build the prompt dictionary.
             prompt_dict = {
                 'verilog_original': verilog_original,
                 'verilog_fixed': verilog_fixed,
@@ -210,7 +194,6 @@ class V2ChiselPass1(Step):
                 'error_msg': last_error_msg,
             }
 
-            # For attempts 2 and 3, include the previously generated chisel_diff.
             if attempt > 1:
                 prompt_dict['chisel_diff'] = generated_diff
 
@@ -232,28 +215,23 @@ class V2ChiselPass1(Step):
             print(response_list[0])
             print('==============================================')
 
-            # Step 4: Process the response to extract the unified diff.
             generated_diff = self._strip_markdown_fences(response_list[0])
-
-            # Apply the generated diff to the original Chisel code.
             applier = ChiselDiffApplier()
             chisel_updated = applier.apply_diff(generated_diff, chisel_original)
 
             print("===== FINAL CHISEL CODE AFTER DIFF APPLIER (attempt {}) =====".format(attempt))
             print(chisel_updated)
 
-
-            # Step 5: Validate the updated Chisel code by compiling it.
             is_valid, verilog_candidate, error_msg = self._run_chisel2v(chisel_updated)
             if is_valid:
                 chisel_updated_final = chisel_updated
-                verilog_candidate_final = verilog_candidate
+                # Fix formatting of the generated Verilog candidate using our new _fix_formatting:
+                verilog_candidate_final = self._fix_formatting(verilog_candidate)
                 was_valid = True
                 break
             else:
                 last_error_msg = error_msg or 'Unknown chisel2v error'
 
-        # Step 7: Return the final result.
         if not was_valid and chisel_updated_final is None:
             chisel_updated_final = 'No valid snippet generated.'
 
