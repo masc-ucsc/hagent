@@ -99,7 +99,6 @@ def test_missing_env_var():
         with pytest.raises(ValueError):
             jokes = lw.inference({}, 'use_prompt1', n=1)
 
-        print(f"XX{lw.last_error}")
         assert "Environment" in lw.last_error
     else:
         assert False, "Must set FIREWORKS_AI_API_KEY for unit test"

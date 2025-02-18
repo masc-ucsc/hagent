@@ -26,10 +26,10 @@ class React_compile_slang:
         # Determine the configuration file path.
         conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
         # Initialize LLM_wrap instance using configuration from file.
-        self.llm = LLM_wrap()
-        self.llm.from_file(
+        self.llm = LLM_wrap(
             name='test_react_compile_slang_simple', log_file='test_react_compile_slang_simple.log', conf_file=conf_file
         )
+        assert not self.llm.last_error
 
         self.compiler  = Compile_slang()
         self.extractor = Extract_code_verilog()
@@ -57,10 +57,10 @@ class React_compile_slang:
             return current_text
 
         if not fix_example:
-            results = self.llm.inference({'code': current_text}, 'direct_prompt',n=2)
+            results = self.llm.inference({'code': current_text}, 'direct_prompt',n=1)
         else:
             # Merge fix_example with the current code for the prompt.
-            results = self.llm.inference({**fix_example, 'code': current_text}, 'example_prompt',n=2)
+            results = self.llm.inference({**fix_example, 'code': current_text}, 'example_prompt',n=1)
 
         line = diag.loc
         best_code = current_text
@@ -92,7 +92,7 @@ def main():
 
     # Initialize and set up the React tool.
     react = React()
-    if not react.setup(db_path='dummy_db.yaml', learn=True, max_iterations=2):
+    if not react.setup(db_path='dummy_db.yaml', learn=True, max_iterations=5):
         print(f'React setup failed: {react.error_message}', file=sys.stderr)
         sys.exit(1)
 
@@ -111,6 +111,7 @@ def main():
     final_errors = react_compiler.check_callback(fixed_code)
     if final_errors:
         error_details = '\n'.join([f'Error: {d.msg} at {d.loc}. Hint: {d.hint}' for d in final_errors])
+        print(fixed_code)
         print('Final code still contains errors:', file=sys.stderr)
         print(error_details, file=sys.stderr)
         sys.exit(1)
