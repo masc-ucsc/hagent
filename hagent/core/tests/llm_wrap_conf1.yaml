@@ -1,5 +1,5 @@
 test_caching:
-  llm_wrap:
+  llm:
     model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct" # Cheap fireworks model
     temperature: 0.7
     top_p: 0.9

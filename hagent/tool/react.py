@@ -226,7 +226,8 @@ class React:
                 # Compute relative error location in the delta.
                 relative_loc = diagnostics[0].loc - start_line + 1
                 try:
-                    annotated = insert_comment(delta, diagnostics[0].to_str(), self._lang_prefix, relative_loc)
+                    # annotated = insert_comment(delta, diagnostics[0].to_str(), self._lang_prefix, relative_loc)
+                    annotated = diagnostics[0].insert_comment(delta, self._lang_prefix)
                 except Exception as e:
                     self.error_message = f'Failed to insert diagnostic comment in delta: {e}'
                     self._log.append(iteration_log)
@@ -239,7 +240,8 @@ class React:
             else:
                 # Use the full code in subsequent iterations.
                 try:
-                    annotated = insert_comment(current_text, diagnostics[0].to_str(), self._lang_prefix, diagnostics[0].loc)
+                    # annotated = insert_comment(current_text, diagnostics[0].to_str(), self._lang_prefix, diagnostics[0].loc)
+                    annotated = diagnostics[0].insert_comment(current_text, self._lang_prefix)
                 except Exception as e:
                     self.error_message = f'Failed to insert diagnostic comment: {e}'
                     self._log.append(iteration_log)
@@ -254,7 +256,6 @@ class React:
             iteration_log['post_check'] = [{'msg': d.msg, 'loc': d.loc, 'hint': getattr(d, 'hint', '')} for d in new_diagnostics]
             self._log.append(iteration_log)
 
-            self._add_error_example(error_type, fix_question, fix_answer)
             if not new_diagnostics:
                 if self._learn_mode:
                     self._add_error_example(error_type, fix_question, fix_answer)

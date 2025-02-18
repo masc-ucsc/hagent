@@ -12,21 +12,15 @@ class Generate_code(Step):
     def setup(self):
         super().setup()  # superclass
 
-        llm_args = {}
-        if 'llm' in self.input_data:
-            llm_args = self.input_data['llm']
-        else:
-            self.error(f'llm arguments not set in input file {self.input_file}')
+        extra_config_args = self.input_data['generate_code']
+
+        if not 'llm' in extra_config_args:
+            self.error(f'generate_code.llm arguments not set in input file {self.input_file}')
 
         self.setup_called = True
-        templ_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt1.yaml')
-        templ = LLM_template(templ_file)
+        conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt1.yaml')
 
-        txt = templ.format({'description': 'potato'})
-        print(f'templ{txt}')
-
-        self.lw = LLM_wrap()
-        self.lw.from_dict(name='generate_code', conf_dict=llm_args, prompt=templ)
+        self.lw = LLM_wrap(name='generate_code', conf_file=conf_file, log_file="generate_code.log", overwrite_conf=extra_config_args)
 
         self.setup_called = True
 

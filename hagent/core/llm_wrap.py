@@ -10,12 +10,31 @@ from ruamel.yaml.scalarstring import LiteralScalarString
 
 from hagent.core.llm_template import LLM_template
 
+def dict_deep_merge(dict1:Dict, dict2:Dict)->Dict:
+    """Recursively merges dict2 into dict1, overwriting only leaf values.
+
+    Args:
+        dict1: The base dictionary (will be modified).
+        dict2: The dictionary to merge into dict1.
+
+    Returns:
+        dict1 (modified).
+    """
+    for key, value in dict2.items():
+        if key in dict1:
+            if isinstance(dict1[key], dict) and isinstance(value, dict):
+                deep_merge(dict1[key], value)  # Recursive call for nested dicts
+            else:
+                dict1[key] = value  # Overwrite at leaf level
+        else:
+            dict1[key] = value  # Add new key-value pair
+    return dict1
 
 class LLM_wrap:
-    def load_config(self) -> Tuple[Dict, Dict]:
+    def load_config(self) -> Dict:
         if not os.path.exists(self.conf_file):
             self._set_error(f'unable to read conf_file: {self.conf_file}')
-            return {},{}
+            return {}
 
         try:
             yaml_loader = YAML(typ="safe")
@@ -23,53 +42,31 @@ class LLM_wrap:
                 conf_data = yaml_loader.load(f)
 
             if not conf_data:
-                return {},{}
+                return {}
 
             # Case-insensitive search for self.name
             lower_name = self.name.lower()
             config_name = next((k for k in conf_data if k.lower() == lower_name), None)
             if not config_name:
-                return {},{}
+                return {}
 
             config_section = conf_data[config_name]
 
             # Case-insensitive search for 'llm_wrap'
             lower_keys = [k.lower() for k in config_section]
-            if 'llm_wrap' in lower_keys:
-                llm_wrap_index = lower_keys.index('llm_wrap')
+            if 'llm' in lower_keys:
+                llm_wrap_index = lower_keys.index('llm')
                 original_key = list(config_section.keys())[llm_wrap_index]  # preserve key's original case
-                return config_section, config_section[original_key]
+                return config_section
+            else:
+                self._set_error(f'llm section missing in conf_file {self.conf_file}')
+                return {}
 
         except Exception as e:
             self._set_error(f'reading conf_file: {e}')
-            return {},{}
+            return {}
 
-        return {},{}
-
-    def from_dict(self, name: str, conf_dict: Dict, prompt: LLM_template):
-        self.name = name
-        self.log_file = f'{name}.log'
-
-        self.last_error = ''
-        self.chat_history = []  # Stores messages as [{"role": "...", "content": "..."}]
-        self.total_cost = 0.0
-        self.total_tokens = 0
-        self.total_time_ms = 0.0
-
-        # Initialize litellm cache
-        litellm.cache = litellm.Cache(type='disk')
-
-        self.config = conf_dict
-        self.llm_args = conf_dict.get("llm_args",{})
-
-        if 'model' not in self.llm_args:
-            self._set_error('conf_dict must specify llm "model"')
-        else:
-            try:
-                with open(self.log_file, 'a', encoding='utf-8'):
-                    pass
-            except Exception as e:
-                self._set_error(f'creating/opening log file: {e}')
+        return {}
 
     def check_env_keys(self, model: str) -> bool:
         if model.startswith('fireworks'):
@@ -98,7 +95,7 @@ class LLM_wrap:
 
         return True
 
-    def from_file(self, name: str, conf_file: str, log_file: str)->bool:
+    def __init__(self, name: str, conf_file: str, log_file: str, overwrite_conf: Dict = {}):
         self.name = name
         self.conf_file = conf_file
         self.log_file = log_file
@@ -113,22 +110,24 @@ class LLM_wrap:
         litellm.cache = litellm.Cache(type='disk')
 
         # Load configuration if possible
-        self.config , self.llm_args = self.load_config()
+        self.config = self.load_config()
         if not self.config:
-            return False
+            return
+
+        if overwrite_conf:
+            self.config = dict_deep_merge(self.config, overwrite_conf)
+
+        self.llm_args = self.config['llm']
 
         if 'model' not in self.llm_args:
             self._set_error(f'conf_file:{conf_file} must specify llm "model"')
-            return False
+            return
 
         try:
             with open(self.log_file, 'a', encoding='utf-8'):
                 pass
         except Exception as e:
             self._set_error(f'creating/opening log file: {e}')
-            return False
-
-        return True
 
 
     def _set_error(self, msg: str):
@@ -192,7 +191,8 @@ class LLM_wrap:
             return []
 
         template = LLM_template(template_dict)
-        if template.error:
+        if template.last_error:
+            self._set_error(f"template failed with {template.last_error}")
             return []
 
         # Format prompt

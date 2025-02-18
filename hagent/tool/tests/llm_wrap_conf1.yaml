@@ -1,5 +1,5 @@
 test_react_compile_slang_simple:
-  llm_wrap:
+  llm:
     model: "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct"
 
   direct_prompt:
