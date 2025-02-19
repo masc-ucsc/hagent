@@ -13,9 +13,7 @@ def test_llm_wrap_caching():
     # Use existing configuration file for caching test.
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
-    lw = LLM_wrap()
-    res = lw.from_file(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
-    assert res
+    lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
     jokes1 = lw.inference({}, 'use_prompt1', n=1)
     jokes2 = lw.inference({}, 'use_prompt1', n=1)
@@ -29,9 +27,7 @@ def test_llm_wrap_caching():
 def test_llm_wrap_n_diff():
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
-    lw = LLM_wrap()
-    ok = lw.from_file(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
-    assert ok
+    lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
     res = lw.inference({}, 'use_prompt_random', n=3)
     assert len(res) == 3
@@ -41,10 +37,8 @@ def test_llm_wrap_n_diff():
 
 def test_bad_config_file_nonexistent():
     # Test with a non-existent configuration file.
-    lw = LLM_wrap()
     non_existent_file = '/non/existent/conf.yaml'
-    ok = lw.from_file('test_bad_config', non_existent_file, 'test_bad_config.log')
-    assert not ok
+    lw = LLM_wrap('test_bad_config', non_existent_file, 'test_bad_config.log')
     assert 'unable to read' in lw.last_error
 
     result = lw.inference({}, 'some_prompt', n=1)
@@ -56,9 +50,7 @@ def test_bad_prompt():
     # Test with a non-existent configuration file.
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
-    lw = LLM_wrap()
-    res = lw.from_file(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
-    assert res
+    lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
     result = lw.inference({}, 'some_bad_prompt', n=1)
 
@@ -71,9 +63,7 @@ def test_bad_config_file_bad_yaml():
         tmp.write('invalid: [yaml, : :')
         tmp_path = tmp.name
     try:
-        lw = LLM_wrap()
-        ok = lw.from_file('test_bad_yaml', tmp_path, 'test_bad_yaml.log')
-        assert not ok
+        lw = LLM_wrap('test_bad_yaml', tmp_path, 'test_bad_yaml.log')
         assert 'reading conf_file' in lw.last_error
 
         result = lw.inference({}, 'some_prompt', n=1)
@@ -93,8 +83,7 @@ def test_missing_env_var():
         # Use existing configuration file for caching test.
         conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
-        lw = LLM_wrap()
-        lw.from_file(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
+        lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
         with pytest.raises(ValueError):
             jokes = lw.inference({}, 'use_prompt1', n=1)

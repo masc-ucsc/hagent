@@ -4,43 +4,38 @@
 import os
 from hagent.core.step import Step
 from hagent.core.llm_wrap import LLM_wrap
-from hagent.core.llm_template import LLM_template
+
+from hagent.tool.extract_code import Extract_code_default
 
 
 class Replicate_code(Step):
     def setup(self):
         super().setup()  # superclass
+        print(f"input_file:{self.input_file}")
 
-        llm_args = {}
-        if 'llm' in self.input_data:
-            llm_args = self.input_data['llm']
-        else:
-            self.error(f'llm arguments not set in input file {self.input_file}')
+        self.extractor = Extract_code_default()
 
         self.setup_called = True
-        templ_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt1.yaml')
+        conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt1.yaml')
 
-        templ = LLM_template(templ_file)
+        self.lw = LLM_wrap(name='replicate_code', log_file="replicate_code.log", conf_file=conf_file, overwrite_conf=self.input_data)
 
-        txt = templ.format({'code': 'potato'})
-        print(f'templ{txt}')
-
-        self.lw = LLM_wrap()
-        self.lw.from_dict(name='replicate_code', conf_dict=llm_args, prompt=templ)
+        if self.lw.last_error:
+            raise ValueError(self.lw.last_error)
 
     def run(self, data):
         code = data['code']
 
         print(f'code:{code}')
 
-        res = self.lw.inference({'code': code}, n=2)
-
-        # res_code = self.filter_markdown_snippet(res)
+        res = self.lw.inference({'code': code}, "replicate_code_prompt1", n=2)
 
         result = data.copy()
-        result['optimized'] = res
 
-        assert len(res) == 2
+        for markdown in res:
+            code = self.extractor.parse(markdown)
+            if code:
+                result['optimized'] = code
 
         return result
 

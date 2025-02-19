@@ -114,6 +114,13 @@ class Extract_code_dslx(Extract_code):
             answer = txt
         return answer
 
+class Extract_code_default(Extract_code):
+    def parse(self, prompt: str, verilog_path: str="") -> str:
+        txt = self.extract_codeblock(prompt)
+        txt = txt.replace('\\', '')
+
+        return txt
+
 
 def get_extract_code(lang: str) -> Extract_code:
     txt = lang.lower()
@@ -125,6 +132,8 @@ def get_extract_code(lang: str) -> Extract_code:
         return Extract_code_pyrtl()
     elif txt == 'dslx':
         return Extract_code_dslx()
+    elif txt == 'default':
+        return Extract_code_default()
     else:
         raise ValueError('Unsupported Language type in Extract_code')
 
