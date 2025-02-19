@@ -50,17 +50,8 @@ class LLM_wrap:
             if not config_name:
                 return {}
 
-            config_section = conf_data[config_name]
+            return conf_data[config_name]
 
-            # Case-insensitive search for 'llm_wrap'
-            lower_keys = [k.lower() for k in config_section]
-            if 'llm' in lower_keys:
-                llm_wrap_index = lower_keys.index('llm')
-                original_key = list(config_section.keys())[llm_wrap_index]  # preserve key's original case
-                return config_section
-            else:
-                self._set_error(f'llm section missing in conf_file {self.conf_file}')
-                return {}
 
         except Exception as e:
             self._set_error(f'reading conf_file: {e}')
@@ -110,12 +101,15 @@ class LLM_wrap:
         litellm.cache = litellm.Cache(type='disk')
 
         # Load configuration if possible
-        self.config = self.load_config()
-        if not self.config:
-            return
+        if os.path.exists(self.conf_file):
+            self.config = self.load_config()
 
         if overwrite_conf:
             self.config = dict_deep_merge(self.config, overwrite_conf)
+
+        if not 'llm' in self.config:
+            self._set_error(f'conf_file:{conf_file} or overwrite_conf must specify llm section')
+            return
 
         self.llm_args = self.config['llm']
 

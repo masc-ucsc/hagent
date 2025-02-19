@@ -1,7 +1,0 @@
-description: |
-  Implement a module with inputs: [1:0]sel, [7:0]i0, [7:0]i1, [7:0]i2 and output: [7:0]out_o that takes a 2-bit selector and multiplexes between three 8-bit inputs. The default output should be 0.
-
-
-llm:
-  model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct" # Cheap fireworks model
-

@@ -1,11 +1,12 @@
-- role: system
-  content: |
-    You are an agentic programmer, provide only the code, no additional explainions.
+replicate_code:
+  replicate_code_prompt1:
+    - role: system
+      content: |
+        You are an agentic programmer, provide only the code, no additional explainions.
 
-- role: user
-  content: |
-    Improve the following code snippet
-    ```
-    {code}
-    ```
-
+    - role: user
+      content: |
+        Improve the following code snippet
+        ```
+        {code}
+        ```
