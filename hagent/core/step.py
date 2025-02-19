@@ -4,6 +4,7 @@ import sys
 import yaml
 import datetime
 
+from hagent.core.llm_wrap import dict_deep_merge
 
 class Step:
     def __init__(self):
@@ -11,9 +12,10 @@ class Step:
         self.output_file = None
         self.setup_called = False
 
-    def set_io(self, inp_file: str, out_file: str):
+    def set_io(self, inp_file: str, out_file: str, overwrite_conf: dict={}):
         self.input_file = inp_file
         self.output_file = out_file
+        self.overwrite_conf = overwrite_conf
 
     def parse_arguments(self):
         self.input_file = None
@@ -84,12 +86,17 @@ class Step:
         if self.output_file is None:
             self.error('must call parse_arguments or set_io before setup')
 
-        self.input_data = self.read_input()
-        if 'error' in self.input_data:
-            # Error occurred during reading input, write output_data as is
-            print('WARNING: error field in input yaml, just propagating')
-            self.write_output(self.input_data)
-            exit(4)
+        if self.input_file:
+            self.input_data = self.read_input()
+            if 'error' in self.input_data:
+                # Error occurred during reading input, write output_data as is
+                print('WARNING: error field in input yaml, just propagating')
+                self.write_output(self.input_data)
+                exit(4)
+            if self.overwrite_conf:
+                self.input_data = dict_deep_merge(self.input_data, self.overwrite_conf)
+        else:
+            self.input_data = self.overwrite_conf
 
     def run(self, data):
         # To be implemented in the subclass

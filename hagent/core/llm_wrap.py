@@ -100,9 +100,13 @@ class LLM_wrap:
         # Initialize litellm cache
         litellm.cache = litellm.Cache(type='disk')
 
-        # Load configuration if possible
+        self.config = {}
+
         if os.path.exists(self.conf_file):
             self.config = self.load_config()
+        elif self.conf_file:
+            self._set_error(f'unable to read conf_file {conf_file}')
+            return
 
         if overwrite_conf:
             self.config = dict_deep_merge(self.config, overwrite_conf)
