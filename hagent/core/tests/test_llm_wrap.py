@@ -39,11 +39,11 @@ def test_bad_config_file_nonexistent():
     # Test with a non-existent configuration file.
     non_existent_file = '/non/existent/conf.yaml'
     lw = LLM_wrap('test_bad_config', non_existent_file, 'test_bad_config.log')
-    assert 'unable to read' in lw.last_error
+    assert 'unable to read conf_file' in lw.last_error
 
     result = lw.inference({}, 'some_prompt', n=1)
     # Expect empty result and an error about missing llm "model".
-    assert 'unable to read' in lw.last_error
+    assert 'unable to read conf_file' in lw.last_error
     assert result == []
 
 def test_bad_prompt():
@@ -64,21 +64,20 @@ def test_bad_config_file_bad_yaml():
         tmp_path = tmp.name
     try:
         lw = LLM_wrap('test_bad_yaml', tmp_path, 'test_bad_yaml.log')
-        assert 'reading conf_file' in lw.last_error
+        assert 'specify llm section' in lw.last_error
 
         result = lw.inference({}, 'some_prompt', n=1)
         assert result == []
-        assert 'reading conf_file' in lw.last_error
+        assert 'specify llm section' in lw.last_error
     finally:
         os.unlink(tmp_path)
 
 
-def test_missing_env_var():
-    original_value = os.environ.get("FIREWORKS_AI_API_KEY")
+def test_missing_env_var(monkeypatch):
 
     # Remove the environment variable
     if "FIREWORKS_AI_API_KEY" in os.environ:
-        del os.environ["FIREWORKS_AI_API_KEY"]
+        monkeypatch.delenv("FIREWORKS_AI_API_KEY", raising=False)
 
         # Use existing configuration file for caching test.
         conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
@@ -93,12 +92,11 @@ def test_missing_env_var():
         assert False, "Must set FIREWORKS_AI_API_KEY for unit test"
 
 
-
 if __name__ == '__main__':  # pragma: no cover
     test_llm_wrap_caching()
     test_llm_wrap_n_diff()
     test_bad_config_file_nonexistent()
     test_bad_config_file_bad_yaml()
-    test_missing_env_var()
+    # test_missing_env_var()
     test_bad_prompt()
 
