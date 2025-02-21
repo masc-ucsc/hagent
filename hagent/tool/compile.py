@@ -9,7 +9,10 @@ class Diagnostic:
 
         try:
             msg_parts = main_msg.split(':')
-            self.file = msg_parts[0]
+            if len(msg_parts) > 1:
+                self.file = msg_parts[0]
+            else:
+                self.file = ''
             self.loc = int(msg_parts[1])
             self.msg = msg_parts[-1].strip()
 
@@ -41,6 +44,14 @@ class Diagnostic:
         commented_add_lines = [f'{prefix} FIXME_HINT: {line.rstrip()}\n' for line in add_lines]
         # Insert commented lines at the specified location
         code_lines[self.loc - 1 : self.loc - 1] = commented_add_lines
+        return ''.join(code_lines)
+
+    def remove_comment(self, code: str, prefix: str) -> str:
+        """
+        Removes previously inserted comments.
+        """
+        code_lines = code.splitlines(keepends=True)
+        code_lines = [line for line in code_lines if not line.strip().startswith(f'{prefix} FIXME_HINT: ')]
         return ''.join(code_lines)
 
     def to_str(self):
