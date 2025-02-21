@@ -12,34 +12,77 @@ from hagent.tool.chisel2v import Chisel2v
 from hagent.tool.chisel_diff_applier import ChiselDiffApplier
 
 from hagent.tool.extract_verilog_diff_keywords import FuzzyGrepFilter
+from hagent.tool.filter_lines import FilterLines
 from hagent.tool.fuzzy_grep import Fuzzy_grep
 import tempfile
+from hagent.tool.extract_code import Extract_code_default
+
+def union_hints(hints1: str, hints2: str) -> str:
+    import re
+    union_dict = {}
+    # This regex captures an optional arrow marker, the line number, and the content.
+    pattern = re.compile(r'^\s*(?P<arrow>->)?\s*(?P<lineno>\d+):\s*(?P<content>.*)$')
+    for hint in (hints1, hints2):
+        for line in hint.splitlines():
+            match = pattern.match(line)
+            if match:
+                lineno = int(match.group('lineno'))
+                has_arrow = match.group('arrow') is not None
+                content = match.group('content').rstrip()
+                if lineno in union_dict:
+                    prev_arrow, prev_content = union_dict[lineno]
+                    # Combine arrow flags: if either occurrence had an arrow, we flag it.
+                    combined_arrow = prev_arrow or has_arrow
+                    # If the new occurrence has an arrow, favor its content.
+                    chosen_content = content if has_arrow else prev_content
+                    union_dict[lineno] = (combined_arrow, chosen_content)
+                else:
+                    union_dict[lineno] = (has_arrow, content)
+    
+    # Determine maximum width of the line numbers.
+    width = max(len(str(ln)) for ln in union_dict)
+    
+    sorted_lines = []
+    for lineno in sorted(union_dict.keys()):
+        arrow, content = union_dict[lineno]
+        # Build a fixed marker field of width 4:
+        # If arrow exists, "->" is used; otherwise, four spaces.
+        marker_field = f"{'->' if arrow else '':4}"
+        # Format the line number right aligned in a field of width 'width'
+        sorted_lines.append(f"{marker_field} {lineno:>{width}}: {content}")
+    return "\n".join(sorted_lines)
 
 
-class V2ChiselPass1(Step):
+
+class V2Chisel_pass1(Step):
     def setup(self):
+        self.overwrite_conf = {}
         super().setup()
+        print(f"input_file: {self.input_file}")
+
+        self.extractor = Extract_code_default()
 
         if 'llm' not in self.input_data:
             self.error("Missing 'llm' section in input YAML")
 
-        # Load main prompt (prompt1.yaml)
-        prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt1.yaml')
-        if not os.path.exists(prompt_file):
-            self.error(f'Prompt file not found: {prompt_file}')
+        # Load the single prompt configuration file.
+        conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt1.yaml')
+        if not os.path.exists(conf_file):
+            self.error(f'Prompt file not found: {conf_file}')
 
-        self.prompt1_template = LLM_template(prompt_file)
-        llm_args = self.input_data['llm']
+        # Load the entire configuration from the YAML file.
+        # We assume that LLM_template can load a file and expose the config via .config.
+        self.template_config = LLM_template(conf_file)
 
-        self.lw = LLM_wrap()
-        self.lw.from_dict(name='v2chisel_pass1', conf_dict=llm_args, prompt=self.prompt1_template)
+        # llm_args = self.input_data['llm'] 
+        llm_args = self.template_config.template_dict.get('v2chisel_pass1', {}).get('llm', {})
 
+        self.lw = LLM_wrap(name='v2chisel_pass1', log_file="v2chisel_pass1.log", conf_file=conf_file, overwrite_conf=llm_args)
+        if self.lw.last_error:
+            raise ValueError(self.lw.last_error)
         self.setup_called = True
 
     def _generate_diff(self, old_code: str, new_code: str) -> str:
-        """
-        Generate a unified diff string comparing old_code vs. new_code.
-        """
         old_lines = old_code.splitlines()
         new_lines = new_code.splitlines()
         diff_lines = difflib.unified_diff(
@@ -52,79 +95,87 @@ class V2ChiselPass1(Step):
         return '\n'.join(diff_lines)
 
     def _extract_chisel_subset(self, chisel_code: str, verilog_diff: str, threshold_override: int = None) -> str:
-        """
-        Extract candidate hint lines from the Chisel code.
-        Instead of using FilterLines, this function:
-          1. Extracts keywords from the Verilog diff using FuzzyGrepFilter.
-          2. Uses Fuzzy_grep to search for these keywords in the Chisel code.
-        Returns the matching hint lines as a string, with "->" marking central matches.
-        """ 
-        # Step 1: Extract keywords from the Verilog diff.
-        keywords = FuzzyGrepFilter.extract_keywords_from_diff(verilog_diff)
-        print("------------------------------------------------")
-        print("Extracted keywords from verilog diff:")
-        print(keywords)
-        print("------------------------------------------------")
+        # --- Fuzzy_grep part ---
+            keywords = FuzzyGrepFilter.extract_keywords_from_diff(verilog_diff)
+            print("------------------------------------------------")
+            print("Extracted keywords from verilog diff:")
+            print(keywords)
+            print("------------------------------------------------")
+            fg = Fuzzy_grep()
+            if not fg.setup("chisel"):
+                self.error("Fuzzy_grep setup failed: " + fg.error_message)
+            
+            default_threshold = self.input_data.get("threshold", 40)
+            threshold_value = threshold_override if threshold_override is not None else default_threshold
+            print("Using fuzzy grep threshold:", threshold_value)
+            context_value = self.input_data.get("context", 1)
+            print("Using fuzzy grep context:", context_value)
+    
+            search_results = fg.search(text=chisel_code, search_terms=keywords, context=context_value, threshold=threshold_value)
+            fuzzy_hints = ""
+            if "text" in search_results:
+                matching_lines = []
+                for (lineno, line, central) in search_results["text"]:
+                    marker = "->" if central else "  "
+                    matching_lines.append(f"{marker}{lineno:4d}: {line}")
+                fuzzy_hints = "\n".join(matching_lines)
+    
+            print("------------------------------------------------")
+            print("Extracted hint lines from fuzzy grep:")
+            print(fuzzy_hints)
+            print("------------------------------------------------")
+    
+            # --- FilterLines part ---
+            fl = FilterLines()
+            import tempfile, os
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as diff_temp:
+                diff_temp.write(verilog_diff)
+                diff_temp.flush()
+                diff_file = diff_temp.name
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as chisel_temp:
+                chisel_temp.write(chisel_code)
+                chisel_temp.flush()
+                chisel_file = chisel_temp.name
+            try:
+                filter_hints = fl.filter_lines(diff_file, chisel_file, context=1)
+            finally:
+                os.remove(diff_file)
+                os.remove(chisel_file)
+    
+            print("------------------------------------------------")
+            print("Extracted hint lines from filter_lines:")
+            print(filter_hints)
+            print("------------------------------------------------")
+    
+            final_hints = union_hints(fuzzy_hints, filter_hints)
+            if not final_hints.strip():
+                self.error("No hint lines extracted from either method. Aborting LLM call.")
+            print("------------------------------------------------")
+            print("Final union of hint lines:")
+            print(final_hints)
+            print("------------------------------------------------")
+            return final_hints
 
-        # Step 3: Use Fuzzy_grep to search for these keywords in the Chisel code.
-        fg = Fuzzy_grep()
-        if not fg.setup("chisel"):
-            self.error("Fuzzy_grep setup failed: " + fg.error_message)
-        
-        default_threshold = self.input_data.get("threshold", 40)
-        threshold_value = threshold_override if threshold_override is not None else default_threshold
-        print("Using fuzzy grep threshold:", threshold_value)
-        context_value = self.input_data.get("context", 1)
-        print("Using fuzzy grep context:", context_value)
-
-        search_results = fg.search(text=chisel_code, search_terms=keywords, context=context_value, threshold=threshold_value)
-        
-        hints = ""
-        if "text" in search_results:
-            matching_lines = []
-            for (lineno, line, central) in search_results["text"]:
-                marker = "->" if central else "  "
-                matching_lines.append(f"{marker}{lineno:4d}: {line}")
-            hints = "\n".join(matching_lines)
-
-        print("------------------------------------------------")
-        print("Extracted hint lines from chisel code via fuzzy grep:")
-        print(hints)
-        print("------------------------------------------------")
-        
-        return hints
 
     def _strip_markdown_fences(self, code_str: str) -> str:
-        """
-        Remove markdown code fences (e.g., ```scala or ```) from the string.
-        """
         code_str = re.sub(r'```[a-zA-Z]*', '', code_str)
         code_str = code_str.replace('```', '').strip()
         return code_str
 
     def _fix_formatting(self, code: str) -> str:
-        """
-        Replace literal escaped newline and tab sequences with actual newline and tab characters.
-        """
         fixed = code.replace("\\n", "\n").replace("\\t", "\t")
         return fixed
 
     def _run_chisel2v(self, chisel_code: str):
-        """
-        Run the Chisel2v tool to generate Verilog from Chisel code and check its validity.
-        """
         if not chisel_code.strip():
             return (False, None, 'Chisel snippet is empty')
-
         c2v = Chisel2v()
         success = c2v.setup()
         if not success:
             return (False, None, 'chisel2v setup failed: ' + c2v.error_message)
-
         module_name = self._find_chisel_classname(chisel_code)
         if not module_name:
             module_name = 'MyModule'
-
         try:
             verilog_out = c2v.generate_verilog(chisel_code, module_name)
             if 'module' not in verilog_out:
@@ -138,19 +189,17 @@ class V2ChiselPass1(Step):
         return m.group(1) if m else ''
 
     def run(self, data):
-        # Step 1: Generate the Verilog diff.
         verilog_original = data.get('verilog_original', '')
         verilog_fixed = data.get('verilog_fixed', '')
         chisel_original = data.get('chisel_original', '')
 
         verilog_diff_text = self._generate_diff(verilog_original, verilog_fixed)
-
         print("************************** Generated Verilog Diff **************************")
         print(verilog_diff_text)
         print("****************************************************")
 
-        # Step 2: Extract the subset (hints) from the original Chisel code.
-        default_threshold = self.input_data.get("threshold", 40)
+        # default_threshold = self.input_data.get("threshold", 40)
+        default_threshold = self.template_config.template_dict.get('v2chisel_pass1', {}).get('threshold', 40)
         chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text)
         if not chisel_subset.strip():
             self.error("No hint lines extracted from the Chisel code. Aborting LLM call.")
@@ -162,28 +211,50 @@ class V2ChiselPass1(Step):
         last_error_msg = ''
         generated_diff = ''
 
-        # Use exactly 4 attempts corresponding to the 4 prompts.
+        # For a single prompt file, extract the desired section from the loaded config.
+        # We assume self.template_config.config is a dictionary with keys like "prompt1", "prompt2", etc.
+        full_config = self.template_config.template_dict.get(self.lw.name.lower(), {})
+        if not full_config:
+            full_config = self.template_config.template_dict
+        
+
         for attempt in range(1, 5):
             if attempt == 1:
-                prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt1.yaml')
+                if "prompt1" in full_config:
+                    prompt_section = full_config["prompt1"]
+                else:
+                    self.error("Missing 'prompt1' section in prompt configuration.")
             elif attempt == 2:
-                prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt2.yaml')
+                if "prompt2" in full_config:
+                    prompt_section = full_config["prompt2"]
+                else:
+                    self.error("Missing 'prompt2' section in prompt configuration.")
             elif attempt == 3:
-                prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt3.yaml')
+                if "prompt3" in full_config:
+                    prompt_section = full_config["prompt3"]
+                else:
+                    self.error("Missing 'prompt3' section in prompt configuration.")
                 increased_threshold = default_threshold + 20
                 chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text, threshold_override=increased_threshold)
+                if not chisel_subset.strip():
+                    self.error("No hint lines extracted for attempt 3. Aborting LLM call.")
             else:
-                prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt4.yaml')
-                increased_threshold = default_threshold - 20
-                chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text, threshold_override=increased_threshold)
+                if "prompt4" in full_config:
+                    prompt_section = full_config["prompt4"]
+                else:
+                    self.error("Missing 'prompt4' section in prompt configuration.")
+                decreased_threshold = default_threshold - 20
+                chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text, threshold_override=decreased_threshold)
+                if not chisel_subset.strip():
+                    self.error("No hint lines extracted for attempt 3. Aborting LLM call.")
 
-            if not os.path.exists(prompt_file):
-                self.error(f'Prompt file not found: {prompt_file}')
-            prompt_template = LLM_template(prompt_file)
+            # Create a new LLM_template instance from the selected section.
+            prompt_template = LLM_template(prompt_section)
             if attempt == 1:
-                self.lw.from_dict(name='v2chisel_pass1', conf_dict=data['llm'], prompt=prompt_template)
+                self.lw.chat_template = prompt_template
             else:
-                self.lw.from_dict(name=f'v2chisel_pass1_retry_{attempt}', conf_dict=data['llm'], prompt=prompt_template)
+                self.lw.name = f'v2chisel_pass1_retry_{attempt}'
+                self.lw.chat_template = prompt_template
 
             prompt_dict = {
                 'verilog_original': verilog_original,
@@ -193,19 +264,22 @@ class V2ChiselPass1(Step):
                 'verilog_diff': verilog_diff_text,
                 'error_msg': last_error_msg,
             }
-
             if attempt > 1:
                 prompt_dict['chisel_diff'] = generated_diff
+
+            # Debug: print the loaded prompt template
+            print("DEBUG: Loaded prompt template for attempt {}:".format(attempt))
+            print(prompt_template.config if hasattr(prompt_template, 'config') else prompt_template)
 
             formatted_prompt = self.lw.chat_template.format(prompt_dict)
             print('\n================ LLM QUERY (attempt {}) ================'.format(attempt))
             for chunk in formatted_prompt:
-                print("Role: {}".format(chunk['role']))
+                print("Role: {}".format(chunk.get('role', '<no role>')))
                 print("Content:")
-                print(chunk['content'])
+                print(chunk.get('content', '<no content>'))
                 print("------------------------------------------------")
 
-            response_list = self.lw.inference(prompt_dict, n=1)
+            response_list = self.lw.inference(prompt_dict, prompt_index="prompt1", n=1)
             if not response_list:
                 print('\n=== LLM RESPONSE: EMPTY ===\n')
                 last_error_msg = 'LLM gave empty response'
@@ -225,7 +299,6 @@ class V2ChiselPass1(Step):
             is_valid, verilog_candidate, error_msg = self._run_chisel2v(chisel_updated)
             if is_valid:
                 chisel_updated_final = chisel_updated
-                # Fix formatting of the generated Verilog candidate using our new _fix_formatting:
                 verilog_candidate_final = self._fix_formatting(verilog_candidate)
                 was_valid = True
                 break
@@ -245,9 +318,8 @@ class V2ChiselPass1(Step):
         result['verilog_diff'] = verilog_diff_text
         return result
 
-
 if __name__ == '__main__':  # pragma: no cover
-    step = V2ChiselPass1()
+    step = V2Chisel_pass1()
     step.parse_arguments()
     step.setup()
     step.step()
