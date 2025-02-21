@@ -2,44 +2,8 @@ import os
 import pytest
 from unittest.mock import patch
 
-from hagent.step.v2chisel_pass1.v2chisel_pass1 import V2ChiselPass1
+from hagent.step.v2chisel_pass1.v2chisel_pass1 import V2Chisel_pass1
 
-
-@pytest.fixture
-def valid_input_file(tmp_path):
-    """
-    Create a valid input YAML file with 'llm' and minimal verilog/chisel data.
-    """
-    content = """\
-llm:
-  model: "test-model"
-verilog_original: |
-  module mymodule(input clk, rst);
-  endmodule
-verilog_fixed: |
-  module mymodule(input clk, rst);
-  // fixed changes
-  endmodule
-chisel_original: |
-  class MyModule extends Module {
-    val io = IO(new Bundle {})
-  }
-"""
-    fpath = tmp_path / 'input_valid.yaml'
-    fpath.write_text(content)
-    return str(fpath)
-
-
-@pytest.fixture
-def step_with_io(valid_input_file, tmp_path):
-    """
-    Return a V2ChiselPass1 Step object with a valid input path and a temp output path.
-    NOTE: We won't call .setup() here; each test can do so at the desired time.
-    """
-    step_obj = V2ChiselPass1()
-    out_file = str(tmp_path / 'output.yaml')
-    step_obj.set_io(inp_file=valid_input_file, out_file=out_file)
-    return step_obj
 
 
 def test_retry_and_prompt2_used(step_with_io, tmp_path):
@@ -237,11 +201,11 @@ def test_missing_llm_section(tmp_path):
 
     out_file = tmp_path / 'output_missing_llm.yaml'
 
-    gen_step = V2ChiselPass1()
+    gen_step = V2Chisel_pass1()
     gen_step.set_io(inp_file=str(inp_file), out_file=str(out_file))
 
     # Patch the 'error' method to raise ValueError
-    with patch.object(V2ChiselPass1, 'error', side_effect=ValueError("Missing 'llm' section in input YAML")):
+    with patch.object(V2Chisel_pass1, 'error', side_effect=ValueError("Missing 'llm' section in input YAML")):
         with pytest.raises(ValueError, match="Missing 'llm' section in input YAML"):
             gen_step.setup()
 
