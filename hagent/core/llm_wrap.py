@@ -275,8 +275,6 @@ class LLM_wrap:
         return answers
 
     def inference(self, prompt_dict: Dict, prompt_index: str, n: int = 1, max_history: int = 0) -> List[str]:
-        if not prompt_index:
-            raise ValueError("LLM_wrap.inference() missing required parameter: prompt_index")
         answers = self._call_llm(prompt_dict, prompt_index, n=n, max_history=max_history)
         return answers
 

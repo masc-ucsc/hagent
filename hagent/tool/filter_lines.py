@@ -15,7 +15,7 @@ class FilterLines:
     each Chisel line (using only its code portion, ignoring inline comments) based on simple substring matching.
     
     The union of candidate lines (excluding pure comment and import lines) is returned as a string
-    with each matching line prefixed with "HERE:?". An optional context parameter works similar
+    with each matching line prefixed with "-> <line_no>:". An optional context parameter works similar
     to grep’s -C flag.
     
     This module supports both diff formats:
@@ -99,7 +99,7 @@ class FilterLines:
         
         The union of candidate lines (i.e. lines with a positive score) is returned.
         If 'context' is set to a value > 0, the specified number of lines before and after each candidate
-        line are also included. Candidate lines are prefixed with "HERE:?", while context lines are prefixed
+        line are also included. Candidate lines are prefixed with "-> <line_no>:", while context lines are prefixed
         with four spaces.
         """
         # Read diff file
@@ -171,7 +171,7 @@ class FilterLines:
             if stripped_line.startswith("//") or stripped_line.startswith("import "):
                 continue
             if line_no in candidate_line_nums:
-                output_lines.append(f"HERE:?    {line}")
+                output_lines.append(f"->    {line_no}: {line}")
             else:
                 output_lines.append(f"    {line}")
 
