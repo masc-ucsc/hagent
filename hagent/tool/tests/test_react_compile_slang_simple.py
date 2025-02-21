@@ -31,7 +31,7 @@ class React_compile_slang:
         )
         assert not self.llm.last_error
 
-        self.compiler  = Compile_slang()
+        self.compiler = Compile_slang()
         self.extractor = Extract_code_verilog()
 
     def check_callback(self, code: str) -> List[Diagnostic]:
@@ -42,7 +42,7 @@ class React_compile_slang:
         """
         if not self.compiler.setup():  # Reset compiler state.
             return []
-        if not self.compiler.add_source(text=code):  # Add code to compiler.
+        if not self.compiler.add_inline(code):  # Add code to compiler.
             return []
         return self.compiler.get_errors()
 
@@ -53,14 +53,14 @@ class React_compile_slang:
         Uses the LLM to generate a fixed version of the current code.
         If a fix_example is provided, it is merged with the current code.
         """
-        if not diag: # It should not happen, but just in case
+        if not diag:  # It should not happen, but just in case
             return current_text
 
         if not fix_example:
-            results = self.llm.inference({'code': current_text}, 'direct_prompt',n=1)
+            results = self.llm.inference({'code': current_text}, 'direct_prompt', n=1)
         else:
             # Merge fix_example with the current code for the prompt.
-            results = self.llm.inference({**fix_example, 'code': current_text}, 'example_prompt',n=1)
+            results = self.llm.inference({**fix_example, 'code': current_text}, 'example_prompt', n=1)
 
         line = diag.loc
         best_code = current_text

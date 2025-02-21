@@ -126,6 +126,5 @@ def test_equiv_mocked_not_equiv(prepare_checker, monkeypatch):
     assert result is False
 
 
-
 if __name__ == '__main__':
     pytest.main(['-v', '-s', '--tb=long', __file__])

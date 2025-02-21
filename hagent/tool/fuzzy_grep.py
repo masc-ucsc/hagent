@@ -1,4 +1,3 @@
-
 import os
 import re
 from rapidfuzz import fuzz
@@ -40,7 +39,7 @@ class Fuzzy_grep:
             self.reserved_keywords = self.get_reserved_keywords(language)
             return True
         else:
-            self.error_message = f"Unsupported language: {language}"
+            self.error_message = f'Unsupported language: {language}'
             return False
 
     @staticmethod
@@ -67,39 +66,205 @@ class Fuzzy_grep:
         language = language.lower()
         if language == 'verilog':
             keywords = [
-                "always", "and", "assign", "begin", "buf", "case", "casex", "casez", "cmos",
-                "deassign", "default", "defparam", "disable", "edge", "else", "end", "endcase",
-                "endfunction", "endmodule", "endprimitive", "endspecify", "endtable", "endtask",
-                "event", "for", "force", "forever", "fork", "function", "if", "initial", "inout",
-                "input", "integer", "join", "localparam", "macromodule", "module", "nand", "negedge",
-                "nmos", "nor", "not", "notif", "or", "output", "parameter", "pmos", "posedge",
-                "primitive", "pullup", "pulsestyle_onevent", "pulsestyle_ondetect", "rcmos", "reg",
-                "release", "repeat", "rnmos", "rpmos", "rtran", "rtranif0", "rtranif1", "scalared",
-                "small", "specify", "specparam", "strength", "strong0", "strong1", "supply0",
-                "supply1", "table", "task", "tri", "tri0", "tri1", "triand", "trior", "trireg",
-                "vectored", "wait", "wand", "weak0", "weak1", "while", "wire", "wor", "xnor", "xor"
+                'always',
+                'and',
+                'assign',
+                'begin',
+                'buf',
+                'case',
+                'casex',
+                'casez',
+                'cmos',
+                'deassign',
+                'default',
+                'defparam',
+                'disable',
+                'edge',
+                'else',
+                'end',
+                'endcase',
+                'endfunction',
+                'endmodule',
+                'endprimitive',
+                'endspecify',
+                'endtable',
+                'endtask',
+                'event',
+                'for',
+                'force',
+                'forever',
+                'fork',
+                'function',
+                'if',
+                'initial',
+                'inout',
+                'input',
+                'integer',
+                'join',
+                'localparam',
+                'macromodule',
+                'module',
+                'nand',
+                'negedge',
+                'nmos',
+                'nor',
+                'not',
+                'notif',
+                'or',
+                'output',
+                'parameter',
+                'pmos',
+                'posedge',
+                'primitive',
+                'pullup',
+                'pulsestyle_onevent',
+                'pulsestyle_ondetect',
+                'rcmos',
+                'reg',
+                'release',
+                'repeat',
+                'rnmos',
+                'rpmos',
+                'rtran',
+                'rtranif0',
+                'rtranif1',
+                'scalared',
+                'small',
+                'specify',
+                'specparam',
+                'strength',
+                'strong0',
+                'strong1',
+                'supply0',
+                'supply1',
+                'table',
+                'task',
+                'tri',
+                'tri0',
+                'tri1',
+                'triand',
+                'trior',
+                'trireg',
+                'vectored',
+                'wait',
+                'wand',
+                'weak0',
+                'weak1',
+                'while',
+                'wire',
+                'wor',
+                'xnor',
+                'xor',
             ]
         elif language == 'scala':
             keywords = [
-                "abstract", "case", "catch", "class", "def", "do", "else", "extends",
-                "false", "final", "finally", "for", "forSome", "if", "implicit", "import",
-                "lazy", "match", "new", "null", "object", "override", "package", "private",
-                "protected", "return", "sealed", "super", "this", "throw", "trait", "try",
-                "true", "type", "val", "var", "while", "with", "yield"
+                'abstract',
+                'case',
+                'catch',
+                'class',
+                'def',
+                'do',
+                'else',
+                'extends',
+                'false',
+                'final',
+                'finally',
+                'for',
+                'forSome',
+                'if',
+                'implicit',
+                'import',
+                'lazy',
+                'match',
+                'new',
+                'null',
+                'object',
+                'override',
+                'package',
+                'private',
+                'protected',
+                'return',
+                'sealed',
+                'super',
+                'this',
+                'throw',
+                'trait',
+                'try',
+                'true',
+                'type',
+                'val',
+                'var',
+                'while',
+                'with',
+                'yield',
             ]
         elif language == 'chisel':
             # Combine Scala reserved keywords with additional Chisel-specific keywords.
             scala_keywords = [
-                "abstract", "case", "catch", "class", "def", "do", "else", "extends",
-                "false", "final", "finally", "for", "forSome", "if", "implicit", "import",
-                "lazy", "match", "new", "null", "object", "override", "package", "private",
-                "protected", "return", "sealed", "super", "this", "throw", "trait", "try",
-                "true", "type", "val", "var", "while", "with", "yield"
+                'abstract',
+                'case',
+                'catch',
+                'class',
+                'def',
+                'do',
+                'else',
+                'extends',
+                'false',
+                'final',
+                'finally',
+                'for',
+                'forSome',
+                'if',
+                'implicit',
+                'import',
+                'lazy',
+                'match',
+                'new',
+                'null',
+                'object',
+                'override',
+                'package',
+                'private',
+                'protected',
+                'return',
+                'sealed',
+                'super',
+                'this',
+                'throw',
+                'trait',
+                'try',
+                'true',
+                'type',
+                'val',
+                'var',
+                'while',
+                'with',
+                'yield',
             ]
             chisel_keywords = [
-                "chisel3", "module", "reg", "wire", "io", "vec", "uint", "sint", "bool",
-                "reset", "clock", "when", "otherwise", "is", "donttouch", "rawmodule",
-                "blackbox", "lazymodule", "lazymoduleimp", "chiselenum", "annotate", "input", "output"
+                'chisel3',
+                'module',
+                'reg',
+                'wire',
+                'io',
+                'vec',
+                'uint',
+                'sint',
+                'bool',
+                'reset',
+                'clock',
+                'when',
+                'otherwise',
+                'is',
+                'donttouch',
+                'rawmodule',
+                'blackbox',
+                'lazymodule',
+                'lazymoduleimp',
+                'chiselenum',
+                'annotate',
+                'input',
+                'output',
             ]
             keywords = scala_keywords + chisel_keywords
         else:
@@ -116,7 +281,8 @@ class Fuzzy_grep:
         words = self.extract_words(line)
         # Filter out reserved words.
         candidate_words = [
-            self.preprocess(word) for word in words
+            self.preprocess(word)
+            for word in words
             if not (self.reserved_keywords and self.preprocess(word) in self.reserved_keywords)
         ]
         for term in search_terms:
@@ -156,8 +322,15 @@ class Fuzzy_grep:
             self.error_message = str(e)
             return []
 
-    def search(self, text: str = None, files: list = None, directory: str = None,
-               search_terms: list = None, context: int = 0, threshold: int = 70) -> dict:
+    def search(
+        self,
+        text: str = None,
+        files: list = None,
+        directory: str = None,
+        search_terms: list = None,
+        context: int = 0,
+        threshold: int = 70,
+    ) -> dict:
         """
         Searches for fuzzy matches based on search_terms.
 
@@ -171,7 +344,7 @@ class Fuzzy_grep:
         """
         results = {}
         if text is not None:
-            results["text"] = self.find_matches_in_text(text, search_terms, context, threshold)
+            results['text'] = self.find_matches_in_text(text, search_terms, context, threshold)
         if files is not None:
             for file in files:
                 if os.path.isfile(file):
@@ -189,6 +362,5 @@ class Fuzzy_grep:
                         if matches:
                             results[file_path] = matches
             else:
-                self.error_message = f"{directory} is not a valid directory."
+                self.error_message = f'{directory} is not a valid directory.'
         return results
-

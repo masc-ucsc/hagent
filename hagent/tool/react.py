@@ -1,9 +1,12 @@
 # hagent/tool/react.py
 
-from typing import Optional, Callable, List, Dict, Tuple, is_typeddict
+from typing import Optional, Callable, List, Dict, Tuple
 import os
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
+
+from hagent.tool.compile import Diagnostic
+
 
 def process_multiline_strings(obj):
     """
@@ -14,12 +17,10 @@ def process_multiline_strings(obj):
         return {k: process_multiline_strings(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [process_multiline_strings(item) for item in obj]
-    elif isinstance(obj, str) and "\n" in obj:
+    elif isinstance(obj, str) and '\n' in obj:
         # Wrap the string to enforce literal block style.
         return LiteralScalarString(obj)
     return obj
-
-from hagent.tool.compile import Diagnostic
 
 
 def insert_comment(code: str, add: str, prefix: str, loc: int) -> str:
@@ -111,7 +112,6 @@ class React:
         self._is_ready = True
         return True
 
-
     def _load_db(self) -> None:
         """
         Reads the YAML database file from `_db_path` into `_db`.
@@ -120,7 +120,7 @@ class React:
             self._db = {}
             return
 
-        yaml_loader = YAML(typ="safe")
+        yaml_loader = YAML(typ='safe')
         with open(self._db_path, 'r', encoding='utf-8') as f:
             data = yaml_loader.load(f)
             if data is None:
@@ -143,14 +143,13 @@ class React:
             with open(self._db_path, 'w', encoding='utf-8') as f:
                 yaml_writer.dump(processed_db, f)
 
-
     def _add_error_example(self, error_type: str, fix_question: str, fix_answer: str) -> None:
         """
         Updates `_db` with a new error example if not already present.
         Immediately saves if learning mode is enabled.
         """
         if error_type not in self._db:
-            self._db[error_type] = {"fix_question": fix_question, "fix_answer": fix_answer}
+            self._db[error_type] = {'fix_question': fix_question, 'fix_answer': fix_answer}
             if self._learn_mode:
                 self._save_db()
 
@@ -217,14 +216,14 @@ class React:
                 return current_text
 
             error_type = diagnostics[0].msg
-            fix_example = self._db.get(error_type, {"fix_question": "", "fix_answer": ''})
-            assert isinstance(fix_example, dict), f"Corrupt llm_wrap DB {self._db_path}"
+            fix_example = self._db.get(error_type, {'fix_question': '', 'fix_answer': ''})
+            assert isinstance(fix_example, dict), f'Corrupt llm_wrap DB {self._db_path}'
 
             if iteration == 1:
                 # Use a delta: only a few lines around the first error.
                 delta, start_line, end_line = self._get_delta(current_text, diagnostics[0].loc)
                 # Compute relative error location in the delta.
-                relative_loc = diagnostics[0].loc - start_line + 1
+                # relative_loc = diagnostics[0].loc - start_line + 1
                 try:
                     # annotated = insert_comment(delta, diagnostics[0].to_str(), self._lang_prefix, relative_loc)
                     annotated = diagnostics[0].insert_comment(delta, self._lang_prefix)
@@ -234,7 +233,7 @@ class React:
                     return ''
                 fixed_delta = fix_callback(annotated, diagnostics[0], fix_example, True, iteration)
                 fix_question = annotated
-                fix_answer   = fixed_delta
+                fix_answer = fixed_delta
                 # Apply the returned patch to the full code.
                 new_text = self._apply_patch(current_text, fixed_delta, start_line, end_line)
             else:
@@ -248,7 +247,7 @@ class React:
                     return ''
                 new_text = fix_callback(annotated, diagnostics[0], fix_example, False, iteration)
                 fix_question = annotated
-                fix_answer   = new_text
+                fix_answer = new_text
 
             iteration_log['fix'] = new_text
 

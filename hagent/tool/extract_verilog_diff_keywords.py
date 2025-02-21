@@ -18,6 +18,7 @@ import argparse
 import difflib
 import re
 
+
 class FuzzyGrepFilter:
     """
     Utility class to generate a unified diff and extract keywords from it.
@@ -27,7 +28,7 @@ class FuzzyGrepFilter:
     def generate_diff(old_code: str, new_code: str) -> str:
         """
         Generate a unified diff string comparing old_code vs. new_code.
-        
+
         :param old_code: Content of the original file.
         :param new_code: Content of the modified file.
         :return: A unified diff as a string.
@@ -35,11 +36,7 @@ class FuzzyGrepFilter:
         old_lines = old_code.splitlines()
         new_lines = new_code.splitlines()
         diff_lines = difflib.unified_diff(
-            old_lines,
-            new_lines,
-            fromfile='verilog_original.v',
-            tofile='verilog_fixed.v',
-            lineterm=''
+            old_lines, new_lines, fromfile='verilog_original.v', tofile='verilog_fixed.v', lineterm=''
         )
         return '\n'.join(diff_lines)
 
@@ -49,7 +46,7 @@ class FuzzyGrepFilter:
         Extract keywords from a unified diff. It scans lines that are marked as changes
         (starting with '+' or '-' but ignoring file header lines) and extracts all alphanumeric words.
         Comments are removed before processing so that only meaningful code identifiers are retained.
-        
+
         :param diff_text: The unified diff string.
         :return: A list of unique keywords.
         """
@@ -67,18 +64,11 @@ class FuzzyGrepFilter:
                 keywords.update(words)
         return list(keywords)
 
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="Extract main words from a unified Verilog diff (ignoring comments)."
-    )
-    parser.add_argument(
-        "--original_verilog", required=True,
-        help="Path to the original Verilog file (e.g., original.v)"
-    )
-    parser.add_argument(
-        "--fixed_verilog", required=True,
-        help="Path to the fixed Verilog file (e.g., fixed.v)"
-    )
+    parser = argparse.ArgumentParser(description='Extract main words from a unified Verilog diff (ignoring comments).')
+    parser.add_argument('--original_verilog', required=True, help='Path to the original Verilog file (e.g., original.v)')
+    parser.add_argument('--fixed_verilog', required=True, help='Path to the fixed Verilog file (e.g., fixed.v)')
     args = parser.parse_args()
 
     # Read the Verilog files
@@ -88,22 +78,23 @@ def main():
         with open(args.fixed_verilog, 'r', encoding='utf-8') as f:
             fixed_v = f.read()
     except Exception as e:
-        print(f"Error reading files: {e}")
+        print(f'Error reading files: {e}')
         exit(1)
 
     # Generate the unified diff from the two files
     diff_text = FuzzyGrepFilter.generate_diff(original_v, fixed_v)
-    print("*********************")
+    print('*********************')
     print(diff_text)
-    print("*********************")
-    
+    print('*********************')
+
     # Extract keywords from the diff (ignoring comments)
     keywords = FuzzyGrepFilter.extract_keywords_from_diff(diff_text)
-    
+
     # Print the extracted keywords
-    print("Extracted keywords from Verilog diff (ignoring comments):")
+    print('Extracted keywords from Verilog diff (ignoring comments):')
     for word in keywords:
         print(word)
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     main()

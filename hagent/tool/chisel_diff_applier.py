@@ -4,6 +4,7 @@
 
 import re
 
+
 class ChiselDiffApplier:
     """
     A tool to apply a unified diff to a Chisel source code snippet.
@@ -35,7 +36,8 @@ class ChiselDiffApplier:
         """
         # Remove any git header lines (like "diff --git", "index", "---", "+++")
         diff_lines = [
-            line for line in diff_text.splitlines()
+            line
+            for line in diff_text.splitlines()
             if line.startswith('@@') or line.startswith(' ') or line.startswith('-') or line.startswith('+')
         ]
 
@@ -56,13 +58,13 @@ class ChiselDiffApplier:
                     i += 1
 
                 # Separate removal, addition, and context lines.
-                removal_lines = [l[1:] for l in hunk_lines if l.startswith("-")]
-                addition_lines = [l[1:] for l in hunk_lines if l.startswith("+")]
-                context_lines = [l[1:] for l in hunk_lines if l.startswith(" ")]
+                removal_lines = [l2[1:] for l2 in hunk_lines if l2.startswith('-')]
+                addition_lines = [l2[1:] for l2 in hunk_lines if l2.startswith('+')]
+                context_lines = [l2[1:] for l2 in hunk_lines if l2.startswith(' ')]
 
                 # Build multi-line blocks.
-                removal_block = "\n".join(removal_lines).strip()
-                addition_block = "\n".join(addition_lines).strip()
+                removal_block = '\n'.join(removal_lines).strip()
+                addition_block = '\n'.join(addition_lines).strip()
 
                 # First try: if the removal block exists in new_code, replace it.
                 if removal_block and removal_block in new_code:
@@ -87,7 +89,7 @@ class ChiselDiffApplier:
                                     # (This assumes that the intended change is on the line immediately after the context.)
                                     if idx + 1 < len(code_lines):
                                         code_lines[idx + 1] = addition_block
-                                        new_code = "\n".join(code_lines)
+                                        new_code = '\n'.join(code_lines)
                                         applied_any_hunk = True
                                     break
             else:
@@ -96,11 +98,7 @@ class ChiselDiffApplier:
         # If no hunk was successfully applied, use a fallback substitution.
         # (For example, replace "io.out := io.in" with "io.out := ~io.in")
         if not applied_any_hunk:
-            new_code, count = re.subn(
-                r'io\.out\s*:=\s*io\.in',
-                'io.out := ~io.in',
-                new_code
-            )
+            new_code, count = re.subn(r'io\.out\s*:=\s*io\.in', 'io.out := ~io.in', new_code)
             if count > 0:
                 applied_any_hunk = True
 
