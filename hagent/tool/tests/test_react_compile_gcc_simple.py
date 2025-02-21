@@ -15,6 +15,7 @@ from hagent.tool.react import React
 from hagent.tool.compile import Diagnostic
 from hagent.core.llm_wrap import LLM_template, LLM_wrap
 
+
 def extract_errors(gcc_output: str) -> list:
     """
     Extracts GCC errors (including context) from compiler output.
@@ -30,16 +31,17 @@ def extract_errors(gcc_output: str) -> list:
 
     for line in gcc_output.splitlines():
         # Start a new error block if the line contains 'error:'
-        if re.match(r".*error:", line):
+        if re.match(r'.*error:', line):
             if current_block:
                 error_blocks.append(current_block)
-            current_block = line + "\n"
+            current_block = line + '\n'
         elif current_block:
             # Continuation of the current error block.
-            current_block += line + "\n"
+            current_block += line + '\n'
     if current_block:
         error_blocks.append(current_block)
     return error_blocks
+
 
 def check_callback_cpp(code: str) -> List[Diagnostic]:
     """
@@ -53,11 +55,7 @@ def check_callback_cpp(code: str) -> List[Diagnostic]:
 
     try:
         # Run g++ in syntax-check mode (-fsyntax-only) without linking.
-        result = subprocess.run(
-            ['g++', '-std=c++17', '-fsyntax-only', tmp_name],
-            capture_output=True,
-            text=True
-        )
+        result = subprocess.run(['g++', '-std=c++17', '-fsyntax-only', tmp_name], capture_output=True, text=True)
         if result.returncode != 0:
             diags = []
             for msg in extract_errors(result.stderr):
@@ -69,6 +67,7 @@ def check_callback_cpp(code: str) -> List[Diagnostic]:
         if os.path.exists(tmp_name):
             os.remove(tmp_name)
 
+
 def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: str, iteration_count: int) -> str:
     """
     Calls the LLM wrapper to fix the C++ code based on a given diagnostic.
@@ -79,31 +78,25 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: str, iter
     """
     # Construct a prompt that includes the error message and current code.
     prompt = (
-        f"The following C++ code produced the error:\n\n"
-        f"{diag.msg}\n{diag.hint}\n\n"
-        "Please fix the code below to resolve the error. Return only the corrected code.\n\n"
-        f"{current_code}\n"
+        f'The following C++ code produced the error:\n\n'
+        f'{diag.msg}\n{diag.hint}\n\n'
+        'Please fix the code below to resolve the error. Return only the corrected code.\n\n'
+        f'{current_code}\n'
     )
     # Determine the path to the LLM configuration file.
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf_compile.yaml')
     # Create an LLM template for code fixes.
     template = LLM_template(
         [
-            {"role": "system", "content": "You are an expert C++ code fixer."},
-            {"role": "user", "content": "{gen_msg}"},
+            {'role': 'system', 'content': 'You are an expert C++ code fixer.'},
+            {'role': 'user', 'content': '{gen_msg}'},
         ]
     )
     # Initialize the LLM_wrap instance.
     lw = LLM_wrap()
-    lw.from_file(
-        name="cpp_fix",
-        log_file="llm_fix_cpp.log",
-        conf_file=conf_file,
-        init_template=template,
-        chat_template=template
-    )
+    lw.from_file(name='cpp_fix', log_file='llm_fix_cpp.log', conf_file=conf_file, init_template=template, chat_template=template)
     # Call inference with the constructed prompt.
-    results = lw.inference({"gen_msg": prompt}, n=1)
+    results = lw.inference({'gen_msg': prompt}, n=1)
     if results and len(results) > 0:
         fixed_code = results[0]
         # Return the fixed code if it differs from the current code.
@@ -111,12 +104,13 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: str, iter
             return fixed_code
     return current_code
 
+
 if __name__ == '__main__':
     # Initialize React.
     react_tool = React()
     setup_success = react_tool.setup(db_path='foo.yaml', learn=True, max_iterations=3)
     if not setup_success:
-        print(f"React setup failed: {react_tool.error_message}")
+        print(f'React setup failed: {react_tool.error_message}')
         exit(1)
 
     # A C++ snippet with a missing semicolon.
@@ -138,4 +132,3 @@ int main() {
         print(fixed_code)
     else:
         print('Could not fix the code within the iteration limits.')
-

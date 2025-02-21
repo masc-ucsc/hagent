@@ -25,7 +25,7 @@ class Extract_code(ABC):
 
 
 class Extract_code_verilog(Extract_code):
-    def parse(self, prompt: str, verilog_path: str="") -> str:
+    def parse(self, prompt: str, verilog_path: str = '') -> str:
         txt = self.extract_codeblock(prompt)
         txt = txt.replace('\\', '')
 
@@ -55,7 +55,7 @@ class Extract_code_verilog(Extract_code):
 
 
 class Extract_code_chisel(Extract_code):
-    def parse(self, prompt: str, verilog_path: str="") -> str:
+    def parse(self, prompt: str, verilog_path: str = '') -> str:
         txt = self.extract_codeblock(prompt)
         txt = txt.replace('\\', '')
 
@@ -96,7 +96,7 @@ class Extract_code_pyrtl(Extract_code):
 
 
 class Extract_code_dslx(Extract_code):
-    def parse(self, prompt: str, verilog_path: str="") -> str:
+    def parse(self, prompt: str, verilog_path: str = '') -> str:
         txt = self.extract_codeblock(prompt)
         txt = txt.replace('\\', '')
 
@@ -114,8 +114,9 @@ class Extract_code_dslx(Extract_code):
             answer = txt
         return answer
 
+
 class Extract_code_default(Extract_code):
-    def parse(self, prompt: str, verilog_path: str="") -> str:
+    def parse(self, prompt: str, verilog_path: str = '') -> str:
         txt = self.extract_codeblock(prompt)
         txt = txt.replace('\\', '')
 

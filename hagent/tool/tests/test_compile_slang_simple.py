@@ -4,6 +4,7 @@ import sys
 
 from hagent.tool.compile_slang import Compile_slang
 
+
 def inline_verilog():
     # Minimal Verilog code to be compiled.
     verilog_code = r"""
@@ -145,35 +146,35 @@ endmodule
 
     # Validate setup: Ensure the pyslang package is present.
     if not compiler.setup():
-        print("Setup failed:", compiler.error_message, file=sys.stderr)
+        print('Setup failed:', compiler.error_message, file=sys.stderr)
         sys.exit(1)
 
-    compiler.add_source(text=verilog_code)
+    compiler.add_inline(verilog_code)
 
-    if compiler.set_top("potato"):
-        print("Potato should not be a valid top", file=sys.stderr)
+    if compiler.set_top('potato'):
+        print('Potato should not be a valid top', file=sys.stderr)
         sys.exit(1)
 
-    hierarchy = compiler.get_hierarchy()
+    hierarchy = compiler.get_top_list()
     assert len(hierarchy) == 2
     sum('trivial' in s for s in hierarchy)
     sum('leaf5' in s for s in hierarchy)
 
     # Not needed to set trivial if there is a single module
-    if not compiler.set_top("trivial"):
-        print("Failed to set trivial as top module.", file=sys.stderr)
+    if not compiler.set_top('trivial'):
+        print('Failed to set trivial as top module.', file=sys.stderr)
         sys.exit(1)
 
-    hierarchy = compiler.get_hierarchy()
+    hierarchy = compiler.get_top_list()
     assert len(hierarchy) == 1
-    assert hierarchy[0] == "trivial"
+    assert hierarchy[0] == 'trivial'
 
     # Retrieve input/output definitions from the top module.
     ios = compiler.get_ios()
     assert len(ios) == 3
-    assert ios[0].name == "a"
-    assert ios[1].name == "b"
-    assert ios[2].name == "c"
+    assert ios[0].name == 'a'
+    assert ios[1].name == 'b'
+    assert ios[2].name == 'c'
 
     assert ios[0].input == True
     assert ios[1].input == True
@@ -190,49 +191,60 @@ endmodule
     # Retrieve compilation warnings and errors.
     warnings = compiler.get_warnings()
     errors = compiler.get_errors()
-    assert len(warnings)>2
-    assert len(errors)==1
+    assert len(warnings) > 2
+    assert len(errors) == 1
+    print(f'err:{errors[0].to_str()}')
     assert errors[0].loc > 0
 
     compiler2 = Compile_slang()
-    compiler2.setup() # clears the list of tops
-    compiler2.add_source(text=verilog_code2)
-    hier2 = compiler2.get_hierarchy()
+    compiler2.setup()  # clears the list of tops
+    compiler2.add_inline(verilog_code2)
+    hier2 = compiler2.get_top_list()
     assert len(hier2) == 1
     for a in hier2:
-        print(f"hier:{a}")
+        print(f'hier:{a}')
+
 
 def from_fileverilog(args):
     compiler = Compile_slang()
-    compiler.setup() # clears the list of tops
 
-    #with open(args[0], "r") as file:
-    #    file_txt = file.read()
+    use_command_line_args = False
 
-    for a in args:
+    if use_command_line_args:
+        compiler.setup(f'-f {args[0]}')
+    else:
+        compiler.setup()
 
-        compiler.add_source(file=a)
+        for a in args:
+            ok = compiler.add_file(file=a)
+            if not ok:
+                print(f'OOPS {compiler.error_message}')
 
-    hier = compiler.get_hierarchy()
+    hier = compiler.get_top_list()
     for a in hier:
-        print(f"top level module options:{a}")
+        print(f'top level module options:{a}')
 
     err = compiler.get_errors()
     for a in err:
-        print(f"ERR: Line {a.loc} msg:{a.msg}")
-        # print(f"FIX\n:{a.insert_comment(file_txt, '#')}")
+        print(f'ERR: File {a.file} Line {a.loc} msg:{a.msg}')
+
+    err = compiler.get_warnings()
+    for a in err:
+        print(f'WARN: File {a.file} Line {a.loc} msg:{a.msg}')
+
 
 def main(args):
     # Ensure args is a list
-    assert isinstance(args, list), "args must be a list"
+    assert isinstance(args, list), 'args must be a list'
     if len(args) == 0:
         return inline_verilog()
     else:
         return from_fileverilog(args)
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     # If first argument is "test", run the unit tests
-    if len(sys.argv) > 1 and sys.argv[1] == "test":
+    if len(sys.argv) > 1 and sys.argv[1] == 'test':
         # Remove the test argument to prevent unittest from misinterpreting it
         sys.argv.pop(1)
         # unittest.main()

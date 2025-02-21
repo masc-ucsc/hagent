@@ -6,14 +6,18 @@ import subprocess
 import tempfile
 import shutil
 from typing import Optional
+
+
 class Chisel2v:
     """
     A tool to convert Chisel code to Verilog by invoking 'circt' (sbt).
     """
+
     def __init__(self):
         self.error_message = ''
         self._is_ready = False
         self._cached_sbt_path = None
+
     def setup(self, sbt_path: Optional[str] = None) -> bool:
         """
         Verifies that sbt (and by extension circt) is installed. Returns True if found,
@@ -45,6 +49,7 @@ class Chisel2v:
         #     return False
         self._is_ready = True
         return True
+
     def chisel_fix(self, chisel_code: str, classname: str) -> str:
         """
         Modifies the given chisel_code (a .scala file content) to ensure correct imports,
@@ -93,6 +98,7 @@ class Chisel2v:
             modified_lines.append(snippet)
         # Return the modified content
         return ''.join(modified_lines)
+
     def generate_verilog(self, chisel_code: str, module_name: str) -> str:
         """
         Generates Verilog from the given Chisel code using circt (sbt).
@@ -104,8 +110,8 @@ class Chisel2v:
         if not self._is_ready:
             raise RuntimeError('Chisel2v not ready; call setup() first')
         # Create a unique temp dir
-        work_dir = tempfile.mkdtemp(dir=os.getcwd(),prefix='chisel2v_')
-        print(f"Chisel2v working directory:{work_dir}")
+        work_dir = tempfile.mkdtemp(dir=os.getcwd(), prefix='chisel2v_')
+        print(f'Chisel2v working directory:{work_dir}')
         try:
             # Copy the build.sbt template
             template_path = os.path.join(os.path.dirname(__file__), 'chisel2v_build.sbt')
@@ -138,10 +144,10 @@ class Chisel2v:
                     shutil.copyfile(generated_sv, generated_v)
                 else:
                     raise RuntimeError('No .v or .sv file produced by sbt run')
-            with open(generated_v, "r") as file:
+            with open(generated_v, 'r') as file:
                 return file.read()
         except Exception as ex:
             raise RuntimeError(f'Failed to generate Verilog: {ex}') from ex
-        #finally:
-            # Cleanup
-            # shutil.rmtree(work_dir, ignore_errors=True)
+        # finally:
+        # Cleanup
+        # shutil.rmtree(work_dir, ignore_errors=True)

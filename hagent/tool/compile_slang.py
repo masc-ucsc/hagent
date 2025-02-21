@@ -28,7 +28,7 @@ class Compile_slang:
         self._compiler = None
         self._top_module = None
 
-    def setup(self) -> bool:
+    def setup(self, args: Optional[str] = '') -> bool:
         """
         Validates the presence of the pyslang package.
         Does not raise exceptions; returns True if setup is successful, False otherwise.
@@ -40,29 +40,68 @@ class Compile_slang:
         Returns:
             bool: True if setup is successful, False otherwise.
         """
-        if pyslang is None:
-            self.error_message = 'pyslang package not found. Please install it.'
+        if not pyslang:
             return False
 
         try:
-            copt = pyslang.CompilationOptions()
-            copt.errorLimit = 1
-            copt.flags = pyslang.CompilationFlags.IgnoreUnknownModules
-            self._compiler = pyslang.Compilation(pyslang.Bag([copt]))
+            # Create a slang driver with default command line arguments
+            driver = pyslang.Driver()
+            driver.addStandardArgs()
 
+            # Parse command line arguments
+            if not driver.parseCommandLine(f'slang --ignore-unknown-modules {args}', pyslang.CommandLineOptions()):
+                return False
+
+            if args:
+                if not driver.processOptions():
+                    self.error_message = f'could not process slang options: {args}'
+                    return False
+
+                if not driver.parseAllSources():
+                    self.error_message = f'count not process slang source files: {args}'
+                    return False
+
+            compilation = driver.createCompilation()
+
+            self._sm = driver.sourceManager
+            self._compiler = compilation
+
+            # tree = pyslang.SyntaxTree.fromFile("trivial.v", self._sm)
+            # compilation.addSyntaxTree(tree)
+            # inst = compilation.getRoot().topInstances
+            # for i in inst:
+            #     print(f"OTATO:{i}")
         except Exception as e:
-            self.error_message = f'Failed to initialize pyslang.Compilation: {e}'
+            self.error_message = f'could not process add_file {args}: {e}'
             return False
 
-        self.error_message = ''  # Reset in case of previous errors.
         return True
 
-    def add_source(self, text: Optional[str] = None, file: Optional[str] = None) -> bool:
+    def add_inline(self, text: str) -> bool:
         """
-        Either text or file must be provided.
-        Depending on the input type, uses pyslang.SyntaxTree.fromText or pyslang.SyntaxTree.fromFile.
         Parameters:
             text (str): The input string
+        Returns:
+            The source included may have compile errors, the error_message is
+            only updated if the file did not exist or an exception is raised by
+            slang.
+        """
+        if not pyslang or not self._compiler:
+            return False
+
+        try:
+            tree = pyslang.SyntaxTree.fromText(text=text, sourceManager=self._sm, name='inline')
+            self._compiler.addSyntaxTree(tree)
+
+        except Exception as e:
+            self.error_message = f'Error adding source: {e}'
+            return False
+
+        return True
+
+    def add_file(self, file: str) -> bool:
+        """
+        Parameters:
             file (str): The input file to use
         Returns:
             The source included may have compile errors, the error_message is
@@ -72,18 +111,10 @@ class Compile_slang:
         if not pyslang or not self._compiler:
             return False
 
-        if text is None and file is None:
-            self.error_message = "Either 'text' or 'file' must be provided."
-            return False
-        if text is not None and file is not None:
-            self.error_message = "Only one of 'text' or 'file' should be provided."
-            return False
-
         try:
-            if text:
-                tree = pyslang.SyntaxTree.fromText(text)
-            else:
-                tree = pyslang.SyntaxTree.fromFile(file)
+            if not self._sm:
+                self._sm = self._compiler.sourceManager
+            tree = pyslang.SyntaxTree.fromFile(file, sourceManager=self._sm)
             self._compiler.addSyntaxTree(tree)
 
         except FileNotFoundError:
@@ -124,12 +155,12 @@ class Compile_slang:
 
         return top
 
-    def get_hierarchy(self, modname: str = "") -> List[str]:
+    def get_top_list(self, modname: str = '') -> List[str]:
         """
-        Extracts and returns a list of hierarchical names or identifiers by traversing
+        Extracts and returns a list of top modules names or identifiers by traversing
         the top-level instances in the compilation root.
         Returns:
-            List[str]: A list of module or instance names representing the hierarchy.
+            List[str]: A list of module or instance names representing the top module list.
         """
         if not self._compiler:
             return []
@@ -229,10 +260,10 @@ class Compile_slang:
         diagnostics = []
 
         diags = self._compiler.getAllDiagnostics()
-        deng = pyslang.DiagnosticEngine(self._compiler.sourceManager)
+        deng = pyslang.DiagnosticEngine(self._sm)
         for msg in diags:
             if msg.isError() == errors:
-                txt = deng.reportAll(self._compiler.sourceManager, [msg])
+                txt = deng.reportAll(self._sm, [msg])
                 diagnostics.append(Diagnostic(txt))
 
         return diagnostics
