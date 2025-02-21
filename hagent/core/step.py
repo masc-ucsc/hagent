@@ -58,51 +58,28 @@ class Step:
         return data
 
     def write_output(self, data):
-        def debug_data(obj, indent=0):
-            prefix = " " * indent
-            if isinstance(obj, dict):
-                for k, v in obj.items():
-                    print(f"{prefix}Key: {repr(k)} (type: {type(k)})")
-                    debug_data(v, indent+2)
-            elif isinstance(obj, list):
-                for i, item in enumerate(obj):
-                    print(f"{prefix}[{i}]: (type: {type(item)})")
-                    debug_data(item, indent+2)
-            else:
-                print(f"{prefix}Value: {repr(obj)} (type: {type(obj)})")
-    
-        print("DEBUG: Raw output data before processing:")
-        debug_data(data)
-    
         def write_yaml_with_block_style(data, file):
-            def process_obj(obj):
+            class LiteralStr(str):
+                pass
+
+            def represent_literal_str(dumper, value):
+                return dumper.represent_scalar('tag:yaml.org,2002:str', value, style='|')
+
+            def process_multiline_strings(obj):
                 if isinstance(obj, dict):
-                    return {str(k): process_obj(v) for k, v in obj.items()}
+                    return {k: process_multiline_strings(v) for k, v in obj.items()}
                 elif isinstance(obj, list):
-                    return [process_obj(i) for i in obj]
-                # If the object has a __dict__, use its dictionary.
-                elif hasattr(obj, '__dict__'):
-                    return process_obj(vars(obj))
-                elif isinstance(obj, (str, int, float, bool)) or obj is None:
-                    return obj
-                else:
-                    return str(obj)
-            processed_data = process_obj(data)
-            
-            print("DEBUG: Processed data for YAML dumping:")
-            debug_data(processed_data)
-            
-            try:
-                yaml.safe_dump(processed_data, file, default_flow_style=False, sort_keys=False)
-            except Exception as e:
-                print("Error dumping YAML with processed_data:")
-                print(processed_data)
-                raise e
-    
+                    return [process_multiline_strings(i) for i in obj]
+                elif isinstance(obj, str) and '\n' in obj:
+                    return LiteralStr(obj)
+                return obj
+
+            yaml.add_representer(LiteralStr, represent_literal_str)
+            processed_data = process_multiline_strings(data)
+            yaml.dump(processed_data, file, default_flow_style=False, sort_keys=False)
+
         with open(self.output_file, 'w') as f:
             write_yaml_with_block_style(data, f)
-    
-
 
     def setup(self):
         self.setup_called = True

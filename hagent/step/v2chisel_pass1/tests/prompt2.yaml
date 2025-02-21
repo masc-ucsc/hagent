@@ -1,0 +1,3 @@
+messages:
+  - role: system
+    content: 'This is prompt2.yaml'
