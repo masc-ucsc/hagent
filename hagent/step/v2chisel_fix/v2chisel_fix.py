@@ -28,6 +28,7 @@ import re
 import difflib
 from hagent.core.step import Step
 from hagent.core.llm_wrap import LLM_wrap
+from hagent.core.llm_template import LLM_template
 
 from hagent.tool.extract_code import Extract_code_verilog, Extract_code_chisel
 from hagent.tool.equiv_check import Equiv_check
@@ -69,10 +70,12 @@ def diff_code(text1: str, text2: str) -> str:
         os.unlink(file1_name)
         os.unlink(file2_name)
 
-
-class V2ChiselFix(Step): # FIXME: Use V2chisel_fix
+class V2chisel_fix(Step): # FIXME: Use V2chisel_fix
     def setup(self):
+        self.overwrite_conf = {}
         conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'v2chisel_base_conf.yaml')
+        if not os.path.exists(conf_file):
+            self.error(f'Prompt file not found: {conf_file}')
 
         super().setup()  # Reads self.input_data from YAML
 
@@ -84,7 +87,11 @@ class V2ChiselFix(Step): # FIXME: Use V2chisel_fix
         self.verilog_original_str = self.input_data.get('verilog_original', '')
         self.verilog_diff_str = diff_code(self.verilog_original_str, self.verilog_fixed_str)
 
-        self.refine_llm = LLM_wrap(name='v2chisel_fix', conf_file='', log_file="v2chisel_fix.log", overwrite_conf=self.input_data)
+        self.template_config = LLM_template(conf_file)
+        # llm_args = self.input_data['llm'] 
+        llm_args = self.template_config.template_dict.get('v2chisel_pass1', {}).get('llm', {})
+
+        self.refine_llm = LLM_wrap(name='v2chisel_fix', conf_file=conf_file, log_file="v2chisel_fix.log", overwrite_conf=llm_args)
 
         self.verilog_extractor = Extract_code_verilog()
         self.chisel_extractor = Extract_code_chisel()
@@ -241,8 +248,12 @@ class V2ChiselFix(Step): # FIXME: Use V2chisel_fix
                 print('[INFO] LEC check: Designs are equivalent!')
                 return (True, None)
             elif result is False:
+                err = eq_checker.get_error()
                 cex_info = eq_checker.get_counterexample()
                 print('[WARN] LEC check: Designs are NOT equivalent.')
+                
+                if err:
+                    print(f'[ERROR] LEC error: {err}')
                 if cex_info:
                     print(f'[DEBUG] LEC Counterexample info: {cex_info}')
                 return (False, cex_info or 'LEC mismatch')
@@ -265,7 +276,7 @@ class V2ChiselFix(Step): # FIXME: Use V2chisel_fix
             'lec_output': lec_error or 'LEC failed',
             'verilog_diff': self.verilog_diff_str,
         }
-        answers = self.refine_llm.inference(prompt_dict, "prompt3")
+        answers = self.refine_llm.inference(prompt_dict, prompt_index="prompt3", n=1)
         for txt in answers:
             code = self.chisel_extractor.parse(txt)
             if code:
@@ -335,7 +346,7 @@ class V2ChiselFix(Step): # FIXME: Use V2chisel_fix
 
 
 if __name__ == '__main__':  # pragma: no cover
-    step = V2ChiselFix()
+    step = V2chisel_fix()
     step.parse_arguments()
     step.setup()
     step.step()

@@ -2,33 +2,36 @@ v2chisel_fix:
   llm:
     model: "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct"
 
-  prompt4:
-  - role: system
-    content: |
-      You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
-  - role: user
-    content: |
-      The previous refinement attempt using prompt3 did not yield a satisfactory fix.
-      The Logic Equivalence Check (LEC) reported the following error or counterexample:
-      ```
-      {lec_output}
-      ```
-      The Verilog diff between the fixed and candidate designs is as follows:
-      ```
-      {verilog_diff}
-      ```
-      The current Chisel diff between the original and the latest candidate code is as follows:
-      ```
-      {chisel_diff}
-      ```
-      Additionally, based on further code analysis, here are new hints extracted from the chisel_original with hints "->" marking the lines that are most likely to require changes:
-      ```
-      {new_hints}
-      ```
-      Can you give me a Chisel diff that could work?
-      Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
-      PLEASE No explanation, no Note. ONLY diff
+  threshold: 40
+  context: 1
 
+  prompt4:
+    - role: system
+      content: |
+        You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
+    - role: user
+      content: |
+        The previous refinement attempt using prompt3 did not yield a satisfactory fix.
+        The Logic Equivalence Check (LEC) reported the following error or counterexample:
+        ```
+        {lec_output}
+        ```
+        The Verilog diff between the fixed and candidate designs is as follows:
+        ```
+        {verilog_diff}
+        ```
+        The current Chisel diff between the original and the latest candidate code is as follows:
+        ```
+        {chisel_diff}
+        ```
+        Additionally, based on further code analysis, here are new hints extracted from the chisel_original with hints "->" marking the lines that are most likely to require changes:
+        ```
+        {new_hints}
+        ```
+        Can you give me a Chisel diff that could work?
+        Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+        PLEASE No explanation, no Note. ONLY diff
+  
   prompt3:
     - role: system
       content: |

@@ -4,6 +4,10 @@
 import os
 import re
 import difflib
+import argparse
+from ruamel.yaml import YAML
+from ruamel.yaml.scalarstring import LiteralScalarString
+
 from hagent.core.step import Step
 from hagent.core.llm_template import LLM_template
 from hagent.core.llm_wrap import LLM_wrap
@@ -15,7 +19,7 @@ from hagent.tool.extract_verilog_diff_keywords import FuzzyGrepFilter
 from hagent.tool.filter_lines import FilterLines
 from hagent.tool.fuzzy_grep import Fuzzy_grep
 import tempfile
-from hagent.tool.extract_code import Extract_code_default
+from hagent.tool.extract_code import Extract_code_verilog, Extract_code_chisel
 
 def union_hints(hints1: str, hints2: str) -> str:
     import re
@@ -52,15 +56,14 @@ def union_hints(hints1: str, hints2: str) -> str:
         sorted_lines.append(f"{marker_field} {lineno:>{width}}: {content}")
     return "\n".join(sorted_lines)
 
-
-
 class V2Chisel_pass1(Step):
     def setup(self):
         self.overwrite_conf = {}
         super().setup()
         print(f"input_file: {self.input_file}")
 
-        self.extractor = Extract_code_default()
+        self.verilog_extractor = Extract_code_verilog()
+        self.chisel_extractor = Extract_code_chisel()
 
         if 'llm' not in self.input_data:
             self.error("Missing 'llm' section in input YAML")
@@ -318,8 +321,36 @@ class V2Chisel_pass1(Step):
         result['verilog_diff'] = verilog_diff_text
         return result
 
+def wrap_literals(obj):
+    if isinstance(obj, dict):
+        return {k: wrap_literals(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [wrap_literals(elem) for elem in obj]
+    elif isinstance(obj, str) and "\n" in obj:
+        return LiteralScalarString(obj)
+    else:
+        return obj
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    # The -o flag is required for the output file
+    parser.add_argument('-o', required=True, help='Output YAML file')
+    # Add a positional argument for the input file
+    parser.add_argument('input_file', help='Input YAML file')
+    return parser.parse_args()
+
 if __name__ == '__main__':  # pragma: no cover
+    args = parse_arguments()
     step = V2Chisel_pass1()
     step.parse_arguments()
     step.setup()
-    step.step()
+    result = step.step()  # this returns your result dictionary
+
+    result = wrap_literals(result)
+    
+    yaml = YAML()
+    yaml.default_flow_style = False  # use block style formatting
+    yaml.indent(mapping=2, sequence=4, offset=2)
+    
+    with open(args.o, 'w') as out_file:
+        yaml.dump(result, out_file)
