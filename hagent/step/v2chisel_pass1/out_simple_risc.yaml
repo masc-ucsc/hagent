@@ -1468,7 +1468,7 @@ chisel_pass1:
                     io_immOut,	// src/main/scala/SimpleRISCVCpu.scala:8:14
       output        io_branchTaken	// src/main/scala/SimpleRISCVCpu.scala:8:14
     );
-
+  
       wire [3:0][31:0]  _GEN = '{32'h1000063, 32'h208233, 32'hA08113, 32'h400093};	// src/main/scala/SimpleRISCVCpu.scala:50:28
       reg  [31:0]       pc;	// src/main/scala/SimpleRISCVCpu.scala:25:19
       wire [31:0]       io_instrOut_0 = _GEN[pc[3:2]];	// src/main/scala/SimpleRISCVCpu.scala:25:19, :41:{19,24}, :50:28
@@ -2053,7 +2053,7 @@ chisel_pass1:
       assign io_immOut = {{20{io_instrOut_0[31]}}, io_instrOut_0[31:20]};	// src/main/scala/SimpleRISCVCpu.scala:7:7, :50:28, :59:{19,24,40,58}
       assign io_branchTaken = branchTaken;	// src/main/scala/SimpleRISCVCpu.scala:7:7, :73:29
     endmodule
-
+  
   was_valid: true
 verilog_diff: |-
   --- verilog_original.v
