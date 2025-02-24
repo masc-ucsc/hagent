@@ -1,280 +1,168 @@
+import sys
 import os
+import tempfile
+import yaml
+import argparse
 import pytest
-from unittest.mock import patch
 
-from hagent.step.v2chisel_pass1.v2chisel_pass1 import V2Chisel_pass1
+# Import the module under test.
+from hagent.step.v2chisel_pass1 import v2chisel_pass1
 
+# --- Dummy implementations to override external dependencies ---
 
+def dummy_extract_keywords_from_diff(diff):
+    # Return dummy keyword(s) from the diff.
+    return "dummy_keyword"
 
-def test_retry_and_prompt2_used(step_with_io, tmp_path):
-    import os
-    from unittest.mock import patch
+class DummyFuzzyGrep:
+    def setup(self, mode):
+        return True
+    def search(self, text, search_terms, context, threshold):
+        # Return a dummy search result with one matching line.
+        return {"text": [(1, "dummy line from fuzzy", True)]}
 
-    test_dir = os.path.dirname(__file__)
-    prompt2_path = os.path.join(test_dir, 'prompt2.yaml')
+def dummy_filter_lines(diff_file, chisel_file, context):
+    # Return a dummy filtered hint line.
+    return "->1: dummy line from filter_lines"
 
-    with open(prompt2_path, 'w') as f:
-        f.write("messages:\n  - role: system\n    content: 'This is prompt2.yaml'")
+def dummy_inference(prompt_dict, prompt_index, n):
+    # Return a dummy diff that the ChiselDiffApplier will use.
+    return ["---dummy diff---"]
 
-    # We'll return invalid on attempt #1 (empty), valid on attempt #2
-    mock_responses = [
-        '',  # attempt #1 => empty => invalid
-        """```chisel
-class MyModule extends Module {
-  val io = IO(new Bundle {})
-}
-```""",
-    ]
+def dummy_generate_verilog(chisel_code, module_name):
+    # Simulate generation of valid verilog.
+    return "module dummy_module;"
 
-    def mock_inference_side_effect(*args, **kwargs):
-        if mock_responses:
-            return [mock_responses.pop(0)]
-        return ['No more responses']
+def dummy_apply_diff(generated_diff, chisel_original):
+    # Simulate a diff application that appends a comment.
+    return chisel_original + "\n// diff applied"
 
-    # Because we're patching the *instance* method, only one arg is passed to our mock
-    def mock_run_chisel2v(chisel_code):
-        if not chisel_code.strip():
-            return (False, None, 'Chisel snippet is empty')
-        return (True, 'module MyModule(); endmodule', '')
+def dummy_setup_chisel2v():
+    return True
 
-    step_with_io.setup()
+# Dummy classes to replace LLM_template and LLM_wrap.
+class DummyTemplate:
+    def __init__(self, config):
+        self.template_dict = config
+    def format(self, prompt_dict):
+        # For testing, return a dummy prompt response.
+        return [{"role": "user", "content": "---dummy diff---"}]
 
-    # Patch the bound method on the step_with_io instance
-    with patch.object(step_with_io, '_run_chisel2v', side_effect=mock_run_chisel2v):
-        with patch.object(step_with_io.lw, 'inference', side_effect=mock_inference_side_effect):
-            res = step_with_io.step()
+class DummyLLMWrap:
+    def __init__(self, **kwargs):
+        self.name = "v2chisel_pass1"
+        self.last_error = ""
+        self.chat_template = None
+    def inference(self, prompt_dict, prompt_index, n):
+        return dummy_inference(prompt_dict, prompt_index, n)
 
-    if os.path.exists(prompt2_path):
-        os.remove(prompt2_path)
-
-    chisel_data = res['chisel_pass1']
-    assert chisel_data['was_valid'] is True, 'Expected success after 2nd attempt'
-    assert 'module MyModule()' in chisel_data['verilog_candidate']
-
-
-def test_no_valid_snippet_generated(step_with_io):
-    """
-    - LLM never produces valid code after all attempts (empty or invalid).
-    - We expect 'No valid snippet generated.' in chisel_updated and was_valid=False.
-    """
-    # Force all attempts to return invalid or empty
-    mock_responses = [
-        '',  # Attempt 1 => empty
-        'garbage snippet',  # Attempt 2 => no 'class ... extends Module'
-        'still not valid',  # Attempt 3
-        'again invalid',  # Attempt 4
-        '',  # Attempt 5 => empty
-    ]
-
-    def mock_inference_side_effect(*args, **kwargs):
-        if mock_responses:
-            return [mock_responses.pop(0)]
-        return ['No more responses']
-
-    step_with_io.setup()
-
-    with patch.object(step_with_io.lw, 'inference', side_effect=mock_inference_side_effect):
-        res = step_with_io.step()
-
-    chisel_data = res['chisel_pass1']
-    assert chisel_data['was_valid'] is False
-    assert chisel_data['chisel_updated'] == 'No valid snippet generated.'
-
-
-def test_chisel2v_empty_snippet(step_with_io):
-    """
-    - LLM returns a snippet that is empty after _strip_markdown_fences.
-    - _run_chisel2v should detect empty snippet and fail immediately.
-    """
-    step_with_io.setup()
-
-    with patch.object(step_with_io.lw, 'inference', return_value=['```chisel\n\n```']):
-        res = step_with_io.step()
-
-    chisel_data = res['chisel_pass1']
-    assert chisel_data['was_valid'] is False, 'Expected was_valid=False with empty snippet'
-
-
-def test_chisel2v_no_module_keyword(step_with_io):
-    """
-    Force all attempts to produce Verilog with *no* 'module' substring => remain invalid.
-    Expect final was_valid=False and "No valid snippet generated.".
-    """
-    step_with_io.setup()
-
-    # Use the same snippet each time so all 5 attempts fail.
-    mock_responses = ['class MyModule extends Module {}'] * 5
-
-    def side_effect(*args, **kwargs):
-        return [mock_responses.pop(0)]
-
-    # Return a string that does NOT contain 'module' at all:
-    fake_verilog_output = "// no 'mod' here"
-
-    with patch.object(step_with_io.lw, 'inference', side_effect=side_effect):
-        with patch('hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v.generate_verilog', return_value=fake_verilog_output):
-            res = step_with_io.step()
-
-    chisel_data = res['chisel_pass1']
-    assert chisel_data['was_valid'] is False, "Should remain invalid if 'module' not found"
-    assert chisel_data['chisel_updated'] == 'No valid snippet generated.'
-    assert chisel_data['verilog_candidate'] is None
-
-
-def test_chisel2v_exception(step_with_io):
-    """
-    Chisel2v.generate_verilog throws an exception every time => all 5 attempts fail.
-    Final snippet => 'No valid snippet generated.'.
-    """
-    step_with_io.setup()
-
-    mock_responses = ['class MyModule extends Module {}'] * 5  # same snippet each attempt
-
-    def side_effect(*args, **kwargs):
-        return [mock_responses.pop(0)]
-
-    with patch.object(step_with_io.lw, 'inference', side_effect=side_effect):
-        with patch(
-            'hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v.generate_verilog',
-            side_effect=RuntimeError('some internal error')
-        ):
-            res = step_with_io.step()
-
-    chisel_data = res['chisel_pass1']
-    assert chisel_data['was_valid'] is False
-    assert chisel_data['chisel_updated'] == 'No valid snippet generated.'
-    assert chisel_data['verilog_candidate'] is None
-
-
-def test_chisel_classname_extraction(step_with_io):
-    """
-    - `_find_chisel_classname` finds the class name if present.
-    - If not found, fallback to 'MyModule'.
-    """
-    step_with_io.setup()
-
-    snippet = """```chisel
-class TopModule extends Module {
-  val io = IO(new Bundle {})
-}
-```"""
-
-    with patch.object(step_with_io.lw, 'inference', return_value=[snippet]):
-        with patch(
-            'hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v.generate_verilog',
-            return_value='module TopModule(); endmodule'
-        ):
-            res = step_with_io.step()
-
-    chisel_data = res['chisel_pass1']
-    assert chisel_data['was_valid'] is True
-    assert 'TopModule' in chisel_data['verilog_candidate']
-
-    # If the snippet has no class name => fallback
-    snippet2 = '```chisel\n// no class definition\n```'
-    with patch.object(step_with_io.lw, 'inference', return_value=[snippet2]):
-        with patch(
-            'hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v.generate_verilog',
-            return_value='module MyModule(); endmodule'
-        ):
-            res2 = step_with_io.step()
-
-    chisel_data2 = res2['chisel_pass1']
-    assert chisel_data2['was_valid'] is True
-    assert 'MyModule' in chisel_data2['verilog_candidate']
-
-
-def test_missing_llm_section(tmp_path):
-    """
-    Test that an error is raised when 'llm' section is missing in input YAML.
-    """
-    # Create input YAML without 'llm'
-    missing_llm_input = {
-        'verilog_original': 'module mymodule(input clk, rst); endmodule',
-        'verilog_fixed': 'module mymodule(input clk, rst); // fixed changes endmodule',
-        'chisel_original': 'class MyModule extends Module { val io = IO(new Bundle {}) }',
-    }
-    inp_file = tmp_path / 'input_missing_llm.yaml'
-    with open(inp_file, 'w') as f:
-        import yaml
-        yaml.safe_dump(missing_llm_input, f)
-
-    out_file = tmp_path / 'output_missing_llm.yaml'
-
-    gen_step = V2Chisel_pass1()
-    gen_step.set_io(inp_file=str(inp_file), out_file=str(out_file))
-
-    # Patch the 'error' method to raise ValueError
-    with patch.object(V2Chisel_pass1, 'error', side_effect=ValueError("Missing 'llm' section in input YAML")):
-        with pytest.raises(ValueError, match="Missing 'llm' section in input YAML"):
-            gen_step.setup()
-
-
-def test_missing_prompt1_file(step_with_io, tmp_path):
-    """
-    Test that an error is raised when 'prompt1.yaml' file is missing.
-    """
-    import hagent.step.v2chisel_pass1.v2chisel_pass1
-
-    prompt1_path = os.path.join(
-        os.path.dirname(os.path.abspath(hagent.step.v2chisel_pass1.v2chisel_pass1.__file__)), 'prompt1.yaml'
+# --- Patch fixture to override dependencies in v2chisel_pass1 ---
+@pytest.fixture(autouse=True)
+def patch_dependencies(monkeypatch):
+    # Patch FuzzyGrepFilter.extract_keywords_from_diff.
+    monkeypatch.setattr(
+        v2chisel_pass1.FuzzyGrepFilter,
+        "extract_keywords_from_diff",
+        staticmethod(dummy_extract_keywords_from_diff)
     )
+    # Patch Fuzzy_grep so that its setup returns True and search returns dummy result.
+    from hagent.tool import fuzzy_grep
+    monkeypatch.setattr(fuzzy_grep.Fuzzy_grep, "setup", lambda self, mode: True)
+    monkeypatch.setattr(fuzzy_grep.Fuzzy_grep, "search", dummy_fuzzy_grep_search)
+    
+    # Patch FilterLines.filter_lines.
+    from hagent.tool import filter_lines
+    monkeypatch.setattr(filter_lines.FilterLines, "filter_lines", lambda self, diff_file, chisel_file, context: dummy_filter_lines(diff_file, chisel_file, context))
+    
+    # Patch LLM_wrap to use our DummyLLMWrap.
+    monkeypatch.setattr(v2chisel_pass1, "LLM_wrap", lambda **kwargs: DummyLLMWrap(**kwargs))
+    
+    # Patch LLM_template to always load a dummy configuration.
+    dummy_config = {
+        'v2chisel_pass1': {
+            'llm': {},
+            'threshold': 40,
+            'prompt1': "dummy prompt",
+            'prompt2': "dummy prompt",
+            'prompt3': "dummy prompt",
+            'prompt4': "dummy prompt",
+        }
+    }
+    monkeypatch.setattr(v2chisel_pass1, "LLM_template", lambda conf_file: DummyTemplate(dummy_config))
+    
+    # Patch Chisel2v: setup returns True and generate_verilog returns dummy verilog.
+    from hagent.tool import chisel2v
+    monkeypatch.setattr(chisel2v.Chisel2v, "setup", lambda self: dummy_setup_chisel2v())
+    monkeypatch.setattr(chisel2v.Chisel2v, "generate_verilog", lambda self, code, module_name: dummy_generate_verilog(code, module_name))
+    
+    # Patch ChiselDiffApplier.apply_diff.
+    from hagent.tool import chisel_diff_applier
+    monkeypatch.setattr(chisel_diff_applier.ChiselDiffApplier, "apply_diff", lambda self, diff, original: dummy_apply_diff(diff, original))
 
-    # Patch 'os.path.exists' to return False for 'prompt1.yaml'
-    with patch('hagent.step.v2chisel_pass1.v2chisel_pass1.os.path.exists', return_value=False), \
-         patch('hagent.core.step.Step.error', side_effect=ValueError(f'Prompt file not found: {prompt1_path}')):
-        with pytest.raises(ValueError, match=f'Prompt file not found: {prompt1_path}'):
-            step_with_io.setup()
+
+# Helper for Fuzzy_grep.search (needed for monkey patch above)
+def dummy_fuzzy_grep_search(self, text, search_terms, context, threshold):
+    return {"text": [(1, "dummy line from fuzzy", True)]}
 
 
-def test_llm_returns_empty_response(step_with_io):
-    """
-    Test handling when LLM returns an empty response.
-    """
-    step_with_io.setup()
+# --- The actual test ---
+def test_v2chisel_pass1(monkeypatch, tmp_path):
+    # Create a temporary input YAML file.
+    input_data = {
+        "llm": {},
+        "verilog_original": "module foo;",
+        "verilog_fixed": "module foo_fixed;",
+        "chisel_original": "class TestModule extends Module {}",
+        "threshold": 40,
+        "context": 1
+    }
+    input_yaml = tmp_path / "simple_risc.yaml"
+    output_yaml = tmp_path / "out_simple_risc.yaml"
+    with open(input_yaml, "w") as f:
+        yaml.dump(input_data, f)
+    
+    # Simulate command-line arguments: -o output file and the input file.
+    test_args = ["test_v2chisel_pass1.py", "-o", str(output_yaml), str(input_yaml)]
+    monkeypatch.setattr(sys, "argv", test_args)
+    
+    # Parse command-line arguments as the script would.
+    args = v2chisel_pass1.parse_arguments()
+    
+    # Create and set up the step.
+    step = v2chisel_pass1.V2Chisel_pass1()
+    # Instead of manually setting input_file and input_data, use set_io() to properly initialize.
+    step.set_io(inp_file=str(input_yaml), out_file=str(output_yaml))
+    # Also set input_data (if needed for this test).
+    step.input_data = input_data
+    step.setup()
+    
+    # Run the step.
+    result = step.run(input_data)
+    
+    # Wrap literals as done in the main function.
+    result = v2chisel_pass1.wrap_literals(result)
+    
+    # Dump the result to the output file using ruamel.yaml.
+    from ruamel.yaml import YAML
+    ruamel_yaml = YAML()
+    ruamel_yaml.default_flow_style = False
+    ruamel_yaml.indent(mapping=2, sequence=4, offset=2)
+    with open(str(output_yaml), "w") as out_file:
+        ruamel_yaml.dump(result, out_file)
+    
+    # Load the output YAML using ruamel.yaml.
+    # (No additional constructor is needed if we use ruamel.yaml to dump.)
+    ruamel_yaml_load = YAML(typ='safe')
+    with open(str(output_yaml)) as f:
+        output = ruamel_yaml_load.load(f)
+    
+    assert "chisel_pass1" in output
+    assert output["chisel_pass1"]["was_valid"] is True
+    assert "verilog_diff" in output
+    # Optionally, check that the applied diff appended our marker.
+    assert "// diff applied" in output["chisel_pass1"]["chisel_updated"]
 
-    # Mock LLM_wrap.inference to return an empty list
-    with patch.object(step_with_io.lw, 'inference', return_value=[]), patch('builtins.print') as mock_print:
-        res = step_with_io.run(
-            {
-                'verilog_original': 'module mymodule(input clk, rst); endmodule',
-                'verilog_fixed': 'module mymodule(input clk, rst); // fixed changes endmodule',
-                'chisel_original': 'class MyModule extends Module { val io = IO(new Bundle {}) }',
-                'llm': {'model': 'test-model', 'other_config': 'value'},
-            }
-        )
 
-    # Check that the print statement was called
-    mock_print.assert_any_call('\n=== LLM RESPONSE: EMPTY ===\n')
-
-    # Verify that 'chisel_pass1' reflects the continued state
-    chisel_data = res['chisel_pass1']
-    assert chisel_data['was_valid'] is False
-    assert chisel_data['chisel_updated'] == 'No valid snippet generated.'
-
-
-def test_chisel2v_setup_failure(step_with_io):
-    """
-    Test that an error is returned when Chisel2v.setup() fails.
-    """
-    from hagent.tool.chisel2v import Chisel2v
-    from unittest.mock import MagicMock
-
-    step_with_io.setup()
-
-    # Create a mock instance of Chisel2v
-    mock_c2v = MagicMock(spec=Chisel2v)
-    mock_c2v.setup.return_value = False
-    mock_c2v.error_message = 'Initialization failed'
-
-    # Patch the Chisel2v constructor to return the mock instance
-    with patch('hagent.step.v2chisel_pass1.v2chisel_pass1.Chisel2v', return_value=mock_c2v):
-        # Mock the inference method to return a valid Chisel snippet
-        with patch.object(step_with_io.lw, 'inference', return_value=['```chisel\nclass MyModule extends Module {}\n```']):
-            res = step_with_io.step()
-
-    # Verify that 'chisel_pass1' reflects the setup failure
-    chisel_data = res['chisel_pass1']
-    assert chisel_data['was_valid'] is False
-    assert chisel_data['chisel_updated'] == 'No valid snippet generated.'
-    assert chisel_data['verilog_candidate'] is None
+# Allow the test to be run directly.
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__]))

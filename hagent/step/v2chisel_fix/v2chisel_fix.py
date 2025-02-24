@@ -70,7 +70,7 @@ def diff_code(text1: str, text2: str) -> str:
         os.unlink(file1_name)
         os.unlink(file2_name)
 
-class V2chisel_fix(Step): # FIXME: Use V2chisel_fix
+class V2chisel_fix(Step):
     def setup(self):
         self.overwrite_conf = {}
         conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'v2chisel_base_conf.yaml')

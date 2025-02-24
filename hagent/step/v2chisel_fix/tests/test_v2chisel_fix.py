@@ -4,13 +4,12 @@ import os
 import pytest
 from unittest.mock import patch, MagicMock
 
-from hagent.step.v2chisel_fix.v2chisel_fix import V2ChiselFix
-
+from hagent.step.v2chisel_fix.v2chisel_fix import V2chisel_fix
 
 @pytest.fixture
 def valid_input_file(tmp_path):
     """
-    Creates a minimal valid YAML for V2ChiselFix:
+    Creates a minimal valid YAML for V2Chisel_Fix:
       - 'chisel_pass1' with some snippet
       - 'verilog_fixed'
       - 'llm' if needed
@@ -42,10 +41,10 @@ llm:
 @pytest.fixture
 def step_with_io(valid_input_file, tmp_path):
     """
-    Returns a V2ChiselFix step with an input path and a temp output.
+    Returns a V2Chisel_fix step with an input path and a temp output.
     We'll call .setup() and then use run(input_data) to get the result.
     """
-    step_obj = V2ChiselFix()
+    step_obj = V2chisel_fix()
     out_file = str(tmp_path / 'output_fix.yaml')
     step_obj.set_io(inp_file=valid_input_file, out_file=out_file)
     return step_obj
@@ -65,7 +64,7 @@ llm:
     bad_file = tmp_path / 'input_bad.yaml'
     bad_file.write_text(content)
 
-    step_obj = V2ChiselFix()
+    step_obj = V2chisel_fix()
     out_file = tmp_path / 'output_bad.yaml'
     step_obj.set_io(inp_file=str(bad_file), out_file=str(out_file))
 
@@ -86,7 +85,7 @@ def test_no_prompt3_file(step_with_io):
         os.remove(prompt3_path)
 
     step_with_io.setup()
-    with patch('hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check') as mock_eq:
+    with patch('hagent.step.V2Chisel_fix.v2chisel_fix.Equiv_check') as mock_eq:
         mock_eq_instance = MagicMock()
         mock_eq.return_value = mock_eq_instance
         # Let equivalence pass => no refine needed
@@ -140,14 +139,14 @@ verilog_fixed: |
     bad_llm_file = tmp_path / 'input_no_llm.yaml'
     bad_llm_file.write_text(content)
 
-    step_obj = V2ChiselFix()
+    step_obj = V2chisel_fix()
     out_file = tmp_path / 'output_no_llm.yaml'
     step_obj.set_io(inp_file=str(bad_llm_file), out_file=str(out_file))
 
     # Now run
     step_obj.setup()
     # Force equivalence pass => no refine needed
-    with patch('hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check') as mock_eq:
+    with patch('hagent.step.V2Chisel_fix.v2chisel_fix.Equiv_check') as mock_eq:
         mock_eq_inst = MagicMock()
         mock_eq.return_value = mock_eq_inst
         mock_eq_inst.setup.return_value = True
@@ -166,7 +165,7 @@ def test_already_equiv_no_refine(step_with_io):
     LEC passes initially so no refinement is done.
     """
     step_with_io.setup()
-    with patch('hagent.step.v2chisel_fix.v2chisel_fix.Equiv_check') as mock_eq:
+    with patch('hagent.step.V2Chisel_fix.v2chisel_fix.Equiv_check') as mock_eq:
         mock_eq_inst = MagicMock()
         mock_eq.return_value = mock_eq_inst
         mock_eq_inst.setup.return_value = True
@@ -234,7 +233,7 @@ def test_lec_fails_all_attempts(step_with_io, tmp_path):
     """
     LEC fails for all attempts; after reaching lec_limit the result has equiv_passed=False.
     """
-    import hagent.step.v2chisel_fix.v2chisel_fix as fix_mod
+    import hagent.step.v2chisel_fix as fix_mod
     module_dir = os.path.dirname(os.path.abspath(fix_mod.__file__))
     prompt3_path = os.path.join(module_dir, 'prompt3.yaml')
 
@@ -279,7 +278,7 @@ def test_lec_fails_refine_cannot_improve(step_with_io, tmp_path):
     """
     LEC fails and the LLM returns the same code (no improvement) so refinement stops.
     """
-    import hagent.step.v2chisel_fix.v2chisel_fix as fix_mod
+    import hagent.step.v2chisel_fix as fix_mod
     module_dir = os.path.dirname(os.path.abspath(fix_mod.__file__))
     prompt3_path = os.path.join(module_dir, 'prompt3.yaml')
 
@@ -510,7 +509,7 @@ llm:
     input_file = tmp_path / 'input_no_prompt3.yaml'
     input_file.write_text(content)
 
-    step_obj = V2ChiselFix()
+    step_obj = V2chisel_fix()
     out_file = tmp_path / 'output_no_prompt3.yaml'
     step_obj.set_io(inp_file=str(input_file), out_file=str(out_file))
 
@@ -710,9 +709,9 @@ def test_setup_prompt3_exists_but_empty_llm_config(tmp_path):
     If prompt3.yaml exists and the 'llm' config is empty, warn and set refine_llm to None.
     """
     import sys
-    from hagent.step.v2chisel_fix.v2chisel_fix import V2ChiselFix
+    from hagent.step.v2chisel_fix.v2chisel_fix import V2chisel_fix
 
-    module = sys.modules[V2ChiselFix.__module__]
+    module = sys.modules[V2chisel_fix.__module__]
     class_dir = os.path.dirname(os.path.abspath(module.__file__))
     prompt3_path = os.path.join(class_dir, 'prompt3.yaml')
     prompt3_contents = """\
@@ -742,7 +741,7 @@ llm: {}
         input_file = tmp_path / 'input_empty_llm.yaml'
         input_file.write_text(content)
 
-        step_obj = V2ChiselFix()
+        step_obj = V2chisel_fix()
         out_file = tmp_path / 'output_empty_llm.yaml'
         step_obj.set_io(inp_file=str(input_file), out_file=str(out_file))
 

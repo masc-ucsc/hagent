@@ -2,12 +2,13 @@
 import sys
 import os
 
-from hagent.step.v2chisel_fix.v2chisel_fix import V2ChiselFix
+from hagent.step.v2chisel_fix.v2chisel_fix import V2chisel_fix
+
 
 
 def process_chisel(files):
 
-    step_obj = V2ChiselFix()
+    step_obj = V2chisel_fix()
 
     inp_data = {}
 
