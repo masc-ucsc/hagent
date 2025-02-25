@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import os
 
 from hagent.tool.compile_slang import Compile_slang
 
@@ -232,12 +233,82 @@ def from_fileverilog(args):
     for a in err:
         print(f'WARN: File {a.file} Line {a.loc} msg:{a.msg}')
 
+from hagent.core.step import Step
+from typing import Dict
+
+# Trivial example of extending the Pass class
+class Step_compile_slang(Step):
+    def setup(self):
+        super().setup()  # superclass
+
+    def run(self, data: Dict):
+        ret = data.copy()
+
+        code = data.get('code',"")
+        files = data.get('files',"")
+
+        compiler = Compile_slang()
+
+        if files:
+            compiler.setup(f'-f {files}')
+        else:
+            compiler.setup()
+
+        if code:
+            ok = compiler.add_inline(text=code)
+            if not ok:
+                print(f'ERROR, could not compile {compiler.error_message}')
+                sys.exit(3)
+
+        hier = compiler.get_top_list()
+        for a in hier:
+            print(f'top level module options:{a}')
+
+        err = compiler.get_errors()
+        if err:
+            err_list = []
+            for a in err:
+                print(f'ERR: File {a.file} Line {a.loc} msg:{a.msg}')
+                err_list.append(a.to_str())
+
+            if err_list:
+                ret['err'] = err_list
+
+
+        err = compiler.get_warnings()
+        if err:
+            err_list = []
+            for a in err:
+                print(f'WARN: File {a.file} Line {a.loc} msg:{a.msg}')
+                err_list.append(a.to_str())
+
+            if err_list:
+                ret['warn'] = err_list
+
+        return ret
+
+def from_fileyaml(args):
+
+    for arg in args:
+        st = Step_compile_slang()
+        filename = os.path.basename(arg)
+        st.set_io(inp_file=arg, out_file=f"out_{filename}")
+
+        st.setup()
+        st.step()
+
 
 def main(args):
     # Ensure args is a list
     assert isinstance(args, list), 'args must be a list'
     if len(args) == 0:
         return inline_verilog()
+    elif len(args) == 1:
+        filename = args[0]
+        if filename.endswith(".yaml"):
+            return from_fileyaml(args)
+        else:
+            return from_fileverilog(args)
     else:
         return from_fileverilog(args)
 

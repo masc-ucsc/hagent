@@ -176,5 +176,6 @@ class Step:
         except Exception as e:
             output_data.update({'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} - unable to write yaml: {e}'})
             print(f'ERROR: unable to write yaml: {e}')
+
         self.write_output(output_data)
         return output_data
