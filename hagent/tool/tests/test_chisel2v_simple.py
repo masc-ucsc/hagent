@@ -17,10 +17,16 @@ import chisel3._
 
 class MyModule extends Module {
   val io = IO(new Bundle {
-    val in = Input(UInt(8.W))
-    val out = Output(UInt(8.W))
+    val in = Input(UInt(2.W))
+    val out = Output(UInt(32.W))
   })
-  io.out := io.in
+  val instrMem = VecInit(Seq(
+    "h00400093".U(32.W), // addi x1, x0, 4   -> x1 = 4
+    "h00A08113".U(32.W), // addi x2, x1, 10  -> x2 = x1 + 10
+    "h00208233".U(32.W), // add  x4, x1, x2  -> x4 = x1 + x2
+    "h01000063".U(32.W)  // branch instruction (opcode 1100011)
+  ))
+  io.out := instrMem(io.in)
 }
 """
 
