@@ -2,7 +2,7 @@ llm:
   # model: fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct
   model: "openai/o3-mini-2025-01-31"
 
-threshold: 30
+threshold: 50
 context: 1
 
 verilog_original: |
