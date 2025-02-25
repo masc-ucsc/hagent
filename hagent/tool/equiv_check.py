@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 import tempfile
+import sys
 from typing import Optional, Tuple
 
 
@@ -230,6 +231,8 @@ class Equiv_check:
 
     def _analyze_yosys_result(self, code: int, out: str, err: str, method: str) -> Optional[bool]:
         if 'ERROR' in err:
+            print("WARNING: YOSYS failed to check with this message (likely a Verilog Syntax Error)", file=sys.stderr)
+            print(err, file=sys.stderr)
             return False
 
         if 'timeout' in err:
@@ -239,7 +242,6 @@ class Equiv_check:
             pattern = re.compile(r'^SAT.*FAIL.*$', flags=re.MULTILINE)
             # Find all matching lines
             matching_lines = pattern.findall(out)
-            print(f'matching:{matching_lines}')
             return len(matching_lines) == 0
         elif method == 'equiv':
             return code == 0
