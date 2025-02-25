@@ -69,7 +69,7 @@ class V2Chisel_pass1(Step):
             self.error("Missing 'llm' section in input YAML")
 
         # Load the single prompt configuration file.
-        conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt1.yaml')
+        conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'v2chisel_pass1_conf.yaml')
         if not os.path.exists(conf_file):
             self.error(f'Prompt file not found: {conf_file}')
 
