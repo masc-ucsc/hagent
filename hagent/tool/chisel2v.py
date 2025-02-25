@@ -87,11 +87,12 @@ class Chisel2v:
         object_exists = any(object_extends_app_pattern.search(ln) for ln in modified_lines)
         # If not, append the top-level snippet at the end
         if not object_exists:
+            # Adding yosys options to avoid some popular systemVerilog
             snippet = (
                 f'\nobject Top extends App {{\n'
                 f'  ChiselStage.emitSystemVerilogFile(\n'
                 f'    new {classname},\n'
-                f'    firtoolOpts = Array("-disable-all-randomization")\n'
+                f'    firtoolOpts = Array("-disable-all-randomization","--lowering-options=disallowPackedArrays,disallowLocalVariables")\n'
                 f'  )\n'
                 f'}}\n'
             )
