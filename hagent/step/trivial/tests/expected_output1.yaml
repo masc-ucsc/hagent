@@ -2,4 +2,8 @@ description: |
   test1
   2nd line
 
+set_env_vars:
+  - POTATO: "foo"
+  - FOOO_VAR: "another_value"
+
 'added_field_trivial': 'sample'
