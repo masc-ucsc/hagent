@@ -317,6 +317,7 @@ class V2Chisel_pass1(Step):
             'generated_diff': generated_diff,
             'verilog_candidate': verilog_candidate_final,
             'was_valid': was_valid,
+            'chisel_subset': chisel_subset,
         }
         result['verilog_diff'] = verilog_diff_text
         return result
