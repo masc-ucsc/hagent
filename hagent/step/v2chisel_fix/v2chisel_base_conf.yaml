@@ -52,3 +52,6 @@ v2chisel_fix:
         ```
         {chisel_subset}
         ```
+        Can you give me a Chisel diff that could work?
+        Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+        PLEASE No explanation, no Note. ONLY diff
