@@ -62,6 +62,11 @@ poetry run pytest --cov=hagent
 poetry run pytest --cov=hagent/tool --cov-report=html
 ```
 
+Run a subset of tests with coverage:
+```
+poetry run pytest hagent/tool/ --cov=hagent/tool --cov-report=html
+```
+
 Check issues and format with ruff:
 ```
 poetry run ruff check hagent

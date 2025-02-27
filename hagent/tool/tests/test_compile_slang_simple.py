@@ -2,6 +2,7 @@
 
 import sys
 import os
+import unittest
 
 from hagent.tool.compile_slang import Compile_slang
 
@@ -318,7 +319,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == 'test':
         # Remove the test argument to prevent unittest from misinterpreting it
         sys.argv.pop(1)
-        # unittest.main()
+        unittest.main()
     else:
         # Call main with command-line arguments (excluding the script name)
         main(sys.argv[1:])
