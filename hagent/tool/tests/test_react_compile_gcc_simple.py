@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 import tempfile
-from typing import List
+from typing import List, Dict
 
 from hagent.tool.react import React
 from hagent.tool.compile import Diagnostic
@@ -68,7 +68,7 @@ def check_callback_cpp(code: str) -> List[Diagnostic]:
             os.remove(tmp_name)
 
 
-def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: str, iteration_count: int) -> str:
+def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: Dict[str, str], delta: bool, iteration_count: int) -> str:
     """
     Calls the LLM wrapper to fix the C++ code based on a given diagnostic.
 
@@ -84,7 +84,7 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: str, iter
         f'{current_code}\n'
     )
     # Determine the path to the LLM configuration file.
-    conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf_compile.yaml')
+    conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
     # Create an LLM template for code fixes.
     template = LLM_template(
         [
@@ -105,8 +105,81 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: str, iter
     return current_code
 
 
+def test_react_with_db():
+    """Test React with a database file."""
+    # Create a temporary DB file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.yaml') as tmp:
+        tmp_name = tmp.name
+        # Write a sample DB entry
+        tmp.write(b"missing_semicolon:\n  fix_question: 'code with missing semicolon'\n  fix_answer: 'code with semicolon'\n")
+    
+    try:
+        # Initialize React with the DB file
+        react_tool = React()
+        setup_success = react_tool.setup(db_path=tmp_name, learn=True, max_iterations=3)
+        assert setup_success, f"React setup failed: {react_tool.error_message}"
+        
+        # A C++ snippet with a missing semicolon
+        faulty_code = r"""
+#include <iostream>
+
+int main() {
+    std::cout << "Hello World" << std::endl
+    return 0;
+}
+"""
+        
+        # Run the React cycle with the provided callbacks
+        fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
+        
+        # Check results
+        assert fixed_code, "Failed to fix the code"
+        assert ";" in fixed_code, "Semicolon not added to the fixed code"
+        
+        # Check the log
+        log = react_tool.get_log()
+        assert len(log) > 0, "Log should contain entries"
+        
+        print("Test with DB passed!")
+    finally:
+        # Clean up
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+
+
+def test_react_without_db():
+    """Test React without a database file."""
+    # Initialize React without a DB file
+    react_tool = React()
+    setup_success = react_tool.setup(learn=False, max_iterations=3, comment_prefix="//")
+    assert setup_success, f"React setup failed: {react_tool.error_message}"
+    
+    # A C++ snippet with a missing semicolon
+    faulty_code = r"""
+#include <iostream>
+
+int main() {
+    std::cout << "Hello World" << std::endl
+    return 0;
+}
+"""
+    
+    # Run the React cycle with the provided callbacks
+    fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
+    
+    # Check results
+    assert fixed_code, "Failed to fix the code"
+    assert ";" in fixed_code, "Semicolon not added to the fixed code"
+    
+    print("Test without DB passed!")
+
+
 if __name__ == '__main__':
-    # Initialize React.
+    # Run the tests
+    test_react_with_db()
+    test_react_without_db()
+    
+    # Original example code
     react_tool = React()
     setup_success = react_tool.setup(db_path='foo.yaml', learn=True, max_iterations=3)
     if not setup_success:
