@@ -1,28 +1,133 @@
 from hagent.tool.chisel_diff_applier import ChiselDiffApplier
 
 # The diff to be applied:
-chisel_diff = """diff --git a/chisel_code.scala b/chisel_code.scala
-index 123456..789012 100644
---- a/chisel_code.scala
-+++ b/chisel_code.scala
-@@ -121,10 +121,10 @@
-   io.out := io.in
--  val in = Input(UInt(8.W))
--  io.out := in
-+  val in = Input(UInt(8.W))
-+  io.out := ~in"""
+chisel_diff = """diff --git a/SimpleRISCVCpu.scala b/SimpleRISCVCpu.scala
+@@ In the switch-case for R-type ADD:
+-          is("b000".U) { aluResult := rs1Data + rs2Data } // ADD
++          is("b000".U) { aluResult := rs1Data - rs2Data } // BUG: subtraction instead of addition
+"""
 
 # The original Chisel code snippet:
 chisel_code = """
-package example
+// Import Chisel libraries
   import chisel3._
-  class Foo extends Module {
+  import chisel3.util._
+
+  // Define the CPU module with extra branch logic and outputs
+  class SimpleRISCVCpu extends Module {
     val io = IO(new Bundle {
-      val in  = Input(UInt(8.W))
-      val out = Output(UInt(8.W))
-    })
-    io.out := io.in
-  }
+      val pcOut       = Output(UInt(32.W))
+        val aluOut      = Output(SInt(32.W))
+        // Extra outputs for increased connectivity:
+        val instrOut    = Output(UInt(32.W))   // Fetched instruction
+        val opcodeOut   = Output(UInt(7.W))    // Decoded opcode
+        val rdOut       = Output(UInt(5.W))    // Destination register (rd)
+        val funct3Out   = Output(UInt(3.W))    // Decoded funct3 field
+        val rs1DataOut  = Output(SInt(32.W))   // Data from rs1 register
+        val rs2DataOut  = Output(SInt(32.W))   // Data from rs2 register
+        val immOut      = Output(SInt(32.W))   // Computed immediate value
+        val branchTaken = Output(Bool())       // Branch condition: rs1 == rs2
+      })
+    
+      // ------------------------------
+      // Program Counter
+      // ------------------------------
+      val pc = RegInit(0.U(32.W))
+    
+      // ------------------------------
+      // Instruction Memory (4 instructions)
+      // ------------------------------
+      val instrMem = VecInit(Seq(
+        "h00400093".U(32.W), // addi x1, x0, 4   -> x1 = 4
+        "h00A08113".U(32.W), // addi x2, x1, 10  -> x2 = x1 + 10
+        "h00208233".U(32.W), // add  x4, x1, x2  -> x4 = x1 + x2
+        "h01000063".U(32.W)  // branch instruction (opcode 1100011)
+      ))
+    
+      // ------------------------------
+      // Fetch Stage
+      // ------------------------------
+      // Use the lower 2 bits of (pc >> 2) as the index (works for 4 instructions)
+      val index = (pc >> 2)(1, 0)
+      val instruction = instrMem(index)
+    
+      // ------------------------------
+      // Decode Stage
+      // ------------------------------
+      // Extract standard RISC-V fields:
+      //   opcode: bits [6:0], rd: bits [11:7], funct3: bits [14:12],
+      //   rs1: bits [19:15], rs2: bits [24:20], funct7: bits [31:25]
+      val opcode  = instruction(6, 0)
+      val rd      = instruction(11, 7)
+      val funct3  = instruction(14, 12)
+      val rs1     = instruction(19, 15)
+      val rs2     = instruction(24, 20)
+      val funct7  = instruction(31, 25)
+    
+      // Compute a simplified immediate value (for I-type and branch)
+      // (Normally, branch immediates are extracted differently.)
+      val immVal = Cat(Fill(20, instruction(31)), instruction(31, 20)).asSInt
+    
+      // ------------------------------
+      // Register File
+      // ------------------------------
+      // 32 registers of 32-bit signed numbers
+      val regFile = RegInit(VecInit(Seq.fill(32)(0.S(32.W))))
+      val rs1Data = regFile(rs1)
+      val rs2Data = regFile(rs2)
+    
+      // ------------------------------
+      // Branch Comparator
+      // ------------------------------
+      // Compare rs1 and rs2; branchTaken is true if they are equal.
+      val branchTaken = rs1Data === rs2Data
+    
+      // ------------------------------
+      // Execute Stage: ALU Operation
+      // ------------------------------
+      val aluResult = WireDefault(0.S(32.W))
+      when(opcode === "b0110011".U) { // R-type instruction
+        switch(funct3) {
+          is("b000".U) { aluResult := rs1Data + rs2Data } // ADD
+          is("b111".U) { aluResult := rs1Data & rs2Data }   // AND
+        }
+      } .elsewhen(opcode === "b0010011".U) { // I-type (e.g., ADDI)
+        aluResult := rs1Data + immVal
+      }
+    
+      // ------------------------------
+      // Write-Back Stage
+      // ------------------------------
+      // Write ALU result to register file (ensure x0 stays zero)
+      when((opcode === "b0110011".U || opcode === "b0010011".U) && (rd =/= 0.U)) {
+        regFile(rd) := aluResult
+      }
+    
+      // ------------------------------
+      // Update Program Counter with Branch Logic
+      // ------------------------------
+      // If the opcode indicates a branch (1100011) and the branch condition is met,
+      // update PC with (pc + immVal) (converted from SInt to UInt). Otherwise, increment by 4.
+      when(opcode === "b1100011".U && branchTaken) {
+        pc := (pc.asSInt + immVal).asUInt
+      } .otherwise {
+        pc := pc + 4.U
+      }
+    
+      // ------------------------------
+      // Connect Internal Signals to Top-Level I/O
+      // ------------------------------
+      io.pcOut       := pc
+      io.aluOut      := aluResult
+      io.instrOut    := instruction
+      io.opcodeOut   := opcode
+      io.rdOut       := rd
+      io.funct3Out   := funct3
+      io.rs1DataOut  := rs1Data
+      io.rs2DataOut  := rs2Data
+      io.immOut      := immVal
+      io.branchTaken := branchTaken
+    }
 """
 
 applier = ChiselDiffApplier()
