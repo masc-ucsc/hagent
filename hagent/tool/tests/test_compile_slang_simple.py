@@ -3,6 +3,7 @@
 import sys
 import os
 import unittest
+from unittest.mock import patch, MagicMock
 
 from hagent.tool.compile_slang import Compile_slang
 
@@ -299,27 +300,776 @@ def from_fileyaml(args):
         st.step()
 
 
+class TestCompileSlang(unittest.TestCase):
+    """Unit tests for the Compile_slang class to increase code coverage."""
+
+    def test_init(self):
+        """Test initialization."""
+        compiler = Compile_slang()
+        self.assertEqual(compiler.error_message, '')
+        self.assertIsNone(compiler._compiler)
+        self.assertIsNone(compiler._top_module)
+
+    def test_setup_no_pyslang(self):
+        """Test setup when pyslang is not available."""
+        compiler = Compile_slang()
+        
+        # Save original pyslang
+        import hagent.tool.compile_slang
+        original_pyslang = hagent.tool.compile_slang.pyslang
+        
+        try:
+            # Set pyslang to None
+            hagent.tool.compile_slang.pyslang = None
+            
+            # Test setup
+            result = compiler.setup()
+            self.assertFalse(result)
+        finally:
+            # Restore original pyslang
+            hagent.tool.compile_slang.pyslang = original_pyslang
+
+    def test_setup_with_invalid_args(self):
+        """Test setup with invalid arguments."""
+        compiler = Compile_slang()
+        
+        # Test with invalid command line arguments
+        with patch('hagent.tool.compile_slang.pyslang.Driver') as MockDriver:
+            mock_driver = MagicMock()
+            MockDriver.return_value = mock_driver
+            
+            # Configure the mock to simulate failure in processOptions
+            mock_driver.parseCommandLine.return_value = True
+            mock_driver.processOptions.return_value = False
+            
+            result = compiler.setup("--invalid-option")
+            self.assertFalse(result)
+            self.assertTrue(compiler.error_message.startswith('could not process slang options'))
+
+    def test_setup_with_invalid_source_files(self):
+        """Test setup with invalid source files."""
+        compiler = Compile_slang()
+        
+        # Test with non-existent source file
+        with patch('hagent.tool.compile_slang.pyslang.Driver') as MockDriver:
+            mock_driver = MagicMock()
+            MockDriver.return_value = mock_driver
+            
+            # Configure the mock to simulate failure in parseAllSources
+            mock_driver.parseCommandLine.return_value = True
+            mock_driver.processOptions.return_value = True
+            mock_driver.parseAllSources.return_value = False
+            
+            result = compiler.setup("nonexistent_file.v")
+            self.assertFalse(result)
+            self.assertTrue(compiler.error_message.startswith('count not process slang source files'))
+
+    def test_setup_exception(self):
+        """Test setup when an exception occurs."""
+        compiler = Compile_slang()
+        
+        with patch('hagent.tool.compile_slang.pyslang.Driver', side_effect=Exception("Test exception")):
+            result = compiler.setup()
+            self.assertFalse(result)
+            self.assertIn("Test exception", compiler.error_message)
+
+    def test_add_inline_no_pyslang(self):
+        """Test add_inline when pyslang is not available."""
+        compiler = Compile_slang()
+        
+        # Temporarily mock pyslang as None
+        import hagent.tool.compile_slang
+        original_pyslang = hagent.tool.compile_slang.pyslang
+        hagent.tool.compile_slang.pyslang = None
+        
+        try:
+            result = compiler.add_inline("module test; endmodule")
+            self.assertFalse(result)
+        finally:
+            # Restore pyslang
+            hagent.tool.compile_slang.pyslang = original_pyslang
+
+    def test_add_inline_no_compiler(self):
+        """Test add_inline when compiler is not initialized."""
+        compiler = Compile_slang()
+        compiler._compiler = None
+        
+        result = compiler.add_inline("module test; endmodule")
+        self.assertFalse(result)
+
+    def test_add_inline_exception(self):
+        """Test add_inline when an exception occurs."""
+        compiler = Compile_slang()
+        compiler.setup()
+        
+        # Mock SyntaxTree.fromText to raise an exception
+        import hagent.tool.compile_slang
+        if hagent.tool.compile_slang.pyslang:
+            original_from_text = hagent.tool.compile_slang.pyslang.SyntaxTree.fromText
+            
+            def mock_from_text(*args, **kwargs):
+                raise Exception("Test exception")
+            
+            hagent.tool.compile_slang.pyslang.SyntaxTree.fromText = mock_from_text
+            
+            try:
+                result = compiler.add_inline("module test; endmodule")
+                self.assertFalse(result)
+                self.assertEqual(compiler.error_message, 'Error adding source: Test exception')
+            finally:
+                # Restore original fromText
+                hagent.tool.compile_slang.pyslang.SyntaxTree.fromText = original_from_text
+
+    def test_add_file_no_pyslang(self):
+        """Test add_file when pyslang is not available."""
+        compiler = Compile_slang()
+        
+        # Temporarily mock pyslang as None
+        import hagent.tool.compile_slang
+        original_pyslang = hagent.tool.compile_slang.pyslang
+        hagent.tool.compile_slang.pyslang = None
+        
+        try:
+            result = compiler.add_file("test.v")
+            self.assertFalse(result)
+        finally:
+            # Restore pyslang
+            hagent.tool.compile_slang.pyslang = original_pyslang
+
+    def test_add_file_no_compiler(self):
+        """Test add_file when compiler is not initialized."""
+        compiler = Compile_slang()
+        compiler._compiler = None
+        
+        result = compiler.add_file("test.v")
+        self.assertFalse(result)
+
+    def test_add_file_file_not_found(self):
+        """Test add_file with a non-existent file."""
+        compiler = Compile_slang()
+        compiler.setup()
+        
+        result = compiler.add_file("nonexistent_file.v")
+        self.assertFalse(result)
+        self.assertEqual(compiler.error_message, 'File not found: nonexistent_file.v')
+
+    def test_add_file_exception(self):
+        """Test add_file when an exception occurs."""
+        compiler = Compile_slang()
+        compiler.setup()
+        
+        # Mock SyntaxTree.fromFile to raise a generic exception
+        import hagent.tool.compile_slang
+        if hagent.tool.compile_slang.pyslang:
+            original_from_file = hagent.tool.compile_slang.pyslang.SyntaxTree.fromFile
+            
+            def mock_from_file(*args, **kwargs):
+                raise Exception("Test exception")
+            
+            hagent.tool.compile_slang.pyslang.SyntaxTree.fromFile = mock_from_file
+            
+            try:
+                result = compiler.add_file("test.v")
+                self.assertFalse(result)
+                self.assertEqual(compiler.error_message, 'Error adding source: Test exception')
+            finally:
+                # Restore original fromFile
+                hagent.tool.compile_slang.pyslang.SyntaxTree.fromFile = original_from_file
+
+    def test_set_top_no_compiler(self):
+        """Test set_top when compiler is not initialized."""
+        compiler = Compile_slang()
+        compiler._compiler = None
+        
+        result = compiler.set_top("test")
+        self.assertFalse(result)
+
+    def test_get_top_no_compiler(self):
+        """Test get_top when compiler is not initialized."""
+        compiler = Compile_slang()
+        compiler._compiler = None
+        
+        result = compiler.get_top()
+        self.assertEqual(result, '')
+
+    def test_get_top_no_top_module_multiple_instances(self):
+        """Test get_top when no top module is set and there are multiple instances."""
+        compiler = Compile_slang()
+        
+        # Mock setup and add_inline
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_root = MagicMock()
+            
+            # Configure mocks
+            mock_pyslang.Driver.return_value.createCompilation.return_value = mock_compilation
+            mock_compilation.getRoot.return_value = mock_root
+            
+            # Setup the compiler
+            compiler.setup()
+            
+            # Configure mock_root to return multiple instances
+            mock_instance1 = MagicMock()
+            mock_instance1.name = "top1"
+            mock_instance2 = MagicMock()
+            mock_instance2.name = "top2"
+            mock_root.topInstances = [mock_instance1, mock_instance2]
+            
+            # Test get_top
+            result = compiler.get_top()
+            self.assertEqual(result, '')
+            self.assertIn("uname to find a single top module", compiler.error_message)
+
+    def test_get_top_list_no_compiler(self):
+        """Test get_top_list when compiler is not initialized."""
+        compiler = Compile_slang()
+        compiler._compiler = None
+        
+        result = compiler.get_top_list()
+        self.assertEqual(result, [])
+
+    def test_get_top_list_with_top_module_match(self):
+        """Test get_top_list with a matching top module."""
+        compiler = Compile_slang()
+        compiler.setup()
+        compiler._top_module = "test_module"
+        
+        result = compiler.get_top_list("test_module")
+        self.assertEqual(result, ["test_module"])
+
+    def test_get_top_list_with_top_module_no_match(self):
+        """Test get_top_list with a non-matching top module."""
+        compiler = Compile_slang()
+        compiler.setup()
+        compiler._top_module = "test_module"
+        
+        result = compiler.get_top_list("other_module")
+        self.assertEqual(result, [])
+
+    def test_get_ios_no_compiler(self):
+        """Test get_ios when compiler is not initialized."""
+        compiler = Compile_slang()
+        compiler._compiler = None
+        
+        result = compiler.get_ios()
+        self.assertEqual(result, [])
+
+    def test_get_ios_module_not_found(self):
+        """Test get_ios when the module is not found."""
+        compiler = Compile_slang()
+        compiler.setup()
+        
+        result = compiler.get_ios("nonexistent_module")
+        self.assertEqual(result, [])
+
+    def test_get_ios_attribute_error(self):
+        """Test get_ios when an AttributeError occurs."""
+        compiler = Compile_slang()
+    
+        # Mock setup and add_inline
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_root = MagicMock()
+            mock_definition = MagicMock()
+    
+            # Configure mocks
+            mock_pyslang.Driver.return_value.createCompilation.return_value = mock_compilation
+            mock_compilation.getRoot.return_value = mock_root
+            mock_root.lookupName.return_value = mock_definition
+    
+            # Setup the compiler
+            compiler.setup()
+            
+            # Configure mock_definition to raise AttributeError when accessing body
+            # Use a property that raises an exception when accessed
+            mock_definition.body.side_effect = AttributeError("No body attribute")
+            
+            # Test get_ios
+            result = compiler.get_ios("test_module")
+            self.assertEqual(result, [])
+
+    def test_get_warnings_no_pyslang(self):
+        """Test get_warnings when pyslang is not available."""
+        compiler = Compile_slang()
+        
+        # Temporarily mock pyslang as None
+        import hagent.tool.compile_slang
+        original_pyslang = hagent.tool.compile_slang.pyslang
+        hagent.tool.compile_slang.pyslang = None
+        
+        try:
+            result = compiler.get_warnings()
+            self.assertEqual(result, [])
+        finally:
+            # Restore pyslang
+            hagent.tool.compile_slang.pyslang = original_pyslang
+
+    def test_get_errors_no_pyslang(self):
+        """Test get_errors when pyslang is not available."""
+        compiler = Compile_slang()
+        
+        # Temporarily mock pyslang as None
+        import hagent.tool.compile_slang
+        original_pyslang = hagent.tool.compile_slang.pyslang
+        hagent.tool.compile_slang.pyslang = None
+        
+        try:
+            result = compiler.get_errors()
+            self.assertEqual(result, [])
+        finally:
+            # Restore pyslang
+            hagent.tool.compile_slang.pyslang = original_pyslang
+
+    def test_get_diagnostics_no_compiler(self):
+        """Test _get_diagnostics when compiler is not initialized."""
+        compiler = Compile_slang()
+        compiler._compiler = None
+        
+        result = compiler._get_diagnostics(errors=True)
+        self.assertEqual(result, [])
+        
+    def test_setup_parse_all_sources_failure(self):
+        """Test setup when parseAllSources fails."""
+        compiler = Compile_slang()
+        
+        # Mock pyslang.Driver to have parseAllSources return False
+        import hagent.tool.compile_slang
+        if hagent.tool.compile_slang.pyslang:
+            original_driver_class = hagent.tool.compile_slang.pyslang.Driver
+            
+            class MockDriver:
+                def __init__(self):
+                    pass
+                
+                def addStandardArgs(self):
+                    pass
+                
+                def parseCommandLine(self, *args, **kwargs):
+                    return True
+                
+                def processOptions(self):
+                    return True
+                
+                def parseAllSources(self):
+                    return False
+                
+                def createCompilation(self):
+                    pass
+                
+                @property
+                def sourceManager(self):
+                    pass
+            
+            hagent.tool.compile_slang.pyslang.Driver = MockDriver
+            
+            try:
+                result = compiler.setup("some_file.v")
+                self.assertFalse(result)
+                self.assertTrue(compiler.error_message.startswith('count not process slang source files'))
+            finally:
+                # Restore original Driver
+                hagent.tool.compile_slang.pyslang.Driver = original_driver_class
+    
+    def test_add_file_with_no_source_manager(self):
+        """Test add_file when _sm is not initialized."""
+        compiler = Compile_slang()
+        
+        # Mock setup to create a compiler but with _sm set to None
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_source_manager = MagicMock()
+            mock_tree = MagicMock()
+            
+            # Configure mock_pyslang
+            mock_pyslang.Driver.return_value.createCompilation.return_value = mock_compilation
+            mock_pyslang.Driver.return_value.sourceManager = mock_source_manager
+            mock_pyslang.SyntaxTree.fromFile.return_value = mock_tree
+            
+            # Setup the compiler
+            compiler.setup()
+            
+            # Set _sm to None to test the branch where it gets initialized
+            compiler._sm = None
+            
+            # Create a temporary file for testing
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.v', delete=False) as tmp:
+                tmp_name = tmp.name
+                tmp.write(b"module test; endmodule")
+            
+            try:
+                # Test add_file
+                result = compiler.add_file(tmp_name)
+                self.assertTrue(result)
+                
+                # Verify that _sm was set from _compiler.sourceManager
+                self.assertEqual(compiler._sm, mock_compilation.sourceManager)
+                
+                # Verify that SyntaxTree.fromFile was called with the correct arguments
+                mock_pyslang.SyntaxTree.fromFile.assert_called_once_with(tmp_name, sourceManager=mock_compilation.sourceManager)
+                
+                # Verify that addSyntaxTree was called with the mock tree
+                mock_compilation.addSyntaxTree.assert_called_once_with(mock_tree)
+            finally:
+                # Clean up
+                if os.path.exists(tmp_name):
+                    os.remove(tmp_name)
+    
+    def test_set_top_with_valid_module(self):
+        """Test set_top with a valid module name."""
+        compiler = Compile_slang()
+        
+        # Mock setup and add_inline
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_root = MagicMock()
+            mock_definition = MagicMock()
+            
+            # Configure mocks
+            mock_pyslang.Driver.return_value.createCompilation.return_value = mock_compilation
+            mock_compilation.getRoot.return_value = mock_root
+            mock_root.lookupName.return_value = mock_definition
+            
+            # Setup the compiler
+            compiler.setup()
+            
+            # Test set_top
+            result = compiler.set_top("test_module")
+            self.assertTrue(result)
+            self.assertEqual(compiler._top_module, "test_module")
+            
+            # Verify lookupName was called with the correct module name
+            mock_root.lookupName.assert_called_once_with("test_module")
+    
+    def test_get_top_with_single_instance(self):
+        """Test get_top when there's a single top instance."""
+        compiler = Compile_slang()
+        
+        # Mock setup and add_inline
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_root = MagicMock()
+            
+            # Configure mocks
+            mock_pyslang.Driver.return_value.createCompilation.return_value = mock_compilation
+            mock_compilation.getRoot.return_value = mock_root
+            
+            # Setup the compiler
+            compiler.setup()
+            
+            # Configure mock_root to return a single instance
+            mock_instance = MagicMock()
+            mock_instance.name = "test_module"
+            mock_root.topInstances = [mock_instance]
+            
+            # Test get_top
+            result = compiler.get_top()
+            self.assertEqual(result, "test_module")
+    
+    def test_get_top_list_with_modname(self):
+        """Test get_top_list with a specific module name."""
+        compiler = Compile_slang()
+        
+        # Mock setup and add_inline
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_root = MagicMock()
+            mock_definition = MagicMock()
+            
+            # Configure mocks
+            mock_pyslang.Driver.return_value.createCompilation.return_value = mock_compilation
+            mock_compilation.getRoot.return_value = mock_root
+            mock_root.lookupName.return_value = mock_definition
+            
+            # Setup the compiler
+            compiler.setup()
+            
+            # Test get_top_list with a specific module name
+            result = compiler.get_top_list("test_module")
+            self.assertEqual(result, ["test_module"])
+            
+            # Verify lookupName was called with the correct module name
+            mock_root.lookupName.assert_called_once_with("test_module")
+    
+    def test_get_ios_with_port_types(self):
+        """Test get_ios with different port types."""
+        compiler = Compile_slang()
+        
+        # Mock setup and add_inline
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_root = MagicMock()
+            mock_definition = MagicMock()
+            
+            # Configure mocks
+            mock_pyslang.Driver.return_value.createCompilation.return_value = mock_compilation
+            mock_compilation.getRoot.return_value = mock_root
+            mock_root.lookupName.return_value = mock_definition
+            
+            # Setup the compiler
+            compiler.setup()
+            
+            # Create mock port objects with different directions
+            mock_in_port = MagicMock()
+            mock_in_port.name = "in_port"
+            mock_in_port.direction = mock_pyslang.ArgumentDirection.In
+            mock_in_port.kind = mock_pyslang.SymbolKind.Port
+            mock_in_port.type.bitWidth = 8
+            
+            mock_out_port = MagicMock()
+            mock_out_port.name = "out_port"
+            mock_out_port.direction = mock_pyslang.ArgumentDirection.Out
+            mock_out_port.kind = mock_pyslang.SymbolKind.Port
+            mock_out_port.type.bitWidth = 8
+            
+            mock_inout_port = MagicMock()
+            mock_inout_port.name = "inout_port"
+            mock_inout_port.direction = mock_pyslang.ArgumentDirection.InOut
+            mock_inout_port.kind = mock_pyslang.SymbolKind.Port
+            mock_inout_port.type.bitWidth = 8
+            
+            # Configure mock_definition.body to contain the mock ports
+            mock_definition.body = [mock_in_port, mock_out_port, mock_inout_port]
+            
+            # Test get_ios
+            result = compiler.get_ios("test_module")
+            self.assertEqual(len(result), 3)
+            
+            # Verify the input port
+            self.assertEqual(result[0].name, "in_port")
+            self.assertTrue(result[0].input)
+            self.assertFalse(result[0].output)
+            self.assertEqual(result[0].bits, 8)
+            
+            # Verify the output port
+            self.assertEqual(result[1].name, "out_port")
+            self.assertFalse(result[1].input)
+            self.assertTrue(result[1].output)
+            self.assertEqual(result[1].bits, 8)
+            
+            # Verify the inout port
+            self.assertEqual(result[2].name, "inout_port")
+            self.assertTrue(result[2].input)
+            self.assertTrue(result[2].output)
+            self.assertEqual(result[2].bits, 8)
+
+    def test_get_diagnostics_with_errors_and_warnings(self):
+        """Test _get_diagnostics with both errors and warnings."""
+        compiler = Compile_slang()
+        
+        # Mock setup and add_inline
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_source_manager = MagicMock()
+            mock_diag_engine = MagicMock()
+            
+            # Create mock diagnostics
+            mock_error = MagicMock()
+            mock_error.isError.return_value = True
+            
+            mock_warning = MagicMock()
+            mock_warning.isError.return_value = False
+            
+            # Configure mocks
+            mock_pyslang.Driver.return_value.createCompilation.return_value = mock_compilation
+            mock_pyslang.Driver.return_value.sourceManager = mock_source_manager
+            mock_pyslang.DiagnosticEngine.return_value = mock_diag_engine
+            mock_compilation.getAllDiagnostics.return_value = [mock_error, mock_warning]
+            mock_diag_engine.reportAll.return_value = "Error message"
+            
+            # Setup the compiler
+            compiler.setup()
+            
+            # Test get_errors
+            errors = compiler.get_errors()
+            self.assertEqual(len(errors), 1)
+            
+            # Test get_warnings
+            warnings = compiler.get_warnings()
+            self.assertEqual(len(warnings), 1)
+
+    def test_setup_parse_command_line_failure(self):
+        """Test setup when parseCommandLine returns False."""
+        compiler = Compile_slang()
+        
+        with patch('hagent.tool.compile_slang.pyslang.Driver') as MockDriver:
+            mock_driver = MagicMock()
+            MockDriver.return_value = mock_driver
+            
+            # Configure the mock to simulate failure in parseCommandLine
+            mock_driver.parseCommandLine.return_value = False
+            
+            result = compiler.setup("some_args")
+            self.assertFalse(result)
+    
+    def test_add_inline_success(self):
+        """Test successful add_inline operation."""
+        compiler = Compile_slang()
+        
+        # Mock setup and pyslang
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_tree = MagicMock()
+            mock_sm = MagicMock()
+            
+            # Configure mocks
+            mock_pyslang.SyntaxTree.fromText.return_value = mock_tree
+            
+            # Set up compiler attributes
+            compiler._compiler = mock_compilation
+            compiler._sm = mock_sm
+            
+            # Call add_inline
+            result = compiler.add_inline("module test; endmodule")
+            
+            # Verify the result and method calls
+            self.assertTrue(result)
+            mock_pyslang.SyntaxTree.fromText.assert_called_once()
+            mock_compilation.addSyntaxTree.assert_called_once_with(mock_tree)
+    
+    def test_get_top_with_top_module_set(self):
+        """Test get_top when _top_module is already set."""
+        compiler = Compile_slang()
+        
+        # Set up compiler attributes
+        compiler._compiler = MagicMock()
+        compiler._top_module = "TestModule"
+        
+        # Call get_top
+        result = compiler.get_top()
+        
+        # Verify the result
+        self.assertEqual(result, "TestModule")
+    
+    def test_get_top_list_no_modname(self):
+        """Test get_top_list when no modname is provided."""
+        compiler = Compile_slang()
+        
+        # Mock setup and compiler
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_root = MagicMock()
+            mock_instance1 = MagicMock()
+            mock_instance2 = MagicMock()
+            
+            # Configure mocks
+            mock_compilation.getRoot.return_value = mock_root
+            mock_instance1.name = "Module1"
+            mock_instance2.name = "Module2"
+            mock_root.topInstances = [mock_instance1, mock_instance2]
+            
+            # Set up compiler attributes
+            compiler._compiler = mock_compilation
+            compiler._top_module = None
+            
+            # Call get_top_list with no modname
+            result = compiler.get_top_list()
+            
+            # Verify the result
+            self.assertEqual(result, ["Module1", "Module2"])
+    
+    def test_get_ios_no_modname(self):
+        """Test get_ios when no modname is provided."""
+        compiler = Compile_slang()
+        
+        # Mock setup and compiler
+        with patch.object(compiler, 'get_top', return_value="DefaultTop") as mock_get_top:
+            with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+                # Create mock objects
+                mock_compilation = MagicMock()
+                mock_root = MagicMock()
+                mock_definition = MagicMock()
+                mock_stmt = MagicMock()
+                
+                # Configure mocks
+                mock_compilation.getRoot.return_value = mock_root
+                mock_root.lookupName.return_value = mock_definition
+                mock_definition.body = [mock_stmt]
+                
+                # Configure mock_stmt to simulate a port
+                mock_stmt.kind = mock_pyslang.SymbolKind.Port
+                mock_stmt.direction = mock_pyslang.ArgumentDirection.In
+                mock_stmt.name = "test_port"
+                mock_stmt.type.bitWidth = 8
+                
+                # Set up compiler attributes
+                compiler._compiler = mock_compilation
+                
+                # Call get_ios with no modname
+                result = compiler.get_ios()
+                
+                # Verify the result
+                self.assertEqual(len(result), 1)
+                self.assertEqual(result[0].name, "test_port")
+                self.assertEqual(result[0].bits, 8)
+                self.assertTrue(result[0].input)
+                self.assertFalse(result[0].output)
+                
+                # Verify get_top was called
+                mock_get_top.assert_called_once()
+                # Verify lookupName was called with the correct module name
+                mock_root.lookupName.assert_called_once_with("DefaultTop")
+
+    def test_set_top_with_nonexistent_module(self):
+        """Test set_top with a module name that doesn't exist."""
+        compiler = Compile_slang()
+        
+        # Mock setup and add_inline
+        with patch('hagent.tool.compile_slang.pyslang') as mock_pyslang:
+            # Create mock objects
+            mock_compilation = MagicMock()
+            mock_root = MagicMock()
+            
+            # Configure mocks
+            mock_pyslang.Driver.return_value.createCompilation.return_value = mock_compilation
+            mock_compilation.getRoot.return_value = mock_root
+            # Return None to simulate a module that doesn't exist
+            mock_root.lookupName.return_value = None
+            
+            # Setup the compiler
+            compiler.setup()
+            
+            # Test set_top with a nonexistent module
+            result = compiler.set_top("nonexistent_module")
+            self.assertFalse(result)
+            self.assertIsNone(compiler._top_module)  # _top_module should not be set
+            
+            # Verify lookupName was called with the correct module name
+            mock_root.lookupName.assert_called_once_with("nonexistent_module")
+
+
 def main(args):
     # Ensure args is a list
-    assert isinstance(args, list), 'args must be a list'
-    if len(args) == 0:
-        return inline_verilog()
-    elif len(args) == 1:
-        filename = args[0]
-        if filename.endswith(".yaml"):
-            return from_fileyaml(args)
-        else:
-            return from_fileverilog(args)
-    else:
-        return from_fileverilog(args)
+    if isinstance(args, str):
+        args = [args]
 
-
-if __name__ == '__main__':
-    # If first argument is "test", run the unit tests
-    if len(sys.argv) > 1 and sys.argv[1] == 'test':
-        # Remove the test argument to prevent unittest from misinterpreting it
-        sys.argv.pop(1)
+    # If no arguments, run all tests
+    if len(args) <= 1:
         unittest.main()
+        return 0
+
+    # Run specific test
+    if args[1] == 'inline':
+        inline_verilog()
+    elif args[1].endswith('.v'):
+        from_fileverilog(args[1:])
+    elif args[1].endswith('.yaml'):
+        from_fileyaml(args[1:])
     else:
-        # Call main with command-line arguments (excluding the script name)
-        main(sys.argv[1:])
+        print(f'Unknown option {args[1]}')
+        return 1
+    return 0
+
+
+if __name__ == '__main__':  # pragma: no cover
+    sys.exit(main(sys.argv))
