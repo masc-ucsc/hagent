@@ -3,6 +3,28 @@ v2chisel_pass1:
     model: "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct"
   threshold: 40
   context: 1
+  
+  prompt0:
+    - role: system
+      content: |
+        You are a coding assistant to update Chisel code based on differences between two Verilog versions.
+
+    - role: user
+      content: |
+        I have a Scala program that generates Verilog. I made modifications to the Verilog code and now need to update the corresponding Chisel code.
+
+        The fixed Verilog represents the desired changes. Here is the unified diff between the original and fixed Verilog:
+        ```
+        {verilog_diff}
+        ```
+        here is the original chisel code:
+        ```
+        {chisel_original}
+        ```
+        Can you give me a Chisel diff that could work? 
+        Output *only* the diff in **unified diff format** with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+        PLEASE No explanation, no Note. ONLY diff, **unified diff format**
+
   prompt1:
     - role: system
       content: |

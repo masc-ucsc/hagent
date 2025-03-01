@@ -213,6 +213,7 @@ class V2Chisel_pass1(Step):
         verilog_candidate_final = None
         last_error_msg = ''
         generated_diff = ''
+        prompt_success = {'prompt0': 0, 'prompt1': 0, 'prompt2': 0, 'prompt3': 0, 'prompt4': 0}
 
         # For a single prompt file, extract the desired section from the loaded config.
         # We assume self.template_config.config is a dictionary with keys like "prompt1", "prompt2", etc.
@@ -220,36 +221,45 @@ class V2Chisel_pass1(Step):
         if not full_config:
             full_config = self.template_config.template_dict
         
-
-        for attempt in range(1, 5):
+        for attempt in range(1, 6):
             if attempt == 1:
+                if "prompt0" in full_config:
+                    prompt_section = full_config["prompt0"]
+                    prompt_index = "prompt0"
+                else:
+                    self.error("Missing 'prompt0' section in prompt configuration.")
+            elif attempt == 2:
                 if "prompt1" in full_config:
                     prompt_section = full_config["prompt1"]
+                    prompt_index = "prompt1"
                 else:
                     self.error("Missing 'prompt1' section in prompt configuration.")
-            elif attempt == 2:
+            elif attempt == 3:
                 if "prompt2" in full_config:
                     prompt_section = full_config["prompt2"]
+                    prompt_index = "prompt2"
                 else:
                     self.error("Missing 'prompt2' section in prompt configuration.")
-            elif attempt == 3:
+            elif attempt == 4:
                 if "prompt3" in full_config:
                     prompt_section = full_config["prompt3"]
+                    prompt_index = "prompt3"
                 else:
                     self.error("Missing 'prompt3' section in prompt configuration.")
                 increased_threshold = default_threshold + 20
                 chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text, threshold_override=increased_threshold)
                 if not chisel_subset.strip():
-                    self.error("No hint lines extracted for attempt 3. Aborting LLM call.")
+                    self.error("No hint lines extracted for attempt 4. Aborting LLM call.")
             else:
                 if "prompt4" in full_config:
                     prompt_section = full_config["prompt4"]
+                    prompt_index = "prompt4"
                 else:
                     self.error("Missing 'prompt4' section in prompt configuration.")
                 decreased_threshold = default_threshold - 20
                 chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text, threshold_override=decreased_threshold)
                 if not chisel_subset.strip():
-                    self.error("No hint lines extracted for attempt 3. Aborting LLM call.")
+                    self.error("No hint lines extracted for attempt 5. Aborting LLM call.")
 
             # Create a new LLM_template instance from the selected section.
             prompt_template = LLM_template(prompt_section)
@@ -282,7 +292,7 @@ class V2Chisel_pass1(Step):
                 print(chunk.get('content', '<no content>'))
                 print("------------------------------------------------")
 
-            response_list = self.lw.inference(prompt_dict, prompt_index="prompt1", n=1)
+            response_list = self.lw.inference(prompt_dict, prompt_index=prompt_index, n=1)
             if not response_list:
                 print('\n=== LLM RESPONSE: EMPTY ===\n')
                 last_error_msg = 'LLM gave empty response'
@@ -301,6 +311,7 @@ class V2Chisel_pass1(Step):
 
             is_valid, verilog_candidate, error_msg = self._run_chisel2v(chisel_updated)
             if is_valid:
+                prompt_success[prompt_index] = 1
                 chisel_updated_final = chisel_updated
                 verilog_candidate_final = self._fix_formatting(verilog_candidate)
                 was_valid = True
@@ -318,6 +329,11 @@ class V2Chisel_pass1(Step):
             'verilog_candidate': verilog_candidate_final,
             'was_valid': was_valid,
             'chisel_subset': chisel_subset,
+            'prompt0': prompt_success['prompt0'],
+            'prompt1': prompt_success['prompt1'],
+            'prompt2': prompt_success['prompt2'],
+            'prompt3': prompt_success['prompt3'],
+            'prompt4': prompt_success['prompt4'],
         }
         result['verilog_diff'] = verilog_diff_text
         return result

@@ -230,8 +230,8 @@ class V2chisel_fix(Step):
         diff_lines = difflib.unified_diff(
             old_lines,
             new_lines,
-            fromfile='verilog_original.v',
-            tofile='verilog_fixed.v',
+            fromfile='Original version',
+            tofile='Modified version',
             lineterm=''
         )
         return '\n'.join(diff_lines)
@@ -278,6 +278,9 @@ class V2chisel_fix(Step):
             'lec_output': lec_error or 'LEC failed',
             'verilog_diff': self.verilog_diff_str,
         }
+        if not self.chisel_subset.strip():
+            self.error("No hint lines extracted from the Chisel code. Aborting LLM call.")
+
         full_config = self.template_config.template_dict.get(self.refine_llm.name.lower(), {})
         prompt_template = LLM_template(full_config["prompt3"])
         self.refine_llm.chat_template = prompt_template
@@ -293,7 +296,7 @@ class V2chisel_fix(Step):
             print('\n=== LLM RESPONSE: EMPTY ===\n')
             last_error_msg = 'LLM gave empty response'
 
-        print('\n================ LLM RESPONSE ================')
+        print('\n================ LLM RESPONSE (prompt3) ================')
         print(answers[0])
         print('==============================================')
 
@@ -310,19 +313,29 @@ class V2chisel_fix(Step):
         The LLM (via prompt4.yaml) is instructed to output only the diff in unified diff format.
         """
         v2c_pass1 = V2Chisel_pass1()
+        v2c_pass1.input_data = self.input_data
         new_hints = v2c_pass1._extract_chisel_subset(self.chisel_original, self.verilog_diff_str, threshold_override=50)
+        
+        if not new_hints.strip():
+            self.error("No hint lines extracted from the Chisel code. Aborting LLM call.")
 
         prompt_dict = {
             'lec_output': lec_error or 'LEC failed',
             'verilog_diff': self.verilog_diff_str,
-            #'chisel_diff': chisel_diff_placeholder,
+            'chisel_diff': self._generate_diff(self.chisel_original, current_code),
             'new_hints': new_hints,
         }
+        full_config = self.template_config.template_dict.get(self.refine_llm.name.lower(), {})
+        prompt_template = LLM_template(full_config["prompt4"])
+        self.refine_llm.chat_template = prompt_template
+        formatted_prompt = self.refine_llm.chat_template.format(prompt_dict)
         print('\n================ LLM QUERY (prompt4, attempt {}) ================'.format(attempt))
-        for key, value in prompt_dict.items():
-            print(f"{key}: {value}")
-        print('==============================================')
-        answers = self.refine_llm.inference(prompt_dict, 'prompt4', n=1)
+        for chunk in formatted_prompt:
+            print("Role: {}".format(chunk.get('role', '<no role>')))
+            print("Content:")
+            print(chunk.get('content', '<no content>'))
+            print("------------------------------------------------")
+        answers = self.refine_llm.inference(prompt_dict, prompt_index="prompt4", n=1)
         if not answers:
             print('\n=== LLM RESPONSE: EMPTY ===\n')
             return ""
