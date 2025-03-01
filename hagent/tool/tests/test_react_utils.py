@@ -145,9 +145,13 @@ class TestReactUtils(unittest.TestCase):
         code = ""
         comment = "This is a comment"
         
-        # This should raise a ValueError because there are no lines
-        with self.assertRaises(ValueError):
-            insert_comment(code, comment, "#", 1)
+        # When code is empty, splitlines() returns an empty list
+        code_lines = code.splitlines(keepends=True)
+        self.assertEqual(len(code_lines), 0)
+        
+        # For empty code, the function should add the comment as the first line
+        result = insert_comment(code, comment, "#", 1)
+        self.assertEqual(result, "# This is a comment\n")
     
     def test_insert_comment_invalid_location(self):
         """Test insert_comment with an invalid location."""

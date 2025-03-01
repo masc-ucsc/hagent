@@ -3,7 +3,7 @@ from collections import namedtuple
 
 try:
     import pyslang
-except ImportError:
+except ImportError: # pragma: no cover
     pyslang = None  # type: ignore
 
 from hagent.tool.compile import Diagnostic
