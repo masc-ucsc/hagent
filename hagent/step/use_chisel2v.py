@@ -9,16 +9,16 @@ from hagent.tool.chisel2v import Chisel2v
 
 
 def extract_module_name(chisel_code: str) -> str:
-    """
-    Extracts the module (class) name from the Chisel code.
-    Assumes the module is defined as: class ModuleName extends Module
-    """
-    match = re.search(r'class\s+(\w+)\s+extends\s+Module', chisel_code)
+    # First, try to find "Top"
+    match = re.search(r'class\s+(Top)\s+.*extends\s+Module', chisel_code)
     if match:
         return match.group(1)
+    # Fallback: find the last occurrence of a module definition
+    matches = re.findall(r'class\s+(\w+)\s+.*extends\s+Module', chisel_code)
+    if matches:
+        return matches[-1]
     else:
         raise ValueError('Unable to find module name in Chisel code.')
-
 
 def main():
     # Set up argument parsing
@@ -53,6 +53,7 @@ def main():
     # Extract the module name from the Chisel code
     try:
         module_name = extract_module_name(chisel_code)
+        module_name = "Top"
         print(f'Extracted module name: {module_name}')
     except ValueError as ve:
         print(f'Error: {ve}', file=sys.stderr)

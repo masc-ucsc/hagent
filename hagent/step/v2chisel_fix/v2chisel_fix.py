@@ -143,7 +143,7 @@ class V2chisel_fix(Step):
             return result
 
         max_prompt3_attempts = 2
-        max_prompt4_attempts = 2
+        max_prompt4_attempts = 3
         chisel_updated_final = None
         was_valid_refinement = False
         last_error_msg = ''
@@ -165,8 +165,14 @@ class V2chisel_fix(Step):
             is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(chisel_updated)
             if not is_valid:
                 print(f'[WARN] Compilation failed on Prompt3 Attempt {attempt}: {error_msg}')
-                last_error_msg = error_msg or 'Unknown compile error'
-                continue
+                fixed_code = self._iterative_compile_fix(chisel_updated, error_msg)
+                is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(fixed_code)
+                if is_valid:
+                    chisel_updated = fixed_code
+                else:
+                    print(f'[WARN] Iterative compilation fix failed on Prompt3 Attempt {attempt}: {error_msg}')
+                    last_error_msg = error_msg or 'Unknown compile error'
+                    continue
             is_equiv, lec_error = self._check_equivalence(verilog_fixed, verilog_candidate_temp)
             if is_equiv:
                 print(f'[INFO] LEC passed on Prompt3 Attempt {attempt}.')
@@ -190,13 +196,19 @@ class V2chisel_fix(Step):
                 print(candidate_diff)
                 applier = ChiselDiffApplier()
                 chisel_updated = applier.apply_diff(candidate_diff, chisel_original)
-                print(f"===== FINAL CHISEL CODE AFTER DIFF APPLIER (Prompt4 Attempt {attempt}) =====")
-                print(chisel_updated)
+                # print(f"===== FINAL CHISEL CODE AFTER DIFF APPLIER (Prompt4 Attempt {attempt}) =====")
+                # print(chisel_updated)
                 is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(chisel_updated)
                 if not is_valid:
                     print(f'[WARN] Compilation failed on Prompt4 Attempt {attempt}: {error_msg}')
-                    last_error_msg = error_msg or 'Unknown compile error'
-                    continue
+                    fixed_code = self._iterative_compile_fix(chisel_updated, error_msg)
+                    is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(fixed_code)
+                    if is_valid:
+                        chisel_updated = fixed_code
+                    else:
+                        print(f'[WARN] Iterative compilation fix failed on Prompt4 Attempt {attempt}: {error_msg}')
+                        last_error_msg = error_msg or 'Unknown compile error'
+                        continue
                 is_equiv, lec_error = self._check_equivalence(verilog_fixed, verilog_candidate_temp)
                 if is_equiv:
                     print(f'[INFO] LEC passed on Prompt4 Attempt {attempt}.')
@@ -220,6 +232,49 @@ class V2chisel_fix(Step):
             result['chisel_fixed']['chisel_diff'] = candidate_diff_final
             print("[INFO] Refinement successful. 'chisel_fixed' written to output YAML.")
             return result
+
+    def _iterative_compile_fix(self, chisel_code: str, compiler_error: str) -> str:
+        max_iterations = 5
+        current_code = chisel_code
+        for i in range(1, max_iterations + 1):
+            prompt_dict = {
+                'chisel_original': self.chisel_original,
+                'current_chisel': current_code,
+                'compiler_error': compiler_error,
+            }
+            full_config = self.template_config.template_dict.get(self.refine_llm.name.lower(), {})
+            if "prompt_compiler_fix" not in full_config:
+                self.error("Missing 'prompt_compiler_fix' in prompt configuration.")
+            prompt_template = LLM_template(full_config["prompt_compiler_fix"])
+            self.refine_llm.chat_template = prompt_template
+            formatted_prompt = self.refine_llm.chat_template.format(prompt_dict)
+            print(f'\n================ LLM QUERY (prompt_compiler_fix, iteration {i}) ================')
+            # for chunk in formatted_prompt:
+            #     print("Role: {}".format(chunk.get('role', '<no role>')))
+            #     print("Content:")
+            #     print(chunk.get('content', '<no content>'))
+            #     print("------------------------------------------------")
+            answers = self.refine_llm.inference(prompt_dict, prompt_index="prompt_compiler_fix", n=1, max_history=10)
+            if not answers:
+                print('\n=== LLM RESPONSE: EMPTY ===\n')
+                continue
+            print('\n================ LLM RESPONSE (prompt_compiler_fix) ================')
+            print(answers[0])
+            print('==============================================')
+            for txt in answers:
+                diff_code_text = self.chisel_extractor.parse(txt)
+                if diff_code_text:
+                    applier = ChiselDiffApplier()
+                    new_code = applier.apply_diff(diff_code_text, current_code)
+                    is_valid, verilog_candidate, error_msg = self._run_chisel2v(new_code)
+                    if is_valid:
+                        return new_code
+                    else:
+                        print(f'[WARN] Compiler still failing in iteration {i}: {error_msg}')
+                        current_code = new_code
+                        compiler_error = error_msg
+                        break
+        return current_code
 
     def _generate_diff(self, old_code: str, new_code: str) -> str:
         """
@@ -286,12 +341,12 @@ class V2chisel_fix(Step):
         self.refine_llm.chat_template = prompt_template
         formatted_prompt = self.refine_llm.chat_template.format(prompt_dict)
         print('\n================ LLM QUERY (prompt3, attempt {}) ================'.format(attempt))
-        for chunk in formatted_prompt:
-            print("Role: {}".format(chunk.get('role', '<no role>')))
-            print("Content:")
-            print(chunk.get('content', '<no content>'))
-            print("------------------------------------------------")
-        answers = self.refine_llm.inference(prompt_dict, prompt_index="prompt3", n=1)
+        # for chunk in formatted_prompt:
+        #     print("Role: {}".format(chunk.get('role', '<no role>')))
+        #     print("Content:")
+        #     print(chunk.get('content', '<no content>'))
+        #     print("------------------------------------------------")
+        answers = self.refine_llm.inference(prompt_dict, prompt_index="prompt3", n=1, max_history=10)
         if not answers:
             print('\n=== LLM RESPONSE: EMPTY ===\n')
             last_error_msg = 'LLM gave empty response'
@@ -311,44 +366,91 @@ class V2chisel_fix(Step):
         """
         Uses prompt4 for LLM refinement to generate a Chisel diff.
         The LLM (via prompt4.yaml) is instructed to output only the diff in unified diff format.
+        On extended attempts (attempt > 2), adjusts LLM parameters and uses an alternative prompt.
         """
         v2c_pass1 = V2Chisel_pass1()
         v2c_pass1.input_data = self.input_data
-        new_hints = v2c_pass1._extract_chisel_subset(self.chisel_original, self.verilog_diff_str, threshold_override=50)
-        
+        new_hints = v2c_pass1._extract_chisel_subset(self.chisel_original, self.verilog_diff_str, threshold_override=30)
         if not new_hints.strip():
             self.error("No hint lines extracted from the Chisel code. Aborting LLM call.")
 
         prompt_dict = {
             'lec_output': lec_error or 'LEC failed',
+            'chisel_subset': self.chisel_subset,
             'verilog_diff': self.verilog_diff_str,
             'chisel_diff': self._generate_diff(self.chisel_original, current_code),
             'new_hints': new_hints,
+            'n': 5,
         }
+
         full_config = self.template_config.template_dict.get(self.refine_llm.name.lower(), {})
+        # Default to prompt4
         prompt_template = LLM_template(full_config["prompt4"])
+
+        print('\n================ LLM QUERY (prompt4, attempt {}) ================'.format(attempt))
+        # for key, value in prompt_dict.items():
+        #     print(f"{key}: {value}")
+        print('==============================================')
+
+        # For extended attempts (attempt > 2), adjust LLM parameters and use an alternative prompt
+        if attempt > 2:
+            print("\n[INFO] Extended Prompt4 attempt: adjusting LLM parameters and using alternative prompt.")
+            self.refine_llm.llm_args['top_k'] = 50
+            self.refine_llm.llm_args['temperature'] = 0.9
+            alt_prompt = full_config.get('prompt4_alternative', None)
+            if not alt_prompt:
+                self.error("Missing 'prompt4_alternative' section in configuration.")
+            prompt_template = LLM_template(alt_prompt)
+            answers = self.refine_llm.inference(prompt_dict, 'prompt4_alternative', n=3, max_history=10)
+        else:
+            answers = self.refine_llm.inference(prompt_dict, 'prompt4', n=1, max_history=10)
+
         self.refine_llm.chat_template = prompt_template
         formatted_prompt = self.refine_llm.chat_template.format(prompt_dict)
-        print('\n================ LLM QUERY (prompt4, attempt {}) ================'.format(attempt))
-        for chunk in formatted_prompt:
-            print("Role: {}".format(chunk.get('role', '<no role>')))
-            print("Content:")
-            print(chunk.get('content', '<no content>'))
-            print("------------------------------------------------")
-        answers = self.refine_llm.inference(prompt_dict, prompt_index="prompt4", n=1)
+        print('\n================ LLM FORMATTED QUERY (prompt4, attempt {}) ================'.format(attempt))
+        # for chunk in formatted_prompt:
+        #     print("Role: {}".format(chunk.get('role', '<no role>')))
+        #     print("Content:")
+        #     print(chunk.get('content', '<no content>'))
+        #     print("------------------------------------------------")
+
         if not answers:
             print('\n=== LLM RESPONSE: EMPTY ===\n')
             return ""
 
         print('\n================ LLM RESPONSE (prompt4) ================')
-        print(answers[0])
+        if isinstance(answers, list) and len(answers) > 0:
+            print(answers[0])
         print('==============================================')
-        for txt in answers:
-            code = self.chisel_extractor.parse(txt)
-            if code:
-                return code
 
-        return ""
+        # If multiple candidates were requested (attempt > 2), evaluate each candidate:
+        if attempt > 2 and isinstance(answers, list) and len(answers) > 1:
+            for txt in answers:
+                candidate_diff = self.chisel_extractor.parse(txt)
+                if not candidate_diff:
+                    continue
+                print("[INFO] Evaluating candidate diff:")
+                print(candidate_diff)
+                applier = ChiselDiffApplier()
+                test_code = applier.apply_diff(candidate_diff, self.chisel_original)
+                is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(test_code)
+                if not is_valid:
+                    print(f"[INFO] Candidate diff failed compilation: {error_msg}")
+                    continue
+                is_equiv, lec_error_candidate = self._check_equivalence(self.verilog_fixed_str, verilog_candidate_temp)
+                if is_equiv:
+                    print("[INFO] Candidate diff passed compilation and LEC check.")
+                    return candidate_diff
+                else:
+                    print(f"[INFO] Candidate diff failed LEC: {lec_error_candidate}")
+            return ""
+        else:
+            for txt in answers:
+                candidate_diff = self.chisel_extractor.parse(txt)
+                if candidate_diff:
+                    return candidate_diff
+            return ""
+
 
     def _run_chisel2v(self, chisel_code: str):
         """
@@ -359,7 +461,8 @@ class V2chisel_fix(Step):
         c2v = Chisel2v()
         if not c2v.setup():
             return (False, None, 'chisel2v setup failed: ' + c2v.error_message)
-        module_name = self._find_chisel_classname(chisel_code)
+        # module_name = self._find_chisel_classname(chisel_code)
+        module_name = "Top"
         if not module_name:
             module_name = 'MyModule'
         try:

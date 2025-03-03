@@ -176,7 +176,8 @@ class V2Chisel_pass1(Step):
         success = c2v.setup()
         if not success:
             return (False, None, 'chisel2v setup failed: ' + c2v.error_message)
-        module_name = self._find_chisel_classname(chisel_code)
+        # module_name = self._find_chisel_classname(chisel_code)
+        module_name = "Top"
         if not module_name:
             module_name = 'MyModule'
         try:
@@ -188,8 +189,18 @@ class V2Chisel_pass1(Step):
             return (False, None, str(e))
 
     def _find_chisel_classname(self, chisel_code: str) -> str:
-        m = re.search(r'class\s+([A-Za-z0-9_]+)\s+extends\s+Module', chisel_code)
+        # First, try to find an object named Top that extends App.
+        m = re.search(r'\bobject\s+(Top)\s+extends\s+App\b', chisel_code)
+        if m:
+            return m.group(1)
+        # Next, try to find a class named Top that extends Module.
+        m = re.search(r'\bclass\s+(Top)\s+extends\s+Module\b', chisel_code)
+        if m:
+            return m.group(1)
+        # Fallback: return the first class extending Module.
+        m = re.search(r'\bclass\s+([A-Za-z0-9_]+)\s+extends\s+Module\b', chisel_code)
         return m.group(1) if m else ''
+
 
     def run(self, data):
         verilog_original = data.get('verilog_original', '')
@@ -199,7 +210,7 @@ class V2Chisel_pass1(Step):
         verilog_diff_text = self._generate_diff(verilog_original, verilog_fixed)
         print("************************** Generated Verilog Diff **************************")
         print(verilog_diff_text)
-        print("****************************************************")
+        print("********************************************************")
 
         # default_threshold = self.input_data.get("threshold", 40)
         default_threshold = self.template_config.template_dict.get('v2chisel_pass1', {}).get('threshold', 40)
@@ -285,12 +296,12 @@ class V2Chisel_pass1(Step):
             print(prompt_template.config if hasattr(prompt_template, 'config') else prompt_template)
 
             formatted_prompt = self.lw.chat_template.format(prompt_dict)
-            print('\n================ LLM QUERY (attempt {}) ================'.format(attempt))
-            for chunk in formatted_prompt:
-                print("Role: {}".format(chunk.get('role', '<no role>')))
-                print("Content:")
-                print(chunk.get('content', '<no content>'))
-                print("------------------------------------------------")
+            # print('\n================ LLM QUERY (attempt {}) ================'.format(attempt))
+            # for chunk in formatted_prompt:
+            #     print("Role: {}".format(chunk.get('role', '<no role>')))
+            #     print("Content:")
+            #     print(chunk.get('content', '<no content>'))
+            #     print("------------------------------------------------")
 
             response_list = self.lw.inference(prompt_dict, prompt_index=prompt_index, n=1)
             if not response_list:
@@ -306,8 +317,9 @@ class V2Chisel_pass1(Step):
             applier = ChiselDiffApplier()
             chisel_updated = applier.apply_diff(generated_diff, chisel_original)
 
-            print("===== FINAL CHISEL CODE AFTER DIFF APPLIER (attempt {}) =====".format(attempt))
-            print(chisel_updated)
+            # print("===== FINAL CHISEL CODE AFTER DIFF APPLIER (attempt {}) =====".format(attempt))
+            # print(chisel_updated)
+            print("Applied the diff.")
 
             is_valid, verilog_candidate, error_msg = self._run_chisel2v(chisel_updated)
             if is_valid:

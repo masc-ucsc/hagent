@@ -55,3 +55,46 @@ v2chisel_fix:
         Can you give me a Chisel diff that could work?
         Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
         PLEASE No explanation, no Note. ONLY diff
+  
+  prompt4_alternative:
+    - role: system
+      content: |
+        You are an AI specialized in debugging and refining Chisel code with high reasoning effort.
+        Please generate multiple candidate Chisel diffs.
+    - role: user
+      content: |
+        The previous refinement attempts using prompt4 did not yield a satisfactory fix.
+        Please generate {n} different candidate Chisel diffs that could work. Consider the following:
+        The Logic Equivalence Check (LEC) reported:
+        ```
+        {lec_output}
+        ```
+        The Verilog diff is:
+        ```
+        {verilog_diff}
+        ```
+        I also provide a subset of the Chisel code with hints "->" marking the lines that are most likely to require changes:
+        ```
+        {chisel_subset}
+        ```
+        Please output *only* the diffs in unified diff format with only the minimal hunks containing the changed lines.
+        No explanation, no commentary, only diffs.
+
+
+  prompt_compiler_fix:
+    - role: system
+      content: |
+        You are an AI specialized in debugging and refining Chisel code to fix compilation errors.
+        The current Chisel code does not compile and the following compiler error was reported.
+    - role: user
+      content: |
+        The current Chisel code is:
+        ```
+        {current_chisel}
+        ```
+        and the compiler error is:
+        ```
+        {compiler_error}
+        ```
+        Please generate a minimal unified diff that fixes the compilation error so that the code can compile.
+        Output *only* the diff with no extra commentary.

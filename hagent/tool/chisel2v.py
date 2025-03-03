@@ -100,6 +100,24 @@ class Chisel2v:
         # Return the modified content
         return ''.join(modified_lines)
 
+    def _find_chisel_classname(self, chisel_code: str) -> str:
+        """
+        Finds the top-level Chisel class name.
+        Prioritizes an object named 'Top' extending App, then a class named 'Top' extending Module,
+        and finally falls back to the first class extending Module.
+        """
+        # First, try to find an object named Top that extends App.
+        m = re.search(r'\bobject\s+(Top)\s+extends\s+App\b', chisel_code)
+        if m:
+            return m.group(1)
+        # Next, try to find a class named Top that extends Module.
+        m = re.search(r'\bclass\s+(Top)\s+extends\s+Module\b', chisel_code)
+        if m:
+            return m.group(1)
+        # Fallback: return the first class extending Module.
+        m = re.search(r'\bclass\s+([A-Za-z0-9_]+)\s+extends\s+Module\b', chisel_code)
+        return m.group(1) if m else ''
+
     def generate_verilog(self, chisel_code: str, module_name: str) -> str:
         """
         Generates Verilog from the given Chisel code using circt (sbt).
