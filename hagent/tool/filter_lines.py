@@ -145,7 +145,7 @@ class FilterLines:
                     for token in tokens:
                         if token and token in chisel_code_portion:
                             score += 1
-                    if score > 1:
+                    if score > 3:
                         candidate_scores[i] += score
                 for line_no in hint_lines:
                     candidate_scores[line_no] += 100
