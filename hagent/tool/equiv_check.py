@@ -88,8 +88,11 @@ class Equiv_check:
             raise RuntimeError('Yosys not installed or setup() not called.')
 
         # 1) Validate each snippet has exactly one module
-        gold_top = self._extract_single_module_name(gold_code)
-        gate_top = self._extract_single_module_name(gate_code)
+        # gold_top = self._extract_single_module_name(gold_code)
+        # gate_top = self._extract_single_module_name(gate_code)
+        desired_top = "Top"
+        gold_top = self._extract_module_name(gold_code, top_module=desired_top)
+        gate_top = self._extract_module_name(gate_code, top_module=desired_top)
 
         # 2) Write each design to a temp file
         #
@@ -121,17 +124,36 @@ class Equiv_check:
 
     # ------------------- Internal Helpers -------------------
 
-    def _extract_single_module_name(self, verilog_code: str) -> str:
+    # def _extract_single_module_name(self, verilog_code: str) -> str:
+    #     """
+    #     Extract exactly one module name from the verilog_code.
+    #     If there's none or more than one, raise ValueError.
+    #     """
+    #     pattern = r'^\s*module\s+([A-Za-z0-9_]+)\s*(?:\(|;)'
+    #     matches = re.findall(pattern, verilog_code, flags=re.MULTILINE)
+    #     if len(matches) == 0:
+    #         raise ValueError("No 'module' definition found in provided Verilog code.")
+    #     if len(matches) > 1:
+    #         raise ValueError('Multiple modules found. Exactly one is required.')
+    #     return matches[0]
+    def _extract_module_name(self, verilog_code: str, top_module: Optional[str] = None) -> str:
         """
-        Extract exactly one module name from the verilog_code.
-        If there's none or more than one, raise ValueError.
+        Extract a module name from the verilog_code.
+        If top_module is specified and found, return it.
+        Otherwise, if there's exactly one module, return it.
+        If there's none or more than one without a specified top module, raise ValueError.
         """
         pattern = r'^\s*module\s+([A-Za-z0-9_]+)\s*(?:\(|;)'
         matches = re.findall(pattern, verilog_code, flags=re.MULTILINE)
+        if top_module:
+            if top_module in matches:
+                return top_module
+            else:
+                raise ValueError(f"Specified top module '{top_module}' not found in the provided Verilog code.")
         if len(matches) == 0:
             raise ValueError("No 'module' definition found in provided Verilog code.")
         if len(matches) > 1:
-            raise ValueError('Multiple modules found. Exactly one is required.')
+            raise ValueError('Multiple modules found. Exactly one is required unless a top module is specified.')
         return matches[0]
 
     def _write_temp_verilog(self, work_dir: str, verilog_code: str, label: str) -> str:
