@@ -31,7 +31,7 @@ class Equiv_check:
         self.error_message = ''
         self.equivalence_check_result: Optional[bool] = None
         self.counterexample_info: Optional[str] = None
-        self.timeout_seconds = 60
+        self.timeout_seconds = 120
 
     def setup(self, yosys_path: Optional[str] = None) -> bool:
         """
@@ -90,7 +90,7 @@ class Equiv_check:
         # 1) Validate each snippet has exactly one module
         # gold_top = self._extract_single_module_name(gold_code)
         # gate_top = self._extract_single_module_name(gate_code)
-        desired_top = "Top"
+        desired_top = "SingleCycleCPU"
         gold_top = self._extract_module_name(gold_code, top_module=desired_top)
         gate_top = self._extract_module_name(gate_code, top_module=desired_top)
 
@@ -175,18 +175,18 @@ class Equiv_check:
         """
         cmd = [
             f'read_verilog -sv {gold_v_filename}',
-            f'prep -top {gold_top}',
+            f'prep -flatten -top {gold_top}',
             f'rename {gold_top} gold',
             'design -stash gold',
             f'read_verilog -sv {gate_v_filename}',
-            f'prep -top {gate_top}',
+            f'prep -flatten -top {gate_top}',
             f'rename {gate_top} gate',
             'design -stash gate',
             'design -copy-from gold -as gold gold; design -copy-from gate -as gate gate',
             "# Create an equivalence-check 'miter'",
             'equiv_make gold gate eq_miter',
             '# Prepare eq_miter',
-            'prep -top eq_miter',
+            'prep -flatten -top eq_miter',
             '# structural equivalence pass',
             'equiv_simple -undef -seq 2',
             '# optional inductive check',
