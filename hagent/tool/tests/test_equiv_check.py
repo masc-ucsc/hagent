@@ -95,8 +95,8 @@ def test_equiv_mocked_equivalent(prepare_checker, monkeypatch):
 
     checker = prepare_checker
     checker.yosys_installed = True
-    gold = 'module top(); endmodule'
-    ref = 'module top(); endmodule'
+    gold = 'module Top(); endmodule'
+    ref = 'module Top(); endmodule'
     result = checker.check_equivalence(gold, ref)
     assert result is True
     assert checker.get_counterexample() is None
@@ -120,8 +120,8 @@ def test_equiv_mocked_not_equiv(prepare_checker, monkeypatch):
 
     checker = prepare_checker
     checker.yosys_installed = True
-    gold = 'module top(); assign x = 0; endmodule'
-    ref = 'module top(); assign x = 1; endmodule'
+    gold = 'module Top(); assign x = 0; endmodule'
+    ref = 'module Top(); assign x = 1; endmodule'
     result = checker.check_equivalence(gold, ref)
     assert result is False
 
