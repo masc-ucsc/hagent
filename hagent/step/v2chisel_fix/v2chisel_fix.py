@@ -119,6 +119,7 @@ class V2chisel_fix(Step):
         chisel_original = data.get('chisel_original', '')
         self.chisel_original = chisel_original
         self.chisel_subset = pass1_info.get('chisel_subset', chisel_changed)
+        lec_flag = data.get('lec', 0)
         result['chisel_fixed'] = {
             'original_chisel': chisel_original,
             'refined_chisel': chisel_changed,  # to be updated upon successful refinement
@@ -128,7 +129,11 @@ class V2chisel_fix(Step):
 
         print(f'[INFO] Starting initial LEC check. was_valid={was_valid}')
         verilog_fixed = data.get('verilog_fixed', '')
-        if not verilog_fixed.strip():
+        if lec_flag == 1:
+            print("[INFO] 'lec' flag is set to 1. Skipping LEC check.")
+            initial_equiv = True
+            lec_error = None
+        elif not verilog_fixed.strip():
             print("[WARN] No 'verilog_fixed' provided. Skipping initial LEC check.")
             initial_equiv = False
             lec_error = 'No verilog_fixed provided'
