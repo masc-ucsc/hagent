@@ -5,6 +5,7 @@ Unit tests for the Fuzzy_grep tool.
 
 import os
 import unittest
+from unittest.mock import patch, mock_open
 from hagent.tool.fuzzy_grep import Fuzzy_grep
 
 
@@ -78,6 +79,120 @@ class TestFuzzGrep(unittest.TestCase):
             os.remove(file1)
             os.remove(file2)
             os.rmdir(test_dir)
+            
+    def test_setup_with_unsupported_language(self):
+        """Test setup with an unsupported language."""
+        result = self.tool.setup('unsupported_language')
+        self.assertFalse(result)
+        self.assertEqual(self.tool.error_message, 'Unsupported language: unsupported_language')
+        
+    def test_setup_with_supported_languages(self):
+        """Test setup with all supported languages."""
+        # Test Verilog
+        result = self.tool.setup('verilog')
+        self.assertTrue(result)
+        self.assertEqual(self.tool.language, 'verilog')
+        self.assertTrue(len(self.tool.reserved_keywords) > 0)
+        
+        # Test Scala
+        result = self.tool.setup('scala')
+        self.assertTrue(result)
+        self.assertEqual(self.tool.language, 'scala')
+        self.assertTrue(len(self.tool.reserved_keywords) > 0)
+        
+        # Test Chisel
+        result = self.tool.setup('chisel')
+        self.assertTrue(result)
+        self.assertEqual(self.tool.language, 'chisel')
+        self.assertTrue(len(self.tool.reserved_keywords) > 0)
+        
+        # Test case insensitivity
+        result = self.tool.setup('VERILOG')
+        self.assertTrue(result)
+        self.assertEqual(self.tool.language, 'verilog')
+        
+    def test_get_reserved_keywords(self):
+        """Test get_reserved_keywords for all supported languages."""
+        # Test Verilog keywords
+        verilog_keywords = Fuzzy_grep.get_reserved_keywords('verilog')
+        self.assertTrue('module' in verilog_keywords)
+        self.assertTrue('always' in verilog_keywords)
+        self.assertTrue('endmodule' in verilog_keywords)
+        
+        # Test Scala keywords
+        scala_keywords = Fuzzy_grep.get_reserved_keywords('scala')
+        self.assertTrue('class' in scala_keywords)
+        self.assertTrue('object' in scala_keywords)
+        self.assertTrue('trait' in scala_keywords)
+        
+        # Test Chisel keywords (should include Scala keywords plus Chisel-specific ones)
+        chisel_keywords = Fuzzy_grep.get_reserved_keywords('chisel')
+        self.assertTrue('class' in chisel_keywords)  # From Scala
+        self.assertTrue('module' in chisel_keywords)  # Chisel-specific
+        self.assertTrue('io' in chisel_keywords)  # Chisel-specific
+        
+        # Test unsupported language
+        unsupported_keywords = Fuzzy_grep.get_reserved_keywords('unsupported')
+        self.assertEqual(unsupported_keywords, set())
+        
+    def test_find_matches_in_file_with_error(self):
+        """Test find_matches_in_file with a file that causes an error."""
+        with patch('builtins.open', side_effect=Exception('Test file error')):
+            results = self.tool.find_matches_in_file('nonexistent_file.txt', ['test'], 0, 70)
+            self.assertEqual(results, [])
+            self.assertEqual(self.tool.error_message, 'Test file error')
+            
+    def test_search_with_invalid_directory(self):
+        """Test search with an invalid directory."""
+        results = self.tool.search(directory='nonexistent_directory', search_terms=['test'], context=0, threshold=70)
+        self.assertEqual(results, {})
+        self.assertEqual(self.tool.error_message, 'nonexistent_directory is not a valid directory.')
+        
+    def test_search_with_nonexistent_file(self):
+        """Test search with a nonexistent file."""
+        results = self.tool.search(files=['nonexistent_file.txt'], search_terms=['test'], context=0, threshold=70)
+        self.assertIn('nonexistent_file.txt', results)
+        self.assertEqual(results['nonexistent_file.txt'], [])
+        
+    def test_line_matches_with_reserved_keywords(self):
+        """Test line_matches with reserved keywords."""
+        # Setup with Verilog language to enable keyword filtering
+        self.tool.setup('verilog')
+        
+        # Line with only reserved keywords
+        line = "module test endmodule"
+        self.assertFalse(self.tool.line_matches(line, ['module'], threshold=70))
+        
+        # Line with both reserved and non-reserved words
+        line = "module custom_module endmodule"
+        self.assertTrue(self.tool.line_matches(line, ['custommodule'], threshold=70))
+        
+    def test_find_matches_in_text_with_context(self):
+        """Test find_matches_in_text with context lines."""
+        text = '\n'.join([
+            'Line 1',
+            'Line 2',
+            'Line 3 with Example and test',
+            'Line 4',
+            'Line 5',
+        ])
+        
+        # Test with context=0 (only matching line)
+        results = self.tool.find_matches_in_text(text, ['example', 'test'], context=0, threshold=70)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0][0], 3)  # Line number
+        self.assertTrue(results[0][2])  # Is central match
+        
+        # Test with context=1 (matching line plus one line before and after)
+        results = self.tool.find_matches_in_text(text, ['example', 'test'], context=1, threshold=70)
+        self.assertEqual(len(results), 3)
+        self.assertEqual([r[0] for r in results], [2, 3, 4])  # Line numbers
+        self.assertEqual([r[2] for r in results], [False, True, False])  # Central match flags
+        
+        # Test with context=2 (matching line plus two lines before and after)
+        results = self.tool.find_matches_in_text(text, ['example', 'test'], context=2, threshold=70)
+        self.assertEqual(len(results), 5)
+        self.assertEqual([r[0] for r in results], [1, 2, 3, 4, 5])  # Line numbers
 
 
 if __name__ == '__main__':
