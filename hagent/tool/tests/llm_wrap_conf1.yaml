@@ -1,4 +1,6 @@
 test_react_compile_slang_simple:
+  model2: "openai/o3-mini-2025-01-31"
+  model3: "fireworks_ai/accounts/fireworks/models/deepseek-r1"
   llm:
     model: "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct"
 
