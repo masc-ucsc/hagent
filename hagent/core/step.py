@@ -10,6 +10,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from hagent.core.llm_wrap import dict_deep_merge
+from hagent.core.llm_wrap import LLM_wrap
 
 
 def wrap_literals(obj):
@@ -176,6 +177,26 @@ class Step:
         except Exception as e:
             output_data.update({'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} - unable to write yaml: {e}'})
             print(f'ERROR: unable to write yaml: {e}')
+
+        # Get total cost and tokens if there is any LLM attached
+        cost = 0.0
+        tokens = 0
+        for attr_name in dir(self):
+            try:
+                attr_value = getattr(self, attr_name)
+                if isinstance(attr_value, LLM_wrap):
+                    cost += attr_value.total_cost
+                    tokens += attr_value.total_tokens
+            except AttributeError:
+                # Skip attributes that can't be accessed
+                pass
+        if cost > 0:
+            cost += output_data.get('cost', 0.0)
+            output_data['cost'] = cost
+
+        if tokens > 0:
+            tokens += output_data.get('tokens', 0)
+            output_data['tokens'] = tokens
 
         self.write_output(output_data)
         return output_data
