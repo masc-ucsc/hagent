@@ -11,3 +11,6 @@ code: |
 llm:
   model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct" # Cheap fireworks model
 
+# Fictious initial cost/tokens
+cost: 10
+#tokens: 1000000
