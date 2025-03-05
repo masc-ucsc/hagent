@@ -73,6 +73,8 @@ class LLM_wrap:
             required_key = 'COHERE_API_KEY'
         elif model.startswith('together_ai'):
             required_key = 'TOGETHER_AI_API_KEY'
+        elif model.startswith('openrouter'):
+            required_key = 'OPENROUTER_API_KEY'
         # Add more providers as needed...
         else:
             # No specific key required for this model type (or you can raise an error if unknown)
