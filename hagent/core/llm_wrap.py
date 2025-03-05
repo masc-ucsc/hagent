@@ -3,14 +3,15 @@ import time
 import datetime
 import litellm
 import sys
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from hagent.core.llm_template import LLM_template
 
-def dict_deep_merge(dict1:Dict, dict2:Dict)->Dict:
+
+def dict_deep_merge(dict1: Dict, dict2: Dict) -> Dict:
     """Recursively merges dict2 into dict1, overwriting only leaf values.
 
     Args:
@@ -23,12 +24,13 @@ def dict_deep_merge(dict1:Dict, dict2:Dict)->Dict:
     for key, value in dict2.items():
         if key in dict1:
             if isinstance(dict1[key], dict) and isinstance(value, dict):
-                deep_merge(dict1[key], value)  # Recursive call for nested dicts
+                dict_deep_merge(dict1[key], value)  # Recursive call for nested dicts
             else:
                 dict1[key] = value  # Overwrite at leaf level
         else:
             dict1[key] = value  # Add new key-value pair
     return dict1
+
 
 class LLM_wrap:
     def load_config(self) -> Dict:
@@ -37,7 +39,7 @@ class LLM_wrap:
             return {}
 
         try:
-            yaml_loader = YAML(typ="safe")
+            yaml_loader = YAML(typ='safe')
             with open(self.conf_file, 'r', encoding='utf-8') as f:
                 conf_data = yaml_loader.load(f)
 
@@ -51,7 +53,6 @@ class LLM_wrap:
                 return {}
 
             return conf_data[config_name]
-
 
         except Exception as e:
             self._set_error(f'reading conf_file: {e}')
@@ -111,7 +112,7 @@ class LLM_wrap:
         if overwrite_conf:
             self.config = dict_deep_merge(self.config, overwrite_conf)
 
-        if not 'llm' in self.config:
+        if 'llm' not in self.config:
             self._set_error(f'conf_file:{conf_file} or overwrite_conf must specify llm section')
             return
 
@@ -126,7 +127,6 @@ class LLM_wrap:
                 pass
         except Exception as e:
             self._set_error(f'creating/opening log file: {e}')
-
 
     def _set_error(self, msg: str):
         self.last_error = msg
@@ -150,7 +150,7 @@ class LLM_wrap:
                 return {k: process_multiline_strings(v) for k, v in obj.items()}
             elif isinstance(obj, list):
                 return [process_multiline_strings(item) for item in obj]
-            elif isinstance(obj, str) and "\n" in obj:
+            elif isinstance(obj, str) and '\n' in obj:
                 # Wrap the multiline string so that ruamel.yaml outputs it using literal block style.
                 return LiteralScalarString(obj)
             return obj
@@ -183,14 +183,14 @@ class LLM_wrap:
         template_dict = self.config.get(prompt_index, {})
         if not template_dict:
             if not self.conf_file:
-                self._set_error(f"unable to find {prompt_index} entry in {self.config}")
+                self._set_error(f'unable to find {prompt_index} entry in {self.config}')
             else:
-                self._set_error(f"unable to find {prompt_index} entry in {self.conf_file}")
+                self._set_error(f'unable to find {prompt_index} entry in {self.conf_file}')
             return []
 
         template = LLM_template(template_dict)
         if template.last_error:
-            self._set_error(f"template failed with {template.last_error}")
+            self._set_error(f'template failed with {template.last_error}')
             return []
 
         # Format prompt
@@ -205,12 +205,12 @@ class LLM_wrap:
 
         # Check if template returned error
         if 'error' in formatted:
-            self._set_error(f"template returned error: {formatted['error']}")
+            self._set_error(f'template returned error: {formatted["error"]}')
             data = {'error': self.last_error}
             self._log_event(event_type=f'{self.name}:LLM_wrap.error', data=data)
             return []
 
-        if max_history>0:
+        if max_history > 0:
             messages = self.chat_history[:max_history]
         else:
             messages = []
@@ -222,6 +222,15 @@ class LLM_wrap:
         llm_call_args['messages'] = messages
         llm_call_args['n'] = n
 
+        model = llm_call_args.get('model', '')
+        if model == '':
+            self._set_error('empty model name. No default model used')
+            return []
+
+        if not self.check_env_keys(model):
+            self._set_error(f'environment keys not set for {model}')
+            return []
+
         # Call litellm
         try:
             r = litellm.completion(**llm_call_args)
@@ -232,14 +241,27 @@ class LLM_wrap:
             return []
 
         answers = []
+        cost = 0.0
+        tokens = 0
+        try:
+            cost = litellm.completion_cost(completion_response=r)
+        except Exception:
+            cost = 0  # Model may not be updated for cost
+
+        if cost == 0:
+            # Simple proxy for https://fireworks.ai/pricing
+            if 'deepseek-r1' in model:
+                cost = 3.0 * tokens / 1e6
+            else:
+                cost = 0.9 * tokens / 1e6
+
         try:
             for c in r['choices']:
                 answers.append(c['message']['content'])
-            cost = r.get('cost', 0.0)
-            tokens = r.get('tokens', 0)
+
+            usage = r['usage']
+            tokens += usage.get('total_tokens', 0)
         except Exception as e:
-            cost = 0.0
-            tokens = 0
             self._set_error(f'parsing litellm response error: {e}')
 
         time_ms = (time.time() - start_time) * 1000.0
@@ -249,15 +271,6 @@ class LLM_wrap:
 
         use_history = min(len(self.chat_history), max_history)
         event_type = f'{self.name}:LLM_wrap.inference with history={use_history}'
-
-        model = llm_call_args.get('model', '')
-        if model == '':
-            self._set_error('empty model name. No default model used')
-            return []
-
-        if not self.check_env_keys(model):
-            self._set_error(f'environment keys not set for {model}')
-            return []
 
         data = {
             'model': model,
@@ -277,4 +290,3 @@ class LLM_wrap:
     def inference(self, prompt_dict: Dict, prompt_index: str, n: int = 1, max_history: int = 0) -> List[str]:
         answers = self._call_llm(prompt_dict, prompt_index, n=n, max_history=max_history)
         return answers
-
