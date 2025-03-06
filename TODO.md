@@ -3,6 +3,9 @@ This document has a dump of "potential" TODOs, many are likely to be bad ideas.
 
 # Small TODOs
 
+ check_equivalence should have a "top" argument (multiple modules)
+   Fix v2chisel to pass as argument
+
  Fix all the llm_wrap calls/configs
  Create class to extract code from markdown from text and return in list
 
