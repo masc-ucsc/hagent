@@ -145,9 +145,10 @@ class V2chisel_fix(Step):
             result['chisel_fixed']['refined_chisel'] = chisel_original
             result['chisel_fixed']['equiv_passed'] = True
             result['chisel_fixed']['chisel_diff'] = ""
+            result['lec'] = 1
             return result
 
-        max_prompt3_attempts = 2
+        max_prompt3_attempts = 3
         max_prompt4_attempts = 3
         chisel_updated_final = None
         was_valid_refinement = False
@@ -161,12 +162,12 @@ class V2chisel_fix(Step):
             if not candidate_diff or not candidate_diff.strip():
                 print('[WARN] Prompt3 LLM returned an empty diff.')
                 continue
-            print("Generated diff from prompt3:")
-            print(candidate_diff)
+            print("Generated diff from prompt3")
+            # print(candidate_diff)
             applier = ChiselDiffApplier()
             chisel_updated = applier.apply_diff(candidate_diff, self.chisel_original)
             print(f"===== FINAL CHISEL CODE AFTER DIFF APPLIER (Prompt3 Attempt {attempt}) =====")
-            print(chisel_updated)
+            # print(chisel_updated)
             is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(chisel_updated)
             if not is_valid:
                 print(f'[WARN] Compilation failed on Prompt3 Attempt {attempt}: {error_msg}')
@@ -197,8 +198,8 @@ class V2chisel_fix(Step):
                 if not candidate_diff or not candidate_diff.strip():
                     print('[WARN] Prompt4 LLM returned an empty diff.')
                     continue
-                print("Generated diff from prompt4:")
-                print(candidate_diff)
+                print("Generated diff from prompt4")
+                # print(candidate_diff)
                 applier = ChiselDiffApplier()
                 chisel_updated = applier.apply_diff(candidate_diff, chisel_original)
                 # print(f"===== FINAL CHISEL CODE AFTER DIFF APPLIER (Prompt4 Attempt {attempt}) =====")
@@ -230,12 +231,14 @@ class V2chisel_fix(Step):
             result['chisel_fixed']['refined_chisel'] = chisel_original
             result['chisel_fixed']['equiv_passed'] = False
             result['chisel_fixed']['chisel_diff'] = candidate_diff_final if candidate_diff_final else ""
+            result['lec'] = 0
             return result
         else:
             result['chisel_fixed']['refined_chisel'] = chisel_updated_final
             result['chisel_fixed']['equiv_passed'] = True
             result['chisel_fixed']['chisel_diff'] = candidate_diff_final
             print("[INFO] Refinement successful. 'chisel_fixed' written to output YAML.")
+            result['lec'] = 1
             return result
 
     def _iterative_compile_fix(self, chisel_code: str, compiler_error: str) -> str:

@@ -64,7 +64,7 @@ v2chisel_fix:
     - role: user
       content: |
         The previous refinement attempts using prompt4 did not yield a satisfactory fix.
-        Please generate {n} different candidate Chisel diffs that could work. Consider the following:
+        Please generate Chisel diffs that could work. Consider the following:
         The Logic Equivalence Check (LEC) reported:
         ```
         {lec_output}
