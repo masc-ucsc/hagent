@@ -1,6 +1,4 @@
 v2chisel_pass1: 
-  llm: 
-    model: "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct"
   threshold: 40
   context: 1
   

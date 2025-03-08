@@ -1,5 +1,3 @@
-llm:
-  model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct"
 
 threshold: 30
 context: 2

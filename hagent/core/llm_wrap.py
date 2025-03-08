@@ -121,7 +121,7 @@ class LLM_wrap:
         self.llm_args = self.config['llm']
 
         if 'model' not in self.llm_args:
-            self._set_error(f'conf_file:{conf_file} must specify llm "model"')
+            self._set_error(f'conf_file:{conf_file} must specify llm "model" in section {name}')
             return
 
         try:
