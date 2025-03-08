@@ -287,9 +287,12 @@ class Fuzzy_grep:
         ]
         for term in search_terms:
             proc_term = self.preprocess(term)
-            if not any(fuzz.ratio(proc_term, candidate) >= threshold for candidate in candidate_words):
-                return False
-        return True
+            for candidate in candidate_words:
+                xx = fuzz.ratio(proc_term, candidate)
+
+            if any(fuzz.ratio(proc_term, candidate) >= threshold for candidate in candidate_words):
+                return True
+        return False
 
     def find_matches_in_text(self, text: str, search_terms: list, context: int, threshold: int) -> list:
         """
