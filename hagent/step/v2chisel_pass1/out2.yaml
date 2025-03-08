@@ -1,5 +1,3 @@
-llm:
-  model: openai/gpt-4-turbo-preview
 threshold: 50
 context: 2
 verilog_original: |
