@@ -103,7 +103,7 @@ class V2Chisel_pass1(Step):
         if not fg.setup('chisel'):
             self.error('Fuzzy_grep setup failed: ' + fg.error_message)
 
-        default_threshold = self.input_data.get('threshold', 40)
+        default_threshold = self.input_data.get('threshold', 80)
         threshold_value = threshold_override if threshold_override is not None else default_threshold
         print('Using fuzzy grep threshold:', threshold_value)
         context_value = self.input_data.get('context', 1)

@@ -1,5 +1,5 @@
 
-threshold: 40
+threshold: 80
 context: 2
 
 verilog_original: |

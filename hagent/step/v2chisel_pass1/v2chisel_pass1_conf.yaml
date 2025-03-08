@@ -1,5 +1,5 @@
 v2chisel_pass1: 
-  threshold: 40
+  threshold: 80
   context: 1
   
   prompt0:
