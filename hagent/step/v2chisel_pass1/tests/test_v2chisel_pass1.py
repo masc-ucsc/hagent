@@ -61,22 +61,22 @@ class DummyLLMWrap:
 def patch_dependencies(monkeypatch):
     # Patch FuzzyGrepFilter.extract_keywords_from_diff.
     monkeypatch.setattr(
-        v2chisel_pass1.FuzzyGrepFilter,
-        "extract_keywords_from_diff",
+        v2chisel_pass1.Extract_verilog_diff_keywords,
+        "get_words",
         staticmethod(dummy_extract_keywords_from_diff)
     )
     # Patch Fuzzy_grep so that its setup returns True and search returns dummy result.
     from hagent.tool import fuzzy_grep
     monkeypatch.setattr(fuzzy_grep.Fuzzy_grep, "setup", lambda self, mode: True)
     monkeypatch.setattr(fuzzy_grep.Fuzzy_grep, "search", dummy_fuzzy_grep_search)
-    
+
     # Patch FilterLines.filter_lines.
     from hagent.tool import filter_lines
     monkeypatch.setattr(filter_lines.FilterLines, "filter_lines", lambda self, diff_file, chisel_file, context: dummy_filter_lines(diff_file, chisel_file, context))
-    
+
     # Patch LLM_wrap to use our DummyLLMWrap.
     monkeypatch.setattr(v2chisel_pass1, "LLM_wrap", lambda **kwargs: DummyLLMWrap(**kwargs))
-    
+
     # Patch LLM_template to always load a dummy configuration.
     dummy_config = {
         'v2chisel_pass1': {
@@ -89,12 +89,12 @@ def patch_dependencies(monkeypatch):
         }
     }
     monkeypatch.setattr(v2chisel_pass1, "LLM_template", lambda conf_file: DummyTemplate(dummy_config))
-    
+
     # Patch Chisel2v: setup returns True and generate_verilog returns dummy verilog.
     from hagent.tool import chisel2v
     monkeypatch.setattr(chisel2v.Chisel2v, "setup", lambda self: dummy_setup_chisel2v())
     monkeypatch.setattr(chisel2v.Chisel2v, "generate_verilog", lambda self, code, module_name: dummy_generate_verilog(code, module_name))
-    
+
     # Patch ChiselDiffApplier.apply_diff.
     from hagent.tool import chisel_diff_applier
     monkeypatch.setattr(chisel_diff_applier.ChiselDiffApplier, "apply_diff", lambda self, diff, original: dummy_apply_diff(diff, original))
@@ -120,14 +120,14 @@ def test_v2chisel_pass1(monkeypatch, tmp_path):
     output_yaml = tmp_path / "out_simple_risc.yaml"
     with open(input_yaml, "w") as f:
         yaml.dump(input_data, f)
-    
+
     # Simulate command-line arguments: -o output file and the input file.
     test_args = ["test_v2chisel_pass1.py", "-o", str(output_yaml), str(input_yaml)]
     monkeypatch.setattr(sys, "argv", test_args)
-    
+
     # Parse command-line arguments as the script would.
     args = v2chisel_pass1.parse_arguments()
-    
+
     # Create and set up the step.
     step = v2chisel_pass1.V2Chisel_pass1()
     # Instead of manually setting input_file and input_data, use set_io() to properly initialize.
@@ -135,13 +135,13 @@ def test_v2chisel_pass1(monkeypatch, tmp_path):
     # Also set input_data (if needed for this test).
     step.input_data = input_data
     step.setup()
-    
+
     # Run the step.
     result = step.run(input_data)
-    
+
     # Wrap literals as done in the main function.
     result = v2chisel_pass1.wrap_literals(result)
-    
+
     # Dump the result to the output file using ruamel.yaml.
     from ruamel.yaml import YAML
     ruamel_yaml = YAML()
@@ -149,13 +149,13 @@ def test_v2chisel_pass1(monkeypatch, tmp_path):
     ruamel_yaml.indent(mapping=2, sequence=4, offset=2)
     with open(str(output_yaml), "w") as out_file:
         ruamel_yaml.dump(result, out_file)
-    
+
     # Load the output YAML using ruamel.yaml.
     # (No additional constructor is needed if we use ruamel.yaml to dump.)
     ruamel_yaml_load = YAML(typ='safe')
     with open(str(output_yaml)) as f:
         output = ruamel_yaml_load.load(f)
-    
+
     assert "chisel_pass1" in output
     assert output["chisel_pass1"]["was_valid"] is True
     assert "verilog_diff" in output

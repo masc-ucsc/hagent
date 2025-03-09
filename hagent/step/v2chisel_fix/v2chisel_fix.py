@@ -34,8 +34,6 @@ from hagent.tool.extract_code import Extract_code_verilog, Extract_code_chisel
 from hagent.tool.equiv_check import Equiv_check
 from hagent.tool.chisel2v import Chisel2v
 from hagent.tool.chisel_diff_applier import ChiselDiffApplier
-from hagent.tool.extract_verilog_diff_keywords import FuzzyGrepFilter
-from hagent.tool.fuzzy_grep import Fuzzy_grep
 from hagent.step.v2chisel_pass1.v2chisel_pass1 import V2Chisel_pass1
 
 import subprocess
