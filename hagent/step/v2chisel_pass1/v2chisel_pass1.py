@@ -2,6 +2,7 @@
 # See LICENSE for details
 
 import os
+import sys
 import re
 import difflib
 import argparse
@@ -178,6 +179,10 @@ class V2Chisel_pass1(Step):
                 return (False, None, "Generated Verilog missing 'module' keyword.")
             return (True, verilog_out, '')
         except Exception as e:
+            if "error during sbt launcher" in str(e):
+                print("sbt run does not seem to work")
+                print(str(e))
+                sys.exit(3)
             return (False, None, str(e))
 
     def _find_chisel_classname(self, chisel_code: str) -> str:
