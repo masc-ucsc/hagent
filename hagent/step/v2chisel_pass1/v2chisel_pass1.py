@@ -247,7 +247,7 @@ class V2Chisel_pass1(Step):
                     prompt_index = 'prompt3'
                 else:
                     self.error("Missing 'prompt3' section in prompt configuration.")
-                increased_threshold = default_threshold + 20
+                increased_threshold = default_threshold + 10
                 chisel_subset = self._extract_chisel_subset(
                     chisel_original, verilog_diff_text, threshold_override=increased_threshold
                 )
@@ -259,7 +259,7 @@ class V2Chisel_pass1(Step):
                     prompt_index = 'prompt4'
                 else:
                     self.error("Missing 'prompt4' section in prompt configuration.")
-                decreased_threshold = default_threshold - 20
+                decreased_threshold = default_threshold - 10
                 chisel_subset = self._extract_chisel_subset(
                     chisel_original, verilog_diff_text, threshold_override=decreased_threshold
                 )
