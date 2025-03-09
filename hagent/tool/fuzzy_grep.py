@@ -294,33 +294,28 @@ class Fuzzy_grep:
                 return True
         return False
 
-    def find_matches_in_text(self, text: str, search_terms: list, context: int, threshold: int) -> list:
+    def find_matches_in_text(self, text: str, search_terms: list, threshold: int) -> list:
         """
-        Searches the given text and returns a list of tuples (line_number, line_content, is_central_match)
+        Searches the given text and returns a list of tuples (line_number, line_content)
         for lines that match all search terms.
         """
         lines = text.splitlines()
-        central_indices = set()
+        indices = list()
         for i, line in enumerate(lines):
             if self.line_matches(line, search_terms, threshold):
-                central_indices.add(i)
-        all_indices = set(central_indices)
-        if context > 0:
-            for idx in central_indices:
-                for j in range(max(0, idx - context), min(len(lines), idx + context + 1)):
-                    all_indices.add(j)
-        matching_indices = sorted(all_indices)
-        return [(i + 1, lines[i].rstrip('\n'), i in central_indices) for i in matching_indices]
+                indices.append(i)
 
-    def find_matches_in_file(self, file_path: str, search_terms: list, context: int, threshold: int) -> list:
+        return [(i + 1, lines[i].rstrip('\n')) for i in indices]
+
+    def find_matches_in_file(self, file_path: str, search_terms: list, threshold: int) -> list:
         """
-        Reads the file and returns a list of tuples (line_number, line_content, is_central_match)
+        Reads the file and returns a list of tuples (line_number, line_content)
         for lines that match all search terms.
         """
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 text = f.read()
-            return self.find_matches_in_text(text, search_terms, context, threshold)
+            return self.find_matches_in_text(text, search_terms, threshold)
         except Exception as e:
             self.error_message = str(e)
             return []
@@ -331,7 +326,6 @@ class Fuzzy_grep:
         files: list = None,
         directory: str = None,
         search_terms: list = None,
-        context: int = 0,
         threshold: int = 70,
     ) -> dict:
         """
@@ -343,15 +337,15 @@ class Fuzzy_grep:
           - directory: a directory whose files (non-recursively) are to be searched.
 
         Returns a dictionary with keys being either "text" or file paths, and values as a list of
-        (line_number, line_content, is_central_match) tuples.
+        (line_number, line_content) tuples.
         """
         results = {}
         if text is not None:
-            results['text'] = self.find_matches_in_text(text, search_terms, context, threshold)
+            results['text'] = self.find_matches_in_text(text, search_terms, threshold)
         if files is not None:
             for file in files:
                 if os.path.isfile(file):
-                    matches = self.find_matches_in_file(file, search_terms, context, threshold)
+                    matches = self.find_matches_in_file(file, search_terms, threshold)
                     if matches:
                         results[file] = matches
                 else:
@@ -361,7 +355,7 @@ class Fuzzy_grep:
                 for entry in os.listdir(directory):
                     file_path = os.path.join(directory, entry)
                     if os.path.isfile(file_path):
-                        matches = self.find_matches_in_file(file_path, search_terms, context, threshold)
+                        matches = self.find_matches_in_file(file_path, search_terms, threshold)
                         if matches:
                             results[file_path] = matches
             else:

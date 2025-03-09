@@ -15,7 +15,7 @@ from hagent.core.llm_wrap import LLM_wrap
 from hagent.tool.chisel2v import Chisel2v
 from hagent.tool.chisel_diff_applier import ChiselDiffApplier
 
-from hagent.tool.extract_verilog_diff_keywords import FuzzyGrepFilter
+from hagent.tool.extract_verilog_diff_keywords import Extract_verilog_diff_keywords
 from hagent.tool.filter_lines import FilterLines
 from hagent.tool.fuzzy_grep import Fuzzy_grep
 import tempfile
@@ -94,7 +94,7 @@ class V2Chisel_pass1(Step):
 
     def _extract_chisel_subset(self, chisel_code: str, verilog_diff: str, threshold_override: int = None) -> str:
         # --- Fuzzy_grep part ---
-        keywords = FuzzyGrepFilter.extract_keywords_from_diff(verilog_diff)
+        keywords = Extract_verilog_diff_keywords.get_user_variables(verilog_diff)
         print('------------------------------------------------')
         print('Extracted keywords from verilog diff:')
         print(keywords)
@@ -106,15 +106,13 @@ class V2Chisel_pass1(Step):
         default_threshold = self.input_data.get('threshold', 80)
         threshold_value = threshold_override if threshold_override is not None else default_threshold
         print('Using fuzzy grep threshold:', threshold_value)
-        context_value = self.input_data.get('context', 1)
-        print('Using fuzzy grep context:', context_value)
 
-        search_results = fg.search(text=chisel_code, search_terms=keywords, context=context_value, threshold=threshold_value)
+        search_results = fg.search(text=chisel_code, search_terms=keywords, threshold=threshold_value)
         fuzzy_hints = ''
         if 'text' in search_results:
             matching_lines = []
-            for lineno, line, central in search_results['text']:
-                marker = '->' if central else '  '
+            for lineno, line in search_results['text']:
+                marker = '->'
                 matching_lines.append(f'{marker}{lineno:4d}: {line}')
             fuzzy_hints = '\n'.join(matching_lines)
 
@@ -206,7 +204,7 @@ class V2Chisel_pass1(Step):
         print('********************************************************')
 
         # default_threshold = self.input_data.get("threshold", 40)
-        default_threshold = self.template_config.template_dict.get('v2chisel_pass1', {}).get('threshold', 40)
+        default_threshold = self.template_config.template_dict.get('v2chisel_pass1', {}).get('threshold', 80)
         chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text)
         if not chisel_subset.strip():
             self.error('No hint lines extracted from the Chisel code. Aborting LLM call.')
