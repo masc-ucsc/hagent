@@ -34,16 +34,16 @@ def main():
 
     # Get gold_code from either the top-level key or from nested chisel_pass1
     if "verilog_candidate" in data:
-        gold_code = data["verilog_candidate"]
+        gate_code = data["verilog_candidate"]
     elif "chisel_pass1" in data and "verilog_candidate" in data["chisel_pass1"]:
-        gold_code = data["chisel_pass1"]["verilog_candidate"]
+        gate_code = data["chisel_pass1"]["verilog_candidate"]
     else:
-        gold_code = ""
+        gate_code = ""
 
     # Use 'verilog_fixed' as ref_code.
-    ref_code = data.get("verilog_fixed", "")
+    gold_code = data.get("verilog_fixed", "")
 
-    if not gold_code or not ref_code:
+    if not gate_code or not gold_code:
         print("Input YAML must contain keys 'verilog_candidate' and 'verilog_fixed'.")
         sys.exit(1)
 
@@ -58,7 +58,7 @@ def main():
 
     # Run the equivalence check
     try:
-        result = checker.check_equivalence(gold_code, ref_code)
+        result = checker.check_equivalence(gold_code, gate_code)
     except Exception as e:
         print(f'Error during check_equivalence: {e}')
         sys.exit(1)
