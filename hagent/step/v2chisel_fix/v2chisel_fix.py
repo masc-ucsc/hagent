@@ -297,8 +297,8 @@ class V2chisel_fix(Step):
         )
         return '\n'.join(diff_lines)
 
-    def _check_equivalence(self, gold_code: str, reference_code: str):
-        if not gold_code.strip() or not reference_code.strip():
+    def _check_equivalence(self, gate_code: str, gold_code: str):
+        if not gold_code.strip() or not gold_code.strip():
             return (False, 'Missing code for equivalence check')
         eq_checker = Equiv_check()
         if not eq_checker.setup():
@@ -306,7 +306,7 @@ class V2chisel_fix(Step):
             print(f'[ERROR] Equiv_check setup failed: {err}')
             return (False, err)
         try:
-            result = eq_checker.check_equivalence(gold_code, reference_code)
+            result = eq_checker.check_equivalence(gold_code, gate_code)
             if result is True:
                 print('[INFO] LEC check: Designs are equivalent!')
                 return (True, None)
@@ -376,7 +376,7 @@ class V2chisel_fix(Step):
         """
         v2c_pass1 = V2Chisel_pass1()
         v2c_pass1.input_data = self.input_data
-        new_hints = v2c_pass1._extract_chisel_subset(self.chisel_original, self.verilog_diff_str, threshold_override=30)
+        new_hints = v2c_pass1._extract_chisel_subset(self.chisel_original, self.verilog_diff_str, threshold_override=70)
         if not new_hints.strip():
             self.error("No hint lines extracted from the Chisel code. Aborting LLM call.")
 
@@ -456,7 +456,6 @@ class V2chisel_fix(Step):
                 if candidate_diff:
                     return candidate_diff
             return ""
-
 
     def _run_chisel2v(self, chisel_code: str):
         """

@@ -88,7 +88,7 @@ class V2Chisel_pass1(Step):
         old_lines = old_code.splitlines()
         new_lines = new_code.splitlines()
         diff_lines = difflib.unified_diff(
-            old_lines, new_lines, fromfile='verilog_original.v', tofile='verilog_fixed.v', lineterm=''
+            old_lines, new_lines, fromfile='verilog_original.v', tofile='verilog_fixed.v', lineterm='', n=20
         )
         return '\n'.join(diff_lines)
 
