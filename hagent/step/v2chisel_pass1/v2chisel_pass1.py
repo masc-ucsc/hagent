@@ -14,12 +14,11 @@ from hagent.core.llm_template import LLM_template
 from hagent.core.llm_wrap import LLM_wrap
 
 from hagent.tool.chisel2v import Chisel2v
+from hagent.tool.code_scope import Code_scope
 from hagent.tool.chisel_diff_applier import ChiselDiffApplier
 
 from hagent.tool.extract_verilog_diff_keywords import Extract_verilog_diff_keywords
-from hagent.tool.filter_lines import FilterLines
 from hagent.tool.fuzzy_grep import Fuzzy_grep
-import tempfile
 from hagent.tool.extract_code import Extract_code_verilog, Extract_code_chisel
 
 
@@ -109,54 +108,23 @@ class V2Chisel_pass1(Step):
         print('Using fuzzy grep threshold:', threshold_value)
 
         search_results = fg.search(text=chisel_code, search_terms=keywords, threshold=threshold_value)
-        fuzzy_hints = ''
+
+        chisel_hints = ''
         if 'text' in search_results:
-            matching_lines = []
-            for lineno, line in search_results['text']:
-                marker = '->'
-                matching_lines.append(f'{marker}{lineno:4d}: {line}')
-            fuzzy_hints = '\n'.join(matching_lines)
+
+            hint_list = [pair[0] for pair in search_results['text']]
+            cs = Code_scope(chisel_code)
+            scopes = cs.find_nearest_upper_scopes(hint_list)
+            for scope_pair in scopes:
+                chisel_hints += f"Code snippet from {scope_pair[0]} to {scope_pair[1]}:\n"
+                chisel_hints += cs.get_code(scope_pair, hint_list, '->')
+                chisel_hints += "\n\n"
 
         print('------------------------------------------------')
-        print('Extracted hint lines from fuzzy grep:')
-        print(fuzzy_hints)
-        print('------------------------------------------------')
+        print('Chisel hints from Code_scope:')
+        print(chisel_hints)
 
-        # --- FilterLines part ---
-        fl = FilterLines()
-
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False) as diff_temp:
-            diff_temp.write(verilog_diff)
-            diff_temp.flush()
-            diff_file = diff_temp.name
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False) as chisel_temp:
-            chisel_temp.write(chisel_code)
-            chisel_temp.flush()
-            chisel_file = chisel_temp.name
-        try:
-            print(f"DIFF_FILE:{diff_file}")
-            print(f"CHISEL_FILE:{chisel_file}")
-            filter_hints = fl.filter_lines(diff_file, chisel_file, context=1)
-            print(f"FILTER_HINTS:{filter_hints}")
-
-        finally:
-            print("")
-            #os.remove(diff_file)
-            #os.remove(chisel_file)
-
-        print('------------------------------------------------')
-        print('Extracted hint lines from filter_lines:')
-        print(filter_hints)
-        print('------------------------------------------------')
-
-        final_hints = union_hints(fuzzy_hints, filter_hints)
-        if not final_hints.strip():
-            self.error('No hint lines extracted from either method. Aborting LLM call.')
-        print('------------------------------------------------')
-        print('Final union of hint lines:')
-        print(final_hints)
-        print('------------------------------------------------')
-        return final_hints
+        return chisel_hints
 
     def _strip_markdown_fences(self, code_str: str) -> str:
         code_str = re.sub(r'```[a-zA-Z]*', '', code_str)

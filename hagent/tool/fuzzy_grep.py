@@ -305,7 +305,7 @@ class Fuzzy_grep:
             if self.line_matches(line, search_terms, threshold):
                 indices.append(i)
 
-        return [(i + 1, lines[i].rstrip('\n')) for i in indices]
+        return [(i, lines[i].rstrip('\n')) for i in indices]
 
     def find_matches_in_file(self, file_path: str, search_terms: list, threshold: int) -> list:
         """
