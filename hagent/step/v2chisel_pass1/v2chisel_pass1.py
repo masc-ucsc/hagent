@@ -134,10 +134,15 @@ class V2Chisel_pass1(Step):
             chisel_temp.flush()
             chisel_file = chisel_temp.name
         try:
+            print(f"DIFF_FILE:{diff_file}")
+            print(f"CHISEL_FILE:{chisel_file}")
             filter_hints = fl.filter_lines(diff_file, chisel_file, context=1)
+            print(f"FILTER_HINTS:{filter_hints}")
+
         finally:
-            os.remove(diff_file)
-            os.remove(chisel_file)
+            print("")
+            #os.remove(diff_file)
+            #os.remove(chisel_file)
 
         print('------------------------------------------------')
         print('Extracted hint lines from filter_lines:')
