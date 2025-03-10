@@ -4,7 +4,7 @@ class Code_scope:
     Given a set of line numbers, it returns the continuous scopes that contain these lines.
     """
 
-    def __init__(self, code_text, line_limit=20):
+    def __init__(self, code_text, line_limit=10):
         """
         Initialize with the code text.
 
@@ -12,7 +12,6 @@ class Code_scope:
             code_text (str): The full source code text.
             line_limit (int): Maximum number of lines to search up/down for a scope boundary.
         """
-        self.code_text = code_text
         self.lines = code_text.splitlines()
         self.num_lines = len(self.lines)
         self.line_limit = line_limit
@@ -290,12 +289,11 @@ class Code_scope:
 
         return merged_scopes
 
-    def get_code(self, code, scope, mark, hint):
+    def get_code(self, scope, mark, hint):
         """
         Extract code from a specified scope and mark certain lines with a hint.
 
         Args:
-            code (str): The source code.
             scope (tuple): A tuple (start_line, end_line) representing the scope to extract.
             mark (list): A list of line numbers to mark with the hint.
             hint (str): The string to add before marked lines.
@@ -305,26 +303,18 @@ class Code_scope:
         """
         # Ensure the scope is valid
         start_line, end_line = scope
-        if start_line < 0 or end_line >= len(code.splitlines()) or start_line > end_line:
-            return 'Invalid scope'
 
         # Convert mark to a set for faster lookups
         mark_set = set(mark)
 
-        # Split the code into lines
-        lines = code.splitlines()
-
         # Format each line in the scope
         result = []
-        for i in range(start_line, end_line + 1):
-            # Calculate proper line number (showing 1-indexed line numbers to users)
-            line_num = i + 1
-
+        for line_num in range(start_line, end_line + 1):
             # Determine if this line should be marked
-            prefix = hint if i in mark_set else ' ' * len(hint)
+            prefix = hint if line_num in mark_set else ' ' * len(hint)
 
             # Format the line with line number
-            formatted_line = f'{prefix} {line_num}: {lines[i]}'
+            formatted_line = f'{prefix} {line_num}: {self.lines[line_num]}'
             result.append(formatted_line)
 
         # Join all formatted lines with newlines

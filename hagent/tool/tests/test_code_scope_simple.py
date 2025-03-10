@@ -42,7 +42,7 @@ def test_example():
     assert scopes == [(2, 6), (9, 13)]
 
     # Example of get_code usage
-    formatted_code = finder.get_code(code, (3, 5), [4], '->')
+    formatted_code = finder.get_code((3, 5), [4], '->')
     #print('\nExample of get_code output:')
     assert formatted_code == """   4:         val x = 1
 -> 5:         val y = 2
