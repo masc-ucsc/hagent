@@ -101,7 +101,14 @@ class Extract_verilog_diff_keywords:
         reserved_words = Fuzzy_grep.get_reserved_keywords('verilog')
         filtered_res = []
         for var_name in res:
-            if not var_name.startswith('_T') and not var_name.startswith('_GEN') and var_name not in reserved_words:
-                filtered_res.append(var_name)
+            if len(var_name) < 3:
+                continue
+            if var_name.startswith('_T'):
+                continue
+            if var_name.startswith('_GEN'):
+                continue
+            if var_name in reserved_words:
+                continue
+            filtered_res.append(var_name)
 
         return filtered_res
