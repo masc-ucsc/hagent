@@ -32,11 +32,13 @@ class Step:
         self.overwrite_conf = {}
         self.setup_called = False
         self.input_data = None
+        top_name = None
 
-    def set_io(self, inp_file: str, out_file: str, overwrite_conf: dict = {}):
+    def set_io(self, inp_file: str, out_file: str, overwrite_conf: dict = {}, top_name: str = 'SingleCycleCPU'):
         self.input_file = inp_file
         self.output_file = out_file
         self.overwrite_conf = overwrite_conf
+        self.top_name = top_name
 
     def parse_arguments(self):
         self.input_file = None
@@ -55,6 +57,16 @@ class Step:
                         sys.exit(1)
                 else:
                     self.output_file = args[i][2:]
+            elif args[i].startswith('-t'):
+                if args[i] == '-t':
+                    i += 1
+                    if i < len(args):
+                        self.top_name = args[i]
+                    else:
+                        print('Error: Missing top module name after -t')
+                        sys.exit(1)
+                else:
+                    self.top_name = args[i][2:]
             elif not args[i].startswith('-'):
                 self.input_file = args[i]
             i += 1
