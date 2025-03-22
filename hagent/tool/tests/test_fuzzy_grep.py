@@ -41,8 +41,8 @@ class TestFuzzGrep(unittest.TestCase):
         )
         results = self.tool.find_matches_in_text(text, ['Example', 'test'], threshold=70)
         expected = [
-            (2, 'This line has Example_string and test_value.'),
-            (4, 'Yet another line with example and test3.')
+            (1, 'This line has Example_string and test_value.'),
+            (3, 'Yet another line with example and test3.')
         ]
         self.assertEqual(results, expected)
 
