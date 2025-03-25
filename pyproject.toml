@@ -37,6 +37,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
+testpaths = ["hagent"]
 filterwarnings = [
     "ignore::DeprecationWarning",
    "ignore::UserWarning"
