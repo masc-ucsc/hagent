@@ -91,9 +91,11 @@ class Equiv_check:
         #desired_top = self._extract_single_module_name(gate_code)
          
         gold_top = self._extract_module_name(gold_code, top_module=desired_top)
-        print(f'gold_top provided = {gold_top}')
         gate_top = self._extract_module_name(gate_code, top_module=desired_top)
-        print(f'gate_top provided = {gate_top}')
+        if gold_top == gate_top:
+            print(f"gold_top provided = gate_top provided = {gate_top}")
+        else:
+            raise ValueError(f"Error: gold_top ({gold_top}) and gate_top ({gate_top}) do not match!")
 
         # 2) Write each design to a temp file
         #
