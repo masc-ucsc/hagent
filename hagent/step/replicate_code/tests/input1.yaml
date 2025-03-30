@@ -9,7 +9,8 @@ code: |
   }
 
 llm:
-  model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct" # Cheap fireworks model
+  model: "openai/o3-mini-2025-01-31" 
+#model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct" # Cheap fireworks model
 
 # Fictious initial cost/tokens
 cost: 10

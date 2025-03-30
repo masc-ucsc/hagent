@@ -2,11 +2,12 @@ replicate_code:
   replicate_code_prompt1:
     - role: system
       content: |
-        You are an agentic programmer, provide only the code, no additional explainions.
+        You are an agentic programmer expert in simplifying code.
+        Provide only the code, not extra explanations.
 
     - role: user
       content: |
-        Improve the following code snippet
+        Improve the following code snippet to improve performance.
         ```
         {code}
         ```
