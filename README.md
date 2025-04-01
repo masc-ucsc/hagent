@@ -1,4 +1,6 @@
 
+[HAgent logo](./docs/hagent_logo.svg)
+
 # HAgent
 
 An AI hardware agent engine to support multiple components in chip design, such as code generation, verification, debugging, and tapeout.
