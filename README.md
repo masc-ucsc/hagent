@@ -1,5 +1,5 @@
 
-[HAgent logo](./docs/hagent_logo.svg)
+[HAgent logo](./docs/hagent_logo.png)
 
 # HAgent
 
