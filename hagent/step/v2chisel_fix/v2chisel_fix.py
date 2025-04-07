@@ -32,6 +32,7 @@ from hagent.core.llm_template import LLM_template
 
 from hagent.tool.extract_code import Extract_code_verilog, Extract_code_chisel
 from hagent.tool.equiv_check import Equiv_check
+from hagent.tool.compile_slang import Compile_slang
 from hagent.tool.chisel2v import Chisel2v
 from hagent.tool.chisel_diff_applier import ChiselDiffApplier
 from hagent.step.v2chisel_pass1.v2chisel_pass1 import V2Chisel_pass1
@@ -146,98 +147,62 @@ class V2chisel_fix(Step):
             result['lec'] = 1
             return result
 
-        max_prompt3_attempts = 3
-        max_prompt4_attempts = 3
-        chisel_updated_final = None
-        was_valid_refinement = False
-        last_error_msg = ''
-        candidate_diff_final = ""
+            # --- Replace manual iterative refinement with React-driven cycle ---
+        from hagent.tool.react import React
 
-        # Phase 1: Prompt3 attempts
-        for attempt in range(1, max_prompt3_attempts + 1):
-            print(f'[INFO] Prompt3 Attempt {attempt}')
-            candidate_diff = self._refine_chisel_code(chisel_changed, lec_error, attempt)
-            if not candidate_diff or not candidate_diff.strip():
-                print('[WARN] Prompt3 LLM returned an empty diff.')
-                continue
-            print("Generated diff from prompt3")
-            # print(candidate_diff)
-            applier = ChiselDiffApplier()
-            chisel_updated = applier.apply_diff(candidate_diff, self.chisel_original)
-            print(f"===== FINAL CHISEL CODE AFTER DIFF APPLIER (Prompt3 Attempt {attempt}) =====")
-            # print(chisel_updated)
-            is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(chisel_updated)
+        def check_callback(code: str):
+            # Use _run_chisel2v to compile and then _check_equivalence to verify the candidate.
+            is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(code)
             if not is_valid:
-                print(f'[WARN] Compilation failed on Prompt3 Attempt {attempt}: {error_msg}')
-                fixed_code = self._iterative_compile_fix(chisel_updated, error_msg)
-                is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(fixed_code)
-                if is_valid:
-                    chisel_updated = fixed_code
-                else:
-                    print(f'[WARN] Iterative compilation fix failed on Prompt3 Attempt {attempt}: {error_msg}')
-                    last_error_msg = error_msg or 'Unknown compile error'
-                    continue
-            is_equiv, lec_error = self._check_equivalence(verilog_fixed, verilog_candidate_temp)
+                # Create a dummy diagnostic with the error message.
+                from hagent.tool.compiler import Diagnostic
+                return [Diagnostic(f"Compilation error: {error_msg}")]
+            is_equiv, lec_err = self._check_equivalence(verilog_fixed, verilog_candidate_temp)
             if is_equiv:
-                print(f'[INFO] LEC passed on Prompt3 Attempt {attempt}.')
-                chisel_updated_final = chisel_updated
-                was_valid_refinement = True
-                candidate_diff_final = candidate_diff
-                break
+                return []  # No diagnostics if equivalent.
             else:
-                print(f'[WARN] LEC failed on Prompt3 Attempt {attempt}: {lec_error}')
-                last_error_msg = lec_error
+                return [Diagnostic(f"LEC failed: {lec_err}")]
 
-        # Phase 2: Prompt4 attempts (if needed)
-        if not was_valid_refinement:
-            for attempt in range(1, max_prompt4_attempts + 1):
-                print(f'[INFO] Prompt4 Attempt {attempt}')
-                candidate_diff = self._refine_chisel_code_with_prompt4(chisel_changed, lec_error, attempt)
-                if not candidate_diff or not candidate_diff.strip():
-                    print('[WARN] Prompt4 LLM returned an empty diff.')
-                    continue
-                print("Generated diff from prompt4")
-                # print(candidate_diff)
-                applier = ChiselDiffApplier()
-                chisel_updated = applier.apply_diff(candidate_diff, chisel_original)
-                # print(f"===== FINAL CHISEL CODE AFTER DIFF APPLIER (Prompt4 Attempt {attempt}) =====")
-                # print(chisel_updated)
-                is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(chisel_updated)
-                if not is_valid:
-                    print(f'[WARN] Compilation failed on Prompt4 Attempt {attempt}: {error_msg}')
-                    fixed_code = self._iterative_compile_fix(chisel_updated, error_msg)
-                    is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(fixed_code)
-                    if is_valid:
-                        chisel_updated = fixed_code
-                    else:
-                        print(f'[WARN] Iterative compilation fix failed on Prompt4 Attempt {attempt}: {error_msg}')
-                        last_error_msg = error_msg or 'Unknown compile error'
-                        continue
-                is_equiv, lec_error = self._check_equivalence(verilog_fixed, verilog_candidate_temp)
-                if is_equiv:
-                    print(f'[INFO] LEC passed on Prompt4 Attempt {attempt}.')
-                    chisel_updated_final = chisel_updated
-                    was_valid_refinement = True
-                    candidate_diff_final = candidate_diff
-                    break
-                else:
-                    print(f'[WARN] LEC failed on Prompt4 Attempt {attempt}: {lec_error}')
-                    last_error_msg = lec_error
+        def fix_callback(code: str, diag, fix_example, delta, iteration):
+            # Use your prompt-based diff generation (prompt3) to attempt a fix.
+            new_diff = self._refine_chisel_code(code, diag.msg, iteration)
+            applier = ChiselDiffApplier()
+            new_code = applier.apply_diff(new_diff, code)
+            return new_code
 
-        if not was_valid_refinement:
-            print(f'[ERROR] All refinement attempts failed. Last error: {last_error_msg}')
-            result['chisel_fixed']['refined_chisel'] = chisel_original
-            result['chisel_fixed']['equiv_passed'] = False
-            result['chisel_fixed']['chisel_diff'] = candidate_diff_final if candidate_diff_final else ""
-            result['lec'] = 0
-            return result
-        else:
-            result['chisel_fixed']['refined_chisel'] = chisel_updated_final
-            result['chisel_fixed']['equiv_passed'] = True
-            result['chisel_fixed']['chisel_diff'] = candidate_diff_final
-            print("[INFO] Refinement successful. 'chisel_fixed' written to output YAML.")
-            result['lec'] = 1
-            return result
+        react_tool = React()
+        if not react_tool.setup(db_path=None, learn=False, max_iterations=5, comment_prefix="//"):
+            self.error("React setup failed: " + react_tool.error_message)
+
+        initial_candidate = chisel_changed if chisel_changed.strip() else chisel_original
+        refined_chisel = react_tool.react_cycle(initial_candidate, check_callback, fix_callback)
+        if not refined_chisel:
+            self.error("React failed to refine the code.")
+
+        result['chisel_fixed'] = {
+            'refined_chisel': refined_chisel,
+            'equiv_passed': True,
+            'chisel_diff': "diff not tracked in React integration"
+        }
+        result['lec'] = 1
+        return result
+        
+
+    def _check_candidate_with_compiler(self,candidate_verilog: str) -> (bool, str):
+        """
+        Uses Compile_slang to compile the candidate Verilog code.
+        Returns a tuple (is_valid, error_message).
+        """
+        compiler = Compile_slang()
+        if not compiler.setup():
+            return (False, f"Compile_slang setup failed: {compiler.error_message}")
+        if not compiler.add_inline(candidate_verilog):
+            return (False, f"Failed to add candidate Verilog: {compiler.error_message}")
+        errors = compiler.get_errors()
+        if errors:
+            error_messages = "\n".join([e.msg for e in errors])
+            return (False, error_messages)
+        return (True, "")
 
     def _iterative_compile_fix(self, chisel_code: str, compiler_error: str) -> str:
         max_iterations = 5
