@@ -2,7 +2,7 @@ v2chisel_fix:
   llm:
     model: "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct"
 
-  threshold: 80
+  threshold: 40
   context: 1
 
   prompt4:

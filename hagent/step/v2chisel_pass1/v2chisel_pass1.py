@@ -111,7 +111,7 @@ class V2Chisel_pass1(Step):
 
         chisel_hints = ''
         if 'text' in search_results:
-
+            
             hint_list = [pair[0] for pair in search_results['text']]
             cs = Code_scope(chisel_code)
             scopes = cs.find_nearest_upper_scopes(hint_list)
