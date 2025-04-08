@@ -1,9 +1,11 @@
-import sys
+#!/usr/bin/env python3
 import os
+import sys
 import tempfile
-import yaml
-import argparse
 import pytest
+from ruamel.yaml import YAML
+from ruamel.yaml.scalarstring import LiteralScalarString
+from unittest.mock import patch, MagicMock
 
 # Import the module under test.
 from hagent.step.v2chisel_pass1 import v2chisel_pass1
@@ -11,77 +13,62 @@ from hagent.step.v2chisel_pass1 import v2chisel_pass1
 # --- Dummy implementations to override external dependencies ---
 
 def dummy_extract_keywords_from_diff(diff):
-    # Return dummy keyword(s) from the diff.
+    # Return a dummy keyword string.
     return "dummy_keyword"
 
-class DummyFuzzyGrep:
-    def setup(self, mode):
-        return True
-    def search(self, text, search_terms, context, threshold):
-        # Return a dummy search result with one matching line.
-        return {"text": [(1, "dummy line from fuzzy", True)]}
-
-def dummy_filter_lines(diff_file, chisel_file, context):
-    # Return a dummy filtered hint line.
-    return "->1: dummy line from filter_lines"
+# IMPORTANT: Return a numeric line (0) instead of 1 so that Code_scope works.
+def dummy_fuzzy_grep_search(self, text, search_terms, threshold):
+    return {"text": [(0, "dummy line from fuzzy", True)]}
 
 def dummy_inference(prompt_dict, prompt_index, n):
-    # Return a dummy diff that the ChiselDiffApplier will use.
-    return ["---dummy diff---"]
-
-def dummy_generate_verilog(chisel_code, module_name):
-    # Simulate generation of valid verilog.
-    return "module dummy_module;"
-
-def dummy_apply_diff(generated_diff, chisel_original):
-    # Simulate a diff application that appends a comment.
-    return chisel_original + "\n// diff applied"
+    # Return a dummy diff string (with triple backticks that will be stripped).
+    return ["```chisel\n---dummy diff---\n```"]
 
 def dummy_setup_chisel2v():
     return True
 
-# Dummy classes to replace LLM_template and LLM_wrap.
+def dummy_generate_verilog(chisel_code, module_name):
+    # Return dummy verilog that includes the keyword "module"
+    return "module dummy_module; endmodule"
+
+def dummy_apply_diff(self, generated_diff, original):
+    # Simulate applying a diff by appending a marker.
+    return original + "\n// diff applied"
+
+# Dummy classes to replace LLM_wrap and LLM_template.
 class DummyTemplate:
     def __init__(self, config):
         self.template_dict = config
     def format(self, prompt_dict):
-        # For testing, return a dummy prompt response.
+        # Return a dummy prompt (not used for further processing).
         return [{"role": "user", "content": "---dummy diff---"}]
 
 class DummyLLMWrap:
     def __init__(self, **kwargs):
-        self.name = "v2chisel_pass1"
+        self.name = kwargs.get("name", "v2chisel_pass1")
         self.last_error = ""
         self.chat_template = None
     def inference(self, prompt_dict, prompt_index, n):
         return dummy_inference(prompt_dict, prompt_index, n)
 
-# --- Patch fixture to override dependencies in v2chisel_pass1 ---
+# --- Fixture to patch dependencies ---
 @pytest.fixture(autouse=True)
 def patch_dependencies(monkeypatch):
-    # Patch FuzzyGrepFilter.extract_keywords_from_diff.
-    monkeypatch.setattr(
-        v2chisel_pass1.Extract_verilog_diff_keywords,
-        "get_words",
-        staticmethod(dummy_extract_keywords_from_diff)
-    )
-    # Patch Fuzzy_grep so that its setup returns True and search returns dummy result.
+    # Patch the extraction of keywords.
+    monkeypatch.setattr(v2chisel_pass1.Extract_verilog_diff_keywords,
+                        "get_user_variables",
+                        staticmethod(dummy_extract_keywords_from_diff))
+    # Patch Fuzzy_grep: setup returns True and search returns our dummy result.
     from hagent.tool import fuzzy_grep
     monkeypatch.setattr(fuzzy_grep.Fuzzy_grep, "setup", lambda self, mode: True)
     monkeypatch.setattr(fuzzy_grep.Fuzzy_grep, "search", dummy_fuzzy_grep_search)
-
-    # Patch FilterLines.filter_lines.
-    from hagent.tool import filter_lines
-    monkeypatch.setattr(filter_lines.FilterLines, "filter_lines", lambda self, diff_file, chisel_file, context: dummy_filter_lines(diff_file, chisel_file, context))
-
-    # Patch LLM_wrap to use our DummyLLMWrap.
+    # Patch LLM_wrap and LLM_template in our module.
     monkeypatch.setattr(v2chisel_pass1, "LLM_wrap", lambda **kwargs: DummyLLMWrap(**kwargs))
-
-    # Patch LLM_template to always load a dummy configuration.
     dummy_config = {
         'v2chisel_pass1': {
             'llm': {},
             'threshold': 40,
+            'prompt0': "dummy prompt",
             'prompt1': "dummy prompt",
             'prompt2': "dummy prompt",
             'prompt3': "dummy prompt",
@@ -89,81 +76,75 @@ def patch_dependencies(monkeypatch):
         }
     }
     monkeypatch.setattr(v2chisel_pass1, "LLM_template", lambda conf_file: DummyTemplate(dummy_config))
-
     # Patch Chisel2v: setup returns True and generate_verilog returns dummy verilog.
     from hagent.tool import chisel2v
     monkeypatch.setattr(chisel2v.Chisel2v, "setup", lambda self: dummy_setup_chisel2v())
     monkeypatch.setattr(chisel2v.Chisel2v, "generate_verilog", lambda self, code, module_name: dummy_generate_verilog(code, module_name))
-
-    # Patch ChiselDiffApplier.apply_diff.
+    # Patch ChiselDiffApplier: apply_diff returns original code with marker appended.
     from hagent.tool import chisel_diff_applier
-    monkeypatch.setattr(chisel_diff_applier.ChiselDiffApplier, "apply_diff", lambda self, diff, original: dummy_apply_diff(diff, original))
+    monkeypatch.setattr(chisel_diff_applier.ChiselDiffApplier, "apply_diff", dummy_apply_diff)
 
-
-# Helper for Fuzzy_grep.search (needed for monkey patch above)
-def dummy_fuzzy_grep_search(self, text, search_terms, context, threshold):
-    return {"text": [(1, "dummy line from fuzzy", True)]}
-
-
-# --- The actual test ---
-def test_v2chisel_pass1(monkeypatch, tmp_path):
-    return
-    # Create a temporary input YAML file.
-    input_data = {
+# --- Fixture for valid input data ---
+@pytest.fixture
+def valid_input_data():
+    return {
         "llm": {},
-        "verilog_original": "module foo;",
-        "verilog_fixed": "module foo_fixed;",
+        "verilog_original": "module foo; endmodule",
+        "verilog_fixed": "module foo_fixed; endmodule",
         "chisel_original": "class TestModule extends Module {}",
         "threshold": 40,
-        "context": 1
+        "context": 1,
+        "chisel_pass1": {
+            "chisel_changed": "class TestModule extends Module {}",
+            "verilog_candidate": "module foo(); endmodule",
+            "was_valid": True,
+            "chisel_subset": "class TestModule extends Module {}"
+        }
     }
-    input_yaml = tmp_path / "simple_risc.yaml"
-    output_yaml = tmp_path / "out_simple_risc.yaml"
-    with open(input_yaml, "w") as f:
-        yaml.dump(input_data, f)
 
-    # Simulate command-line arguments: -o output file and the input file.
-    test_args = ["test_v2chisel_pass1.py", "-o", str(output_yaml), str(input_yaml)]
-    monkeypatch.setattr(sys, "argv", test_args)
+# --- Test for union_hints function ---
+def test_union_hints():
+    hints1 = "   1: first line\n-> 2: second line"
+    hints2 = "-> 2: override second line\n   3: third line"
+    union = v2chisel_pass1.union_hints(hints1, hints2)
+    assert "->" in union
+    assert "1:" in union
+    assert "2:" in union
+    assert "3:" in union
+    assert "override second line" in union
 
-    # Parse command-line arguments as the script would.
-    args = v2chisel_pass1.parse_arguments()
+# --- Main test for V2Chisel_pass1.run ---
+def test_v2chisel_pass1_run(valid_input_data, tmp_path):
+    yaml_obj = YAML()
+    input_file = tmp_path / "input.yaml"
+    output_file = tmp_path / "output.yaml"
+    with open(input_file, "w") as f:
+        yaml_obj.dump(valid_input_data, f)
 
-    # Create and set up the step.
     step = v2chisel_pass1.V2Chisel_pass1()
-    # Instead of manually setting input_file and input_data, use set_io() to properly initialize.
-    step.set_io(inp_file=str(input_yaml), out_file=str(output_yaml))
-    # Also set input_data (if needed for this test).
-    step.input_data = input_data
+    step.set_io(inp_file=str(input_file), out_file=str(output_file))
+    step.input_data = valid_input_data
     step.setup()
-
-    # Run the step.
-    result = step.run(input_data)
-
-    # Wrap literals as done in the main function.
+    
+    # Call step.step() with no extra argument.
+    result = step.step()
     result = v2chisel_pass1.wrap_literals(result)
+    
+    with open(str(output_file), "w") as out_f:
+        yaml_obj.dump(result, out_f)
+    
+    with open(str(output_file)) as f:
+        out_data = yaml_obj.load(f)
+    
+    assert "chisel_pass1" in out_data
+    cp = out_data["chisel_pass1"]
+    # Our dummy_inference returns a diff that will be stripped to '---dummy diff---'
+    # and dummy_apply_diff appends "\n// diff applied" to chisel_original.
+    assert cp["was_valid"] is True
+    assert "TestModule" in cp["chisel_subset"]
+    # We expect chisel_updated to equal "class TestModule extends Module {}" + "\n// diff applied"
+    assert cp["chisel_updated"].endswith("// diff applied")
+    assert "verilog_diff" in out_data
 
-    # Dump the result to the output file using ruamel.yaml.
-    from ruamel.yaml import YAML
-    ruamel_yaml = YAML()
-    ruamel_yaml.default_flow_style = False
-    ruamel_yaml.indent(mapping=2, sequence=4, offset=2)
-    with open(str(output_yaml), "w") as out_file:
-        ruamel_yaml.dump(result, out_file)
-
-    # Load the output YAML using ruamel.yaml.
-    # (No additional constructor is needed if we use ruamel.yaml to dump.)
-    ruamel_yaml_load = YAML(typ='safe')
-    with open(str(output_yaml)) as f:
-        output = ruamel_yaml_load.load(f)
-
-    assert "chisel_pass1" in output
-    assert output["chisel_pass1"]["was_valid"] is True
-    assert "verilog_diff" in output
-    # Optionally, check that the applied diff appended our marker.
-    assert "// diff applied" in output["chisel_pass1"]["chisel_updated"]
-
-
-# Allow the test to be run directly.
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__]))
