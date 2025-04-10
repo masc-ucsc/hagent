@@ -25,14 +25,14 @@ def test_replicate_code():
     inp_file = os.path.join(test_dir, 'input1.yaml')
 
     trivial_step = Replicate_code()
-    trivial_step.set_io(inp_file=inp_file, out_file='test_replicate_code_output.yaml')
+    trivial_step.set_io(inp_file=inp_file, out_file=os.path.join(os.getcwd(), 'test_replicate_code_output.yaml'))
 
     trivial_step.setup()
 
     res = trivial_step.step()
 
-    xx = res['optimized']
-    print(f'optimized:{xx}')
+    xx = res['optimized_equivalent']
+    print(f'optimized_equivalent:{xx}')
 
     assert len(xx) > 0
 

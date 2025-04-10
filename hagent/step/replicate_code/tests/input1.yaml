@@ -2,11 +2,16 @@ description: |
   test1
   2nd line
 
-code: |
-  void main() {
-    for(int i=0;i<2;i++)
-      printf("hello world\n");
-  }
+code_content: |
+  module and_gate_behavioral(output reg Y, input A, input B);
+      always @(A or B) begin
+          Y = A & B;
+      end
+  endmodule
+
+top_name: "and_gate_behavioral"
+
+threshold: 50
 
 llm:
   model: "openai/o3-mini-2025-01-31" 
