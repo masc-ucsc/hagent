@@ -2,7 +2,7 @@ v2chisel_pass1:
   threshold: 80
   context: 1
   
-  prompt0:
+  prompt1:
     - role: system
       content: |
         You are a coding assistant to update Chisel code based on differences between two Verilog versions.
@@ -23,7 +23,7 @@ v2chisel_pass1:
         Output *only* the diff in **unified diff format** with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
         PLEASE No explanation, no Note. ONLY diff, **unified diff format**
 
-  prompt1:
+  prompt0:
     - role: system
       content: |
         You are a coding assistant to update Chisel code based on differences between two Verilog versions.
