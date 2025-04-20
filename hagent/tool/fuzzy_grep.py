@@ -278,6 +278,10 @@ class Fuzzy_grep:
         preprocessed word in the line has a fuzzy match with the preprocessed search term
         with a score at or above the threshold.
         """
+
+        # Skip processing if the line is a comment.
+        if re.match(r'^\s*(//|/\*|\*)', line):
+            return False
         words = self.extract_words(line)
         # Filter out reserved words.
         candidate_words = [
