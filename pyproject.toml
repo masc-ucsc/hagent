@@ -31,6 +31,12 @@ sounddevice = "^0.5.1"
 numpy = "^2.2.2"
 rapidfuzz = "^3.12.1"
 ruamel-yaml = "^0.18.10"
+rank-bm25 = "^0.2.2"
+sentence-transformers = "^4.1.0"
+nltk = "^3.9.1"
+rouge-score = "^0.1.2"
+bert-score = "^0.3.13"
+torch = "^2.7.0"
 
 [build-system]
 requires = ["poetry-core"]

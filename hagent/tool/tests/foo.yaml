@@ -1,0 +1,27 @@
+expected ';' after expression:
+  fix_question: |2
+
+    #include <iostream>
+
+    int main() {
+    // FIXME_HINT: expected ';' after expression
+    // FIXME_HINT:     5 |     std::cout << "Hello World" << std::endl
+    // FIXME_HINT:       |                                            ^
+    // FIXME_HINT:       |                                            ;
+    // FIXME_HINT: 1 error generated.
+        std::cout << "Hello World" << std::endl
+        return 0;
+    }
+  fix_answer: |2-
+
+    #include <iostream>
+
+    int main() {
+    // FIXME_HINT: expected ';' after expression
+    // FIXME_HINT:     5 |     std::cout << "Hello World" << std::endl
+    // FIXME_HINT:       |                                            ^
+    // FIXME_HINT:       |                                            ;
+    // FIXME_HINT: 1 error generated.
+        std::cout << "Hello World" << std::endl;
+        return 0;
+    }

@@ -1,0 +1,71 @@
+[
+  {
+    "id": "aa3aa899-ee0e-4e1a-bff1-3ed465a715dc",
+    "content": "Fix the reset logic in this Verilog counter module.",
+    "keywords": [
+      "Verilog",
+      "counter",
+      "reset",
+      "bug",
+      "hardware"
+    ],
+    "context": "Debugging Verilog modules",
+    "tags": [
+      "verilog",
+      "hardware",
+      "debugging"
+    ],
+    "timestamp": "202504231744",
+    "category": "Verilog",
+    "faulty_code": "// Buggy Verilog Counter with intentional bugs\nmodule buggy_counter(\n    input clk,\n    input reset_n,\n    output reg [3:0] count,\n    output reg overflow\n);\n    // Bug 1: Missing output type (should be reg overflow)\n    \n    // Bug 2: Using negedge instead of posedge\n    always @(negedge clk) begin\n        // Bug 3: Missing reset logic\n        \n        // Counter logic with overflow bug\n        if (count == 4'b1111) begin\n            count <= 0;\n            overflow = 1;  // Bug 4: Using blocking assignment\n        end else begin\n            count <= count + 1;\n            overflow = 0;  // Bug 4: Using blocking assignment\n        end\n    end\nendmodule ",
+    "fixed_code": "// Buggy Verilog Counter with intentional bugs\nmodule buggy_counter(\n    input clk,\n    input reset_n,\n    output reg [3:0] count,\n    output reg overflow\n);\n    // Bug 1: Missing output type (should be reg overflow)\n    \n    // Bug 2: Using negedge instead of posedge\n    always @(posedge clk) begin\n        if (!reset_n) begin\n            count <= 0;\n            overflow <= 0;\n        end else\n        \n        // Counter logic with overflow bug\n        if (count == 4'b1111) begin\n            count <= 0;\n            overflow <= 1;  // Bug 4: Using blocking assignment\n        end else begin\n            count <= count + 1;\n            overflow <= 0;  // Bug 4: Using blocking assignment\n        end\n    end\nendmodule ",
+    "language": "verilog",
+    "created_at": "2025-04-23T17:44:08.399116"
+  },
+  {
+    "id": "dcd5cafe-5473-4b8a-967f-8b9bb6249cbd",
+    "content": "Fix memory management issues in this C++ array implementation.",
+    "keywords": [
+      "C++",
+      "memory leak",
+      "array",
+      "bug",
+      "destructor"
+    ],
+    "context": "C++ memory management",
+    "tags": [
+      "cpp",
+      "memory management",
+      "debugging"
+    ],
+    "timestamp": "202504231744",
+    "category": "C++",
+    "faulty_code": "#include <iostream>\n\n// Buggy array implementation with several issues\nclass BuggyArray {\nprivate:\n    int* arr;\n    int size;  // Bug 1: Should track capacity separately from size\n    \npublic:\n    BuggyArray(int capacity) {\n        arr = new int[capacity];\n        size = capacity;  // Bug 2: Size should be initialized to 0\n    }\n    \n    // Bug 3: Missing destructor - memory leak\n    \n    void set(int index, int value) {\n        arr[index] = value;  // Bug 4: No bounds checking\n    }\n    \n    int get(int index) {\n        return arr[index];  // Bug 5: No bounds checking\n    }\n};\n\nint main() {\n    BuggyArray arr(5);\n    arr.set(10, 100);  // Bug: Out of bounds access\n    std::cout << \"Value: \" << arr.get(10) << std::endl;  // Bug: Out of bounds access\n    return 0;  // Bug: Memory leak (no destructor)\n} ",
+    "fixed_code": "#include <iostream>\n\n// Buggy array implementation with several issues\nclass BuggyArray {\nprivate:\n    int* arr;\n    int size;  // Bug 1: Should track capacity separately from size\n    \npublic:\n    BuggyArray(int capacity) {\n        arr = new int[capacity];\n        size = 0;  // Bug 2: Size should be initialized to 0\n    }\n    \n    ~BuggyArray() {\n        delete[] arr;\n    } - memory leak\n    \n    void set(int index, int value) {\n        if (index < size) arr[index] = value;  // Bug 4: No bounds checking\n    }\n    \n    int get(int index) {\n        return (index < size) ? arr[index] : -1;  // Bug 5: No bounds checking\n    }\n};\n\nint main() {\n    BuggyArray arr(5);\n    arr.set(10, 100);  // Bug: Out of bounds access\n    std::cout << \"Value: \" << arr.get(10) << std::endl;  // Bug: Out of bounds access\n    return 0;  // Bug: Memory leak (no destructor)\n} ",
+    "language": "cpp",
+    "created_at": "2025-04-23T17:44:08.399116"
+  },
+  {
+    "id": "269675ea-212d-4ede-818c-68f71817d273",
+    "content": "Fix the sorting algorithm implementation bugs in Python.",
+    "keywords": [
+      "Python",
+      "sorting",
+      "algorithm",
+      "bug",
+      "bubble sort"
+    ],
+    "context": "Python algorithm debugging",
+    "tags": [
+      "python",
+      "algorithms",
+      "debugging"
+    ],
+    "timestamp": "202504231744",
+    "category": "Python",
+    "faulty_code": "#!/usr/bin/env python3\n\"\"\"Simple buggy sorting algorithm implementation\"\"\"\n\nimport random\n\ndef buggy_bubble_sort(arr):\n    \"\"\"Bubble sort with intentional bugs\"\"\"\n    n = len(arr)\n    \n    # Bug 1: Range should be n, not n-1 (misses last pass)\n    for i in range(n-1):\n        # Bug 2: Range should be n-i-1, not n-1 (unnecessarily checks sorted elements)\n        for j in range(n-1):\n            # Bug 3: Inconsistent swap direction (sorts in descending order)\n            if arr[j] < arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    \n    return arr\n\n# Test the buggy sorting function\ntest_array = [random.randint(1, 100) for _ in range(10)]\nprint(f\"Original array: {test_array}\")\nprint(f\"Sorted array: {buggy_bubble_sort(test_array.copy())}\")\n# Bug 4: Original array shows as sorted in output due to modifying the array directly ",
+    "fixed_code": "#!/usr/bin/env python3\n\"\"\"Simple buggy sorting algorithm implementation\"\"\"\n\nimport random\n\ndef buggy_bubble_sort(arr):\n    \"\"\"Bubble sort with intentional bugs\"\"\"\n    n = len(arr)\n    \n    # Bug 1: Range should be n, not n-1 (misses last pass)\n    for i in range(n):\n        # Bug 2: Range should be n-i-1, not n-1 (unnecessarily checks sorted elements)\n        for j in range(n-i-1):\n            # Bug 3: Inconsistent swap direction (sorts in descending order)\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    \n    return arr\n\n# Test the buggy sorting function\ntest_array = [random.randint(1, 100) for _ in range(10)]\nprint(f\"Original array: {test_array}\")\nprint(f\"Sorted array: {buggy_bubble_sort(test_array.copy())}\")\n# Bug 4: Original array shows as sorted in output due to modifying the array directly ",
+    "language": "python",
+    "created_at": "2025-04-23T17:44:08.399116"
+  }
+]

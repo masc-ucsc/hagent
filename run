@@ -1,0 +1,11 @@
+#!/bin/bash
+poetry run pytest -k "test_memory_compile_gcc_simple" -v
+poetry run pytest -k "test_memory_compile_slang_simple" -v
+poetry run pytest -k "test_memory_coverage" -v
+poetry run pytest -k "test_memory_utils" -v
+#poetry run python3 test_memory_compile_gcc_simple.py
+#python3 -m hagent.tool.tests.test_memory_compile_gcc_simple
+
+poetry run pytest code_fix_example.py -v -s
+poetry run python code_fix_example.py
+poetry run pytest code_fix_example.py -v -s && poetry run python code_fix_example.py
