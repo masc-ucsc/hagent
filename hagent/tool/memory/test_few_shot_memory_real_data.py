@@ -14,6 +14,7 @@ from hagent.tool.memory.few_shot_memory import FewShotMemory, Memory
 from hagent.tool.memory.db_memory_store import SQLiteMemoryStore
 from hagent.tool.memory.create_test_data import create_sample_data
 from hagent.tool.memory.import_data import import_json_to_sqlite
+from hagent.tool.memory.code_fix_generator import CodeFixGenerator
 
 # Define permanent paths for test data
 DATA_DIR = Path(__file__).parent / "data"
@@ -63,6 +64,7 @@ def test_memory_with_json_data(sample_data_json):
                 category=item.get("category", ""),
                 faulty_code=item.get("faulty_code", ""),
                 fixed_code=item.get("fixed_code", ""),
+                compiler_errors=item.get("compiler_errors", []),
                 language=item.get("language", "")
             )
         
@@ -81,6 +83,10 @@ def test_memory_with_json_data(sample_data_json):
         # Verify code fields
         assert verilog_memories[0].faulty_code != ""
         assert verilog_memories[0].language == "verilog"
+        
+        # Test getting unfixed memories
+        unfixed_memories = memory.get_unfixed_memories()
+        assert len(unfixed_memories) == len(data)  # All memories should be unfixed initially
 
 def test_memory_with_sqlite_data(sample_data_db):
     """Test FewShotMemory with real data from SQLite database."""
@@ -116,7 +122,6 @@ def test_memory_with_sqlite_data(sample_data_db):
         formatted = memory.format_memories_as_context(verilog_memories)
         assert "Verilog" in formatted
         assert "Faulty Code" in formatted
-        assert "Fixed Code" in formatted
         assert "```verilog" in formatted
         
         # Test JSON serialization
@@ -151,6 +156,41 @@ def test_step_interface_with_real_data(sample_data_db):
         assert "faulty_code" in result["memories"][0]
         assert "fixed_code" in result["memories"][0]
         
+        # Test get_unfixed command
+        result = memory.run({
+            "command": "get_unfixed"
+        })
+        
+        assert result["status"] == "success"
+        assert len(result["memories"]) > 0
+        
+        # Test update_code command with a memory
+        if result["memories"]:
+            memory_id = result["memories"][0]["id"]
+            
+            # Add compiler errors
+            update_result = memory.run({
+                "command": "update_code",
+                "memory_id": memory_id,
+                "compiler_errors": ["Test compiler error for integration test"]
+            })
+            
+            assert update_result["status"] == "success"
+            
+            # Verify the update directly in the memory object
+            # This is more reliable than trying to retrieve via semantic search
+            assert memory.memories[memory_id].compiler_errors == ["Test compiler error for integration test"]
+            
+            # Also verify the update is persisted to the database by reconnecting
+            new_memory = FewShotMemory(
+                name="test_step_verify",
+                memory_dir=temp_dir,
+                use_sqlite=True,
+                db_path=sample_data_db
+            )
+            
+            assert new_memory.memories[memory_id].compiler_errors == ["Test compiler error for integration test"]
+        
         # Test status command
         status_result = memory.run({
             "command": "status"
@@ -158,6 +198,67 @@ def test_step_interface_with_real_data(sample_data_db):
         
         assert status_result["status"] == "success"
         assert status_result["total_memories"] > 0
+
+def test_code_verification_workflow():
+    """
+    Integration test for the complete code verification workflow:
+    1. Create sample data
+    2. Import to SQLite
+    3. Compile code to get errors
+    4. Update database with errors
+    """
+    # Create temporary directory and database
+    with tempfile.TemporaryDirectory() as temp_dir:
+        json_path = os.path.join(temp_dir, "test_memories.json")
+        db_path = os.path.join(temp_dir, "test_memory.db")
+        
+        # Create sample data
+        create_sample_data(output_path=json_path)
+        
+        # Import to SQLite
+        import_json_to_sqlite(json_path, db_path)
+        
+        # Initialize memory system
+        memory = FewShotMemory(
+            name="test_workflow",
+            use_sqlite=True,
+            db_path=db_path
+        )
+        
+        # Get unfixed memories
+        unfixed = memory.get_unfixed_memories()
+        assert len(unfixed) > 0
+        
+        # Process one memory manually
+        if unfixed:
+            test_memory = unfixed[0]
+            assert test_memory.faulty_code != ""
+            
+            # Add mock compiler errors
+            mock_errors = ["Mock compiler error for testing"]
+            memory.update_memory_code_fields(
+                test_memory.id,
+                compiler_errors=mock_errors
+            )
+            
+            # Verify compiler errors were saved
+            updated = memory.memories[test_memory.id]
+            assert updated.compiler_errors == mock_errors
+            
+            # Add mock fixed code
+            mock_fixed = "// This is mock fixed code for testing"
+            memory.update_memory_code_fields(
+                test_memory.id,
+                fixed_code=mock_fixed
+            )
+            
+            # Verify fixed code was saved
+            updated = memory.memories[test_memory.id]
+            assert updated.fixed_code == mock_fixed
+            
+            # Get unfixed memories again - should be one less
+            unfixed_after = memory.get_unfixed_memories()
+            assert len(unfixed_after) == len(unfixed) - 1
 
 def create_and_test_permanent_db():
     """Create and test with permanent database file."""

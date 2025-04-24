@@ -108,6 +108,10 @@ module buggy_counter(
     end
 endmodule
             """,
+            compiler_errors=[
+                "Error: Non-blocking assignment expected for reg 'overflow'",
+                "Error: Missing reset logic"
+            ],
             fixed_code="""
 module fixed_counter(
     input clk,
@@ -145,6 +149,8 @@ endmodule
         formatted = self.memory.format_memories_as_context(memories, include_code=True)
         self.assertIn("buggy_counter", formatted)
         self.assertIn("Faulty Code", formatted)
+        self.assertIn("Compiler Errors", formatted)
+        self.assertIn("1. Error: Non-blocking", formatted)
         self.assertIn("Fixed Code", formatted)
         self.assertIn("```verilog", formatted)
         
@@ -152,6 +158,67 @@ endmodule
         formatted_no_code = self.memory.format_memories_as_context(memories, include_code=False)
         self.assertNotIn("```verilog", formatted_no_code)
         self.assertNotIn("Faulty Code", formatted_no_code)
+    
+    def test_update_code_fields(self):
+        """Test updating code-related fields."""
+        # Add a memory with faulty code only
+        memory_id = self.memory.add_memory(
+            "Test updating code fields",
+            faulty_code="def buggy_function():\n    retrun 'misspelled'",
+            language="python"
+        )
+        
+        # Update with compiler errors
+        compiler_errors = ["SyntaxError: invalid syntax, did you mean 'return'?"]
+        self.memory.update_memory_code_fields(memory_id, compiler_errors=compiler_errors)
+        
+        # Verify errors were added
+        self.assertEqual(self.memory.memories[memory_id].compiler_errors, compiler_errors)
+        
+        # Update with fixed code
+        fixed_code = "def fixed_function():\n    return 'corrected'"
+        self.memory.update_memory_code_fields(memory_id, fixed_code=fixed_code)
+        
+        # Verify code was updated
+        self.assertEqual(self.memory.memories[memory_id].fixed_code, fixed_code)
+        
+        # Verify errors remain unchanged
+        self.assertEqual(self.memory.memories[memory_id].compiler_errors, compiler_errors)
+    
+    def test_get_unfixed_memories(self):
+        """Test getting unfixed memories."""
+        # Add a memory with fixed code
+        fixed_id = self.memory.add_memory(
+            "Fixed memory",
+            faulty_code="int main() { printf('Hello'); }",
+            fixed_code="int main() { printf('Hello'); return 0; }",
+            language="cpp"
+        )
+        
+        # Add a memory without fixed code
+        unfixed_id = self.memory.add_memory(
+            "Unfixed memory",
+            faulty_code="int main() { prinft('Typo'); }",
+            language="cpp"
+        )
+        
+        # Add another unfixed memory with different language
+        unfixed_python_id = self.memory.add_memory(
+            "Unfixed Python memory",
+            faulty_code="print 'Python 2 syntax'",
+            language="python"
+        )
+        
+        # Get all unfixed memories
+        unfixed = self.memory.get_unfixed_memories()
+        self.assertEqual(len(unfixed), 2)
+        self.assertIn(unfixed_id, [m.id for m in unfixed])
+        self.assertIn(unfixed_python_id, [m.id for m in unfixed])
+        
+        # Get unfixed memories filtered by language
+        cpp_unfixed = self.memory.get_unfixed_memories(language="cpp")
+        self.assertEqual(len(cpp_unfixed), 1)
+        self.assertEqual(cpp_unfixed[0].id, unfixed_id)
     
     def test_delete_memory(self):
         """Test deleting a memory."""
@@ -176,6 +243,7 @@ endmodule
         memory_id = self.memory.add_memory(
             "Test persistent memory with code",
             faulty_code="def buggy_function(x):\n    return x+1  # Bug: doesn't handle zero",
+            compiler_errors=["Logic error: Function doesn't handle zero correctly"],
             fixed_code="def fixed_function(x):\n    if x == 0:\n        return 0\n    return x+1",
             language="python"
         )
@@ -191,6 +259,7 @@ endmodule
         self.assertIn(memory_id, new_memory.memories)
         self.assertEqual(new_memory.memories[memory_id].language, "python")
         self.assertIn("buggy_function", new_memory.memories[memory_id].faulty_code)
+        self.assertEqual(len(new_memory.memories[memory_id].compiler_errors), 1)
     
     def test_step_interface(self):
         """Test Step interface implementation."""
@@ -201,12 +270,47 @@ endmodule
             "keywords": ["sorting", "algorithm", "bug"],
             "tags": ["python", "algorithms"],
             "faulty_code": "def bubble_sort(arr):\n    for i in range(len(arr)-1):\n        for j in range(len(arr)-1):\n            if arr[j] < arr[j+1]:  # Bug: sorts in descending order\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    return arr",
-            "fixed_code": "def bubble_sort(arr):\n    for i in range(len(arr)):\n        for j in range(len(arr)-i-1):\n            if arr[j] > arr[j+1]:  # Fixed: sorts in ascending order\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    return arr",
+            "fixed_code": "",
+            "compiler_errors": [],
             "language": "python"
         }
         result = self.memory.run(add_data)
         self.assertEqual(result["status"], "success")
         memory_id = result["memory_id"]
+        
+        # Test update_code command
+        update_data = {
+            "command": "update_code",
+            "memory_id": memory_id,
+            "compiler_errors": ["IndexError: Loop may access arr[j+1] out of bounds", 
+                               "Logic error: Comparison direction creates descending order"]
+        }
+        result = self.memory.run(update_data)
+        self.assertEqual(result["status"], "success")
+        
+        # Test get_unfixed command
+        unfixed_data = {
+            "command": "get_unfixed",
+            "language": "python"
+        }
+        result = self.memory.run(unfixed_data)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(result["memories"]), 1)
+        self.assertEqual(result["memories"][0]["id"], memory_id)
+        
+        # Now add a fix
+        update_fix_data = {
+            "command": "update_code",
+            "memory_id": memory_id,
+            "fixed_code": "def bubble_sort(arr):\n    for i in range(len(arr)):\n        for j in range(len(arr)-i-1):\n            if arr[j] > arr[j+1]:  # Fixed: sorts in ascending order\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    return arr"
+        }
+        result = self.memory.run(update_fix_data)
+        self.assertEqual(result["status"], "success")
+        
+        # Test get_unfixed again - should be empty
+        result = self.memory.run(unfixed_data)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(result["memories"]), 0)
         
         # Test retrieve command
         retrieve_data = {

@@ -29,7 +29,7 @@ class SQLiteMemoryStore:
         """Create necessary tables if they don't exist."""
         cursor = self.conn.cursor()
         
-        # Create memories table with faulty_code and fixed_code columns
+        # Create memories table with faulty_code, fixed_code, and compiler_errors columns
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS memories (
             id TEXT PRIMARY KEY,
@@ -42,6 +42,7 @@ class SQLiteMemoryStore:
             category TEXT,
             faulty_code TEXT,
             fixed_code TEXT,
+            compiler_errors TEXT,
             language TEXT,
             metadata TEXT
         )
@@ -102,6 +103,10 @@ class SQLiteMemoryStore:
                 print("Adding language column to memories table")
                 cursor.execute("ALTER TABLE memories ADD COLUMN language TEXT")
                 
+            if "compiler_errors" not in columns:
+                print("Adding compiler_errors column to memories table")
+                cursor.execute("ALTER TABLE memories ADD COLUMN compiler_errors TEXT")
+                
             self.conn.commit()
             print("Database schema upgraded successfully")
         except Exception as e:
@@ -130,6 +135,7 @@ class SQLiteMemoryStore:
         category = memory_data.get("category", "")
         faulty_code = memory_data.get("faulty_code", "")
         fixed_code = memory_data.get("fixed_code", "")
+        compiler_errors = json.dumps(memory_data.get("compiler_errors", []))
         language = memory_data.get("language", "")
         
         # Extract lists
@@ -143,15 +149,15 @@ class SQLiteMemoryStore:
             if key not in ["id", "content", "context", "importance_score", 
                           "retrieval_count", "timestamp", "last_accessed", 
                           "category", "keywords", "tags", "links", 
-                          "faulty_code", "fixed_code", "language"]:
+                          "faulty_code", "fixed_code", "compiler_errors", "language"]:
                 metadata[key] = value
         
         # Insert memory
         cursor.execute('''
         INSERT INTO memories 
         (id, content, context, importance_score, retrieval_count, timestamp, last_accessed, 
-         category, faulty_code, fixed_code, language, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         category, faulty_code, fixed_code, compiler_errors, language, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             memory_id, 
             content, 
@@ -163,6 +169,7 @@ class SQLiteMemoryStore:
             category,
             faulty_code,
             fixed_code,
+            compiler_errors,
             language,
             json.dumps(metadata)
         ))
@@ -210,7 +217,7 @@ class SQLiteMemoryStore:
         # Get memory data
         cursor.execute('''
         SELECT id, content, context, importance_score, retrieval_count, timestamp, last_accessed, 
-               category, faulty_code, fixed_code, language, metadata
+               category, faulty_code, fixed_code, compiler_errors, language, metadata
         FROM memories
         WHERE id = ?
         ''', (memory_id,))
@@ -231,12 +238,13 @@ class SQLiteMemoryStore:
             "category": memory_row[7],
             "faulty_code": memory_row[8],
             "fixed_code": memory_row[9],
-            "language": memory_row[10]
+            "compiler_errors": json.loads(memory_row[10]) if memory_row[10] else [],
+            "language": memory_row[11]
         }
         
         # Add metadata
-        if memory_row[11]:
-            metadata = json.loads(memory_row[11])
+        if memory_row[12]:
+            metadata = json.loads(memory_row[12])
             memory_data.update(metadata)
         
         # Get keywords
@@ -310,6 +318,11 @@ class SQLiteMemoryStore:
                 fields.append(f"{field} = ?")
                 values.append(updates[field])
         
+        # Special handling for compiler_errors (JSON serialization)
+        if "compiler_errors" in updates:
+            fields.append("compiler_errors = ?")
+            values.append(json.dumps(updates["compiler_errors"]))
+        
         if fields:
             cursor.execute(f'''
             UPDATE memories
@@ -355,6 +368,80 @@ class SQLiteMemoryStore:
         
         self.conn.commit()
         return True
+    
+    def update_code_fields(self, memory_id: str, compiler_errors=None, fixed_code=None) -> bool:
+        """
+        Update only code-related fields of a memory.
+        
+        Args:
+            memory_id: ID of the memory to update
+            compiler_errors: List of compiler error messages (optional)
+            fixed_code: Fixed version of the code (optional)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        cursor = self.conn.cursor()
+        
+        # Check if memory exists
+        cursor.execute('SELECT id FROM memories WHERE id = ?', (memory_id,))
+        if not cursor.fetchone():
+            return False
+        
+        # Build update query based on provided fields
+        fields = []
+        values = []
+        
+        if compiler_errors is not None:
+            fields.append("compiler_errors = ?")
+            values.append(json.dumps(compiler_errors))
+            
+        if fixed_code is not None:
+            fields.append("fixed_code = ?")
+            values.append(fixed_code)
+            
+        if not fields:
+            # Nothing to update
+            return True
+            
+        # Execute update
+        cursor.execute(f'''
+        UPDATE memories
+        SET {", ".join(fields)}
+        WHERE id = ?
+        ''', values + [memory_id])
+        
+        self.conn.commit()
+        return True
+    
+    def get_unfixed_memories(self, language=None) -> List[Dict]:
+        """
+        Get memories that don't have fixed code yet.
+        
+        Args:
+            language: Optional filter by programming language
+            
+        Returns:
+            List of memory dictionaries with unfixed code
+        """
+        cursor = self.conn.cursor()
+        
+        if language:
+            cursor.execute('''
+            SELECT id FROM memories 
+            WHERE fixed_code = '' OR fixed_code IS NULL
+            AND language = ?
+            ''', (language,))
+        else:
+            cursor.execute('''
+            SELECT id FROM memories 
+            WHERE fixed_code = '' OR fixed_code IS NULL
+            ''')
+            
+        memory_ids = [row[0] for row in cursor.fetchall()]
+        
+        # Get full memory data for each ID
+        return [self.get_memory(memory_id) for memory_id in memory_ids]
     
     def delete_memory(self, memory_id: str) -> bool:
         """

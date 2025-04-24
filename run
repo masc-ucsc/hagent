@@ -9,3 +9,5 @@ poetry run pytest -k "test_memory_utils" -v
 poetry run pytest code_fix_example.py -v -s
 poetry run python code_fix_example.py
 poetry run pytest code_fix_example.py -v -s && poetry run python code_fix_example.py
+poetry run pytest hagent/tool/memory/test_few_shot_memory.py -v -s
+poetry run pytest hagent/tool/memory/test_few_shot_memory_real_data.py -v -s

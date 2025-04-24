@@ -36,6 +36,7 @@ class Memory:
                  tags: Optional[List[str]] = None,
                  faulty_code: Optional[str] = None,
                  fixed_code: Optional[str] = None,
+                 compiler_errors: Optional[List[str]] = None,
                  language: Optional[str] = None,
                  llm_interface: Optional[LLM_wrap] = None):
         
@@ -78,6 +79,7 @@ class Memory:
         # Code-specific fields
         self.faulty_code = faulty_code or ""
         self.fixed_code = fixed_code or ""
+        self.compiler_errors = compiler_errors or []
         self.language = language or ""
 
     @staticmethod
@@ -146,10 +148,11 @@ class Memory:
         }
 
     @staticmethod
-    def fix_code(code: str, language: str, llm_interface: LLM_wrap) -> str:
+    def fix_code(code: str, compiler_errors: List[str], language: str, llm_interface: LLM_wrap) -> str:
         """Generate a fixed version of the code using LLM"""
         prompt_data = {
             "faulty_code": code,
+            "compiler_errors": compiler_errors,
             "language": language or "unknown"
         }
         
@@ -182,6 +185,7 @@ class Memory:
             "tags": self.tags,
             "faulty_code": self.faulty_code,
             "fixed_code": self.fixed_code,
+            "compiler_errors": self.compiler_errors,
             "language": self.language
         }
     
@@ -203,6 +207,7 @@ class Memory:
             tags=data.get("tags"),
             faulty_code=data.get("faulty_code"),
             fixed_code=data.get("fixed_code"),
+            compiler_errors=data.get("compiler_errors"),
             language=data.get("language")
         )
 
@@ -529,6 +534,11 @@ class FewShotMemory(Step):
                 entry += f"Language: {memory.language}\n"
                 entry += f"Faulty Code:\n```{memory.language}\n{memory.faulty_code}\n```\n"
                 
+                if memory.compiler_errors:
+                    entry += f"Compiler Errors:\n"
+                    for i, error in enumerate(memory.compiler_errors):
+                        entry += f"{i+1}. {error}\n"
+                
                 if memory.fixed_code:
                     entry += f"Fixed Code:\n```{memory.language}\n{memory.fixed_code}\n```\n"
                     
@@ -536,6 +546,67 @@ class FewShotMemory(Step):
             formatted.append(entry)
         
         return "\n".join(formatted)
+    
+    def update_memory_code_fields(self, memory_id: str, compiler_errors=None, fixed_code=None) -> bool:
+        """
+        Update code-related fields of a memory.
+        
+        Args:
+            memory_id: ID of the memory to update
+            compiler_errors: List of compiler error messages (optional)
+            fixed_code: Fixed version of the code (optional)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Check if memory exists
+        if memory_id not in self.memories:
+            return False
+        
+        # Update memory object
+        if compiler_errors is not None:
+            self.memories[memory_id].compiler_errors = compiler_errors
+            
+        if fixed_code is not None:
+            self.memories[memory_id].fixed_code = fixed_code
+        
+        # If using SQLite, also update database
+        if self.use_sqlite and self.db_store:
+            updates = {}
+            if compiler_errors is not None:
+                updates["compiler_errors"] = compiler_errors
+            if fixed_code is not None:
+                updates["fixed_code"] = fixed_code
+                
+            self.db_store.update_code_fields(memory_id, **updates)
+        
+        # Save to disk
+        self._save_memories()
+        
+        return True
+    
+    def get_unfixed_memories(self, language=None) -> List[Memory]:
+        """
+        Get memories that don't have fixed code yet.
+        
+        Args:
+            language: Optional filter by programming language
+            
+        Returns:
+            List of Memory objects with unfixed code
+        """
+        if self.use_sqlite and self.db_store:
+            # Use SQLite query for better performance
+            memory_dicts = self.db_store.get_unfixed_memories(language)
+            return [Memory.from_dict(m) for m in memory_dicts]
+        else:
+            # Filter in-memory
+            result = []
+            for memory in self.memories.values():
+                if not memory.fixed_code:
+                    if language is None or memory.language == language:
+                        result.append(memory)
+            return result
 
     def run(self, user_input: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -547,6 +618,8 @@ class FewShotMemory(Step):
                 - "retrieve": requires "query", optional "k"
                 - "add": requires "content", optional metadata
                 - "delete": requires "memory_id"
+                - "update_code": requires "memory_id", optional "compiler_errors", "fixed_code"
+                - "get_unfixed": optional "language"
                 - "status": no additional parameters required
         
         Returns:
@@ -619,6 +692,40 @@ class FewShotMemory(Step):
                         "status": "error",
                         "message": f"Memory {memory_id} not found"
                     }
+            
+            elif command == "update_code":
+                memory_id = user_input.get("memory_id", "")
+                
+                if not memory_id:
+                    return {"status": "error", "message": "Memory ID is required for update_code command"}
+                
+                compiler_errors = user_input.get("compiler_errors")
+                fixed_code = user_input.get("fixed_code")
+                
+                success = self.update_memory_code_fields(memory_id, compiler_errors, fixed_code)
+                
+                if success:
+                    return {
+                        "status": "success",
+                        "message": f"Memory {memory_id} code fields updated"
+                    }
+                else:
+                    return {
+                        "status": "error",
+                        "message": f"Memory {memory_id} not found"
+                    }
+            
+            elif command == "get_unfixed":
+                language = user_input.get("language")
+                
+                memories = self.get_unfixed_memories(language)
+                serialized_memories = [memory.to_dict() for memory in memories]
+                
+                return {
+                    "status": "success",
+                    "memories": serialized_memories,
+                    "count": len(serialized_memories)
+                }
             
             elif command == "status":
                 return {

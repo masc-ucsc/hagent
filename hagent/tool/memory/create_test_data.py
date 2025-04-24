@@ -13,42 +13,10 @@ def read_buggy_code(file_path):
         print(f"Error reading file {file_path}: {str(e)}")
         return ""
 
-def get_fixed_code(buggy_code, language):
-    """
-    Generate a fixed version of the buggy code.
-    In a real implementation, this would use an LLM or rule-based system.
-    Here we're just simulating by fixing known bugs.
-    """
-    # This is a simplified approach. In a real system, you'd use an LLM or actual bug fixes.
-    if language == "verilog":
-        # Fix Verilog bugs: add overflow as reg, use posedge, add reset logic
-        fixed = buggy_code.replace("output overflow", "output reg overflow")
-        fixed = fixed.replace("negedge clk", "posedge clk")
-        fixed = fixed.replace("// Bug 3: Missing reset logic", "if (!reset_n) begin\n            count <= 0;\n            overflow <= 0;\n        end else")
-        fixed = fixed.replace("overflow = 1", "overflow <= 1")
-        fixed = fixed.replace("overflow = 0", "overflow <= 0")
-        return fixed
-    
-    elif language == "cpp":
-        # Fix C++ bugs: add destructor, fix size tracking, add bounds checking
-        fixed = buggy_code.replace("// Bug 3: Missing destructor", "~BuggyArray() {\n        delete[] arr;\n    }")
-        fixed = fixed.replace("size = capacity", "size = 0")
-        fixed = fixed.replace("arr[index] = value", "if (index < size) arr[index] = value")
-        fixed = fixed.replace("return arr[index]", "return (index < size) ? arr[index] : -1")
-        return fixed
-    
-    elif language == "python":
-        # Fix Python bugs: correct sort direction, fix range issues
-        fixed = buggy_code.replace("if arr[j] < arr[j+1]", "if arr[j] > arr[j+1]")
-        fixed = fixed.replace("for i in range(n-1)", "for i in range(n)")
-        fixed = fixed.replace("for j in range(n-1)", "for j in range(n-i-1)")
-        return fixed
-    
-    return buggy_code  # Default case - return unchanged
-
 def create_sample_data(output_path=None):
     """
-    Create sample memory data by reading buggy code files and generating fixes.
+    Create sample memory data by reading buggy code files.
+    Fixed code is initially empty and will be filled by the code fixing system.
     
     Args:
         output_path: Optional path for output JSON file. If not provided, 
@@ -68,7 +36,7 @@ def create_sample_data(output_path=None):
     timestamp = current_time.strftime("%Y%m%d%H%M")
     iso_timestamp = current_time.isoformat()
     
-    # Create sample data with buggy code and fixes
+    # Create sample data with buggy code but empty fixed code
     sample_data = [
         {
             "id": str(uuid.uuid4()),
@@ -79,7 +47,8 @@ def create_sample_data(output_path=None):
             "timestamp": timestamp,
             "category": "Verilog",
             "faulty_code": read_buggy_code(verilog_path),
-            "fixed_code": get_fixed_code(read_buggy_code(verilog_path), "verilog"),
+            "fixed_code": "",  # Empty initially, will be filled by code fixer
+            "compiler_errors": [],  # Will store compiler diagnostic messages
             "language": "verilog",
             "created_at": iso_timestamp
         },
@@ -92,7 +61,8 @@ def create_sample_data(output_path=None):
             "timestamp": timestamp,
             "category": "C++",
             "faulty_code": read_buggy_code(cpp_path),
-            "fixed_code": get_fixed_code(read_buggy_code(cpp_path), "cpp"),
+            "fixed_code": "",  # Empty initially, will be filled by code fixer
+            "compiler_errors": [],  # Will store compiler diagnostic messages
             "language": "cpp",
             "created_at": iso_timestamp
         },
@@ -105,7 +75,8 @@ def create_sample_data(output_path=None):
             "timestamp": timestamp,
             "category": "Python",
             "faulty_code": read_buggy_code(python_path),
-            "fixed_code": get_fixed_code(read_buggy_code(python_path), "python"),
+            "fixed_code": "",  # Empty initially, will be filled by code fixer
+            "compiler_errors": [],  # Will store compiler diagnostic messages
             "language": "python",
             "created_at": iso_timestamp
         }

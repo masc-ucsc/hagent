@@ -31,6 +31,8 @@ def import_json_to_sqlite(json_path: str, db_path: str = None):
             memory["fixed_code"] = ""
         if "language" not in memory:
             memory["language"] = ""
+        if "compiler_errors" not in memory:
+            memory["compiler_errors"] = []
             
         db_store.add_memory(memory)
     
