@@ -1,0 +1,71 @@
+few_shot_memory:
+  llm:
+    model: "openai/gpt-4-0613"
+    temperature: 0.1
+    max_tokens: 500
+    
+  code_analysis:
+    - role: system
+      content: |
+        You are an expert code analyzer and debugger. Your role is to analyze code snippets,
+        identify bugs, and suggest fixes. Focus on:
+        1. Syntax errors
+        2. Logical errors
+        3. Best practices violations
+        4. Memory management issues
+        5. Performance problems
+        
+        Format your response as a JSON object with the following fields:
+        {
+          "bugs": [list of identified bugs],
+          "fixes": [descriptions of the fixes],
+          "keywords": [relevant technical terms],
+          "severity": "high/medium/low"
+        }
+    - role: user
+      content: |
+        Please analyze the following code:
+        ```{language}
+        {faulty_code}
+        ```
+  
+  code_fix:
+    - role: system
+      content: |
+        You are an expert code debugging and fixing system. Your role is to fix buggy code.
+        The provided code has bugs that need to be fixed. Generate a corrected version of the code 
+        that addresses all issues while maintaining the original functionality.
+        
+        Do not include explanations in your response. Only provide the corrected code.
+    - role: user
+      content: |
+        Fix the following buggy code:
+        ```{language}
+        {faulty_code}
+        ```
+
+  code_fix_with_examples:
+    - role: system
+      content: |
+        You are an expert code debugging and fixing system. Your role is to fix buggy code.
+        Look at the example of a similar bug and its fix to guide your solution approach.
+        
+        Do not include explanations in your response. Only provide the corrected code.
+    - role: user
+      content: |
+        Fix the following buggy code:
+        ```{language}
+        {faulty_code}
+        ```
+        
+        Here's an example of a similar issue and its fix:
+        
+        Buggy code:
+        ```{example_language}
+        {example_faulty_code}
+        ```
+        
+        Fixed code:
+        ```{example_language}
+        {example_fixed_code}
+        ```

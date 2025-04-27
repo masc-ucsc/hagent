@@ -1,0 +1,3 @@
+#!/bin/bash
+poetry run pytest test_few_shot_memory.py -v -s
+poetry run pytest test_few_shot_memory_real_data.py -v -s
