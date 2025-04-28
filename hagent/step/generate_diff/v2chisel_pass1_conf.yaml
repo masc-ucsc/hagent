@@ -1,0 +1,136 @@
+v2chisel_pass1: 
+  threshold: 80
+  context: 1
+  
+  prompt1:
+    - role: system
+      content: |
+        You are a coding assistant to update Chisel code based on differences between two Verilog versions.
+
+    - role: user
+      content: |
+        I have a Scala program that generates Verilog. I made modifications to the Verilog code and now need to update the corresponding Chisel code.
+
+        The fixed Verilog represents the desired changes. Here is the unified diff between the original and fixed Verilog:
+        ```
+        {verilog_diff}
+        ```
+        here is the original chisel code:
+        ```
+        {chisel_original}
+        ```
+        Can you give me a Chisel diff that could work? 
+        Output *only* the diff in **unified diff format** with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+        PLEASE No explanation, no Note. ONLY diff, **unified diff format**
+
+  prompt0:
+    - role: system
+      content: |
+        You are a coding assistant to update Chisel code based on differences between two Verilog versions.
+
+    - role: user
+      content: |
+        I have a Scala program that generates Verilog. I made modifications to the Verilog code and now need to update the corresponding Chisel code.
+
+        The fixed Verilog represents the desired changes. Here is the unified diff between the original and fixed Verilog:
+        ```
+        {verilog_diff}
+        ```
+
+        I also provide a subset of the Chisel code with hints "->" marking the lines that are most likely to require changes:
+        ```
+        {chisel_subset}
+        ```
+
+        Can you give me a Chisel diff that could work? 
+        Output *only* the diff in **unified diff format** with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+        PLEASE No explanation, no Note. ONLY diff, **unified diff format**
+
+  prompt2:
+    - role: system
+      content: |
+        You are a coding assistant specialized in refining Chisel code based on Verilog changes.
+    - role: user
+      content: |
+        The previous attempt to generate a Chisel diff did not produce valid Verilog. 
+        This is the currect chisel_diff:
+        ```
+        {chisel_diff}
+        ```
+        Here is the error message:
+        ```
+        {error_msg}
+        ```
+        Here is the unified diff between the original and fixed Verilog:
+        ```
+        {verilog_diff}
+        ```
+        I also provide a subset of the Chisel code with hints "->" marking the lines that are most likely to require changes:
+        ```
+        {chisel_subset}
+        ```
+        Can you give me a Chisel diff that could work? 
+        Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+        PLEASE No explanation, no Note. ONLY diff
+
+  prompt3:
+    - role: system
+      content: |
+        You are a coding assistant specialized in refining Chisel code based on Verilog changes.
+
+    - role: user
+      content: |
+        The previous attempt to generate a Chisel diff did not produce valid Verilog. 
+        This is the current chisel_diff:
+        ```
+        {chisel_diff}
+        ```
+        Here is the error message:
+        ```
+        {error_msg}
+        ```
+
+        Here is the unified diff between the original and fixed Verilog:
+        ```
+        {verilog_diff}
+        ```
+
+        I am providing a revised subset of the Chisel code with hints "->" marking additional lines that might need changes:
+        ```
+        {chisel_subset}
+        ```
+
+        Can you give me a Chisel diff that could work? 
+        Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+        PLEASE No explanation, no Note. ONLY diff
+
+  prompt4:
+    - role: system
+      content: |
+        You are a coding assistant specialized in refining Chisel code based on Verilog changes.
+
+    - role: user
+      content: |
+        The previous attempt to generate a Chisel diff did not produce valid Verilog. 
+        This is the current chisel_diff:
+        ```
+        {chisel_diff}
+        ```
+        Here is the error message:
+        ```
+        {error_msg}
+        ```
+
+        Here is the unified diff between the original and fixed Verilog:
+        ```
+        {verilog_diff}
+        ```
+
+        I am providing a revised subset of the Chisel code with hints "->" marking less lines that might need changes:
+        ```
+        {chisel_subset}
+        ```
+
+        Can you give me a Chisel diff that could work? 
+        Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+        PLEASE No explanation, no Note. ONLY diff

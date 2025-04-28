@@ -13,14 +13,17 @@ from hagent.core.step import Step
 from hagent.core.llm_template import LLM_template
 from hagent.core.llm_wrap import LLM_wrap
 
-from hagent.tool.chisel2v import Chisel2v
 from hagent.tool.code_scope import Code_scope
-from hagent.tool.chisel_diff_applier import ChiselDiffApplier
+from hagent.step.apply_diff.apply_diff import Apply_diff
 
 from hagent.tool.extract_verilog_diff_keywords import Extract_verilog_diff_keywords
 from hagent.tool.fuzzy_grep import Fuzzy_grep
 from hagent.tool.extract_code import Extract_code_verilog, Extract_code_chisel
 from hagent.tool.metadata_mapper import MetadataMapper
+from hagent.step.extract_hints.extract_hints import Extract_hints
+from hagent.step.generate_diff.generate_diff import Generate_diff
+from hagent.step.verify_candidate.verify_candidate import Verify_candidate
+
 
 
 def union_hints(hints1: str, hints2: str) -> str:
@@ -229,9 +232,26 @@ class V2Chisel_pass1(Step):
 
         # default_threshold = self.input_data.get("threshold", 40)
         default_threshold = self.template_config.template_dict.get('v2chisel_pass1', {}).get('threshold', 80)
-        chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text)
+        # === EXTRACT HINTS STEP ===
+        data['verilog_diff']     = verilog_diff_text
+        data['chisel_original']  = chisel_original
+        hints_step = Extract_hints()
+        hints_step.input_data = data
+        hints_step.setup()
+        data = hints_step.run(data)
+        chisel_subset = data.get('hints', '')
+
         if not chisel_subset.strip():
             self.error('No hint lines extracted from the Chisel code. Aborting LLM call.')
+
+         # === GENERATE DIFF STEP ===
+        diff_step = Generate_diff()
+        diff_step.input_data = data
+        diff_step.setup()
+        data = diff_step.run(data)
+        generated_diff = data.get('generated_diff', '')
+        if not generated_diff:
+            self.error('LLM did not produce any diff (generated_diff is empty).')
 
         was_valid = False
         chisel_updated_final = None
@@ -324,14 +344,30 @@ class V2Chisel_pass1(Step):
             print('==============================================')
 
             generated_diff = self._strip_markdown_fences(response_list[0])
-            applier = ChiselDiffApplier()
-            chisel_updated = applier.apply_diff(generated_diff, chisel_original)
+            # === APPLY DIFF STEP ===
+            apply_step = Apply_diff()
+            apply_step.input_data = data
+            apply_step.setup()
+            data = apply_step.run(data)
+            chisel_updated = data.get('chisel_candidate', '')
 
             # print("===== FINAL CHISEL CODE AFTER DIFF APPLIER (attempt {}) =====".format(attempt))
             # print(chisel_updated)
             print('Applied the diff.')
 
-            is_valid, verilog_candidate, error_msg = self._run_chisel2v(chisel_updated)
+            # === VERIFY CANDIDATE STEP ===
+            verify_step = Verify_candidate()
+            verify_step.input_data = {
+                'chisel_candidate': chisel_updated,
+                'verilog_fixed': verilog_fixed
+            }
+            verify_step.setup()
+            vc_results = verify_step.run(verify_step.input_data)
+            is_valid = vc_results.get('was_valid', False)
+            verilog_candidate = vc_results.get('verilog_candidate')
+            # prefer compile errors over LEC errors
+            error_msg = vc_results.get('compile_error') or vc_results.get('lec_error')
+
             if is_valid:
                 prompt_success[prompt_index] = 1
                 chisel_updated_final = chisel_updated
