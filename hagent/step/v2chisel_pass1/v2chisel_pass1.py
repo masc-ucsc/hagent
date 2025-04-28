@@ -98,24 +98,39 @@ class V2Chisel_pass1(Step):
         )
         return '\n'.join(diff_lines)
 
+    def _is_snippet_empty(self, snippet: str) -> bool:
+        """
+        Returns True if no meaningful code line is marked in the snippet.
+        """
+        for line in snippet.splitlines():
+            if line.startswith('->') and line.split(':', 1)[1].strip():
+                return False
+        return True
+
     def _extract_chisel_subset(self, chisel_code: str, verilog_diff: str, threshold_override: int = None) -> str:
 
-        # --- Metadata-driven hints ---
+        # --- Metadata-driven hints with extended context ---
         metadata_pointers = self.metadata_mapper.pointers_for_diff(verilog_diff)
-        # DEBUG: show metadata pointers
         print('------------------------------------------------')
         print('Metadata pointers found:')
         print(metadata_pointers)
         print('------------------------------------------------')
-
-        # If not forcing fuzzy, use metadata if available
+        # Only use metadata if not forcing fuzzy and pointers exist
         if not getattr(self, 'force_fuzzy', False) and metadata_pointers:
-            snippet = self.metadata_mapper.slice_chisel_by_pointers(chisel_code, metadata_pointers)
-            print('------------------------------------------------')
-            print('Chisel metadata-driven hints:')
-            print(snippet)
-            print('------------------------------------------------')
-            return snippet
+            # extend context (lines before/after) via config or default to 10
+            metadata_context = self.input_data.get('metadata_context', 10)
+            snippet = self.metadata_mapper.slice_chisel_by_pointers(
+                chisel_code, metadata_pointers, context=metadata_context
+            )
+            # fallback if snippet is effectively empty
+            if self._is_snippet_empty(snippet):
+                print('Metadata-driven snippet empty, falling back to fuzzy-grep')
+            else:
+                print('------------------------------------------------')
+                print('Chisel metadata-driven hints:')
+                print(snippet)
+                print('------------------------------------------------')
+                return snippet
         # If forcing fuzzy, skip metadata hints
         if getattr(self, 'force_fuzzy', False):
             print('------------------------------------------------')
