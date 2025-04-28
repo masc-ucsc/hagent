@@ -20,6 +20,7 @@ from hagent.tool.chisel_diff_applier import ChiselDiffApplier
 from hagent.tool.extract_verilog_diff_keywords import Extract_verilog_diff_keywords
 from hagent.tool.fuzzy_grep import Fuzzy_grep
 from hagent.tool.extract_code import Extract_code_verilog, Extract_code_chisel
+from hagent.tool.metadata_mapper import MetadataMapper
 
 
 def union_hints(hints1: str, hints2: str) -> str:
@@ -68,6 +69,11 @@ class V2Chisel_pass1(Step):
         self.verilog_extractor = Extract_code_verilog()
         self.chisel_extractor = Extract_code_chisel()
 
+        self.metadata_mapper = MetadataMapper(
+            self.input_data.get('verilog_original', ''),
+            self.input_data.get('verilog_fixed', '')
+        )
+
         # Load the single prompt configuration file.
         conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'v2chisel_pass1_conf.yaml')
         if not os.path.exists(conf_file):
@@ -93,6 +99,13 @@ class V2Chisel_pass1(Step):
         return '\n'.join(diff_lines)
 
     def _extract_chisel_subset(self, chisel_code: str, verilog_diff: str, threshold_override: int = None) -> str:
+
+        # --- Metadata-driven hints ---
+        metadata_pointers = self.metadata_mapper.pointers_for_diff(verilog_diff)
+        if metadata_pointers:
+            # extract precise snippets based on Verilog // src/... comments
+            return self.metadata_mapper.slice_chisel_by_pointers(chisel_code, metadata_pointers)
+
         # --- Fuzzy_grep part ---
         keywords = Extract_verilog_diff_keywords.get_user_variables(verilog_diff)
         print('------------------------------------------------')
