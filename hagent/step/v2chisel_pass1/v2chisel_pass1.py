@@ -102,9 +102,26 @@ class V2Chisel_pass1(Step):
 
         # --- Metadata-driven hints ---
         metadata_pointers = self.metadata_mapper.pointers_for_diff(verilog_diff)
-        if metadata_pointers:
-            # extract precise snippets based on Verilog // src/... comments
-            return self.metadata_mapper.slice_chisel_by_pointers(chisel_code, metadata_pointers)
+        # DEBUG: show metadata pointers
+        print('------------------------------------------------')
+        print('Metadata pointers found:')
+        print(metadata_pointers)
+        print('------------------------------------------------')
+
+        # If not forcing fuzzy, use metadata if available
+        if not getattr(self, 'force_fuzzy', False) and metadata_pointers:
+            snippet = self.metadata_mapper.slice_chisel_by_pointers(chisel_code, metadata_pointers)
+            print('------------------------------------------------')
+            print('Chisel metadata-driven hints:')
+            print(snippet)
+            print('------------------------------------------------')
+            return snippet
+        # If forcing fuzzy, skip metadata hints
+        if getattr(self, 'force_fuzzy', False):
+            print('------------------------------------------------')
+            print('Force fuzzy-grep enabled: skipping metadata-driven hints')
+            print('------------------------------------------------')
+        
 
         # --- Fuzzy_grep part ---
         keywords = Extract_verilog_diff_keywords.get_user_variables(verilog_diff)
@@ -343,6 +360,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
     # The -o flag is required for the output file
     parser.add_argument('-o', required=True, help='Output YAML file')
+    parser.add_argument('-fz', '--force-fuzzy', action='store_true', dest='force_fuzzy', help='Force fuzzy-grep hints first')
     # Add a positional argument for the input file
     parser.add_argument('input_file', help='Input YAML file')
     return parser.parse_args()
@@ -352,6 +370,8 @@ if __name__ == '__main__':  # pragma: no cover
     args = parse_arguments()
     step = V2Chisel_pass1()
     step.parse_arguments()
+    # propagate force-fuzzy flag to the step
+    step.force_fuzzy = args.force_fuzzy
     step.setup()
     result = step.step()  # this returns your result dictionary
 
