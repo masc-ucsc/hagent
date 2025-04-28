@@ -120,8 +120,9 @@ class V2Chisel_pass1(Step):
             # extend context (lines before/after) via config or default to 10
             metadata_context = self.input_data.get('metadata_context', 10)
             snippet = self.metadata_mapper.slice_chisel_by_pointers(
-                chisel_code, metadata_pointers, context=metadata_context
+            chisel_code, metadata_pointers, before=5, after=metadata_context
             )
+
             # fallback if snippet is effectively empty
             if self._is_snippet_empty(snippet):
                 print('Metadata-driven snippet empty, falling back to fuzzy-grep')

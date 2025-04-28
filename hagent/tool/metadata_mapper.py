@@ -8,17 +8,16 @@ class MetadataMapper:
         mapper = MetadataMapper(verilog_original_str, verilog_fixed_str)
         pointers = mapper.pointers_for_diff(verilog_diff_str)
         if pointers:
-            snippet = mapper.slice_chisel_by_pointers(chisel_code_str, pointers)
+            snippet = mapper.slice_chisel_by_pointers(chisel_code_str, pointers, before=5, after=20)
     """
-    # Regex to capture comments like: // src/main/scala/Top.scala:123 or with optional column
     METADATA_REGEX = re.compile(r'//\s*(?P<path>[\w/\.\-]+):(?P<line>\d+)')
 
-    def __init__(self, verilog_orig: str, verilog_fixed: str):
+    def __init__(self, verilog_orig: str = '', verilog_fixed: str = ''):
         # Store Verilog lines for both original and fixed versions
         self.verilog_orig_lines = verilog_orig.splitlines()
         self.verilog_fixed_lines = verilog_fixed.splitlines()
 
-        # Build maps from Verilog line index -> (path, lineno)
+        # Build metadata maps for quick lookup if needed
         self.metadata_map_orig = self._build_metadata_map(self.verilog_orig_lines)
         self.metadata_map_fixed = self._build_metadata_map(self.verilog_fixed_lines)
 
@@ -37,17 +36,18 @@ class MetadataMapper:
 
     def pointers_for_diff(self, diff_text: str) -> list:
         """
-        Given a unified diff text, collect all metadata pointers found in diff lines.
+        Given unified diff text, collect metadata pointers found in diff lines.
         Returns a deduplicated list of (scala_path, scala_line_no).
         """
         pointers = []
         for line in diff_text.splitlines():
             m = self.METADATA_REGEX.search(line)
-            if m:
-                path = m.group('path')
-                lineno = int(m.group('line'))
-                pointers.append((path, lineno))
-        # Deduplicate while preserving order
+            if not m:
+                continue
+            path = m.group('path')
+            lineno = int(m.group('line'))
+            pointers.append((path, lineno))
+        # Deduplicate preserving order
         seen = set()
         unique = []
         for p in pointers:
@@ -56,7 +56,7 @@ class MetadataMapper:
                 unique.append(p)
         return unique
 
-    def slice_chisel_by_pointers(self, chisel_code: str, pointers: list, context: int = 5) -> str:
+    def slice_chisel_by_pointers(self, chisel_code: str, pointers: list, before: int = 5, after: int = 5) -> str:
         """
         Extract code snippets around each scala_line_no in the Chisel code string.
         Marks the target line with '->'.
@@ -64,7 +64,8 @@ class MetadataMapper:
         Args:
             chisel_code: full Chisel (Scala) source as string.
             pointers: list of (scala_path, scala_line_no) tuples.
-            context: number of lines before/after to include (default ±5).
+            before: number of lines before the pointer to include.
+            after: number of lines after the pointer to include.
 
         Returns:
             A single string containing one or more snippets.
@@ -73,11 +74,12 @@ class MetadataMapper:
         snippets = []
         for path, lineno in pointers:
             idx = lineno - 1  # convert to 0-based index
-            start = max(0, idx - context)
-            end = min(len(code_lines), idx + context + 1)
+            start = max(0, idx - before)
+            end = min(len(code_lines), idx + after + 1)
             snippets.append(f"Code snippet from {path} lines {start+1}-{end}:")
             for i in range(start, end):
                 marker = '->' if i == idx else '  '
                 snippets.append(f"{marker} {i+1}: {code_lines[i]}")
             snippets.append("")
         return "\n".join(snippets)
+
