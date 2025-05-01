@@ -17,24 +17,32 @@ class Generate_diff(Step):
     """
     def setup(self):
         super().setup()
-        # Load the same prompt config used in pass1
-        conf_file = os.path.join(os.path.dirname(__file__), 'v2chisel_pass1_conf.yaml')
+        # point at the same YAML that v2chisel_pass1 is using
+        conf_file = os.path.join(os.path.dirname(__file__),
+                                 'v2chisel_pass1_conf.yaml')
         self.template_config = LLM_template(conf_file)
-        # Initialize LLM wrapper
-        llm_conf = self.template_config.template_dict.get('v2chisel_pass1', {}).get('llm', {})
-        self.lw = LLM_wrap(
-            name='v2chisel_pass1',
-            log_file='generate_diff.log',
-            conf_file=conf_file,
-            overwrite_conf=llm_conf
-        )
-        if self.lw.last_error:
-            raise ValueError(self.lw.last_error)
+
+        # if a parent already injected self.lw, reuse it
+        if not hasattr(self, 'lw') or self.lw is None:
+            llm_conf = (self.template_config
+                        .template_dict
+                        .get('v2chisel_pass1', {})
+                        .get('llm', {}))
+            self.lw = LLM_wrap(
+                name='v2chisel_pass1',
+                log_file='generate_diff.log',
+                conf_file=conf_file,
+                overwrite_conf=llm_conf
+            )
+            if self.lw.last_error:
+                raise ValueError(self.lw.last_error)
+
         self.setup_called = True
 
     def _strip_markdown_fences(self, code_str: str) -> str:
-        text = re.sub(r'```[a-zA-Z]*', '', code_str)
-        return text.replace('```', '').strip()
+        # identical to the monolithic pass1
+        code_str = re.sub(r'```[a-zA-Z]*', '', code_str)
+        return code_str.replace('```', '').strip()
 
     def run(self, data):
         # Prepare inputs
