@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any, Union, Tuple
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+import warnings
 
 from hagent.core.llm_template import LLM_template
 from hagent.core.llm_wrap import LLM_wrap
@@ -212,59 +213,76 @@ class Memory:
         )
 
 
-class EmbeddingRetriever:
-    """Semantic retrieval system using text embeddings"""
+class SimpleEmbeddingRetriever:
+    """Simple retrieval system using only text embeddings."""
     
     def __init__(self, model_name: str = 'all-MiniLM-L6-v2'):
-        """Initialize the retriever with a sentence transformer model"""
-        self.model = SentenceTransformer(model_name)
-        self.corpus = []  # Original text items
-        self.embeddings = None  # Numpy array of embeddings
-        self.document_map = {}  # Maps document content to its index
+        """Initialize the simple embedding retriever."""
+        try:
+            self.model = SentenceTransformer(model_name)
+            self.corpus = []
+            self.embeddings = None
+            self.document_ids = {}  # Map document content to its index
+            self.initialized = True
+        except Exception as e:
+            print(f"Error initializing SentenceTransformer: {e}")
+            self.initialized = False
     
-    def add_documents(self, documents: List[str]) -> None:
-        """Add multiple documents to the retriever"""
-        if not documents:
+    def add_documents(self, documents: List[str]):
+        """Add documents to the retriever."""
+        if not self.initialized:
             return
             
-        # Track current size to know where to add new documents
-        start_idx = len(self.corpus)
-        
-        # Add to corpus
-        self.corpus.extend(documents)
-        
-        # Update document map
-        for idx, doc in enumerate(documents, start=start_idx):
-            self.document_map[doc] = idx
-        
-        # Generate embeddings for new documents
-        new_embeddings = self.model.encode(documents)
-        
-        # Update embeddings array
-        if self.embeddings is None:
-            self.embeddings = new_embeddings
+        # Reset if no existing documents
+        if not self.corpus:
+            self.corpus = documents
+            self.embeddings = self.model.encode(documents)
+            self.document_ids = {doc: idx for idx, doc in enumerate(documents)}
         else:
-            self.embeddings = np.vstack([self.embeddings, new_embeddings])
+            # Append new documents
+            start_idx = len(self.corpus)
+            self.corpus.extend(documents)
+            new_embeddings = self.model.encode(documents)
+            if self.embeddings is None:
+                self.embeddings = new_embeddings
+            else:
+                self.embeddings = np.vstack([self.embeddings, new_embeddings])
+            for idx, doc in enumerate(documents):
+                self.document_ids[doc] = start_idx + idx
     
-    def search(self, query: str, k: int = 5) -> List[int]:
-        """Search for documents similar to the query"""
-        if not self.corpus or len(self.corpus) == 0:
+    def search(self, query: str, k: int = 5) -> List[Dict]:
+        """Search for similar documents using cosine similarity."""
+        if not self.initialized or not self.corpus:
             return []
-        
+            
         # Encode query
         query_embedding = self.model.encode([query])[0]
         
         # Calculate cosine similarities
         similarities = cosine_similarity([query_embedding], self.embeddings)[0]
         
-        # Get top-k indices
-        k = min(k, len(self.corpus))
+        # Get top k results
         top_k_indices = np.argsort(similarities)[-k:][::-1]
+        top_k_scores = similarities[top_k_indices]
         
-        return top_k_indices.tolist()
+        # Return results as dict with score
+        results = []
+        for idx, score in zip(top_k_indices, top_k_scores):
+            if idx < len(self.corpus):
+                results.append({
+                    'id': str(idx),  # Convert to string for consistency
+                    'content': self.corpus[idx],
+                    'score': float(score),
+                    'retrieval_method': 'semantic'
+                })
+        
+        return results
     
-    def save(self, retriever_file: str, embeddings_file: str) -> None:
-        """Save retriever state to disk"""
+    def save(self, retriever_file: str, embeddings_file: str):
+        """Save retriever state to disk."""
+        if not self.initialized:
+            return
+            
         # Save embeddings using numpy
         if self.embeddings is not None:
             np.save(embeddings_file, self.embeddings)
@@ -272,29 +290,125 @@ class EmbeddingRetriever:
         # Save other attributes
         state = {
             'corpus': self.corpus,
-            'document_map': self.document_map,
+            'document_ids': self.document_ids,
             'model_name': self.model.__class__.__name__
         }
         with open(retriever_file, 'wb') as f:
+            import pickle
             pickle.dump(state, f)
     
-    @classmethod
-    def load(cls, retriever_file: str, embeddings_file: str) -> 'EmbeddingRetriever':
-        """Load retriever state from disk"""
-        retriever = cls()
-        
+    def load(self, retriever_file: str, embeddings_file: str):
+        """Load retriever state from disk."""
+        if not self.initialized:
+            return
+            
         # Load embeddings
         if os.path.exists(embeddings_file):
-            retriever.embeddings = np.load(embeddings_file)
+            self.embeddings = np.load(embeddings_file)
         
         # Load other attributes
         if os.path.exists(retriever_file):
+            import pickle
             with open(retriever_file, 'rb') as f:
                 state = pickle.load(f)
-                retriever.corpus = state.get('corpus', [])
-                retriever.document_map = state.get('document_map', {})
+                self.corpus = state.get('corpus', [])
+                self.document_ids = state.get('document_ids', {})
         
-        return retriever
+        return self
+
+
+class HybridRetriever:
+    """A retriever that combines lexical and semantic search"""
+    
+    def __init__(self, db_store, embedding_retriever=None):
+        self.db_store = db_store
+        self.embedding_retriever = embedding_retriever
+        
+    def retrieve(self, query: str, code: str = None, errors: List[str] = None, 
+                 language: str = None, bug_type: str = None, k: int = 3) -> List[Dict]:
+        """
+        Retrieve relevant memories using a combination of lexical and semantic search.
+        
+        Args:
+            query: The search query
+            code: Optional code snippet to search for similar bugs
+            errors: Optional list of error messages
+            language: Programming language filter
+            bug_type: Bug type filter
+            k: Number of results to return
+            
+        Returns:
+            List of memories
+        """
+        results = []
+        
+        # Create filter_query from language and bug_type
+        filter_query = {}
+        if language:
+            filter_query['language'] = language
+        if bug_type:
+            filter_query['bug_type'] = bug_type
+        
+        # Try lexical search first
+        try:
+            # If we have code and errors, use find_similar_bugs for a specialized bug finder
+            if code and errors and self.db_store:
+                compiler_errors = '\n'.join(errors) if isinstance(errors, list) else errors
+                lexical_results = self.db_store.find_similar_bugs(
+                    code=code, 
+                    language=language or '', 
+                    compiler_errors=compiler_errors,
+                    bug_type=bug_type,
+                    k=k
+                )
+                if lexical_results:
+                    for result in lexical_results:
+                        result['retrieval_method'] = 'lexical_bug_finder'
+                        result['score'] = result.get('similarity', 0.5)  # Use similarity as score if available
+                    results.extend(lexical_results)
+            
+            # General lexical search based on query
+            if self.db_store:
+                search_results = self.db_store.search_memories(query, filter_query, k)
+                if search_results:
+                    for result in search_results:
+                        if not any(r.get('id') == result.get('id') for r in results):  # Avoid duplicates
+                            result['retrieval_method'] = 'lexical'
+                            result['score'] = 0.4  # Default score for lexical results
+                            results.append(result)
+        except Exception as e:
+            warnings.warn(f"Lexical search failed: {str(e)}")
+        
+        # Try semantic search if an embedding retriever is available
+        if self.embedding_retriever:
+            try:
+                # Create a combined query that includes the main query, some code, and some errors
+                combined_query = query
+                if code:
+                    # Include first 200 chars of code in the query
+                    code_sample = code[:200]
+                    combined_query += f" {code_sample}"
+                
+                if errors and len(errors) > 0:
+                    # Include first error message in the query
+                    error_sample = errors[0][:200] if errors[0] else ""
+                    combined_query += f" {error_sample}"
+                
+                semantic_results = self.embedding_retriever.search(combined_query, k)
+                
+                if semantic_results:
+                    for result in semantic_results:
+                        # Check if we already have this result
+                        if not any(r.get('id') == result.get('id') for r in results):
+                            result['retrieval_method'] = 'semantic'
+                            # Score is already set by embedding retriever
+                            results.append(result)
+            except Exception as e:
+                warnings.warn(f"Semantic search failed: {str(e)}")
+        
+        # Sort by score and return top k
+        results = sorted(results, key=lambda x: x.get('score', 0), reverse=True)
+        return results[:k]
 
 
 class FewShotMemory(Step):
@@ -319,9 +433,6 @@ class FewShotMemory(Step):
         os.makedirs(memory_dir, exist_ok=True)
         self.memory_dir = memory_dir
         
-        # Set up retriever
-        self.retriever = EmbeddingRetriever(model_name)
-        
         # Set up LLM for metadata generation
         if conf_file:
             self.llm = LLM_wrap(
@@ -345,14 +456,27 @@ class FewShotMemory(Step):
         else:
             self.db_store = None
         
+        # Set up retrievers
+        self.retriever = SimpleEmbeddingRetriever(model_name)
+        
+        # Initialize hybrid retriever with db_store and retriever
+        self.hybrid_retriever = HybridRetriever(self.db_store, self.retriever)
+        
+        # Set paths for embeddings
+        self.embeddings_file = os.path.join(memory_dir, f"{name}_embeddings.npy")
+        self.retriever_file = os.path.join(memory_dir, f"{name}_retriever.pkl")
+        
+        # Try to load embeddings
+        if os.path.exists(self.embeddings_file):
+            try:
+                self.retriever.embeddings = np.load(self.embeddings_file)
+                print(f"Loaded embeddings from {self.embeddings_file}")
+            except Exception as e:
+                print(f"Error loading embeddings: {e}")
+        
         # Metadata
         self.total_memories = 0
         self.last_error = None
-        
-        # Set file paths for persistence
-        self.memory_file = os.path.join(memory_dir, f"{name}_memories.pkl")
-        self.retriever_file = os.path.join(memory_dir, f"{name}_retriever.pkl")
-        self.embeddings_file = os.path.join(memory_dir, f"{name}_embeddings.npy")
         
         # Load existing memories if available
         self._load_memories()
@@ -373,21 +497,19 @@ class FewShotMemory(Step):
                 self.memories = {}
         else:
             # Load from file
-            if os.path.exists(self.memory_file):
+            if os.path.exists(self.retriever_file):
                 try:
-                    with open(self.memory_file, 'rb') as f:
-                        self.memories = pickle.load(f)
-                    self.total_memories = len(self.memories)
-                    
-                    # Load retriever if available
-                    if os.path.exists(self.retriever_file) and os.path.exists(self.embeddings_file):
-                        self.retriever = EmbeddingRetriever.load(self.retriever_file, self.embeddings_file)
-                    else:
-                        # Rebuild retriever from memories
-                        self._rebuild_retriever()
+                    with open(self.retriever_file, 'rb') as f:
+                        state = pickle.load(f)
+                        self.retriever = SimpleEmbeddingRetriever(state['model_name'])
+                        self.retriever.embeddings = state['embeddings']
+                        self.retriever.corpus = state['corpus']
+                        self.retriever.document_ids = state['document_ids']
+                        self.total_memories = len(self.retriever.corpus)
                 except Exception as e:
-                    self.last_error = f"Error loading memories from file: {str(e)}"
-                    self.memories = {}
+                    self.last_error = f"Error loading retriever from file: {str(e)}"
+                    self.retriever = SimpleEmbeddingRetriever()
+                    self.total_memories = 0
     
     def _save_memories(self) -> None:
         """Save memories to disk or database"""
@@ -398,8 +520,13 @@ class FewShotMemory(Step):
                 pass
             else:
                 # Save to file
-                with open(self.memory_file, 'wb') as f:
-                    pickle.dump(self.memories, f)
+                with open(self.retriever_file, 'wb') as f:
+                    pickle.dump({
+                        'model_name': self.retriever.model.__class__.__name__,
+                        'corpus': self.retriever.corpus,
+                        'document_ids': self.retriever.document_ids,
+                        'embeddings': self.retriever.embeddings
+                    }, f)
             
             # Save retriever state
             self.retriever.save(self.retriever_file, self.embeddings_file)
@@ -419,7 +546,7 @@ class FewShotMemory(Step):
             documents.append(memory.content + metadata + code_content)
         
         # Reset and rebuild retriever
-        self.retriever = EmbeddingRetriever()
+        self.retriever = SimpleEmbeddingRetriever()
         self.retriever.add_documents(documents)
     
     def add_memory(self, content: str, **kwargs) -> str:
@@ -483,12 +610,17 @@ class FewShotMemory(Step):
         
         return True
     
-    def retrieve_memories(self, query: str, k: int = 5) -> List[Memory]:
+    def retrieve_memories(self, query: str, code: str = "", errors: List[str] = [], 
+                        language: str = None, bug_type: str = None, k: int = 3) -> List[Memory]:
         """
-        Retrieve memories relevant to the query
+        Retrieve memories relevant to the query using hybrid retrieval.
         
         Args:
             query: The search query
+            code: Optional code snippet to match
+            errors: Optional error messages to match
+            language: Optional language filter
+            bug_type: Optional bug type filter
             k: Number of memories to retrieve
             
         Returns:
@@ -497,19 +629,65 @@ class FewShotMemory(Step):
         if not self.memories:
             return []
         
-        # Get indices of relevant memories
-        indices = self.retriever.search(query, k)
-        
-        # Convert to list of memories
-        memories_list = list(self.memories.values())
-        retrieved_memories = [memories_list[i] for i in indices]
-        
-        # Update retrieval counts
-        for memory in retrieved_memories:
-            memory.retrieval_count += 1
-            memory.last_accessed = datetime.datetime.now().strftime("%Y%m%d%H%M")
-        
-        return retrieved_memories
+        # Use hybrid retriever if available
+        try:
+            if hasattr(self, 'hybrid_retriever') and self.hybrid_retriever:
+                memory_dicts = self.hybrid_retriever.retrieve(
+                    query=query,
+                    code=code,
+                    errors=errors,
+                    language=language,
+                    bug_type=bug_type,
+                    k=k
+                )
+                
+                # Convert to Memory objects
+                memories = []
+                for memory_dict in memory_dicts:
+                    memory_id = memory_dict.get("id")
+                    if memory_id and memory_id in self.memories:
+                        # Use existing memory object
+                        memory = self.memories[memory_id]
+                        # Update retrieval count
+                        memory.retrieval_count += 1
+                        memory.last_accessed = datetime.datetime.now().strftime("%Y%m%d%H%M")
+                        memories.append(memory)
+                    else:
+                        # Create memory object from dict
+                        try:
+                            memory = Memory.from_dict(memory_dict)
+                            memories.append(memory)
+                        except Exception as e:
+                            print(f"Error creating memory from dict: {e}")
+                        
+                return memories
+        except Exception as e:
+            print(f"Warning: Error using hybrid retriever: {e}")
+            print("Falling back to basic retrieval...")
+            
+        # Fallback to simple retriever
+        try:
+            # Use basic search from SimpleEmbeddingRetriever
+            search_results = self.retriever.search(query, k)
+            
+            # Convert to list of memories
+            memories = []
+            for result in search_results:
+                result_id = result.get("id")
+                if result_id and result_id.isdigit():
+                    idx = int(result_id)
+                    memories_list = list(self.memories.values())
+                    if idx < len(memories_list):
+                        memory = memories_list[idx]
+                        # Update retrieval count
+                        memory.retrieval_count += 1
+                        memory.last_accessed = datetime.datetime.now().strftime("%Y%m%d%H%M")
+                        memories.append(memory)
+            
+            return memories
+        except Exception as e:
+            print(f"Error in fallback retrieval: {e}")
+            return []
     
     def format_memories_as_context(self, memories: List[Memory], include_code: bool = True) -> str:
         """

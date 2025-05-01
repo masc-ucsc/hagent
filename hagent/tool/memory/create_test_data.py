@@ -8,7 +8,16 @@ import tempfile
 import re
 import sys
 from pathlib import Path
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Tuple, Any, Optional
+import numpy as np
+
+# Import sentence transformers for embedding generation
+try:
+    from sentence_transformers import SentenceTransformer
+    HAVE_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    HAVE_SENTENCE_TRANSFORMERS = False
+    print("Warning: sentence-transformers not installed. Semantic search will be disabled.")
 
 def read_code_file(file_path):
     """Read code from a file."""
@@ -54,6 +63,13 @@ def get_language_code(language):
         'Rust': 'rust'
     }
     return language_codes.get(language, language.lower())
+
+def extract_bug_type(filename):
+    """Extract bug type from filename."""
+    match = re.search(r'(\d+)_([a-z_]+)_buggy', filename)
+    if match:
+        return match.group(2).replace('_', ' ')
+    return "unknown bug"
 
 def get_compiler_errors(code: str, language: str, file_name: str) -> Tuple[List[str], Dict[str, Any]]:
     """
@@ -252,7 +268,7 @@ def generate_bug_description(analysis, bug_number, file_name):
     
     return description
 
-def create_sample_data(output_path=None, output_yaml_path=None):
+def create_sample_data(output_path=None, output_yaml_path=None, create_embeddings=True):
     """
     Create sample memory data by reading buggy and fixed code files from programs directory.
     
@@ -260,6 +276,7 @@ def create_sample_data(output_path=None, output_yaml_path=None):
         output_path: Optional path for output JSON file. If not provided, 
                      will save to default location.
         output_yaml_path: Optional path for output YAML file.
+        create_embeddings: Whether to create embeddings for semantic search
     
     Returns:
         Tuple of paths to the created JSON and YAML files.
@@ -294,6 +311,21 @@ def create_sample_data(output_path=None, output_yaml_path=None):
     # Create sample data with buggy and fixed code
     sample_data = []
     
+    # Initialize sentence transformer for embeddings if requested
+    embedding_model = None
+    if create_embeddings and HAVE_SENTENCE_TRANSFORMERS:
+        try:
+            print("Initializing SentenceTransformer model for embedding creation...")
+            embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            print("SentenceTransformer model initialized successfully")
+        except Exception as e:
+            print(f"Error initializing SentenceTransformer: {e}")
+            embedding_model = None
+            create_embeddings = False
+    
+    # Store text for embeddings
+    embedding_texts = []
+    
     for buggy_file, fixed_file in code_pairs:
         # Extract bug number from filename
         filename = buggy_file.name
@@ -326,6 +358,10 @@ def create_sample_data(output_path=None, output_yaml_path=None):
             else:
                 context += "code error"
         
+        # Store the embedding text
+        embedding_text = analysis.get('embedding_text', f"{context} {buggy_code[:500]}")
+        embedding_texts.append(embedding_text)
+        
         # Create memory object
         memory = {
             "id": str(uuid.uuid4()),
@@ -341,10 +377,42 @@ def create_sample_data(output_path=None, output_yaml_path=None):
             "language": language_code,
             "created_at": iso_timestamp,
             "line_number": analysis.get('line_number'),
-            "error_type": analysis.get('error_type', 'unknown')
+            "error_type": analysis.get('error_type', 'unknown'),
+            "bug_category": analysis.get('bug_category', extract_bug_type(filename)),
+            "embedding_text": embedding_text,
+            "embedding_index": -1  # Will be set after embedding creation
         }
         
         sample_data.append(memory)
+    
+    # Create embeddings if requested
+    if create_embeddings and embedding_model and embedding_texts:
+        try:
+            print(f"Creating embeddings for {len(embedding_texts)} code examples...")
+            embeddings = embedding_model.encode(embedding_texts)
+            print(f"Successfully created {len(embeddings)} embeddings")
+            
+            # Add embedding index to each memory
+            for i, memory in enumerate(sample_data):
+                memory["embedding_index"] = i
+            
+            # Determine embeddings output path
+            if output_path is None:
+                # Use default path
+                data_dir = Path(__file__).parent / "data"
+                data_dir.mkdir(exist_ok=True)
+                embeddings_path = data_dir / "code_embeddings.npy"
+            else:
+                embeddings_path = Path(output_path).parent / "code_embeddings.npy"
+            
+            # Save embeddings
+            np.save(str(embeddings_path), embeddings)
+            print(f"Saved embeddings to {embeddings_path}")
+        except Exception as e:
+            print(f"Error creating embeddings: {e}")
+    else:
+        if create_embeddings:
+            print("Warning: Embeddings not created - sentence-transformers not available or model initialization failed")
     
     # Determine output paths
     if output_path is None:

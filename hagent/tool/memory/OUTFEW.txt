@@ -1,0 +1,18 @@
+Cleaning up...
+Running test_few_shot_memory.py scripts...
+=== Running: 1_missing_semicolon_buggy ===
+usage: test_few_shot_memory.py [-h] [-v] [-q] [--locals] [-f] [-c] [-b]
+                               [-k TESTNAMEPATTERNS]
+                               [tests ...]
+test_few_shot_memory.py: error: unrecognized arguments: -p
+=== Running: 2_undeclared_variable_buggy ===
+usage: test_few_shot_memory.py [-h] [-v] [-q] [--locals] [-f] [-c] [-b]
+                               [-k TESTNAMEPATTERNS]
+                               [tests ...]
+test_few_shot_memory.py: error: unrecognized arguments: -p
+=== Running: 3_mismatched_brackets_buggy ===
+usage: test_few_shot_memory.py [-h] [-v] [-q] [--locals] [-f] [-c] [-b]
+                               [-k TESTNAMEPATTERNS]
+                               [tests ...]
+test_few_shot_memory.py: error: unrecognized arguments: -p
+=== Running: 4_infinite_loop_buggy ===

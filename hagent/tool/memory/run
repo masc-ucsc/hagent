@@ -1,3 +1,48 @@
-#!/bin/bash
-poetry run pytest test_few_shot_memory.py -v -s
-poetry run pytest test_few_shot_memory_real_data.py -v -s
+# #!/bin/bash
+# poetry run pytest test_few_shot_memory.py -v -s
+# poetry run pytest test_few_shot_memory_real_data.py -v -s
+
+#!/usr/bin/env bash
+
+# Clear previous output
+rm -f OUTFEW.txt
+rm -rf data/test_memory_database.yaml
+rm -rf data/test_memory_database.json
+rm -rf results
+
+# Clean directories and log the operation
+echo "Cleaning up..." | tee -a OUTFEW.txt
+rm -rf __pycache__ cached_memories_cpp_openai_gpt-4o-mini logs 2>&1 | tee -a OUTFEW.txt
+
+# Define buggy programs
+programs=(
+  1_missing_semicolon_buggy
+  2_undeclared_variable_buggy
+  3_mismatched_brackets_buggy
+  4_infinite_loop_buggy
+  5_null_pointer_buggy
+  6_array_bounds_buggy
+  7_memory_leak_buggy
+  8_division_by_zero_buggy
+  9_variable_shadowing_buggy
+  10_uninitialized_variable_buggy
+  b1
+)
+
+# Run tests
+echo "Running test_few_shot_memory.py scripts..." | tee -a OUTFEW.txt
+for prog in "${programs[@]}"; do
+  echo "=== Running: $prog ===" | tee -a OUTFEW.txt
+  poetry run python test_few_shot_memory.py -p "programs/${prog}.cpp" 2>&1 | tee -a OUTFEW.txt
+done
+
+# Output and count exact matches
+echo -e "\n--- Found Matches ---"
+grep "Found exact match:" OUTFEW.txt
+
+match_count=$(grep -c "Found exact match:" OUTFEW.txt)
+total_tests=${#programs[@]}
+non_match_count=$((total_tests - match_count))
+
+echo -e "\nTotal exact matches found: $match_count"
+echo -e "Total non-exact matches: $non_match_count"
