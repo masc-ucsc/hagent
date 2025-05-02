@@ -184,41 +184,7 @@ class V2Chisel_pass1(Step):
         fixed = code.replace('\\n', '\n').replace('\\t', '\t')
         return fixed
 
-    def _run_chisel2v(self, chisel_code: str):
-        if not chisel_code.strip():
-            return (False, None, 'Chisel snippet is empty')
-        c2v = Chisel2v()
-        success = c2v.setup()
-        if not success:
-            return (False, None, 'chisel2v setup failed: ' + c2v.error_message)
-        # module_name = self._find_chisel_classname(chisel_code)
-        module_name = 'Top'
-        if not module_name:
-            module_name = 'MyModule'
-        try:
-            verilog_out = c2v.generate_verilog(chisel_code, module_name)
-            if 'module' not in verilog_out:
-                return (False, None, "Generated Verilog missing 'module' keyword.")
-            return (True, verilog_out, '')
-        except Exception as e:
-            if "error during sbt launcher" in str(e):
-                print("sbt run does not seem to work")
-                print(str(e))
-                sys.exit(3)
-            return (False, None, str(e))
-
-    def _find_chisel_classname(self, chisel_code: str) -> str:
-        # First, try to find an object named Top that extends App.
-        m = re.search(r'\bobject\s+(Top)\s+extends\s+App\b', chisel_code)
-        if m:
-            return m.group(1)
-        # Next, try to find a class named Top that extends Module.
-        m = re.search(r'\bclass\s+(Top)\s+extends\s+Module\b', chisel_code)
-        if m:
-            return m.group(1)
-        # Fallback: return the first class extending Module.
-        m = re.search(r'\bclass\s+([A-Za-z0-9_]+)\s+extends\s+Module\b', chisel_code)
-        return m.group(1) if m else ''
+    
 
     def run(self, data):
         verilog_original = data.get('verilog_original', '')
@@ -371,7 +337,15 @@ class V2Chisel_pass1(Step):
             # print(chisel_updated)
             print('Applied the diff.')
 
-            is_valid, verilog_candidate, error_msg = self._run_chisel2v(chisel_updated)
+            # delegate compilation & basic validity check to our new Verify_candidate step
+            verify = Verify_candidate()
+            verify.set_io(self.input_file, self.output_file)
+            verify.input_data = {'chisel_candidate': chisel_updated}
+            verify.setup()
+            verify_result = verify.run({'chisel_candidate': chisel_updated})
+            is_valid       = verify_result.get('was_valid', False)
+            verilog_candidate = verify_result.get('verilog_candidate', None)
+            error_msg      = verify_result.get('error_msg', '')
             if is_valid:
                 prompt_success[prompt_index] = 1
                 chisel_updated_final = chisel_updated
