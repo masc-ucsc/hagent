@@ -24,6 +24,7 @@ from hagent.tool.metadata_mapper import MetadataMapper
 from hagent.step.extract_hints.extract_hints import Extract_hints
 from hagent.step.generate_diff.generate_diff import Generate_diff
 from hagent.step.verify_candidate.verify_candidate import Verify_candidate
+from hagent.step.unified_diff.unified_diff import Unified_diff
 
 
 def union_hints(hints1: str, hints2: str) -> str:
@@ -93,13 +94,13 @@ class V2Chisel_pass1(Step):
             raise ValueError(self.lw.last_error)
         self.setup_called = True
 
-    def _generate_diff(self, old_code: str, new_code: str) -> str:
-        old_lines = old_code.splitlines()
-        new_lines = new_code.splitlines()
-        diff_lines = difflib.unified_diff(
-            old_lines, new_lines, fromfile='verilog_original.v', tofile='verilog_fixed.v', lineterm='', n=20
-        )
-        return '\n'.join(diff_lines)
+    # def _generate_diff(self, old_code: str, new_code: str) -> str:
+    #     old_lines = old_code.splitlines()
+    #     new_lines = new_code.splitlines()
+    #     diff_lines = difflib.unified_diff(
+    #         old_lines, new_lines, fromfile='verilog_original.v', tofile='verilog_fixed.v', lineterm='', n=20
+    #     )
+    #     return '\n'.join(diff_lines)
 
     def _is_snippet_empty(self, snippet: str) -> bool:
         """
@@ -191,7 +192,18 @@ class V2Chisel_pass1(Step):
         verilog_fixed = data.get('verilog_fixed', '')
         chisel_original = data.get('chisel_original', '')
 
-        verilog_diff_text = self._generate_diff(verilog_original, verilog_fixed)
+        # verilog_diff_text = self._generate_diff(verilog_original, verilog_fixed)
+        # --- GENERATE UNIFIED DIFF VIA our new step ---
+        # use the new UnifiedDiff step instead of the old helper
+        diff_step = Unified_diff()
+        diff_step.set_io(self.input_file, self.output_file)
+        diff_step.input_data = {
+            'verilog_original': verilog_original,
+            'verilog_fixed':    verilog_fixed,
+        }
+        diff_step.setup()
+        data = diff_step.run(data)
+        verilog_diff_text = data['verilog_diff']
         print('************************** Generated Verilog Diff **************************')
         print(verilog_diff_text)
         print('********************************************************')
