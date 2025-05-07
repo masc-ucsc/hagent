@@ -34,10 +34,13 @@ from hagent.tool.extract_code import Extract_code_verilog, Extract_code_chisel
 from hagent.tool.equiv_check import Equiv_check
 from hagent.tool.compile_slang import Compile_slang
 from hagent.tool.chisel2v import Chisel2v
-from hagent.tool.chisel_diff_applier import ChiselDiffApplier
+# from hagent.tool.chisel_diff_applier import ChiselDiffApplier
+from hagent.step.apply_diff.apply_diff import Apply_diff
 from hagent.step.v2chisel_pass1.v2chisel_pass1 import V2Chisel_pass1
 from hagent.tool.react import React
 from hagent.tool.compile import Diagnostic
+from hagent.step.unified_diff.unified_diff import Unified_diff
+from hagent.step.extract_hints.extract_hints import Extract_hints
 
 
 import subprocess
@@ -92,6 +95,8 @@ class V2chisel_fix(Step):
         self.verilog_diff_str     = ""
         
         self.template_config = LLM_template(conf_file)
+        self.base_metadata_context = self.input_data.get('metadata_context', 40)
+        self.meta = self.base_metadata_context
         # llm_args = self.input_data['llm'] 
         llm_args = self.template_config.template_dict.get('v2chisel_pass1', {}).get('llm', {})
 
@@ -128,6 +133,7 @@ class V2chisel_fix(Step):
         chisel_original = data.get('chisel_original', '')
         self.chisel_original = chisel_original
         self.chisel_subset = pass1_info.get('chisel_subset', chisel_changed)
+        print(f"[V2ChiselFix] Using extracted chisel_subset:\n{self.chisel_subset}")
         lec_flag = data.get('lec', 0)
         result['chisel_fixed'] = {
             'original_chisel': chisel_original,
@@ -158,18 +164,35 @@ class V2chisel_fix(Step):
             result['lec'] = 1
             return result
         
+        # # --- initial LEC failed: compute unified diff once for all prompts ---
+        # if self.verilog_fixed_str.strip():
+        #     self.verilog_diff_str = diff_code(self.verilog_original_str, self.verilog_fixed_str)
+        #     print(f"[V2ChiselFix] Computed unified diff:\n{self.verilog_diff_str}")
         # --- initial LEC failed: compute unified diff once for all prompts ---
         if self.verilog_fixed_str.strip():
-            self.verilog_diff_str = diff_code(self.verilog_original_str, self.verilog_fixed_str)
+            diff_step = Unified_diff()
+            diff_step.set_io(self.input_file, self.output_file)
+            diff_step.input_data = {
+                'verilog_original': self.verilog_original_str,
+                'verilog_fixed':    self.verilog_fixed_str,
+            }
+            diff_step.setup()
+            tmp = diff_step.run({'verilog_original': self.verilog_original_str,
+                                 'verilog_fixed':    self.verilog_fixed_str})
+            self.verilog_diff_str = tmp['verilog_diff']
             print(f"[V2ChiselFix] Computed unified diff:\n{self.verilog_diff_str}")
             
         # --- Phase 1: prompt3 refinements (up to 2 attempts) ---
         for attempt in (1, 2):
             print(f"[V2ChiselFix] prompt3 refinement attempt {attempt}")
+            self.meta = self.base_metadata_context + 20 * (attempt - 1)
+            print(f"[V2ChiselFix] using metadata_context = {self.meta}")
+            self.input_data['metadata_context'] = self.meta
             new_diff = self._refine_chisel_code(chisel_original, lec_error, attempt)
             if not new_diff.strip():
                 continue
-            cand_code = ChiselDiffApplier().apply_diff(new_diff, chisel_original)
+            # cand_code = ChiselDiffApplier().apply_diff(new_diff, chisel_original)
+            cand_code = self._apply_diff(chisel_original, new_diff)
             ok, verilog_temp, err = self._run_chisel2v(cand_code)
             if not ok:
                 cand_code = self._iterative_compile_fix(cand_code, err)
@@ -183,6 +206,7 @@ class V2chisel_fix(Step):
                     'original_chisel': chisel_original,
                     'refined_chisel':  cand_code,
                     'chisel_diff':     new_diff,
+                    'metadata_context':  self.meta,
                     'equiv_passed':    True,
                 }
                 result['lec'] = 1
@@ -194,7 +218,8 @@ class V2chisel_fix(Step):
             new_diff = self._refine_chisel_code_with_prompt4(chisel_original, lec_error, attempt)
             if not new_diff.strip():
                 continue
-            cand_code = ChiselDiffApplier().apply_diff(new_diff, chisel_original)
+            # cand_code = ChiselDiffApplier().apply_diff(new_diff, chisel_original)
+            cand_code = self._apply_diff(chisel_original, new_diff)
             ok, verilog_temp, err = self._run_chisel2v(cand_code)
             if not ok:
                 cand_code = self._iterative_compile_fix(cand_code, err)
@@ -231,8 +256,9 @@ class V2chisel_fix(Step):
         def fix_callback(code: str, diag, fix_example, delta, iteration):
             # Use your prompt-based diff generation (prompt3) to attempt a fix.
             new_diff = self._refine_chisel_code(code, diag.msg, iteration)
-            applier = ChiselDiffApplier()
-            new_code = applier.apply_diff(new_diff, code)
+            # applier = ChiselDiffApplier()
+            # new_code = applier.apply_diff(new_diff, code)
+            new_code = self._apply_diff(code, new_diff)
             return new_code
 
         react_tool = React()
@@ -310,8 +336,9 @@ class V2chisel_fix(Step):
             for txt in answers:
                 diff_code_text = self.chisel_extractor.parse(txt)
                 if diff_code_text:
-                    applier = ChiselDiffApplier()
-                    new_code = applier.apply_diff(diff_code_text, current_code)
+                    # applier = ChiselDiffApplier()
+                    # new_code = applier.apply_diff(diff_code_text, current_code)
+                    new_code = self._apply_diff(current_code, diff_code_text)
                     is_valid, verilog_candidate, error_msg = self._run_chisel2v(new_code)
                     if is_valid:
                         return new_code
@@ -321,6 +348,18 @@ class V2chisel_fix(Step):
                         compiler_error = error_msg
                         break
         return current_code
+    
+    def _apply_diff(self, original: str, diff_text: str) -> str:
+        "Reuses v2chisel_pass1’s Apply_diff step to patch Chisel."
+        step = Apply_diff()
+        step.set_io(self.input_file, self.output_file)
+        data = {
+            'chisel_original': original,
+            'generated_diff':  diff_text
+        }
+        step.input_data = data
+        step.setup()
+        return step.run(data)['chisel_candidate']
 
     def _generate_diff(self, old_code: str, new_code: str) -> str:
         """
@@ -378,6 +417,7 @@ class V2chisel_fix(Step):
             'chisel_subset': self.chisel_subset,
             'lec_output': lec_error or 'LEC failed',
             'verilog_diff': self.verilog_diff_str,
+            'metadata_context': self.meta,
         }
         if not self.chisel_subset.strip():
             self.error("No hint lines extracted from the Chisel code. Aborting LLM call.")
@@ -491,8 +531,9 @@ class V2chisel_fix(Step):
                     continue
                 print("[INFO] Evaluating candidate diff:")
                 print(candidate_diff)
-                applier = ChiselDiffApplier()
-                test_code = applier.apply_diff(candidate_diff, self.chisel_original)
+                # applier = ChiselDiffApplier()
+                # test_code = applier.apply_diff(candidate_diff, self.chisel_original)
+                test_code = self._apply_diff(self.chisel_original, candidate_diff)
                 is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(test_code)
                 if not is_valid:
                     print(f"[INFO] Candidate diff failed compilation: {error_msg}")
