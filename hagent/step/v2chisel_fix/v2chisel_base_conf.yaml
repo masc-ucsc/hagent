@@ -5,6 +5,19 @@ v2chisel_fix:
   threshold: 40
   context: 1
 
+  diff_not_found:
+    - role: system
+      content:
+        You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
+    - role: user
+      content: |
+        The unified diff you provided refers to lines not present in the current Chisel code.
+        user diff:
+        ```
+        {generate_diff}
+        ```
+
+
   prompt4:
     - role: system
       content: |
@@ -38,21 +51,20 @@ v2chisel_fix:
         You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
     - role: user
       content: |
-        The provided Chisel code is not logically equivalent to the target Verilog design. The Verilog design has been updated, and a unified diff (verilog_diff) below shows the changes from the original design:
+        The Chisel implementation is not equivalent to the updated Verilog.  
+        The Verilog implementation has changed as shown in this unified diff:(verilog_diff):
         ```
         {verilog_diff}
         ```
-
-        A Logic Equivalence Check (LEC) was run and reported the following error or counterexample:
+        We want the Chisel code to reflect those exact changes in the updated verilog. We need to modify the Chisel source so that, when recompiled, the generated Verilog matches the updated Verilog specification exactly—confirmed by a passing Logic Equivalence Check (LEC). The LEC run produced the following error: 
         ```
         {lec_output}
         ```
-
-        I also provide a subset of the Chisel code with hints "->" marking the lines that are most likely to require changes:
+        I’ve marked a context snippet from the Chisel source (with {metadata_context} lines of context):
         ```
         {chisel_subset}
         ```
-        Can you give me a Chisel diff that could work?
+        Please provide a unified diff that implements all necessary updates to the Chisel code. You may need to modify multiple lines—and even include more than one hunk—to fully match the updated Verilog.
         Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
         PLEASE No explanation, no Note. ONLY diff
   
