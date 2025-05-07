@@ -1,0 +1,50 @@
+query:
+  code: "#include <iostream>\n#include <chrono>\n#include <thread>\n\nint main() {\n\
+    \    int count = 0;\n    int limit = 5;\n    \n    // Bug: Syntax error in while
+    loop (missing parentheses)\n    while count < limit {\n        std::cout << \"\
+    Count: \" << count << std::endl;\n        count++;\n        \n        // Add a
+    small delay for visual effect\n        std::this_thread::sleep_for(std::chrono::milliseconds(100));\n\
+    \    }\n    \n    std::cout << \"Loop completed with count = \" << count << std::endl;\n\
+    \    return 0;\n}"
+  timestamp: '2025-05-07 15:36:38'
+results:
+  count: 1
+  exact_match_found: true
+  matches:
+    - id: 8f66eb42-bdbc-4e31-918c-66025721130b
+      content: "C++ Bug: Fix the missing_element in this code. Error: /var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpcj2qmfnm.cpp:10:11:
+        error: expected '(' after 'while'"
+      error_type: missing_element
+      bug_category: syntax
+      faulty_code: "#include <iostream>\n#include <chrono>\n#include <thread>\n\n
+        int main() {\n    int count = 0;\n    int limit = 5;\n    \n    // Bug: Syntax
+        error in while loop (missing parentheses)\n    while count < limit {\n   \
+        \     std::cout << \"Count: \" << count << std::endl;\n        count++;\n\
+        \        \n        // Add a small delay for visual effect\n        std::this_thread::sleep_for(std::chrono::milliseconds(100));\n\
+        \    }\n    \n    std::cout << \"Loop completed with count = \" << count <<
+        std::endl;\n    return 0;\n}"
+      fixed_code: "#include <iostream>\n#include <chrono>\n#include <thread>\n\nint
+        main() {\n    int count = 0;\n    int limit = 5;  // Fixed: limit is 5, so
+        loop will run 5 times\n    \n    // Fixed: Proper while loop syntax with parentheses\n\
+        \    while (count < limit) {\n        std::cout << \"Count: \" << count <<
+        std::endl;\n        count++;  // Fixed: Going in correct direction\n     \
+        \   \n        // Add a small delay for visual effect\n        std::this_thread::sleep_for(std::chrono::milliseconds(100));\n\
+        \    }\n    \n    std::cout << \"Loop completed with count = \" << count <<
+        std::endl;\n    return 0;\n}"
+      timestamp: '202505071536'
+      keywords:
+        - C++
+        - missing_element
+        - error
+        - bug
+      tags:
+        - debugging
+        - missing element
+        - cpp
+      context: 'C++ programming bug fix: missing_element'
+      compiler_errors:
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpcj2qmfnm.cpp:10:11:
+          error: expected '(' after 'while'"
+        - '   10 |     while count < limit {'
+        - '      |           ^'
+        - 1 error generated.

@@ -1,0 +1,56 @@
+query:
+  code: "#include <iostream>\n\nint main() {\n    int value = 5;\n    \n    if (value
+    > 0) {\n        // Bug: Syntax error in variable declaration (missing type)\n\
+    \        value2 = 10;  // Missing variable type declaration\n        value2++;\n\
+    \    }\n    \n    std::cout << \"Value: \" << value << std::endl;\n    \n    return
+    0;\n} "
+  timestamp: '2025-05-07 15:37:03'
+results:
+  count: 1
+  exact_match_found: true
+  matches:
+    - id: 993e16d6-ee95-4026-92bd-d4551744d16a
+      content: "C++ Bug: Fix the bug in this code. Error: /var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmprisjyp_5.cpp:8:9:
+        error: use of undeclared identifier 'value2'; did you mean 'value'?"
+      error_type: unknown
+      bug_category: unknown
+      faulty_code: "#include <iostream>\n\nint main() {\n    int value = 5;\n    \n\
+        \    if (value > 0) {\n        // Bug: Syntax error in variable declaration
+        (missing type)\n        value2 = 10;  // Missing variable type declaration\n\
+        \        value2++;\n    }\n    \n    std::cout << \"Value: \" << value <<
+        std::endl;\n    \n    return 0;\n} "
+      fixed_code: "#include <iostream>\n\nint main() {\n    int value = 5;\n    \n\
+        \    if (value > 0) {\n        int value2 = 10;\n        value2++;\n    }\n\
+        \    \n    std::cout << \"Value: \" << value << std::endl;  // Prints 11\n\
+        \    \n    return 0;\n} "
+      timestamp: '202505071536'
+      keywords:
+        - C++
+        - unknown
+        - error
+        - bug
+      tags:
+        - debugging
+        - unknown
+        - cpp
+      context: 'C++ programming bug fix: unknown'
+      compiler_errors:
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmprisjyp_5.cpp:8:9: error:
+          use of undeclared identifier 'value2'; did you mean 'value'?"
+        - '    8 |         value2 = 10;  // Missing variable type declaration'
+        - '      |         ^~~~~~'
+        - '      |         value'
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmprisjyp_5.cpp:4:9: note:
+          'value' declared here"
+        - '    4 |     int value = 5;'
+        - '      |         ^'
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmprisjyp_5.cpp:9:9: error:
+          use of undeclared identifier 'value2'; did you mean 'value'?"
+        - '    9 |         value2++;'
+        - '      |         ^~~~~~'
+        - '      |         value'
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmprisjyp_5.cpp:4:9: note:
+          'value' declared here"
+        - '    4 |     int value = 5;'
+        - '      |         ^'
+        - 2 errors generated.

@@ -1,0 +1,41 @@
+query:
+  code: "#include <iostream>\n\nint main() {\n    // Bug: Syntax error in variable
+    declaration (missing semicolon)\n    int number    // Missing semicolon after
+    declaration\n    \n    number = 10;\n    \n    std::cout << \"Number: \" << number
+    << std::endl;\n    \n    return 0;\n} "
+  timestamp: '2025-05-07 15:37:08'
+results:
+  count: 1
+  exact_match_found: true
+  matches:
+    - id: 52bd404a-bf50-4d2d-a493-ca8075858401
+      content: "C++ Bug: Fix the missing_element in this code. Error: /var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbjv3jpuh.cpp:5:15:
+        error: expected ';' at end of declaration"
+      error_type: missing_element
+      bug_category: syntax
+      faulty_code: "#include <iostream>\n\nint main() {\n    // Bug: Syntax error
+        in variable declaration (missing semicolon)\n    int number    // Missing
+        semicolon after declaration\n    \n    number = 10;\n    \n    std::cout <<
+        \"Number: \" << number << std::endl;\n    \n    return 0;\n} "
+      fixed_code: "#include <iostream>\n\nint main() {\n    // Fixed: Proper variable
+        declaration with semicolon\n    int number;  // Properly terminated with semicolon\n\
+        \    \n    number = 10;\n    \n    std::cout << \"Number: \" << number <<
+        std::endl;\n    \n    return 0;\n} "
+      timestamp: '202505071536'
+      keywords:
+        - C++
+        - missing_element
+        - error
+        - bug
+      tags:
+        - debugging
+        - missing element
+        - cpp
+      context: 'C++ programming bug fix: missing_element'
+      compiler_errors:
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbjv3jpuh.cpp:5:15:
+          error: expected ';' at end of declaration"
+        - '    5 |     int number    // Missing semicolon after declaration'
+        - '      |               ^'
+        - '      |               ;'
+        - 1 error generated.

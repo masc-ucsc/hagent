@@ -1,0 +1,29 @@
+query:
+  code: "#include <iostream>\nusing namespace std;\n\nint main() {\n    int a = 5;\n\
+    \    int result = a + b; // ❌ 'b' is not declared\n    cout << \"Result: \" <<
+    result << endl;\n    return 0;\n}\n"
+  timestamp: '2025-05-07 15:37:49'
+results:
+  count: 1
+  exact_match_found: true
+  matches:
+    - id: 8e420857-dc4f-4dd7-be5c-c22b1073c433
+      content: 'C++ Bug: Fix the bug in this code.'
+      error_type: unknown
+      bug_category: unknown
+      faulty_code: "#include <iostream>\nusing namespace std;\n\nint main() {\n  \
+        \  int a = 5;\n    int result = a + b; // ❌ 'b' is not declared\n    cout
+        << \"Result: \" << result << endl;\n    return 0;\n}\n"
+      fixed_code: ''
+      timestamp: '202505071537'
+      keywords:
+        - C++
+        - unknown
+        - error
+        - bug
+      tags:
+        - debugging
+        - unknown
+        - cpp
+      context: 'C++ programming bug fix: unknown'
+      compiler_errors: []

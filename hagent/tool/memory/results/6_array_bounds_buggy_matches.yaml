@@ -1,0 +1,51 @@
+query:
+  code: "#include <iostream>\n\nint main() {\n    // Bug: Syntactical error in array
+    declaration (missing semicolon and using comma instead of braces)\n    int arr[5]
+    = 1, 2, 3, 4, 5\n    \n    for (int i = 0; i < 5; i++) {\n        std::cout <<
+    \"Element \" << i << \": \" << arr[i] << std::endl;\n    }\n    return 0;\n}"
+  timestamp: '2025-05-07 15:36:48'
+results:
+  count: 1
+  exact_match_found: true
+  matches:
+    - id: 83c56e40-294c-41f3-bc90-6946417fa58e
+      content: 'C++ Bug: Fix the bug in this code. Error: /var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbkzqmd6t.cpp:5:9:
+        error: array initializer must be an initializer list'
+      error_type: unknown
+      bug_category: unknown
+      faulty_code: "#include <iostream>\n\nint main() {\n    // Bug: Syntactical error
+        in array declaration (missing semicolon and using comma instead of braces)\n\
+        \    int arr[5] = 1, 2, 3, 4, 5\n    \n    for (int i = 0; i < 5; i++) {\n\
+        \        std::cout << \"Element \" << i << \": \" << arr[i] << std::endl;\n\
+        \    }\n    return 0;\n}"
+      fixed_code: "#include <iostream>\n\nint main() {\n    // Fixed: Proper array
+        declaration with correct syntax\n    int arr[5] = {1, 2, 3, 4, 5};\n    \n\
+        \    for (int i = 0; i < 5; i++) {  // Fixed: Proper bounds checking\n   \
+        \     std::cout << \"Element \" << i << \": \" << arr[i] << std::endl;\n \
+        \   }\n    return 0;\n} "
+      timestamp: '202505071536'
+      keywords:
+        - C++
+        - unknown
+        - error
+        - bug
+      tags:
+        - debugging
+        - unknown
+        - cpp
+      context: 'C++ programming bug fix: unknown'
+      compiler_errors:
+        - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbkzqmd6t.cpp:5:9: error:
+          array initializer must be an initializer list'
+        - '    5 |     int arr[5] = 1, 2, 3, 4, 5'
+        - '      |         ^'
+        - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbkzqmd6t.cpp:5:21:
+          error: expected unqualified-id'
+        - '    5 |     int arr[5] = 1, 2, 3, 4, 5'
+        - '      |                     ^'
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbkzqmd6t.cpp:5:20:
+          error: expected ';' at end of declaration"
+        - '    5 |     int arr[5] = 1, 2, 3, 4, 5'
+        - '      |                    ^'
+        - '      |                    ;'
+        - 3 errors generated.

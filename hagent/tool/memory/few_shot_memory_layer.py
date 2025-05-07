@@ -1,6 +1,8 @@
 import json
 import os
-from typing import List, Dict, Optional, Union
+import pickle
+import sys
+from typing import List, Dict, Optional, Union, Tuple
 from datetime import datetime
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -9,7 +11,7 @@ import uuid
 from pathlib import Path
 from ruamel.yaml import YAML
 
-from utils import normalize_code, CppBugExample
+from utils import normalize_code, CppBugExample, load_cpp_bugs_dataset
 
 class Memory:
     """Basic memory unit with metadata"""
@@ -52,17 +54,198 @@ class Memory:
         self.error_type = error_type or "unknown"
         self.bug_category = bug_category or "unknown"
         self.embedding_text = embedding_text or content
+    
+    @staticmethod
+    def read_cpp_file(file_path):
+        """Read C++ code from a file"""
+        try:
+            with open(file_path, 'r') as f:
+                return f.read()
+        except Exception as e:
+            print(f"Error reading file {file_path}: {e}")
+            return None
+    
+    @staticmethod
+    def to_dict(item):
+        """Convert a memory item to a dictionary for serialization"""
+        return {
+            "id": item.id,
+            "content": item.content,
+            "error_type": getattr(item, 'error_type', 'unknown'),
+            "bug_category": getattr(item, 'bug_category', 'unknown'),
+            "faulty_code": item.faulty_code,
+            "fixed_code": getattr(item, 'fixed_code', ""),
+            "timestamp": item.timestamp,
+            "keywords": getattr(item, 'keywords', []),
+            "tags": getattr(item, 'tags', []),
+            "context": getattr(item, 'context', ""),
+            "compiler_errors": getattr(item, 'compiler_errors', []),
+        }
+    
+    @staticmethod
+    def save_examples_to_yaml(matches, query_code, output_file, exact_match=False):
+        """Save found examples to a YAML file"""
+        # Create the output directory if it doesn't exist
+        output_path = Path(output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Prepare the data to save
+        result = {
+            "query": {
+                "code": query_code,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            },
+            "results": {
+                "count": len(matches),
+                "exact_match_found": exact_match,
+                "matches": [Memory.to_dict(match) for match in matches]
+            }
+        }
+        
+        # Save to YAML file
+        yaml = YAML()
+        yaml.indent(mapping=2, sequence=4, offset=2)
+        with open(output_file, 'w') as f:
+            yaml.dump(result, f)
+        
+        # print(f"\nResults saved to {output_file}")
+    
+    @staticmethod
+    def initialize_paths(database_path: str) -> Tuple[Path, Path, Path]:
+        """Initialize all necessary paths"""
+        data_dir = Path("data")
+        sample_db_path = Path(database_path)
+        
+        if not sample_db_path.exists():
+            print(f"Error: Database file not found at {sample_db_path}")
+            sys.exit(1)
+        
+        # Create a test output database so we don't modify the original
+        test_db_path = data_dir / "test_memory_database.yaml"
+        if test_db_path.exists():
+            os.remove(test_db_path)  # Start fresh for the demo
+            
+        return data_dir, sample_db_path, test_db_path
+    
+    @staticmethod
+    def setup_cache_directory(backend: str, model: str) -> Tuple[Path, Path]:
+        """Set up cache directory for memories"""
+        cache_dir = Path(f"cached_memories_{backend}_{model}")
+        cache_dir.mkdir(exist_ok=True)
+        memory_cache_file = cache_dir / "memory_cache_bugs.pkl"
+        return cache_dir, memory_cache_file
+    
+    @staticmethod
+    def load_or_create_memories(memory_system: 'FewShotMemory', 
+                              memory_cache_file: Path, 
+                              sample_db_path: Path) -> None:
+        """Load memories from cache or create new ones if needed"""
+        create_new_memories = True
+        
+        # Set the cache file path in the memory system
+        memory_system.cache_file = str(memory_cache_file)
+        
+        if memory_cache_file.exists():
+            print(f"Loading cached memories from {memory_cache_file}")
+            try:
+                with open(memory_cache_file, 'rb') as f:
+                    memory_system.memories = pickle.load(f)
+                print(f"Successfully loaded {len(memory_system.memories)} memories")
+                create_new_memories = False
+            except Exception as e:
+                print(f"Error loading cached memories: {e}. Will recreate memories.")
+        else:
+            print(f"No cached memories found. Creating new memories.")
+        
+        if create_new_memories:
+            # Load examples from the original database
+            cpp_bug_examples = load_cpp_bugs_dataset(sample_db_path)
+            print(f"Loaded {len(cpp_bug_examples)} examples from {sample_db_path}")
+            
+            # Add examples to our memory system
+            print(f"Adding examples to memory system...")
+            for example in cpp_bug_examples:
+                memory_system.add_from_example(example)
+                
+            # Cache memories for future runs
+            with open(memory_cache_file, 'wb') as f:
+                pickle.dump(memory_system.memories, f)
+            print(f"Successfully cached {len(memory_system.memories)} memories")
+    
+    @staticmethod
+    def process_matches(matches: List['Memory'], 
+                       test_code: str, 
+                       output_file: str) -> None:
+        """Process and display matches found by the memory system"""
+        exact_match = False
+        
+        if matches:
+            print(f"Found {len(matches)} similar examples")
+            
+            # Brief summary of top match
+            top_match = matches[0]
+            print(f"\nTop match: {top_match.content}")
+            print(f"Error type: {getattr(top_match, 'error_type', 'unknown')}")
+            
+            # Check for exact match
+            if normalize_code(top_match.faulty_code) == normalize_code(test_code):
+                exact_match = True
+                print("\nExact match found! Suggested fix will be in the output file.")
+                
+                # Print suggested fix
+                if top_match.fixed_code:
+                    print("\nSuggested fix:")
+                    print("```")
+                    print(top_match.fixed_code)
+                    print("```")
+                    
+            # Save to YAML
+            Memory.save_examples_to_yaml(matches, test_code, output_file, exact_match)
+        else:
+            print("No similar examples found")
+            Memory.save_examples_to_yaml([], test_code, output_file, False)
+    
+    @staticmethod
+    def save_databases(memory_system: 'FewShotMemory', 
+                      test_db_path: Path, 
+                      data_dir: Path) -> None:
+        """Save memory databases in YAML and JSON formats"""
+        print(f"\n--- Database statistics ---")
+        print(f"Examples in memory: {len(memory_system.memories)}")
+        
+        # Save to YAML
+        memory_system.save_database(str(test_db_path))
+        # print(f"Saved to: {test_db_path}")
+        
+        # Save a copy in JSON format
+        json_db_path = data_dir / "test_memory_database.json"
+        if json_db_path.exists():
+            os.remove(json_db_path)
+        memory_system.save_database(str(json_db_path))
+        # print(f"Also saved database in JSON format to: {json_db_path}")
+    
+    @staticmethod
+    def determine_output_file(output_file: Optional[str], 
+                             program_path: Path) -> str:
+        """Determine the output file path"""
+        if not output_file:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_name = program_path.stem
+            output_file = f"results/{file_name}_matches_{timestamp}.yaml"
+        return output_file
 
 class FewShotMemory:
     """Simple memory system with embedding-based retrieval for C++ code bug examples"""
     
     def __init__(self, 
                  db_path: str = "data/sample_memories.yaml", 
-                 model_name: str = "all-MiniLM-L6-v2"):
+                 model_name: str = "all-MiniLM-L6-v2",
+                 cache_file: str = None):
         """Initialize the memory system"""
         self.db_path = db_path
         self.model = SentenceTransformer(model_name)
         self.memories = {}  # Stores Memory objects by ID
+        self.cache_file = cache_file
         self.load_database()
     
     def load_database(self) -> None:
@@ -175,25 +358,45 @@ class FewShotMemory:
                 with open(output_path, 'w') as f:
                     json.dump(memory_list, f, indent=2)
             
-            print(f"Saved {len(self.memories)} items to database at {output_path}")
+            # print(f"Saved {len(self.memories)} items to database at {output_path}")
         except Exception as e:
             print(f"Error saving database to {output_path}: {e}")
     
     def add(self, 
-            faulty_code: str, 
+            original_code: str, 
             fixed_code: str = None, 
-            error_type: str = "unknown", 
-            bug_category: str = "unknown",
-            compiler_errors: List[str] = None,
-            content: str = None) -> str:
+            errors: List[str] = None) -> str:
         """Add a new memory item"""
-        # Generate a content description if not provided
-        if content is None:
-            content = f"C++ Bug: Fix the {error_type if error_type != 'unknown' else 'bug'} in this code."
+        # Determine error type from errors if possible
+        error_type = "unknown"
+        bug_category = "unknown"
+        
+        if errors and len(errors) > 0:
+            # Try to extract error type from compiler errors
+            first_error = errors[0].lower()
+            if "syntax" in first_error:
+                error_type = "syntax_error"
+            elif "undefined" in first_error:
+                error_type = "undefined_symbol"
+            elif "redefinition" in first_error:
+                error_type = "redefinition_error"
+            elif "expected" in first_error:
+                error_type = "missing_element"
             
-            if compiler_errors and len(compiler_errors) > 0:
-                error_msg = compiler_errors[0].split('\n')[0] if '\n' in compiler_errors[0] else compiler_errors[0]
-                content += f" Error: {error_msg}"
+            # Categorize the bug
+            if any(kw in first_error for kw in ["memory", "allocation", "free", "leak"]):
+                bug_category = "memory_management"
+            elif any(kw in first_error for kw in ["type", "conversion"]):
+                bug_category = "type_error"
+            elif any(kw in first_error for kw in ["syntax", "token", "expected"]):
+                bug_category = "syntax"
+        
+        # Generate a content description
+        content = f"C++ Bug: Fix the {error_type if error_type != 'unknown' else 'bug'} in this code."
+        
+        if errors and len(errors) > 0:
+            error_msg = errors[0].split('\n')[0] if '\n' in errors[0] else errors[0]
+            content += f" Error: {error_msg}"
         
         # Create memory item
         memory_id = str(uuid.uuid4())
@@ -205,25 +408,36 @@ class FewShotMemory:
             tags=["debugging", error_type.replace('_', ' '), "cpp"],
             timestamp=datetime.now().strftime("%Y%m%d%H%M"),
             category="C++",
-            faulty_code=faulty_code,
+            faulty_code=original_code,
             fixed_code=fixed_code,
-            compiler_errors=compiler_errors,
+            compiler_errors=errors,
             language="cpp",
             error_type=error_type,
             bug_category=bug_category,
-            embedding_text=f"C++ programming bug fix: {error_type} {faulty_code}"
+            embedding_text=f"C++ programming bug fix: {error_type} {original_code}"
         )
         
         # Add to memories and save
         self.memories[memory_id] = memory_item
         self.save_database()
         
+        # Update the cache file if it exists
+        if self.cache_file:
+            try:
+                with open(self.cache_file, 'wb') as f:
+                    pickle.dump(self.memories, f)
+            except Exception as e:
+                print(f"Error updating cache file {self.cache_file}: {e}")
+        
         return memory_id
     
-    def find(self, code: str, top_k: int = 3) -> List[Memory]:
+    def find(self, original_code: str, errors: List[str] = None) -> List[Memory]:
         """Find exact or similar matches for a code example"""
+        # Default top_k value
+        top_k = 3
+        
         # Check for exact match first (using normalized code)
-        normalized_code = normalize_code(code)
+        normalized_code = normalize_code(original_code)
         
         for memory in self.memories.values():
             if normalize_code(memory.faulty_code) == normalized_code:
@@ -235,8 +449,13 @@ class FewShotMemory:
             print("No memories in database")
             return []
         
-        # Generate embedding for query
-        query_embedding = self.model.encode([code])[0]
+        # Generate embedding for query - if errors are provided, include them
+        query_text = original_code
+        if errors and len(errors) > 0:
+            error_summary = " ".join(errors[:3])  # Include up to 3 errors in the embedding
+            query_text = f"{original_code} {error_summary}"
+            
+        query_embedding = self.model.encode([query_text])[0]
         
         # Calculate similarities with all memory items
         similarities = []
@@ -259,10 +478,7 @@ class FewShotMemory:
     def add_from_example(self, example: CppBugExample) -> str:
         """Add a memory item from a CppBugExample"""
         return self.add(
-            faulty_code=example.faulty_code,
+            original_code=example.faulty_code,
             fixed_code=example.fixed_code,
-            error_type=example.error_type,
-            bug_category=example.bug_category,
-            compiler_errors=example.compiler_errors,
-            content=example.content
+            errors=example.compiler_errors
         )

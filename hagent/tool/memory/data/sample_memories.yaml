@@ -1,18 +1,18 @@
-  - id: d0cbe364-424f-4c5e-97f0-b65ed5679b56
+  - id: c7324090-642f-408a-bd3c-ea09aaa1d64a
     content: "C++ Bug #8: Fix the missing semicolon in this code. Error: expected
       ';' at end of declaration"
     keywords:
       - C++
-      - missing semicolon
       - error
       - bug
+      - missing semicolon
     context: 'C++ programming bug fix: missing semicolon'
     tags:
-      - debugging
-      - missing semicolon
       - syntax
       - cpp
-    timestamp: '202504281306'
+      - debugging
+      - missing semicolon
+    timestamp: '202505071534'
     category: C++
     faulty_code: "#include <iostream>\n\nint main() {\n    int a = 10;\n    int b
       = 5;\n    \n    // Bug: Syntactical error using incorrect division operator
@@ -23,18 +23,18 @@
       5;\n    \n    int result = a / b;\n    \n    std::cout << \"Result: \" << result
       << std::endl;\n    \n    return 0;\n}"
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpzw1mrii0.cpp:8:20: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp7ui275s0.cpp:8:20: error:
         expected ';' at end of declaration"
       - "    8 |     int result = a : b;  // Using ':' instead of '/' for division"
       - '      |                    ^'
       - '      |                    ;'
-      - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpzw1mrii0.cpp:8:22: warning:
+      - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp7ui275s0.cpp:8:22: warning:
         expression result unused [-Wunused-value]'
       - "    8 |     int result = a : b;  // Using ':' instead of '/' for division"
       - '      |                      ^'
       - 1 warning and 1 error generated.
     language: cpp
-    created_at: '2025-04-28T13:06:45.500680'
+    created_at: '2025-05-07T15:34:03.033735'
     line_number: 8
     error_type: missing_semicolon
     bug_category: division by zero
@@ -44,21 +44,21 @@
       Using ':' instead of '/' for division\n    \n    std::cout << \"Result: \" <<
       result << std::endl;\n    \n    return 0;\n}"
     embedding_index: 0
-  - id: 2985200a-4b6f-407f-b166-6ddc7fc20ad7
+  - id: 15a1f060-ab87-4acc-896f-73efd9838078
     content: "C++ Bug #10: Fix the missing semicolon in this code. Error: expected
       ';' at end of declaration"
     keywords:
       - C++
-      - missing semicolon
       - error
       - bug
+      - missing semicolon
     context: 'C++ programming bug fix: missing semicolon'
     tags:
-      - debugging
-      - missing semicolon
       - syntax
       - cpp
-    timestamp: '202504281306'
+      - debugging
+      - missing semicolon
+    timestamp: '202505071534'
     category: C++
     faulty_code: "#include <iostream>\n\nint main() {\n    // Bug: Syntax error in
       variable declaration (missing semicolon)\n    int number    // Missing semicolon
@@ -69,14 +69,14 @@
       \    \n    number = 10;\n    \n    std::cout << \"Number: \" << number << std::endl;\n\
       \    \n    return 0;\n} "
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpkppgp4xh.cpp:5:15: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbjv3jpuh.cpp:5:15: error:
         expected ';' at end of declaration"
       - '    5 |     int number    // Missing semicolon after declaration'
       - '      |               ^'
       - '      |               ;'
       - 1 error generated.
     language: cpp
-    created_at: '2025-04-28T13:06:45.500680'
+    created_at: '2025-05-07T15:34:03.033735'
     line_number: 5
     error_type: missing_semicolon
     bug_category: uninitialized variable
@@ -86,7 +86,7 @@
       = 10;\n    \n    std::cout << \"Number: \" << number << std::endl;\n    \n \
       \   return 0;\n} "
     embedding_index: 1
-  - id: fc27da95-ab7b-47db-9b3e-a70bb066fdff
+  - id: c154255d-2ff4-4ef9-bad7-2479ba073ae1
     content: 'C++ Bug #5: Fix the null pointer in this code. Error: Code contains
       errors not detected by automatic analysis'
     keywords:
@@ -94,9 +94,9 @@
       - bug
     context: 'C++ programming bug fix: null pointer'
     tags:
-      - debugging
       - cpp
-    timestamp: '202504281306'
+      - debugging
+    timestamp: '202505071534'
     category: C++
     faulty_code: "#include <iostream>\n\nint main() {\n    int* ptr = nullptr;\n \
       \   *ptr = 10;  // Bug: Dereferencing null pointer\n    std::cout << \"Value
@@ -107,7 +107,7 @@
     compiler_errors:
       - Code contains errors not detected by automatic analysis
     language: cpp
-    created_at: '2025-04-28T13:06:45.500680'
+    created_at: '2025-05-07T15:34:03.033735'
     line_number:
     error_type: unknown
     bug_category: null pointer
@@ -116,21 +116,21 @@
       null pointer\n    std::cout << \"Value at ptr: \" << *ptr << std::endl;\n  \
       \  return 0;\n}"
     embedding_index: 2
-  - id: b529aeda-d19b-4791-a26b-7bbdb055878c
+  - id: adccc6ea-8601-4941-9bcc-db63163b5882
     content: "C++ Bug #7: Fix the memory leak in this code. Error: expected '(' for
       function-style cast or type construction"
     keywords:
-      - memory leak
       - C++
       - error
       - bug
+      - memory leak
     context: 'C++ programming bug fix: memory leak'
     tags:
-      - debugging
-      - memory management
       - memory leak
       - cpp
-    timestamp: '202504281306'
+      - debugging
+      - memory management
+    timestamp: '202505071534'
     category: C++
     faulty_code: "#include <iostream>\n\nint main() {\n    // Bug: Syntactical error
       in memory allocation (missing 'new' keyword)\n    int* data = int[100];  //
@@ -144,13 +144,13 @@
       data[99] << std::endl;\n    \n    delete[] data;  // Proper memory deallocation\n\
       \    \n    return 0;\n} "
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpk9_74fvx.cpp:5:20: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpwewss9p7.cpp:5:20: error:
         expected '(' for function-style cast or type construction"
       - '    5 |     int* data = int[100];  // Incorrect syntax for memory allocation'
       - '      |                 ~~~^'
       - 1 error generated.
     language: cpp
-    created_at: '2025-04-28T13:06:45.500680'
+    created_at: '2025-05-07T15:34:03.033735'
     line_number: 5
     error_type: memory_leak
     bug_category: memory leak
@@ -161,21 +161,21 @@
       \  \n    std::cout << \"Array sum: \" << data[0] + data[99] << std::endl;\n\
       \    \n    delete[] data;\n    \n    return 0;\n} "
     embedding_index: 3
-  - id: 90d28301-2535-4966-b1c3-e70cfa22f148
+  - id: 317e00e3-833f-4471-aba1-2f3e96882955
     content: "C++ Bug #3: Fix the mismatched brackets or parentheses in this code.
       Error: expected ')'"
     keywords:
-      - mismatched brackets or parentheses
       - C++
+      - mismatched brackets or parentheses
       - error
       - bug
     context: 'C++ programming bug fix: mismatched brackets or parentheses'
     tags:
-      - debugging
-      - mismatched brackets
       - syntax
+      - mismatched brackets
       - cpp
-    timestamp: '202504281306'
+      - debugging
+    timestamp: '202505071534'
     category: C++
     faulty_code: "#include <iostream>\n\nint main() {\n    for (int i = 0; i < 5;
       i++ {\n        std::cout << \"Iteration: \" << i << std::endl;\n    }\n    return
@@ -184,17 +184,17 @@
       {\n        std::cout << \"Iteration: \" << i << std::endl;\n    }\n    return
       0;\n}"
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp9jl3jb20.cpp:4:32: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpzdsaq0zp.cpp:4:32: error:
         expected ')'"
       - '    4 |     for (int i = 0; i < 5; i++ {'
       - '      |                                ^'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp9jl3jb20.cpp:4:9: note:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpzdsaq0zp.cpp:4:9: note:
         to match this '('"
       - '    4 |     for (int i = 0; i < 5; i++ {'
       - '      |         ^'
       - 1 error generated.
     language: cpp
-    created_at: '2025-04-28T13:06:45.500680'
+    created_at: '2025-05-07T15:34:03.033735'
     line_number: 4
     error_type: mismatched_brackets
     bug_category: mismatched brackets
@@ -202,7 +202,7 @@
       <iostream>\n\nint main() {\n    for (int i = 0; i < 5; i++ {\n        std::cout
       << \"Iteration: \" << i << std::endl;\n    }\n    return 0;\n}"
     embedding_index: 4
-  - id: 9b390f8c-46cc-4f60-a886-66d6ca8717e4
+  - id: 26c25d18-2559-4eef-93f2-4607b9ee1d33
     content: "C++ Bug #4: Fix the infinite loop in this code. Error: expected '('
       after 'while'"
     keywords:
@@ -212,10 +212,10 @@
       - infinite loop
     context: 'C++ programming bug fix: infinite loop'
     tags:
-      - debugging
       - infinite loop
       - cpp
-    timestamp: '202504281306'
+      - debugging
+    timestamp: '202505071534'
     category: C++
     faulty_code: "#include <iostream>\n#include <chrono>\n#include <thread>\n\nint
       main() {\n    int count = 0;\n    int limit = 5;\n    \n    // Bug: Syntax error
@@ -233,13 +233,13 @@
       \    }\n    \n    std::cout << \"Loop completed with count = \" << count <<
       std::endl;\n    return 0;\n}"
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbs00mp9a.cpp:10:11: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpcj2qmfnm.cpp:10:11: error:
         expected '(' after 'while'"
       - '   10 |     while count < limit {'
       - '      |           ^'
       - 1 error generated.
     language: cpp
-    created_at: '2025-04-28T13:06:45.500680'
+    created_at: '2025-05-07T15:34:03.033735'
     line_number: 10
     error_type: infinite_loop
     bug_category: infinite loop
@@ -252,35 +252,35 @@
       \    \n    std::cout << \"Loop completed with count = \" << count << std::endl;\n\
       \    return 0;\n}"
     embedding_index: 5
-  - id: 3194297d-8d64-426e-9b97-a4bf0c643436
+  - id: 59d88db5-b411-4c80-87dd-6f17fd78787d
     content: "C++ Bug #1: Fix the missing semicolon in this code. Error: expected
       ';' at end of declaration"
     keywords:
       - C++
-      - missing semicolon
       - error
       - bug
+      - missing semicolon
     context: 'C++ programming bug fix: missing semicolon'
     tags:
-      - debugging
-      - missing semicolon
       - syntax
       - cpp
-    timestamp: '202504281306'
+      - debugging
+      - missing semicolon
+    timestamp: '202505071534'
     category: C++
     faulty_code: "#include <iostream>\n\nint main() {\n    int x = 5\n    std::cout
       << \"The value of x is: \" << x << std::endl;\n    return 0;\n}\n"
     fixed_code: "#include <iostream>\n\nint main() {\n    int x = 5;\n    std::cout
       << \"The value of x is: \" << x << std::endl;\n    return 0;\n} "
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp1v5ofw35.cpp:4:14: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpruf13ut5.cpp:4:14: error:
         expected ';' at end of declaration"
       - '    4 |     int x = 5'
       - '      |              ^'
       - '      |              ;'
       - 1 error generated.
     language: cpp
-    created_at: '2025-04-28T13:06:45.500680'
+    created_at: '2025-05-07T15:34:03.033735'
     line_number: 4
     error_type: missing_semicolon
     bug_category: missing semicolon
@@ -288,21 +288,21 @@
       \nint main() {\n    int x = 5\n    std::cout << \"The value of x is: \" << x
       << std::endl;\n    return 0;\n}\n"
     embedding_index: 6
-  - id: 37a3ef94-ebb5-4c4a-a11f-d3b316f7978d
+  - id: ac526bb8-d3f9-4acc-a95f-0cc1d40de4d3
     content: "C++ Bug #9: Fix the undeclared variable in this code. Error: use of
       undeclared identifier 'value2'; did you mean 'value'?"
     keywords:
-      - undeclared variable
       - C++
       - error
       - bug
+      - undeclared variable
     context: 'C++ programming bug fix: undeclared variable'
     tags:
-      - debugging
       - undeclared variable
-      - variables
       - cpp
-    timestamp: '202504281306'
+      - debugging
+      - variables
+    timestamp: '202505071534'
     category: C++
     faulty_code: "#include <iostream>\n\nint main() {\n    int value = 5;\n    \n\
       \    if (value > 0) {\n        // Bug: Syntax error in variable declaration
@@ -314,27 +314,27 @@
       \   \n    std::cout << \"Value: \" << value << std::endl;  // Prints 11\n  \
       \  \n    return 0;\n} "
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp8zjgqdn5.cpp:8:9: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmprisjyp_5.cpp:8:9: error:
         use of undeclared identifier 'value2'; did you mean 'value'?"
       - '    8 |         value2 = 10;  // Missing variable type declaration'
       - '      |         ^~~~~~'
       - '      |         value'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp8zjgqdn5.cpp:4:9: note:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmprisjyp_5.cpp:4:9: note:
         'value' declared here"
       - '    4 |     int value = 5;'
       - '      |         ^'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp8zjgqdn5.cpp:9:9: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmprisjyp_5.cpp:9:9: error:
         use of undeclared identifier 'value2'; did you mean 'value'?"
       - '    9 |         value2++;'
       - '      |         ^~~~~~'
       - '      |         value'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp8zjgqdn5.cpp:4:9: note:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmprisjyp_5.cpp:4:9: note:
         'value' declared here"
       - '    4 |     int value = 5;'
       - '      |         ^'
       - 2 errors generated.
     language: cpp
-    created_at: '2025-04-28T13:06:45.500680'
+    created_at: '2025-05-07T15:34:03.033735'
     line_number: 8
     error_type: undeclared_variable
     bug_category: variable shadowing
@@ -344,21 +344,21 @@
       Missing variable type declaration\n        value2++;\n    }\n    \n    std::cout
       << \"Value: \" << value << std::endl;\n    \n    return 0;\n} "
     embedding_index: 7
-  - id: d4dca330-da73-4e20-864d-26daa00882ee
+  - id: 982fc0bf-1684-4951-8cd8-a74351ff66dc
     content: "C++ Bug #2: Fix the undeclared variable in this code. Error: use of
       undeclared identifier 'y'"
     keywords:
-      - undeclared variable
       - C++
       - error
       - bug
+      - undeclared variable
     context: 'C++ programming bug fix: undeclared variable'
     tags:
-      - debugging
       - undeclared variable
-      - variables
       - cpp
-    timestamp: '202504281306'
+      - debugging
+      - variables
+    timestamp: '202505071534'
     category: C++
     faulty_code: "#include <iostream>\n\nint main() {\n    y = 10;  // Bug: y is used
       before being declared\n    std::cout << \"The value of y is: \" << y << std::endl;\n\
@@ -367,17 +367,17 @@
       is now declared as an int\n    std::cout << \"The value of y is: \" << y <<
       std::endl;\n    return 0;\n} "
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpoo4rfneg.cpp:4:5: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp2hr4xqy5.cpp:4:5: error:
         use of undeclared identifier 'y'"
       - '    4 |     y = 10;  // Bug: y is used before being declared'
       - '      |     ^'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpoo4rfneg.cpp:5:43: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp2hr4xqy5.cpp:5:43: error:
         use of undeclared identifier 'y'"
       - '    5 |     std::cout << "The value of y is: " << y << std::endl;'
       - '      |                                           ^'
       - 2 errors generated.
     language: cpp
-    created_at: '2025-04-28T13:06:45.500680'
+    created_at: '2025-05-07T15:34:03.033735'
     line_number: 4
     error_type: undeclared_variable
     bug_category: undeclared variable
@@ -385,20 +385,20 @@
       \nint main() {\n    y = 10;  // Bug: y is used before being declared\n    std::cout
       << \"The value of y is: \" << y << std::endl;\n    return 0;\n} "
     embedding_index: 8
-  - id: 360f57f2-f1bf-45f4-9ea3-78bcf1c2193c
+  - id: c434027c-be6b-4c73-a450-b9c8a125badf
     content: 'C++ Bug #6: Fix the array bounds in this code. Error: array initializer
       must be an initializer list'
     keywords:
       - C++
-      - array bounds
-      - error
       - bug
+      - error
+      - array bounds
     context: 'C++ programming bug fix: array bounds'
     tags:
-      - debugging
       - array bounds
       - cpp
-    timestamp: '202504281306'
+      - debugging
+    timestamp: '202505071534'
     category: C++
     faulty_code: "#include <iostream>\n\nint main() {\n    // Bug: Syntactical error
       in array declaration (missing semicolon and using comma instead of braces)\n\
@@ -410,22 +410,22 @@
       = 0; i < 5; i++) {  // Fixed: Proper bounds checking\n        std::cout << \"\
       Element \" << i << \": \" << arr[i] << std::endl;\n    }\n    return 0;\n} "
     compiler_errors:
-      - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpg7a004cx.cpp:5:9: error:
+      - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbkzqmd6t.cpp:5:9: error:
         array initializer must be an initializer list'
       - '    5 |     int arr[5] = 1, 2, 3, 4, 5'
       - '      |         ^'
-      - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpg7a004cx.cpp:5:21: error:
+      - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbkzqmd6t.cpp:5:21: error:
         expected unqualified-id'
       - '    5 |     int arr[5] = 1, 2, 3, 4, 5'
       - '      |                     ^'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpg7a004cx.cpp:5:20: error:
+      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpbkzqmd6t.cpp:5:20: error:
         expected ';' at end of declaration"
       - '    5 |     int arr[5] = 1, 2, 3, 4, 5'
       - '      |                    ^'
       - '      |                    ;'
       - 3 errors generated.
     language: cpp
-    created_at: '2025-04-28T13:06:45.500680'
+    created_at: '2025-05-07T15:34:03.033735'
     line_number: 5
     error_type: array_bounds
     bug_category: array bounds

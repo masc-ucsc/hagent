@@ -93,7 +93,7 @@ def save_results(results: Dict, output_path: str):
         with open(output_path, 'w') as f:
             json.dump(results, f, indent=2)
             
-    print(f"Results saved to {output_path}")
+    # print(f"Results saved to {output_path}")
 
 @dataclass
 class CppBugExample:
@@ -174,7 +174,7 @@ def load_cpp_bugs_dataset(file_path: Union[str, Path]) -> List[CppBugExample]:
             raise e
     
     # Print statistics
-    print(f"\nLoaded {len(samples)} C++ bug examples from {file_path}")
+    # print(f"\nLoaded {len(samples)} C++ bug examples from {file_path}")
     error_types = {}
     for sample in samples:
         if sample.error_type in error_types:
@@ -182,7 +182,7 @@ def load_cpp_bugs_dataset(file_path: Union[str, Path]) -> List[CppBugExample]:
         else:
             error_types[sample.error_type] = 1
     
-    print("\nError type distribution:")
+    # print("\nError type distribution:")
     for error_type, count in error_types.items():
         print(f"  {error_type}: {count}")
     

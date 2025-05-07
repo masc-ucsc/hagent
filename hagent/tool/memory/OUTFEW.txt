@@ -1,18 +1,625 @@
 Cleaning up...
 Running test_few_shot_memory.py scripts...
 === Running: 1_missing_semicolon_buggy ===
-usage: test_few_shot_memory.py [-h] [-v] [-q] [--locals] [-f] [-c] [-b]
-                               [-k TESTNAMEPATTERNS]
-                               [tests ...]
-test_few_shot_memory.py: error: unrecognized arguments: -p
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+No cached memories found. Creating new memories.
+
+Loaded 10 C++ bug examples from data/sample_memories.yaml
+
+Error type distribution:
+  missing_semicolon: 3
+  unknown: 1
+  memory_leak: 1
+  mismatched_brackets: 1
+  infinite_loop: 1
+  undeclared_variable: 2
+  array_bounds: 1
+Loaded 10 examples from data/sample_memories.yaml
+Adding examples to memory system...
+Saved 1 items to database at data/test_memory_database.yaml
+Saved 2 items to database at data/test_memory_database.yaml
+Saved 3 items to database at data/test_memory_database.yaml
+Saved 4 items to database at data/test_memory_database.yaml
+Saved 5 items to database at data/test_memory_database.yaml
+Saved 6 items to database at data/test_memory_database.yaml
+Saved 7 items to database at data/test_memory_database.yaml
+Saved 8 items to database at data/test_memory_database.yaml
+Saved 9 items to database at data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.yaml
+Successfully cached 10 memories
+
+--- Testing with provided C++ file: programs/1_missing_semicolon_buggy.cpp ---
+Code to analyze:
+```
+#include <iostream>
+
+int main() {
+    int x = 5
+    std::cout << "The value of x is: " << x << std::endl;
+    return 0;
+}
+
+```
+Found exact match: 544e313b-3281-4200-af89-f7798f0d7fc0
+Found 1 similar examples
+
+Top match: C++ Bug #1: Fix the missing semicolon in this code. Error: expected ';' at end of declaration
+Error type: missing_semicolon
+
+Exact match found! Suggested fix will be in the output file.
+
+Suggested fix:
+```
+#include <iostream>
+
+int main() {
+    int x = 5;
+    std::cout << "The value of x is: " << x << std::endl;
+    return 0;
+} 
+```
+
+Results saved to results/1_missing_semicolon_buggy_matches_20250507_121412.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
 === Running: 2_undeclared_variable_buggy ===
-usage: test_few_shot_memory.py [-h] [-v] [-q] [--locals] [-f] [-c] [-b]
-                               [-k TESTNAMEPATTERNS]
-                               [tests ...]
-test_few_shot_memory.py: error: unrecognized arguments: -p
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+Loading cached memories from cached_memories_cpp_openai_gpt-4o-mini/memory_cache_cpp_bugs.pkl
+Successfully loaded 10 memories
+
+--- Testing with provided C++ file: programs/2_undeclared_variable_buggy.cpp ---
+Code to analyze:
+```
+#include <iostream>
+
+int main() {
+    y = 10;  // Bug: y is used before being declared
+    std::cout << "The value of y is: " << y << std::endl;
+    return 0;
+} 
+```
+Found exact match: aa742ccd-ac0b-452a-a458-16eb929041fc
+Found 1 similar examples
+
+Top match: C++ Bug #2: Fix the undeclared variable in this code. Error: use of undeclared identifier 'y'
+Error type: undeclared_variable
+
+Exact match found! Suggested fix will be in the output file.
+
+Suggested fix:
+```
+#include <iostream>
+
+int main() {
+    int y = 10;  // Fixed: y is now declared as an int
+    std::cout << "The value of y is: " << y << std::endl;
+    return 0;
+} 
+```
+
+Results saved to results/2_undeclared_variable_buggy_matches_20250507_121418.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
 === Running: 3_mismatched_brackets_buggy ===
-usage: test_few_shot_memory.py [-h] [-v] [-q] [--locals] [-f] [-c] [-b]
-                               [-k TESTNAMEPATTERNS]
-                               [tests ...]
-test_few_shot_memory.py: error: unrecognized arguments: -p
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+Loading cached memories from cached_memories_cpp_openai_gpt-4o-mini/memory_cache_cpp_bugs.pkl
+Successfully loaded 10 memories
+
+--- Testing with provided C++ file: programs/3_mismatched_brackets_buggy.cpp ---
+Code to analyze:
+```
+#include <iostream>
+
+int main() {
+    for (int i = 0; i < 5; i++ {
+        std::cout << "Iteration: " << i << std::endl;
+    }
+    return 0;
+}
+```
+Found exact match: 81148b6c-6edb-49d6-89a8-9c94ad900359
+Found 1 similar examples
+
+Top match: C++ Bug #3: Fix the mismatched brackets or parentheses in this code. Error: expected ')'
+Error type: mismatched_brackets
+
+Exact match found! Suggested fix will be in the output file.
+
+Suggested fix:
+```
+#include <iostream>
+
+int main() {
+    for (int i = 0; i < 5; i++) {
+        std::cout << "Iteration: " << i << std::endl;
+    }
+    return 0;
+}
+```
+
+Results saved to results/3_mismatched_brackets_buggy_matches_20250507_121424.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
 === Running: 4_infinite_loop_buggy ===
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+Loading cached memories from cached_memories_cpp_openai_gpt-4o-mini/memory_cache_cpp_bugs.pkl
+Successfully loaded 10 memories
+
+--- Testing with provided C++ file: programs/4_infinite_loop_buggy.cpp ---
+Code to analyze:
+```
+#include <iostream>
+#include <chrono>
+#include <thread>
+
+int main() {
+    int count = 0;
+    int limit = 5;
+    
+    // Bug: Syntax error in while loop (missing parentheses)
+    while count < limit {
+        std::cout << "Count: " << count << std::endl;
+        count++;
+        
+        // Add a small delay for visual effect
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    
+    std::cout << "Loop completed with count = " << count << std::endl;
+    return 0;
+}
+```
+Found exact match: 5c75488a-360b-481f-a473-6b9fabb7be47
+Found 1 similar examples
+
+Top match: C++ Bug #4: Fix the infinite loop in this code. Error: expected '(' after 'while'
+Error type: infinite_loop
+
+Exact match found! Suggested fix will be in the output file.
+
+Suggested fix:
+```
+#include <iostream>
+#include <chrono>
+#include <thread>
+
+int main() {
+    int count = 0;
+    int limit = 5;  // Fixed: limit is 5, so loop will run 5 times
+    
+    // Fixed: Proper while loop syntax with parentheses
+    while (count < limit) {
+        std::cout << "Count: " << count << std::endl;
+        count++;  // Fixed: Going in correct direction
+        
+        // Add a small delay for visual effect
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    
+    std::cout << "Loop completed with count = " << count << std::endl;
+    return 0;
+}
+```
+
+Results saved to results/4_infinite_loop_buggy_matches_20250507_121429.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
+=== Running: 5_null_pointer_buggy ===
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+Loading cached memories from cached_memories_cpp_openai_gpt-4o-mini/memory_cache_cpp_bugs.pkl
+Successfully loaded 10 memories
+
+--- Testing with provided C++ file: programs/5_null_pointer_buggy.cpp ---
+Code to analyze:
+```
+#include <iostream>
+
+int main() {
+    int* ptr = nullptr;
+    *ptr = 10;  // Bug: Dereferencing null pointer
+    std::cout << "Value at ptr: " << *ptr << std::endl;
+    return 0;
+}
+```
+Found exact match: 2f8ad73e-1e81-4576-b589-1ddc548e99d1
+Found 1 similar examples
+
+Top match: C++ Bug #5: Fix the null pointer in this code. Error: Code contains errors not detected by automatic analysis
+Error type: unknown
+
+Exact match found! Suggested fix will be in the output file.
+
+Suggested fix:
+```
+#include <iostream>
+
+int main() {
+    int value = 0;
+    int* ptr = &value;
+    *ptr = 10;  // Fixed: Properly initialized pointer
+    std::cout << "Value at ptr: " << *ptr << std::endl;
+    return 0;
+} 
+```
+
+Results saved to results/5_null_pointer_buggy_matches_20250507_121435.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
+=== Running: 6_array_bounds_buggy ===
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+Loading cached memories from cached_memories_cpp_openai_gpt-4o-mini/memory_cache_cpp_bugs.pkl
+Successfully loaded 10 memories
+
+--- Testing with provided C++ file: programs/6_array_bounds_buggy.cpp ---
+Code to analyze:
+```
+#include <iostream>
+
+int main() {
+    // Bug: Syntactical error in array declaration (missing semicolon and using comma instead of braces)
+    int arr[5] = 1, 2, 3, 4, 5
+    
+    for (int i = 0; i < 5; i++) {
+        std::cout << "Element " << i << ": " << arr[i] << std::endl;
+    }
+    return 0;
+}
+```
+Found exact match: 83287db6-94f7-4b49-ac14-d60d0aaeecfe
+Found 1 similar examples
+
+Top match: C++ Bug #6: Fix the array bounds in this code. Error: array initializer must be an initializer list
+Error type: array_bounds
+
+Exact match found! Suggested fix will be in the output file.
+
+Suggested fix:
+```
+#include <iostream>
+
+int main() {
+    // Fixed: Proper array declaration with correct syntax
+    int arr[5] = {1, 2, 3, 4, 5};
+    
+    for (int i = 0; i < 5; i++) {  // Fixed: Proper bounds checking
+        std::cout << "Element " << i << ": " << arr[i] << std::endl;
+    }
+    return 0;
+} 
+```
+
+Results saved to results/6_array_bounds_buggy_matches_20250507_121440.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
+=== Running: 7_memory_leak_buggy ===
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+Loading cached memories from cached_memories_cpp_openai_gpt-4o-mini/memory_cache_cpp_bugs.pkl
+Successfully loaded 10 memories
+
+--- Testing with provided C++ file: programs/7_memory_leak_buggy.cpp ---
+Code to analyze:
+```
+#include <iostream>
+
+int main() {
+    // Bug: Syntactical error in memory allocation (missing 'new' keyword)
+    int* data = int[100];  // Incorrect syntax for memory allocation
+    
+    for (int i = 0; i < 100; i++) {
+        data[i] = i;
+    }
+    
+    std::cout << "Array sum: " << data[0] + data[99] << std::endl;
+    
+    delete[] data;
+    
+    return 0;
+} 
+```
+Found exact match: fe67ecad-d5ba-486d-86a7-6fe8d73905e8
+Found 1 similar examples
+
+Top match: C++ Bug #7: Fix the memory leak in this code. Error: expected '(' for function-style cast or type construction
+Error type: memory_leak
+
+Exact match found! Suggested fix will be in the output file.
+
+Suggested fix:
+```
+#include <iostream>
+
+int main() {
+    // Fixed: Proper syntax for memory allocation with 'new' keyword
+    int* data = new int[100];  // Correct allocation syntax
+    
+    for (int i = 0; i < 100; i++) {
+        data[i] = i;
+    }
+    
+    std::cout << "Array sum: " << data[0] + data[99] << std::endl;
+    
+    delete[] data;  // Proper memory deallocation
+    
+    return 0;
+} 
+```
+
+Results saved to results/7_memory_leak_buggy_matches_20250507_121447.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
+=== Running: 8_division_by_zero_buggy ===
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+Loading cached memories from cached_memories_cpp_openai_gpt-4o-mini/memory_cache_cpp_bugs.pkl
+Successfully loaded 10 memories
+
+--- Testing with provided C++ file: programs/8_division_by_zero_buggy.cpp ---
+Code to analyze:
+```
+#include <iostream>
+
+int main() {
+    int a = 10;
+    int b = 5;
+    
+    // Bug: Syntactical error using incorrect division operator syntax
+    int result = a : b;  // Using ':' instead of '/' for division
+    
+    std::cout << "Result: " << result << std::endl;
+    
+    return 0;
+}
+```
+Found exact match: 5ad5bea2-e0c3-4243-8056-cc1da06f8f55
+Found 1 similar examples
+
+Top match: C++ Bug #8: Fix the missing semicolon in this code. Error: expected ';' at end of declaration
+Error type: missing_semicolon
+
+Exact match found! Suggested fix will be in the output file.
+
+Suggested fix:
+```
+#include <iostream>
+
+int main() {
+    int a = 10;
+    int b = 5;
+    
+    int result = a / b;
+    
+    std::cout << "Result: " << result << std::endl;
+    
+    return 0;
+}
+```
+
+Results saved to results/8_division_by_zero_buggy_matches_20250507_121452.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
+=== Running: 9_variable_shadowing_buggy ===
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+Loading cached memories from cached_memories_cpp_openai_gpt-4o-mini/memory_cache_cpp_bugs.pkl
+Successfully loaded 10 memories
+
+--- Testing with provided C++ file: programs/9_variable_shadowing_buggy.cpp ---
+Code to analyze:
+```
+#include <iostream>
+
+int main() {
+    int value = 5;
+    
+    if (value > 0) {
+        // Bug: Syntax error in variable declaration (missing type)
+        value2 = 10;  // Missing variable type declaration
+        value2++;
+    }
+    
+    std::cout << "Value: " << value << std::endl;
+    
+    return 0;
+} 
+```
+Found exact match: 59a8c7c9-e39e-4195-978e-aba1241bbe94
+Found 1 similar examples
+
+Top match: C++ Bug #9: Fix the undeclared variable in this code. Error: use of undeclared identifier 'value2'; did you mean 'value'?
+Error type: undeclared_variable
+
+Exact match found! Suggested fix will be in the output file.
+
+Suggested fix:
+```
+#include <iostream>
+
+int main() {
+    int value = 5;
+    
+    if (value > 0) {
+        int value2 = 10;
+        value2++;
+    }
+    
+    std::cout << "Value: " << value << std::endl;  // Prints 11
+    
+    return 0;
+} 
+```
+
+Results saved to results/9_variable_shadowing_buggy_matches_20250507_121458.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
+=== Running: 10_uninitialized_variable_buggy ===
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+Loading cached memories from cached_memories_cpp_openai_gpt-4o-mini/memory_cache_cpp_bugs.pkl
+Successfully loaded 10 memories
+
+--- Testing with provided C++ file: programs/10_uninitialized_variable_buggy.cpp ---
+Code to analyze:
+```
+#include <iostream>
+
+int main() {
+    // Bug: Syntax error in variable declaration (missing semicolon)
+    int number    // Missing semicolon after declaration
+    
+    number = 10;
+    
+    std::cout << "Number: " << number << std::endl;
+    
+    return 0;
+} 
+```
+Found exact match: 7e377e5f-0cc8-4f15-9ded-b48571ecee3b
+Found 1 similar examples
+
+Top match: C++ Bug #10: Fix the missing semicolon in this code. Error: expected ';' at end of declaration
+Error type: missing_semicolon
+
+Exact match found! Suggested fix will be in the output file.
+
+Suggested fix:
+```
+#include <iostream>
+
+int main() {
+    // Fixed: Proper variable declaration with semicolon
+    int number;  // Properly terminated with semicolon
+    
+    number = 10;
+    
+    std::cout << "Number: " << number << std::endl;
+    
+    return 0;
+} 
+```
+
+Results saved to results/10_uninitialized_variable_buggy_matches_20250507_121504.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
+=== Running: b1 ===
+
+--- Initializing memory system ---
+No existing database found at data/test_memory_database.yaml
+Loading cached memories from cached_memories_cpp_openai_gpt-4o-mini/memory_cache_cpp_bugs.pkl
+Successfully loaded 10 memories
+
+--- Testing with provided C++ file: programs/b1.cpp ---
+Code to analyze:
+```
+#include <iostream>
+using namespace std;
+
+int main() {
+    int a = 5;
+    int result = a + b; // ❌ 'b' is not declared
+    cout << "Result: " << result << endl;
+    return 0;
+}
+
+```
+Found 3 similar examples
+
+Top match: C++ Bug #8: Fix the missing semicolon in this code. Error: expected ';' at end of declaration
+Error type: missing_semicolon
+
+Results saved to results/b1_matches_20250507_121510.yaml
+
+--- Database statistics ---
+Examples in memory: 10
+Saved 10 items to database at data/test_memory_database.yaml
+Saved to: data/test_memory_database.yaml
+Saved 10 items to database at data/test_memory_database.json
+Also saved database in JSON format to: data/test_memory_database.json
+
+Test completed successfully!
