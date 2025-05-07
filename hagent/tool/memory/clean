@@ -1,0 +1,2 @@
+#!/bin/bash
+rm -rf __pycache__ cached_memories_cpp data results persistent_memories cached_memories

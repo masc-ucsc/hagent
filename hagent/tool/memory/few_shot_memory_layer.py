@@ -1,3 +1,5 @@
+# hagent/tool/memory/few_shot_memory_layer.py
+
 import json
 import os
 import pickle
@@ -11,7 +13,7 @@ import uuid
 from pathlib import Path
 from ruamel.yaml import YAML
 
-from utils import normalize_code, CppBugExample, load_cpp_bugs_dataset
+from .utils import normalize_code, CppBugExample, load_cpp_bugs_dataset
 
 class Memory:
     """Basic memory unit with metadata"""
