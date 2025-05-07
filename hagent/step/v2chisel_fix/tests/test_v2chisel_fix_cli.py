@@ -1,56 +1,58 @@
-
+# hagent/step/v2chisel_fix/tests/test_v2chisel_fix_cli.py
 import sys
-import os
-
+import yaml
+import pytest
 from hagent.step.v2chisel_fix.v2chisel_fix import V2chisel_fix
 
+def write_yaml(data, path):
+    with open(path, "w") as f:
+        yaml.safe_dump(data, f)
 
+@pytest.fixture
+def pass1_yaml(tmp_path):
+    data = {
+        "chisel_pass1": {
+            "chisel_changed":   "class Top extends Module { }",
+            "verilog_candidate": "module Top(); endmodule",
+            "was_valid":        False,
+        },
+        "verilog_original": "module Top(); endmodule",
+        "verilog_fixed":    "module Top(); endmodule",
+        "chisel_original":  "class Top extends Module { }",
+    }
+    p = tmp_path / "in.yaml"
+    write_yaml(data, p)
+    return p
 
-def process_chisel(files):
+def test_cli_generates_equivalent_chisel(tmp_path, pass1_yaml, monkeypatch):
+    out_yaml = tmp_path / "out.yaml"
 
-    step_obj = V2chisel_fix()
+    # stub out _check_equivalence to always pass immediately
+    monkeypatch.setattr(
+        V2chisel_fix,
+        "_check_equivalence",
+        lambda self, gold, cand: (True, None)
+    )
 
-    inp_data = {}
+    # Simulate CLI invocation: set sys.argv and then call parse_arguments()
+    monkeypatch.setattr(sys, "argv", ["v2chisel_fix", str(pass1_yaml), "-o", str(out_yaml)])
 
-    with open(files[0], "r") as fd:
-        data = {}
-        data['chisel_changed'] = fd.read()  # chisel_original
-        data['was_valid'] = True
-        inp_data['chisel_pass1'] = data
+    step = V2chisel_fix()
+    step.parse_arguments()  # now reads from sys.argv
+    step.setup()
+    result_dict = step.step()
 
-    with open(files[1], "r") as fd:
-        data = {}
-        data['verilog_candidate'] = fd.read()  # verilog_original
-        inp_data['chisel_pass1'] = data
+    # Ensure the file was written
+    assert out_yaml.exists()
 
-    with open(files[2], "r") as fd:
-        inp_data['verilog_fixed'] = fd.read()
+    # Load and compare
+    on_disk = yaml.safe_load(out_yaml.read_text())
+    assert result_dict == on_disk
 
-    step_obj.set_io(inp_file="", out_file = 'test_v2chisel_fix_cli.yaml', overwrite_conf = inp_data)
-
-    step_obj.setup()
-
-    res = step_obj.step()
-
-    if "chisel_fix" in res:
-        out_dict = res['chisel_fix']
-        if "refined_chisel" in out_dict:
-            print("Chisel fixed:")
-            print(out_dict['refined_chisel'])
-
-
-def main(args):
-    if len(args) != 3:
-        print("Call chisel_original.scala verilog_original.v verilog_fix.v")
-    else:
-        process_chisel(args)
-
-if __name__ == "__main__":
-    # If first argument is "test", run the unit tests
-    if len(sys.argv) > 1 and sys.argv[1] == "test":
-        # Remove the test argument to prevent unittest from misinterpreting it
-        sys.argv.pop(1)
-        # unittest.main()
-    else:
-        # Call main with command-line arguments (excluding the script name)
-        main(sys.argv[1:])
+    # Because we stubbed equivalence to pass:
+    assert on_disk["lec"] == 1
+    cf = on_disk["chisel_fixed"]
+    assert cf["equiv_passed"] is True
+    # No refinement needed
+    assert cf["refined_chisel"] == "class Top extends Module { }"
+    assert cf["chisel_diff"] == ""
