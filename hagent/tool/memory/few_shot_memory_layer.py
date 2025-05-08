@@ -4,16 +4,19 @@ import json
 import os
 import pickle
 import sys
-from typing import List, Dict, Optional, Union, Tuple
+import re
+import tempfile
+import subprocess
+import uuid
+import numpy as np
+from typing import List, Dict, Optional, Union, Tuple, Any
 from datetime import datetime
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-import uuid
 from pathlib import Path
 from ruamel.yaml import YAML
 
-from .utils import normalize_code, CppBugExample, load_cpp_bugs_dataset
+from hagent.tool.memory.utils import normalize_code, CppBugExample, load_cpp_bugs_dataset
 
 class Memory:
     """Basic memory unit with metadata"""
@@ -236,18 +239,321 @@ class Memory:
             output_file = f"results/{file_name}_matches_{timestamp}.yaml"
         return output_file
 
+    @staticmethod
+    def detect_language(file_path):
+        """Detect programming language from file extension."""
+        extension = Path(file_path).suffix.lower()
+        language_map = {
+            '.cpp': 'C++',
+            '.cc': 'C++',
+            '.c': 'C',
+            '.py': 'Python',
+            '.v': 'Verilog',
+            '.sv': 'SystemVerilog',
+            '.js': 'JavaScript',
+            '.ts': 'TypeScript',
+            '.java': 'Java',
+            '.go': 'Go',
+            '.rb': 'Ruby',
+            '.rs': 'Rust'
+        }
+        return language_map.get(extension, 'Unknown')
+
+    @staticmethod
+    def get_language_code(language):
+        """Convert full language name to code."""
+        language_codes = {
+            'C++': 'cpp',
+            'C': 'c',
+            'Python': 'python',
+            'Verilog': 'verilog',
+            'SystemVerilog': 'systemverilog',
+            'JavaScript': 'js',
+            'TypeScript': 'ts',
+            'Java': 'java',
+            'Go': 'go',
+            'Ruby': 'ruby',
+            'Rust': 'rust'
+        }
+        return language_codes.get(language, language.lower())
+
+    @staticmethod
+    def extract_bug_type(filename):
+        """Extract bug type from filename."""
+        match = re.search(r'(\d+)_([a-z_]+)_buggy', filename)
+        if match:
+            return match.group(2).replace('_', ' ')
+        return "unknown bug"
+
+    @staticmethod
+    def get_compiler_errors(code: str, language: str, file_name: str) -> Tuple[List[str], Dict[str, Any]]:
+        """
+        Compile the code and return errors and analysis.
+        
+        Args:
+            code: The source code to compile
+            language: The programming language
+            file_name: Original file name for context
+            
+        Returns:
+            Tuple of (error_messages, analysis_data)
+        """
+        errors = []
+        analysis = {
+            'error_type': 'unknown',
+            'line_number': None,
+            'severity': 'error',
+            'description': '',
+            'context': '',
+            'specific_issue': '',
+            'keywords': [],
+            'tags': []
+        }
+        
+        if language == 'C++':
+            with tempfile.NamedTemporaryFile(suffix='.cpp', delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(code.encode('utf-8'))
+            
+            try:
+                # Try Clang++ for more detailed error messages
+                try:
+                    result = subprocess.run(['clang++', '-fsyntax-only', '-Wall', '-std=c++17', tmp_path], 
+                                        capture_output=True, text=True, timeout=10)
+                    
+                    if result.returncode != 0:
+                        errors = [line for line in result.stderr.strip().split('\n') if line]
+                        
+                        # Parse error details
+                        if errors:
+                            # Extract line number, error type, and message
+                            match = re.search(r':(\d+):\d+: (error|warning): (.+)', errors[0])
+                            if match:
+                                analysis['line_number'] = int(match.group(1))
+                                analysis['severity'] = match.group(2)
+                                analysis['description'] = match.group(3)
+                                
+                                # Determine error type
+                                if "expected ';'" in analysis['description']:
+                                    analysis['error_type'] = 'missing_semicolon'
+                                    analysis['specific_issue'] = 'missing semicolon'
+                                elif "use of undeclared identifier" in analysis['description']:
+                                    analysis['error_type'] = 'undeclared_variable'
+                                    analysis['specific_issue'] = 'undeclared variable'
+                                elif "expected ')'" in analysis['description'] or "expected '}'" in analysis['description']:
+                                    analysis['error_type'] = 'mismatched_brackets'
+                                    analysis['specific_issue'] = 'mismatched brackets or parentheses'
+                                elif "null pointer" in analysis['description'] or "dereference" in analysis['description']:
+                                    analysis['error_type'] = 'null_pointer'
+                                    analysis['specific_issue'] = 'null pointer dereference'
+                                elif "array" in analysis['description'] and ("bounds" in analysis['description'] or "initialization" in analysis['description']):
+                                    analysis['error_type'] = 'array_bounds'
+                                    analysis['specific_issue'] = 'array bounds or initialization issue'
+                                elif "leak" in analysis['description'] or ("new" in analysis['description'] and "delete" in analysis['description']):
+                                    analysis['error_type'] = 'memory_leak'
+                                    analysis['specific_issue'] = 'memory leak or allocation issue'
+                                elif "division" in analysis['description'] or "operator" in analysis['description']:
+                                    analysis['error_type'] = 'operator_error'
+                                    analysis['specific_issue'] = 'incorrect operator usage'
+                                elif "shadow" in analysis['description']:
+                                    analysis['error_type'] = 'variable_shadowing'
+                                    analysis['specific_issue'] = 'variable shadowing'
+                                elif "uninitialized" in analysis['description']:
+                                    analysis['error_type'] = 'uninitialized_variable'
+                                    analysis['specific_issue'] = 'uninitialized variable'
+                                else:
+                                    # Extract from filename if can't determine from error
+                                    match = re.search(r'(\d+)_([a-z_]+)_buggy', file_name)
+                                    if match:
+                                        analysis['error_type'] = match.group(2)
+                                        analysis['specific_issue'] = match.group(2).replace('_', ' ')
+                        
+                        # Get context from code
+                        if analysis['line_number']:
+                            lines = code.split('\n')
+                            if 0 <= analysis['line_number']-1 < len(lines):
+                                analysis['context'] = lines[analysis['line_number']-1].strip()
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    # Try GCC instead
+                    try:
+                        result = subprocess.run(['g++', '-fsyntax-only', '-Wall', '-std=c++17', tmp_path], 
+                                            capture_output=True, text=True, timeout=10)
+                        
+                        if result.returncode != 0:
+                            errors = [line for line in result.stderr.strip().split('\n') if line]
+                    except (FileNotFoundError, subprocess.TimeoutExpired):
+                        # Fallback: basic analysis from code
+                        err_msg = "Could not compile code - compiler not available"
+                        errors.append(err_msg)
+                        analysis['description'] = err_msg
+            
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+        
+        elif language == 'Python':
+            with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(code.encode('utf-8'))
+            
+            try:
+                # Check syntax errors
+                result = subprocess.run([sys.executable, '-m', 'py_compile', tmp_path], 
+                                    capture_output=True, text=True, timeout=10)
+                
+                if result.returncode != 0:
+                    errors = [line for line in result.stderr.strip().split('\n') if line]
+                    
+                    # Extract information from Python errors
+                    if errors:
+                        match = re.search(r'File ".*", line (\d+)', errors[0])
+                        if match:
+                            analysis['line_number'] = int(match.group(1))
+                        
+                        if "SyntaxError" in errors[-1]:
+                            analysis['error_type'] = 'syntax_error'
+                            analysis['specific_issue'] = 'syntax error'
+                            # Get the specific error message
+                            match = re.search(r'SyntaxError: (.+)', errors[-1])
+                            if match:
+                                analysis['description'] = match.group(1)
+            except Exception as e:
+                errors.append(f"Error analyzing Python code: {str(e)}")
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+        
+        elif language == 'Verilog':
+            # Similar pattern for Verilog using appropriate tools
+            errors.append("Verilog compilation not implemented")
+            analysis['description'] = "Verilog error analysis would be done here"
+        
+        # Generate keywords and tags based on analysis
+        base_keywords = [language]
+        base_tags = [Memory.get_language_code(language), 'debugging']
+        
+        if analysis['specific_issue']:
+            keywords = base_keywords + [analysis['specific_issue'], 'bug', analysis['severity']]
+            if 'error_type' in analysis and analysis['error_type'] != 'unknown':
+                tags = base_tags + [analysis['error_type'].replace('_', ' ')]
+                if any(category in analysis['error_type'] for category in ['pointer', 'memory', 'leak']):
+                    tags.append('memory management')
+                elif any(category in analysis['error_type'] for category in ['syntax', 'semicolon', 'brackets']):
+                    tags.append('syntax')
+                elif any(category in analysis['error_type'] for category in ['variable', 'uninitialized']):
+                    tags.append('variables')
+            else:
+                tags = base_tags
+        else:
+            keywords = base_keywords + ['bug']
+            tags = base_tags
+        
+        analysis['keywords'] = list(set(keywords))
+        analysis['tags'] = list(set(tags))
+        
+        # If no errors found but we expect there to be errors
+        if not errors and '_buggy' in file_name:
+            generic_error = f"Code contains errors not detected by automatic analysis"
+            errors.append(generic_error)
+            if not analysis['description']:
+                analysis['description'] = generic_error
+        
+        return errors, analysis
+
+    @staticmethod
+    def generate_bug_description(analysis, bug_number, file_name):
+        """Generate a human-readable bug description based on error analysis."""
+        
+        # Try to extract bug type from filename if not in analysis
+        if not analysis.get('specific_issue'):
+            match = re.search(r'(\d+)_([a-z_]+)_buggy', file_name)
+            if match:
+                bug_type = match.group(2).replace('_', ' ')
+                analysis['specific_issue'] = bug_type
+        
+        # Generate description based on available information
+        if analysis.get('description') and analysis.get('specific_issue'):
+            description = f"Fix the {analysis['specific_issue']} in this code. Error: {analysis['description']}"
+        elif analysis.get('description'):
+            description = f"Fix the code error: {analysis['description']}"
+        elif analysis.get('specific_issue'):
+            description = f"Fix the {analysis['specific_issue']} in this code."
+        else:
+            # Fallback
+            description = f"Fix the bug in this code (Bug #{bug_number})."
+        
+        return description
+
+    @staticmethod
+    def read_code_file(file_path):
+        """Read code from a file."""
+        try:
+            with open(file_path, 'r') as f:
+                return f.read()
+        except Exception as e:
+            print(f"Error reading file {file_path}: {str(e)}")
+            return ""
+
 class FewShotMemory:
     """Simple memory system with embedding-based retrieval for C++ code bug examples"""
     
     def __init__(self, 
                  db_path: str = "data/sample_memories.yaml", 
                  model_name: str = "all-MiniLM-L6-v2",
-                 cache_file: str = None):
-        """Initialize the memory system"""
-        self.db_path = db_path
-        self.model = SentenceTransformer(model_name)
+                 cache_file: str = None,
+                 auto_create_data: bool = True,
+                 programs_path: str = None):
+        """Initialize the memory system
+        
+        Args:
+            db_path: Path to the database file
+            model_name: Name of the sentence transformer model
+            cache_file: Path to the cache file
+            auto_create_data: Whether to automatically create test data if database doesn't exist
+            programs_path: Path to the directory containing program examples
+        """
+        # Set up paths and directories
+        # Create data directory and set up database path
+        data_dir = Path("data")
+        data_dir.mkdir(exist_ok=True)
+        self.db_path = str(Path(db_path)) if not isinstance(db_path, Path) else str(db_path)
+        
+        # Set up cache directory for memories
+        if cache_file is None:
+            cache_dir = Path("cached_memories")
+            cache_dir.mkdir(exist_ok=True)
+            self.cache_file = str(cache_dir / "memory_cache_bugs.pkl")
+        else:
+            cache_file_path = Path(cache_file) if not isinstance(cache_file, Path) else cache_file
+            cache_file_path.parent.mkdir(exist_ok=True)
+            self.cache_file = str(cache_file_path)
+        
+        try:
+            self.model = SentenceTransformer(model_name)
+        except Exception as e:
+            print(f"Warning: Could not initialize SentenceTransformer: {e}")
+            print("Semantic search will be disabled.")
+            self.model = None
+            
         self.memories = {}  # Stores Memory objects by ID
-        self.cache_file = cache_file
+        
+        # Check if database exists
+        if not os.path.exists(self.db_path) and auto_create_data:
+            print(f"Database not found at {self.db_path}. Creating test data...")
+            
+            # Create test data
+            json_path, yaml_path = self.create_sample_data(
+                programs_path=programs_path,
+                output_path=self.db_path.replace('.yaml', '.json').replace('.yml', '.json'),
+                output_yaml_path=self.db_path,
+                create_embeddings=(self.model is not None)
+            )
+            
+            if json_path and yaml_path:
+                print(f"Created test data at {json_path} and {yaml_path}")
+                # The database is now created and self.db_path is updated
+        
+        # Load the database (either existing or newly created)
         self.load_database()
     
     def load_database(self) -> None:
@@ -484,3 +790,203 @@ class FewShotMemory:
             fixed_code=example.fixed_code,
             errors=example.compiler_errors
         )
+
+    def create_sample_data(self, programs_path=None, output_path=None, output_yaml_path=None, create_embeddings=True):
+        """
+        Create sample memory data by reading buggy and fixed code files from programs directory.
+        
+        Args:
+            programs_path: Path to the directory containing buggy/fixed code pairs.
+                         If None, uses 'programs' directory in the same location as this file.
+            output_path: Optional path for output JSON file. If not provided, 
+                        will save to default location.
+            output_yaml_path: Optional path for output YAML file.
+            create_embeddings: Whether to create embeddings for semantic search
+        
+        Returns:
+            Tuple of paths to the created JSON and YAML files.
+        """
+        # Define path to programs directory
+        if programs_path is None:
+            base_path = Path(__file__).parent
+            programs_path = base_path / "programs"
+        else:
+            programs_path = Path(programs_path)
+        
+        # Verify programs directory exists
+        if not programs_path.exists():
+            print(f"Programs directory not found at {programs_path}")
+            return None, None
+        
+        # Find all buggy/fixed file pairs
+        code_pairs = []
+        for buggy_file in programs_path.glob("*_buggy.*"):
+            # Construct fixed file path with same extension
+            fixed_file = buggy_file.parent / buggy_file.name.replace("_buggy", "_fixed")
+            
+            if fixed_file.exists():
+                code_pairs.append((buggy_file, fixed_file))
+        
+        if not code_pairs:
+            print("No buggy/fixed code pairs found")
+            return None, None
+        
+        # Current timestamp
+        current_time = datetime.now()
+        timestamp = current_time.strftime("%Y%m%d%H%M")
+        iso_timestamp = current_time.isoformat()
+        
+        # Create sample data with buggy and fixed code
+        sample_data = []
+        
+        # Store text for embeddings
+        embedding_texts = []
+        
+        for buggy_file, fixed_file in code_pairs:
+            # Extract bug number from filename
+            filename = buggy_file.name
+            match = re.search(r'(\d+)_', filename)
+            bug_number = match.group(1) if match else "0"
+            
+            # Detect language
+            language = Memory.detect_language(buggy_file)
+            language_code = Memory.get_language_code(language)
+            
+            # Read buggy and fixed code
+            buggy_code = Memory.read_code_file(buggy_file)
+            fixed_code = Memory.read_code_file(fixed_file)
+            
+            # Get compiler errors and analysis
+            compiler_errors, analysis = Memory.get_compiler_errors(buggy_code, language, filename)
+            
+            # Generate bug description
+            description = Memory.generate_bug_description(analysis, bug_number, filename)
+            
+            # Extract context for searching
+            context = f"{language} programming bug fix: "
+            if analysis.get('specific_issue'):
+                context += analysis['specific_issue']
+            else:
+                # Extract from filename
+                match = re.search(r'\d+_([a-z_]+)_buggy', filename)
+                if match:
+                    context += match.group(1).replace('_', ' ')
+                else:
+                    context += "code error"
+            
+            # Store the embedding text
+            embedding_text = analysis.get('embedding_text', f"{context} {buggy_code[:500]}")
+            embedding_texts.append(embedding_text)
+            
+            # Create memory object
+            memory_id = str(uuid.uuid4())
+            memory = Memory(
+                id=memory_id,
+                content=f"{language} Bug #{bug_number}: {description}",
+                keywords=analysis['keywords'],
+                context=context,
+                tags=analysis['tags'],
+                timestamp=timestamp,
+                category=language,
+                faulty_code=buggy_code,
+                fixed_code=fixed_code,
+                compiler_errors=compiler_errors,
+                language=language_code,
+                line_number=analysis.get('line_number'),
+                error_type=analysis.get('error_type', 'unknown'),
+                bug_category=analysis.get('bug_category', Memory.extract_bug_type(filename)),
+                embedding_text=embedding_text
+            )
+            
+            # Add to memories dictionary
+            self.memories[memory_id] = memory
+            
+            # Add to sample data for output
+            memory_dict = {
+                "id": memory_id,
+                "content": memory.content,
+                "keywords": memory.keywords,
+                "context": memory.context,
+                "tags": memory.tags,
+                "timestamp": timestamp,
+                "category": memory.category,
+                "faulty_code": memory.faulty_code,
+                "fixed_code": memory.fixed_code,
+                "compiler_errors": memory.compiler_errors,
+                "language": memory.language,
+                "created_at": iso_timestamp,
+                "line_number": memory.line_number,
+                "error_type": memory.error_type,
+                "bug_category": memory.bug_category,
+                "embedding_text": embedding_text,
+                "embedding_index": -1  # Will be set after embedding creation
+            }
+            
+            sample_data.append(memory_dict)
+        
+        # Create embeddings if requested
+        if create_embeddings and embedding_texts:
+            try:
+                print(f"Creating embeddings for {len(embedding_texts)} code examples...")
+                embeddings = self.model.encode(embedding_texts)
+                print(f"Successfully created {len(embeddings)} embeddings")
+                
+                # Add embedding index to each memory and store embedding in memory object
+                for i, (memory_dict, embedding) in enumerate(zip(sample_data, embeddings)):
+                    memory_dict["embedding_index"] = i
+                    memory_id = memory_dict["id"]
+                    if memory_id in self.memories:
+                        self.memories[memory_id].embedding = embedding
+                
+                # Determine embeddings output path
+                if output_path is None:
+                    # Use default path
+                    data_dir = Path(__file__).parent / "data"
+                    data_dir.mkdir(exist_ok=True)
+                    embeddings_path = data_dir / "code_embeddings.npy"
+                else:
+                    embeddings_path = Path(output_path).parent / "code_embeddings.npy"
+                
+                # Save embeddings
+                np.save(str(embeddings_path), embeddings)
+                print(f"Saved embeddings to {embeddings_path}")
+            except Exception as e:
+                print(f"Error creating embeddings: {e}")
+        
+        # Determine output paths
+        if output_path is None:
+            # Use default path
+            data_dir = Path(__file__).parent / "data"
+            data_dir.mkdir(exist_ok=True)
+            json_path = data_dir / "sample_memories.json"
+        else:
+            # Use provided path
+            json_path = Path(output_path)
+            json_path.parent.mkdir(exist_ok=True)
+        
+        if output_yaml_path is None:
+            yaml_path = json_path.with_suffix('.yaml')
+        else:
+            yaml_path = Path(output_yaml_path)
+            yaml_path.parent.mkdir(exist_ok=True)
+        
+        # Write to JSON file
+        with open(json_path, "w") as f:
+            json.dump(sample_data, f, indent=2)
+        
+        # Write to YAML file using ruamel.yaml
+        yaml = YAML()
+        yaml.indent(mapping=2, sequence=4, offset=2)  # Set indentation for better readability
+        yaml.preserve_quotes = True  # Preserve quotes in strings
+        
+        with open(yaml_path, "w") as f:
+            yaml.dump(sample_data, f)
+        
+        print(f"Created sample data at: {json_path} and {yaml_path}")
+        print(f"Generated {len(sample_data)} memory entries from buggy/fixed code pairs")
+        
+        # Update database path and save the memory database
+        self.db_path = str(yaml_path)
+        self.save_database()
+        
+        return str(json_path), str(yaml_path)
