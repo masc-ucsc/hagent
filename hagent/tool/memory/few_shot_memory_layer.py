@@ -21,6 +21,7 @@ from pathlib import Path
 from ruamel.yaml import YAML
 
 from hagent.tool.memory.utils import normalize_code, CppBugExample, load_cpp_bugs_dataset
+from hagent.tool.compile import Diagnostic
 
 class Memory:
     """Basic memory unit with metadata"""
@@ -344,50 +345,50 @@ class Memory:
                                         capture_output=True, text=True, timeout=10)
                     
                     if result.returncode != 0:
-                        errors = [line for line in result.stderr.strip().split('\n') if line]
+                        # Use Diagnostic class to parse error messages
+                        error_lines = [line for line in result.stderr.strip().split('\n') if line]
+                        errors = error_lines
                         
-                        # Parse error details
+                        # Parse error details using Diagnostic
                         if errors:
-                            # Extract line number, error type, and message
-                            match = re.search(r':(\d+):\d+: (error|warning): (.+)', errors[0])
-                            if match:
-                                analysis['line_number'] = int(match.group(1))
-                                analysis['severity'] = match.group(2)
-                                analysis['description'] = match.group(3)
-                                
-                                # Determine error type
-                                if "expected ';'" in analysis['description']:
-                                    analysis['error_type'] = 'missing_semicolon'
-                                    analysis['specific_issue'] = 'missing semicolon'
-                                elif "use of undeclared identifier" in analysis['description']:
-                                    analysis['error_type'] = 'undeclared_variable'
-                                    analysis['specific_issue'] = 'undeclared variable'
-                                elif "expected ')'" in analysis['description'] or "expected '}'" in analysis['description']:
-                                    analysis['error_type'] = 'mismatched_brackets'
-                                    analysis['specific_issue'] = 'mismatched brackets or parentheses'
-                                elif "null pointer" in analysis['description'] or "dereference" in analysis['description']:
-                                    analysis['error_type'] = 'null_pointer'
-                                    analysis['specific_issue'] = 'null pointer dereference'
-                                elif "array" in analysis['description'] and ("bounds" in analysis['description'] or "initialization" in analysis['description']):
-                                    analysis['error_type'] = 'array_bounds'
-                                    analysis['specific_issue'] = 'array bounds or initialization issue'
-                                elif "leak" in analysis['description'] or ("new" in analysis['description'] and "delete" in analysis['description']):
-                                    analysis['error_type'] = 'memory_leak'
-                                    analysis['specific_issue'] = 'memory leak or allocation issue'
-                                elif "division" in analysis['description'] or "operator" in analysis['description']:
-                                    analysis['error_type'] = 'operator_error'
-                                    analysis['specific_issue'] = 'incorrect operator usage'
-                                elif "shadow" in analysis['description']:
-                                    analysis['error_type'] = 'variable_shadowing'
-                                    analysis['specific_issue'] = 'variable shadowing'
-                                elif "uninitialized" in analysis['description']:
-                                    analysis['error_type'] = 'uninitialized_variable'
-                                    analysis['specific_issue'] = 'uninitialized variable'
-                                else:
-                                    # Keep error type as 'unknown' if we can't determine it from the error message
-                                    # Don't attempt to extract from filename here
-                                    analysis['error_type'] = 'syntax_error'
-                                    analysis['specific_issue'] = 'syntax error'
+                            # Create a Diagnostic object from the first error line
+                            diagnostic = Diagnostic(errors[0])
+                            analysis['line_number'] = diagnostic.loc
+                            analysis['severity'] = 'error' if diagnostic.error else 'warning'
+                            analysis['description'] = diagnostic.msg
+                            
+                            # Determine error type based on message content
+                            if "expected ';'" in diagnostic.msg:
+                                analysis['error_type'] = 'missing_semicolon'
+                                analysis['specific_issue'] = 'missing semicolon'
+                            elif "use of undeclared identifier" in diagnostic.msg:
+                                analysis['error_type'] = 'undeclared_variable'
+                                analysis['specific_issue'] = 'undeclared variable'
+                            elif "expected ')'" in diagnostic.msg or "expected '}'" in diagnostic.msg:
+                                analysis['error_type'] = 'mismatched_brackets'
+                                analysis['specific_issue'] = 'mismatched brackets or parentheses'
+                            elif "null pointer" in diagnostic.msg or "dereference" in diagnostic.msg:
+                                analysis['error_type'] = 'null_pointer'
+                                analysis['specific_issue'] = 'null pointer dereference'
+                            elif "array" in diagnostic.msg and ("bounds" in diagnostic.msg or "initialization" in diagnostic.msg):
+                                analysis['error_type'] = 'array_bounds'
+                                analysis['specific_issue'] = 'array bounds or initialization issue'
+                            elif "leak" in diagnostic.msg or ("new" in diagnostic.msg and "delete" in diagnostic.msg):
+                                analysis['error_type'] = 'memory_leak'
+                                analysis['specific_issue'] = 'memory leak or allocation issue'
+                            elif "division" in diagnostic.msg or "operator" in diagnostic.msg:
+                                analysis['error_type'] = 'operator_error'
+                                analysis['specific_issue'] = 'incorrect operator usage'
+                            elif "shadow" in diagnostic.msg:
+                                analysis['error_type'] = 'variable_shadowing'
+                                analysis['specific_issue'] = 'variable shadowing'
+                            elif "uninitialized" in diagnostic.msg:
+                                analysis['error_type'] = 'uninitialized_variable'
+                                analysis['specific_issue'] = 'uninitialized variable'
+                            else:
+                                # Keep error type as 'unknown' if we can't determine it from the error message
+                                analysis['error_type'] = 'syntax_error'
+                                analysis['specific_issue'] = 'syntax error'
                         
                         # Get context from code
                         if analysis['line_number']:
@@ -402,6 +403,13 @@ class Memory:
                         
                         if result.returncode != 0:
                             errors = [line for line in result.stderr.strip().split('\n') if line]
+                            
+                            # Use Diagnostic if there are errors
+                            if errors:
+                                diagnostic = Diagnostic(errors[0])
+                                analysis['line_number'] = diagnostic.loc
+                                analysis['severity'] = 'error' if diagnostic.error else 'warning'
+                                analysis['description'] = diagnostic.msg
                     except (FileNotFoundError, subprocess.TimeoutExpired):
                         # Fallback: basic analysis from code
                         err_msg = "Could not compile code - compiler not available"
@@ -423,10 +431,12 @@ class Memory:
                                     capture_output=True, text=True, timeout=10)
                 
                 if result.returncode != 0:
-                    errors = [line for line in result.stderr.strip().split('\n') if line]
+                    error_lines = [line for line in result.stderr.strip().split('\n') if line]
+                    errors = error_lines
                     
-                    # Extract information from Python errors
+                    # Parse Python errors
                     if errors:
+                        # Use a custom approach for Python errors since they don't match the format Diagnostic expects
                         match = re.search(r'File ".*", line (\d+)', errors[0])
                         if match:
                             analysis['line_number'] = int(match.group(1))
@@ -445,7 +455,7 @@ class Memory:
                     os.remove(tmp_path)
         
         elif language == 'Verilog':
-            # Similar pattern for Verilog using appropriate tools
+            # Placeholder for Verilog error analysis
             errors.append("Verilog compilation not implemented")
             analysis['description'] = "Verilog error analysis would be done here"
             
