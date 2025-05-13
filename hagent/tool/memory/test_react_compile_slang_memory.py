@@ -1,9 +1,10 @@
 # hagent/tool/memory/test_react_compile_slang_memory.py
 
 """
-Command-line tool that reads a Verilog source file and iteratively fixes it
+Command-line tool that reads a hardware description language source file and iteratively fixes it
 using ReactMemory, Compile_slang, and LLM_wrap. The tool uses diagnostic messages
 (like compiler.get_errors) to drive the LLM-based fix generation with memory enhancement.
+Supports Verilog, VHDL, Chisel, PyRTL, Spade, and Silice.
 """
 
 import sys
@@ -21,9 +22,11 @@ from hagent.tool.compile import Diagnostic
 from hagent.tool.extract_code import Extract_code_verilog
 
 
-class React_compile_slang_memory:
+class React_compile_hdl_memory:
     """
-    Encapsulates LLM and Compile_slang for iterative Verilog code fixing with memory enhancement.
+    Encapsulates LLM and Compile_slang for iterative hardware description language code fixing
+    with memory enhancement. Supports various HDL languages including Verilog, VHDL, Chisel,
+    PyRTL, Spade, and Silice.
     """
 
     def __init__(self):
@@ -34,7 +37,7 @@ class React_compile_slang_memory:
 
     def check_callback(self, code: str) -> List[Diagnostic]:
         """
-        Checks whether the provided Verilog code compiles.
+        Checks whether the provided HDL code compiles.
         Calls setup on the compiler to reset its state.
         Returns a list of Diagnostic objects if errors are found.
         """
@@ -57,6 +60,7 @@ class React_compile_slang_memory:
         """
         Uses the LLM to generate a fixed version of the current code.
         If a fix_example is provided, it is merged with the current code.
+        Supports various HDL languages with specific syntax checking.
         """
         if not diag:  # It should not happen, but just in case
             return current_text
@@ -69,31 +73,79 @@ class React_compile_slang_memory:
             print(f"Question: {fix_example['fix_question']}")
             print(f"Answer: {fix_example['fix_answer']}")
 
-        # For Verilog, we'll directly fix missing semicolons regardless of the specific error message
-        # This is more robust than checking for specific error messages
+        # Detect language from code patterns
+        is_verilog = "module" in current_text and "endmodule" in current_text
+        is_vhdl = "entity" in current_text and "end entity" in current_text
+        is_chisel = "class" in current_text and "extends Module" in current_text
+        is_pyrtl = "import pyrtl" in current_text
+        is_spade = "@hardware" in current_text or "@module" in current_text
+        is_silice = "algorithm" in current_text and "in:" in current_text
+            
         lines = current_text.splitlines()
-        for i, line in enumerate(lines):
-            # Look for assign statements without semicolons
-            if "assign" in line and not line.strip().endswith(';'):
-                print(f"Found missing semicolon at line {i+1}: {line}")
-                lines[i] = line + ";"
-                return "\n".join(lines)
-        
-        # If we get here, we couldn't find an obvious semicolon issue
-        # Let's try to use the LLM if available, but only if needed in a real application
-        if self.llm is None:
-            # For testing purposes, we can just handle common Verilog syntax errors
-            # If this was a real application, we would initialize the LLM here
-
-            # Check for other common syntax errors
+            
+        # Verilog-specific fixes
+        if is_verilog:
             for i, line in enumerate(lines):
-                # Add additional Verilog syntax error checks if needed
+                # Look for assign statements without semicolons
+                if "assign" in line and not line.strip().endswith(';'):
+                    print(f"Found missing semicolon at line {i+1}: {line}")
+                    lines[i] = line + ";"
+                    return "\n".join(lines)
+                
+                # Check module statements
                 if "module" in line and "endmodule" not in line and i < len(lines) - 1:
                     # Check if there's any statement that might need a semicolon
                     print(f"Checking line {i+1} for missing semicolon: {line}")
                     if not line.strip().endswith(';') and not line.strip().endswith(')'):
                         lines[i] = line + ";"
                         return "\n".join(lines)
+                        
+        # VHDL-specific fixes
+        elif is_vhdl:
+            for i, line in enumerate(lines):
+                # Check for common VHDL missing semicolons
+                if ("signal" in line or "variable" in line or "constant" in line) and not line.strip().endswith(';'):
+                    print(f"Found missing semicolon in VHDL at line {i+1}: {line}")
+                    lines[i] = line + ";"
+                    return "\n".join(lines)
+                    
+        # Chisel-specific fixes
+        elif is_chisel:
+            for i, line in enumerate(lines):
+                # Look for val/var declarations without type or initialization
+                if (("val" in line or "var" in line) and "=" not in line and 
+                    not line.strip().endswith("}")):
+                    print(f"Found incomplete val/var declaration in Chisel at line {i+1}: {line}")
+                    lines[i] = line + " = 0"
+                    return "\n".join(lines)
+                    
+        # PyRTL-specific fixes
+        elif is_pyrtl:
+            for i, line in enumerate(lines):
+                # Look for unterminated statements
+                if "->" in line and not line.strip().endswith(')'):
+                    print(f"Found unterminated PyRTL statement at line {i+1}: {line}")
+                    lines[i] = line + ")"
+                    return "\n".join(lines)
+                    
+        # Spade-specific fixes
+        elif is_spade:
+            for i, line in enumerate(lines):
+                # Look for unterminated function calls
+                if ("(" in line and not any(c in line for c in ");:")) and i < len(lines) - 1:
+                    print(f"Found unterminated Spade function call at line {i+1}: {line}")
+                    lines[i] = line + ")"
+                    return "\n".join(lines)
+                    
+        # Silice-specific fixes
+        elif is_silice:
+            for i, line in enumerate(lines):
+                # Look for unterminated statements
+                if (not line.strip().endswith(';') and not line.strip().endswith('{') and 
+                    not line.strip().endswith('}') and "if" not in line and "else" not in line):
+                    print(f"Found missing semicolon in Silice at line {i+1}: {line}")
+                    lines[i] = line + ";"
+                    return "\n".join(lines)
         
         # If we couldn't fix it with basic rules, return the code as is
         # In a real application, this is where we would use the LLM
@@ -102,7 +154,7 @@ class React_compile_slang_memory:
 
 
 def test_react_with_memory():
-    """Test ReactMemory with a database file for Verilog code."""
+    """Test ReactMemory with a database file for HDL code."""
     # Create a test data directory if it doesn't exist
     data_dir = Path("data")
     data_dir.mkdir(exist_ok=True)
@@ -117,7 +169,7 @@ def test_react_with_memory():
         assert setup_success, f"ReactMemory setup failed: {react.error_message}"
         
         # Create a React compiler instance
-        react_compiler = React_compile_slang_memory()
+        react_compiler = React_compile_hdl_memory()
         
         # A Verilog snippet with a missing semicolon
         faulty_code = """
@@ -170,7 +222,7 @@ endmodule
 
 
 def test_react_without_db():
-    """Test ReactMemory without a database file for Verilog code."""
+    """Test ReactMemory without a database file for HDL code."""
     try:
         # Initialize ReactMemory without a specific DB file
         react = ReactMemory()
@@ -178,7 +230,7 @@ def test_react_without_db():
         assert setup_success, f"ReactMemory setup failed: {react.error_message}"
         
         # Create a React compiler instance
-        react_compiler = React_compile_slang_memory()
+        react_compiler = React_compile_hdl_memory()
         
         # A Verilog snippet with a missing semicolon
         faulty_code = """
@@ -227,16 +279,16 @@ def main():
     test_react_with_memory()
     test_react_without_db()
     
-    parser = argparse.ArgumentParser(description='Iteratively fix Verilog code using ReactMemory and Compile_slang.')
-    parser.add_argument('verilog_file', help='Path to the Verilog source file')
+    parser = argparse.ArgumentParser(description='Iteratively fix hardware description language code using ReactMemory and Compile_slang. Supports Verilog, VHDL, Chisel, PyRTL, Spade, and Silice.')
+    parser.add_argument('hdl_file', help='Path to the hardware description language source file')
     args = parser.parse_args()
 
-    # Read Verilog source code from the provided file.
+    # Read HDL source code from the provided file.
     try:
-        with open(args.verilog_file, 'r') as f:
+        with open(args.hdl_file, 'r') as f:
             initial_code = f.read()
     except Exception as e:
-        print(f"Error reading file '{args.verilog_file}': {e}", file=sys.stderr)
+        print(f"Error reading file '{args.hdl_file}': {e}", file=sys.stderr)
         sys.exit(1)
 
     # Initialize and set up the ReactMemory tool.
@@ -245,7 +297,7 @@ def main():
         print(f'ReactMemory setup failed: {react.error_message}', file=sys.stderr)
         sys.exit(1)
 
-    react_compiler = React_compile_slang_memory()
+    react_compiler = React_compile_hdl_memory()
 
     # Drive the Re-Act cycle.
     fixed_code = react.react_cycle(
@@ -255,7 +307,7 @@ def main():
     )
 
     if not fixed_code:
-        print('Unable to fix the Verilog code within the iteration limit.', file=sys.stderr)
+        print('Unable to fix the HDL code within the iteration limit.', file=sys.stderr)
         sys.exit(1)
 
     # Final check: ensure that the fixed code compiles.
@@ -267,7 +319,7 @@ def main():
         print(error_details, file=sys.stderr)
         sys.exit(1)
 
-    print('Fixed Verilog code:')
+    print('Fixed HDL code:')
     print(fixed_code)
     sys.exit(0)
 

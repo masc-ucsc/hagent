@@ -1,0 +1,11 @@
+// Simple LED blinker in Silice - fixed version
+
+algorithm main(output uint8 led) {
+  uint1 state = 0;
+  
+  led = state ? 8b11111111 : 8b00000000;
+  
+  while (1) {
+    state = ~state;
+  }
+} 

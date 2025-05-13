@@ -259,7 +259,13 @@ class Memory:
             '.java': 'Java',
             '.go': 'Go',
             '.rb': 'Ruby',
-            '.rs': 'Rust'
+            '.rs': 'Rust',
+            '.scala': 'Chisel',
+            '.pyrtl': 'PyRTL',
+            '.vhdl': 'VHDL',
+            '.vhd': 'VHDL',
+            '.spade': 'Spade',
+            '.sil': 'Silice'
         }
         return language_map.get(extension, 'Unknown')
 
@@ -277,7 +283,12 @@ class Memory:
             'Java': 'java',
             'Go': 'go',
             'Ruby': 'ruby',
-            'Rust': 'rust'
+            'Rust': 'rust',
+            'Chisel': 'chisel',
+            'PyRTL': 'pyrtl',
+            'VHDL': 'vhdl',
+            'Spade': 'spade',
+            'Silice': 'silice'
         }
         return language_codes.get(language, language.lower())
 
@@ -431,6 +442,31 @@ class Memory:
             # Similar pattern for Verilog using appropriate tools
             errors.append("Verilog compilation not implemented")
             analysis['description'] = "Verilog error analysis would be done here"
+            
+        elif language == 'VHDL':
+            # Placeholder for VHDL error analysis
+            errors.append("VHDL compilation not implemented")
+            analysis['description'] = "VHDL error analysis would be done here"
+            
+        elif language == 'Chisel':
+            # Placeholder for Chisel error analysis
+            errors.append("Chisel compilation not implemented")
+            analysis['description'] = "Chisel (Scala-based HDL) error analysis would be done here"
+            
+        elif language == 'PyRTL':
+            # Placeholder for PyRTL error analysis
+            errors.append("PyRTL compilation not implemented")
+            analysis['description'] = "PyRTL error analysis would be done here"
+            
+        elif language == 'Spade':
+            # Placeholder for Spade error analysis
+            errors.append("Spade compilation not implemented")
+            analysis['description'] = "Spade hardware description language error analysis would be done here"
+            
+        elif language == 'Silice':
+            # Placeholder for Silice error analysis
+            errors.append("Silice compilation not implemented")
+            analysis['description'] = "Silice hardware description language error analysis would be done here"
         
         # Generate keywords and tags based on analysis
         base_keywords = [language]
