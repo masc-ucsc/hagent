@@ -139,10 +139,8 @@ class ReactMemory:
                 # Create a simple query that includes the error type
                 query_code = f"// Error type: {error_type}"
                 
-                # Only try semantic search if we're not in a test mock environment
-                if hasattr(self._memory_system, 'model') and self._memory_system.model is not None:
-                    # Use FewShotMemory's find method to get relevant examples
-                    matching_memories = self._memory_system.find(query_code)
+                # Use FewShotMemory's find method to get relevant examples
+                matching_memories = self._memory_system.find(query_code)
             except Exception as e:
                 print(f"Warning: Semantic search failed: {e}")
                 # Fall back to direct search already done above
@@ -184,15 +182,13 @@ class ReactMemory:
         # If we didn't find a direct match and find() is available, try semantic search
         if not exists and hasattr(self._memory_system, 'find'):
             try:
-                # Only use find if we're not in a test mock environment
-                if hasattr(self._memory_system, 'model') and self._memory_system.model is not None:
-                    existing_memories = self._memory_system.find(fix_question)
-                    # Check if any found memories match our code
-                    for memory in existing_memories:
-                        if normalize_code(memory.faulty_code) == normalize_code(fix_question):
-                            print(f"Skipping duplicate entry for error type: {error_type}")
-                            exists = True
-                            break
+                existing_memories = self._memory_system.find(fix_question)
+                # Check if any found memories match our code
+                for memory in existing_memories:
+                    if normalize_code(memory.faulty_code) == normalize_code(fix_question):
+                        print(f"Skipping duplicate entry for error type: {error_type}")
+                        exists = True
+                        break
             except Exception as e:
                 print(f"Warning: Semantic search for duplicates failed: {e}")
                 # Continue with adding since we couldn't verify duplicates

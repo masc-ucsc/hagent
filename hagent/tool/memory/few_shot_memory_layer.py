@@ -1,5 +1,9 @@
 # hagent/tool/memory/few_shot_memory_layer.py
 
+# Set tokenizers parallelism to false to avoid warnings with forked processes
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import json
 import os
 import pickle
@@ -528,13 +532,7 @@ class FewShotMemory:
             cache_file_path.parent.mkdir(exist_ok=True)
             self.cache_file = str(cache_file_path)
         
-        try:
-            self.model = SentenceTransformer(model_name)
-        except Exception as e:
-            print(f"Warning: Could not initialize SentenceTransformer: {e}")
-            print("Semantic search will be disabled.")
-            self.model = None
-            
+        self.model = SentenceTransformer(model_name)
         self.memories = {}  # Stores Memory objects by ID
         
         # Check if database exists
@@ -546,7 +544,7 @@ class FewShotMemory:
                 programs_path=programs_path,
                 output_path=self.db_path.replace('.yaml', '.json').replace('.yml', '.json'),
                 output_yaml_path=self.db_path,
-                create_embeddings=(self.model is not None)
+                create_embeddings=True
             )
             
             if json_path and yaml_path:

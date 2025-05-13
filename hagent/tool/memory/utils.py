@@ -12,11 +12,7 @@ from datetime import datetime
 from ruamel.yaml import YAML
 
 # Initialize SentenceTransformer model (this will be reused)
-try:
-    sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
-except Exception as e:
-    print(f"Warning: Could not load SentenceTransformer model: {e}")
-    sentence_model = None
+sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def normalize_code(code: str) -> str:
     """Normalize code for better comparison by removing extra whitespace and comments"""
