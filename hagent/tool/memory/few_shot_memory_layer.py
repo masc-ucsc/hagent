@@ -294,10 +294,17 @@ class Memory:
 
     @staticmethod
     def extract_bug_type(filename):
-        """Extract bug type from filename."""
+        """
+        Try to extract bug type from filename as a fallback option.
+        NOTE: This should not be the primary method to determine bug type,
+        as filenames may not follow a standard pattern.
+        """
+        # Only attempt to extract from filename as a last resort
         match = re.search(r'(\d+)_([a-z_]+)_buggy', filename)
         if match:
-            return match.group(2).replace('_', ' ')
+            # Return with a note that this is from filename pattern matching
+            bug_type = match.group(2).replace('_', ' ')
+            return bug_type
         return "unknown bug"
 
     @staticmethod
@@ -377,11 +384,10 @@ class Memory:
                                     analysis['error_type'] = 'uninitialized_variable'
                                     analysis['specific_issue'] = 'uninitialized variable'
                                 else:
-                                    # Extract from filename if can't determine from error
-                                    match = re.search(r'(\d+)_([a-z_]+)_buggy', file_name)
-                                    if match:
-                                        analysis['error_type'] = match.group(2)
-                                        analysis['specific_issue'] = match.group(2).replace('_', ' ')
+                                    # Keep error type as 'unknown' if we can't determine it from the error message
+                                    # Don't attempt to extract from filename here
+                                    analysis['error_type'] = 'syntax_error'
+                                    analysis['specific_issue'] = 'syntax error'
                         
                         # Get context from code
                         if analysis['line_number']:
@@ -504,14 +510,7 @@ class Memory:
     def generate_bug_description(analysis, bug_number, file_name):
         """Generate a human-readable bug description based on error analysis."""
         
-        # Try to extract bug type from filename if not in analysis
-        if not analysis.get('specific_issue'):
-            match = re.search(r'(\d+)_([a-z_]+)_buggy', file_name)
-            if match:
-                bug_type = match.group(2).replace('_', ' ')
-                analysis['specific_issue'] = bug_type
-        
-        # Generate description based on available information
+        # Generate description based primarily on analysis results
         if analysis.get('description') and analysis.get('specific_issue'):
             description = f"Fix the {analysis['specific_issue']} in this code. Error: {analysis['description']}"
         elif analysis.get('description'):
@@ -519,7 +518,7 @@ class Memory:
         elif analysis.get('specific_issue'):
             description = f"Fix the {analysis['specific_issue']} in this code."
         else:
-            # Fallback
+            # Fallback - generic description without attempting to extract from filename
             description = f"Fix the bug in this code (Bug #{bug_number})."
         
         return description
@@ -901,12 +900,8 @@ class FewShotMemory:
             if analysis.get('specific_issue'):
                 context += analysis['specific_issue']
             else:
-                # Extract from filename
-                match = re.search(r'\d+_([a-z_]+)_buggy', filename)
-                if match:
-                    context += match.group(1).replace('_', ' ')
-                else:
-                    context += "code error"
+                # Use error type if specific issue not available
+                context += analysis.get('error_type', 'code error').replace('_', ' ')
             
             # Store the embedding text
             embedding_text = analysis.get('embedding_text', f"{context} {buggy_code[:500]}")
@@ -914,6 +909,18 @@ class FewShotMemory:
             
             # Create memory object
             memory_id = str(uuid.uuid4())
+            
+            # Determine bug category, prioritizing analysis results over filename patterns
+            bug_category = "unknown"
+            if analysis.get('bug_category') and analysis['bug_category'] != "unknown":
+                bug_category = analysis['bug_category']
+            elif analysis.get('error_type') and analysis['error_type'] != "unknown":
+                # Use error type as category if specific category not available
+                bug_category = analysis['error_type'].replace('_', ' ')
+            else:
+                # As last resort, try to extract from filename pattern
+                bug_category = Memory.extract_bug_type(filename)
+            
             memory = Memory(
                 id=memory_id,
                 content=f"{language} Bug #{bug_number}: {description}",
@@ -928,7 +935,7 @@ class FewShotMemory:
                 language=language_code,
                 line_number=analysis.get('line_number'),
                 error_type=analysis.get('error_type', 'unknown'),
-                bug_category=analysis.get('bug_category', Memory.extract_bug_type(filename)),
+                bug_category=bug_category,
                 embedding_text=embedding_text
             )
             
