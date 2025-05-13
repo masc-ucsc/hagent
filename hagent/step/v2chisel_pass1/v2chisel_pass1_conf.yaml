@@ -2,6 +2,29 @@ v2chisel_pass1:
   threshold: 80
   context: 1
   
+  prompt_diff_not_found:
+    - role: system
+      content: |
+        You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
+    - role: user
+      content: |
+        The unified diff you provided refers to lines not present in the current Chisel source:
+        ```
+        {generate_diff}
+        ```
+        When applying this diff, the applier generates the following error:
+        ```
+        {applier_error}
+        ```
+        Additionally, based on further code analysis, here are new hints extracted from the chisel_original with hints "->" marking the lines that are most likely to require changes:
+        ```
+        {new_hints}
+        ```
+        Please generate a new unified diff that only modifies existing lines.
+        Can you give me a Chisel diff that could work?
+        Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+        PLEASE No explanation, no Note. ONLY diff
+
   prompt1:
     - role: system
       content: |

@@ -97,6 +97,7 @@ class V2chisel_fix(Step):
         self.template_config = LLM_template(conf_file)
         self.base_metadata_context = self.input_data.get('metadata_context', 40)
         self.meta = self.base_metadata_context
+        self.max_retries = 3
         # llm_args = self.input_data['llm'] 
         llm_args = self.template_config.template_dict.get('v2chisel_pass1', {}).get('llm', {})
 
@@ -118,13 +119,12 @@ class V2chisel_fix(Step):
            the updated code is compiled (Chisel2v) and then checked via LEC.
         4) Returns final data with "chisel_fixed" in the YAML.
         """
-        print("[V2ChiselFix] run() starting")
         # Only compute and print the unified diff if we have a fixed design to compare
         # if self.verilog_fixed_str.strip():
         #     self.verilog_diff_str = diff_code(self.verilog_original_str, self.verilog_fixed_str)
         #     print(f"[V2ChiselFix] Computed unified diff:\n{self.verilog_diff_str}")
-        result = data.copy()
 
+        result = data.copy()
         pass1_info = data['chisel_pass1']
         chisel_changed = pass1_info.get('chisel_changed', '')
         verilog_candidate = pass1_info.get('verilog_candidate', '')
@@ -133,8 +133,10 @@ class V2chisel_fix(Step):
         chisel_original = data.get('chisel_original', '')
         self.chisel_original = chisel_original
         self.chisel_subset = pass1_info.get('chisel_subset', chisel_changed)
-        print(f"[V2ChiselFix] Using extracted chisel_subset:\n{self.chisel_subset}")
+
+        # print(f"[V2ChiselFix] Using extracted chisel_subset:\n{self.chisel_subset}")
         lec_flag = data.get('lec', 0)
+
         result['chisel_fixed'] = {
             'original_chisel': chisel_original,
             'refined_chisel': chisel_changed,  # to be updated upon successful refinement
@@ -163,11 +165,7 @@ class V2chisel_fix(Step):
             result['chisel_fixed']['chisel_diff'] = ""
             result['lec'] = 1
             return result
-        
-        # # --- initial LEC failed: compute unified diff once for all prompts ---
-        # if self.verilog_fixed_str.strip():
-        #     self.verilog_diff_str = diff_code(self.verilog_original_str, self.verilog_fixed_str)
-        #     print(f"[V2ChiselFix] Computed unified diff:\n{self.verilog_diff_str}")
+
         # --- initial LEC failed: compute unified diff once for all prompts ---
         if self.verilog_fixed_str.strip():
             diff_step = Unified_diff()
@@ -180,15 +178,35 @@ class V2chisel_fix(Step):
             tmp = diff_step.run({'verilog_original': self.verilog_original_str,
                                  'verilog_fixed':    self.verilog_fixed_str})
             self.verilog_diff_str = tmp['verilog_diff']
-            print(f"[V2ChiselFix] Computed unified diff:\n{self.verilog_diff_str}")
+            print(f"[V2ChiselFix] Computed unified verilog_diff:\n{self.verilog_diff_str}")
             
         # --- Phase 1: prompt3 refinements (up to 2 attempts) ---
         for attempt in (1, 2):
             print(f"[V2ChiselFix] prompt3 refinement attempt {attempt}")
-            self.meta = self.base_metadata_context + 20 * (attempt - 1)
+            self.meta = self.base_metadata_context + 20 * (attempt)
             print(f"[V2ChiselFix] using metadata_context = {self.meta}")
             self.input_data['metadata_context'] = self.meta
+            hint_step = Extract_hints()
+            hint_step.set_io(self.input_file, self.output_file)
+            hint_step.input_data = {
+                'verilog_original':  self.verilog_original_str,
+                'verilog_fixed':     self.verilog_fixed_str,
+                'verilog_diff':      self.verilog_diff_str,
+                'chisel_original':   self.chisel_original,
+                'metadata_context':  self.meta,
+            }
+            hint_step.setup()
+            hint_out = hint_step.run(hint_step.input_data)
+            # self.chisel_subset = hint_out.get('chisel_subset', '')
+            self.chisel_subset = hint_out.get('hints', '').strip()
+            print(
+                f"[V2ChiselFix] regenerated chisel_subset "
+                f"with metadata_context={self.meta}:\n{self.chisel_subset}"
+            )
+
+            # now call the LLM with fresh hints
             new_diff = self._refine_chisel_code(chisel_original, lec_error, attempt)
+
             if not new_diff.strip():
                 continue
             # cand_code = ChiselDiffApplier().apply_diff(new_diff, chisel_original)
@@ -309,17 +327,20 @@ class V2chisel_fix(Step):
         max_iterations = 5
         current_code = chisel_code
         for i in range(1, max_iterations + 1):
+            current_chisel_diff = diff_code(self.chisel_original, current_code)
+
             prompt_dict = {
-                'chisel_original': self.chisel_original,
-                'current_chisel': current_code,
+                'current_chisel_diff': current_chisel_diff,
                 'compiler_error': compiler_error,
             }
+
             full_config = self.template_config.template_dict.get(self.refine_llm.name.lower(), {})
             if "prompt_compiler_fix" not in full_config:
                 self.error("Missing 'prompt_compiler_fix' in prompt configuration.")
+
             prompt_template = LLM_template(full_config["prompt_compiler_fix"])
             self.refine_llm.chat_template = prompt_template
-            formatted_prompt = self.refine_llm.chat_template.format(prompt_dict)
+            # formatted_prompt = self.refine_llm.chat_template.format(prompt_dict)
             print(f'\n================ LLM QUERY (prompt_compiler_fix, iteration {i}) ================')
             # for chunk in formatted_prompt:
             #     print("Role: {}".format(chunk.get('role', '<no role>')))
@@ -332,7 +353,7 @@ class V2chisel_fix(Step):
                 continue
             print('\n================ LLM RESPONSE (prompt_compiler_fix) ================')
             print(answers[0])
-            print('==============================================')
+            print('======================================================================')
             for txt in answers:
                 diff_code_text = self.chisel_extractor.parse(txt)
                 if diff_code_text:
@@ -349,17 +370,99 @@ class V2chisel_fix(Step):
                         break
         return current_code
     
-    def _apply_diff(self, original: str, diff_text: str) -> str:
-        "Reuses v2chisel_pass1’s Apply_diff step to patch Chisel."
+    def _try_apply(self, original: str, diff: str) -> str:
+        """Apply a single diff; may raise DiffContextError."""
         step = Apply_diff()
         step.set_io(self.input_file, self.output_file)
-        data = {
+        step.input_data = {
             'chisel_original': original,
-            'generated_diff':  diff_text
+            'generated_diff':  diff
         }
-        step.input_data = data
         step.setup()
-        return step.run(data)['chisel_candidate']
+        try:
+            return step.run(step.input_data)['chisel_candidate']
+        except Exception as e:
+            msg = str(e)
+            if CONTEXT_ERR_PATTERNS.search(msg):
+                raise DiffContextError(msg)
+            raise
+
+    def _apply_diff(self, original: str, initial_diff: str) -> str:
+        diff = initial_diff
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                chisel = self._try_apply(original, diff)
+                print(f"[V2ChiselFix] Applied diff on attempt {attempt}")
+                return chisel
+            except DiffContextError as e:
+                print(f"[V2ChiselFix] Context error on attempt {attempt}: {e}")
+                diff = self._refine_diff_not_found(diff)
+        raise RuntimeError(f"Failed to apply diff after {self.max_retries} attempts")
+    
+
+    def _refine_diff_not_found(self, old_diff: str) -> str:
+        """Ask the LLM once to regenerate a better diff."""
+        cfg = self.template_config.template_dict[self.refine_llm.name.lower()]
+        self.refine_llm.chat_template = LLM_template(cfg['prompt_diff_not_found'])
+        prompt = {
+            'generate_diff': old_diff,
+            'metadata_context': self.meta,
+            'chisel_subset': self.chisel_subset,
+        }
+        answers = self.refine_llm.inference(prompt, 'prompt_diff_not_found', n=1)
+        for txt in answers:
+            diff = self.chisel_extractor.parse(txt)
+            if diff:
+                return diff
+        return old_diff
+
+
+    # def _refine_diff_not_found(self, data: dict, generated_diff: str, err_msg: str, verilog_diff: str, chisel_original: str):
+    #     """
+    #     Regenerate a unified diff when Apply_diff fails due to missing-context errors,
+    #     then attempt to apply it. Returns a tuple:
+    #       (updated_chisel_code, new_diff_text, apply_success_flag)
+    #     """
+    #     # 1) Ask the LLM for a new diff
+    #     prompt_dict = {
+    #         'generate_diff':     generated_diff,
+    #         'metadata_context':  self.meta,
+    #         'chisel_subset':     self.chisel_subset,
+    #     }
+    #     cfg = self.template_config.template_dict.get(self.refine_llm.name.lower(), {})
+    #     if 'prompt_diff_not_found' not in cfg:
+    #         self.error("Missing 'prompt_diff_not_found' in prompt configuration.")
+    #     self.refine_llm.chat_template = LLM_template(cfg['prompt_diff_not_found'])
+    #     answers = self.refine_llm.inference(
+    #         prompt_dict,
+    #         prompt_index='prompt_diff_not_found',
+    #         n=1,
+    #         max_history=10
+    #     )
+
+    #     # 2) For each candidate diff, try applying it immediately
+    #     for txt in answers:
+    #         diff_candidate = self.chisel_extractor.parse(txt)
+    #         if not diff_candidate:
+    #             continue
+
+    #         apply_step = Apply_diff()
+    #         apply_step.set_io(self.input_file, self.output_file)
+    #         trial_data = data.copy()
+    #         trial_data['generated_diff'] = diff_candidate
+    #         apply_step.input_data = trial_data
+    #         apply_step.setup()
+    #         try:
+    #             result = apply_step.run(trial_data)
+    #             chisel_candidate = result.get('chisel_candidate', '')
+    #             # success!
+    #             return chisel_candidate, diff_candidate, True
+    #         except Exception:
+    #             # failed to apply this diff, try the next one
+    #             continue
+
+    #     # 3) If no new diff applied cleanly, return original
+    #     return chisel_original, generated_diff, False
 
     def _generate_diff(self, old_code: str, new_code: str) -> str:
         """
@@ -376,7 +479,7 @@ class V2chisel_fix(Step):
         )
         return '\n'.join(diff_lines)
 
-    def _check_equivalence(self, gate_code: str, gold_code: str):
+    def _check_equivalence(self, gold_code: str, gate_code: str):
         if not gold_code.strip() or not gold_code.strip():
             return (False, 'Missing code for equivalence check')
         eq_checker = Equiv_check()
@@ -425,13 +528,7 @@ class V2chisel_fix(Step):
         full_config = self.template_config.template_dict.get(self.refine_llm.name.lower(), {})
         prompt_template = LLM_template(full_config["prompt3"])
         self.refine_llm.chat_template = prompt_template
-        formatted_prompt = self.refine_llm.chat_template.format(prompt_dict)
         print('\n================ LLM QUERY (prompt3, attempt {}) ================'.format(attempt))
-        # for chunk in formatted_prompt:
-        #     print("Role: {}".format(chunk.get('role', '<no role>')))
-        #     print("Content:")
-        #     print(chunk.get('content', '<no content>'))
-        #     print("------------------------------------------------")
         answers = self.refine_llm.inference(prompt_dict, prompt_index="prompt3", n=1, max_history=10)
         if not answers:
             print('\n=== LLM RESPONSE: EMPTY ===\n')
@@ -439,7 +536,7 @@ class V2chisel_fix(Step):
 
         print('\n================ LLM RESPONSE (prompt3) ================')
         print(answers[0])
-        print('==============================================')
+        print('==========================================================')
 
         for txt in answers:
             code = self.chisel_extractor.parse(txt)
