@@ -335,15 +335,36 @@ class V2Chisel_pass1(Step):
 
             generated_diff = self._strip_markdown_fences(response_list[0])
             apply_step = Apply_diff()
-            # propagate the new diff into data for Apply_diff
-            data['generated_diff']  = generated_diff
-            data['chisel_original'] = chisel_original
-            # give Apply_diff the same I/O so setup() won't complain
             apply_step.set_io(self.input_file, self.output_file)
             apply_step.input_data = data
             apply_step.setup()
-            data = apply_step.run(data)
-            chisel_updated = data.get('chisel_candidate', '')
+            try:
+                data = apply_step.run(data)
+                chisel_updated = data.get('chisel_candidate', '')
+                print('Applied the diff.')
+            except Exception as ex:
+                err = str(ex)
+                if 'apply_diff verification failed' in err:
+                    # call helper — it only retries on apply errors, then returns as soon as an apply succeeds
+                    cu, new_diff, apply_ok = self._handle_diff_not_found(
+                        data,
+                        generated_diff,
+                        err,
+                        verilog_diff_text,
+                        chisel_original
+                    )
+                    if apply_ok:
+                        # we now have a valid chisel_updated and new diff; proceed to verify_candidate below
+                        chisel_updated = cu
+                        generated_diff = new_diff
+                        print('Applied the diff after diff_not_found retry.')
+                        # fall through to Verify_candidate
+                    else:
+                        last_error_msg = err
+                        continue  # no apply succeeded, back to next prompt_i
+                else:
+                    raise
+
 
             # print("===== FINAL CHISEL CODE AFTER DIFF APPLIER (attempt {}) =====".format(attempt))
             # print(chisel_updated)
@@ -385,6 +406,69 @@ class V2Chisel_pass1(Step):
         }
         result['verilog_diff'] = verilog_diff_text
         return result
+
+    def _handle_diff_not_found(self, data, generated_diff, last_error_msg, verilog_diff_text, chisel_original):
+        """
+        On Apply_diff verification failure, retry up to 4× using prompt_diff_not_found.
+        Increase metadata_context by 5 each retry.
+        Returns (chisel_updated, new_generated_diff, was_valid_apply).
+        was_valid_apply=True means apply_diff succeeded—verification still happens in main loop.
+        """
+        cfg = self.template_config.template_dict.get('v2chisel_pass1', {})
+        prompt_section = cfg.get('prompt_diff_not_found')
+        if not prompt_section:
+            self.error("Missing 'prompt_diff_not_found' under v2chisel_pass1 in config")
+
+        base_ctx = self.input_data.get('metadata_context', 10)
+
+        for retry in range(1, 5):
+            # bump context
+            self.input_data['metadata_context'] = base_ctx + retry * 5
+
+            # setup LLM
+            tmpl = LLM_template(prompt_section)
+            self.lw.name = f'v2chisel_pass1_diff_not_found_{retry}'
+            self.lw.chat_template = tmpl
+
+            # extract hints with larger context
+            new_hints = self._extract_chisel_subset(chisel_original, verilog_diff_text)
+
+            payload = {
+                'generate_diff': generated_diff,
+                'applier_error': last_error_msg,
+                'new_hints':     new_hints,
+            }
+            resp = self.lw.inference(payload,
+                                     prompt_index='prompt_diff_not_found',
+                                     n=1)
+            if not resp:
+                continue
+
+            # strip fences
+            generated_diff = self._strip_markdown_fences(resp[0])
+
+            # try apply again
+            apply_step = Apply_diff()
+            apply_step.set_io(self.input_file, self.output_file)
+            data['generated_diff']  = generated_diff
+            data['chisel_original'] = chisel_original
+            apply_step.input_data = data
+            apply_step.setup()
+            try:
+                data = apply_step.run(data)
+            except Exception as e:
+                last_error_msg = str(e)
+                continue
+
+            # if we got here, apply_diff succeeded!
+            chisel_updated = data.get('chisel_candidate', '')
+            # restore context before returning
+            self.input_data['metadata_context'] = base_ctx
+            return chisel_updated, generated_diff, True
+
+        # all retries failed to apply
+        self.input_data['metadata_context'] = base_ctx
+        return None, generated_diff, False
 
 
 def wrap_literals(obj):

@@ -5,18 +5,28 @@ v2chisel_fix:
   threshold: 40
   context: 1
 
-  diff_not_found:
+  prompt_diff_not_found:
     - role: system
-      content:
+      content: |
         You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
     - role: user
       content: |
-        The unified diff you provided refers to lines not present in the current Chisel code.
-        user diff:
+        The unified diff you provided refers to lines not present in the current Chisel source:
         ```
         {generate_diff}
         ```
-
+        When applying this diff, the applier generates the following error:
+        ```
+        {applier_error}
+        ```
+        Additionally, based on further code analysis, here are new hints extracted from the chisel_original with hints "->" marking the lines that are most likely to require changes:
+        ```
+        {new_hints}
+        ```
+        Please generate a new unified diff that only modifies existing lines.
+        Can you give me a Chisel diff that could work?
+        Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
+        PLEASE No explanation, no Note. ONLY diff
 
   prompt4:
     - role: system
@@ -60,11 +70,11 @@ v2chisel_fix:
         ```
         {lec_output}
         ```
-        I’ve marked a context snippet from the Chisel source (with {metadata_context} lines of context):
+        based on further code analysis, here are hints extracted from the chisel_original with hints "->" marking the lines that are most likely to require changes:
         ```
         {chisel_subset}
         ```
-        Please provide a unified diff that implements all necessary updates to the Chisel code. You may need to modify multiple lines—and even include more than one hunk—to fully match the updated Verilog.
+        Please provide a unified diff that implements all necessary updates to the Chisel code. Be careful You may need to modify multiple lines—and even include more than one hunk—to fully match the updated Verilog.
         Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
         PLEASE No explanation, no Note. ONLY diff
   
@@ -97,16 +107,16 @@ v2chisel_fix:
     - role: system
       content: |
         You are an AI specialized in debugging and refining Chisel code to fix compilation errors.
-        The current Chisel code does not compile and the following compiler error was reported.
     - role: user
       content: |
-        The current Chisel code is:
+        The current Chisel code does not compile and the following compiler error was reported.
+        I have already computed a diff between the buggy version and the original correct Chisel:
         ```
-        {current_chisel}
+        {current_chisel_diff}
         ```
         and the compiler error is:
         ```
         {compiler_error}
         ```
         Please generate a minimal unified diff that fixes the compilation error so that the code can compile.
-        Output *only* the diff with no extra commentary.
+        *Note*: Only output the unified diff.
