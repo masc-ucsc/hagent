@@ -1,5 +1,5 @@
 """Memory module for hagent."""
 
-from hagent.tool.memory.few_shot_memory_layer import FewShotMemory, Memory
+from hagent.tool.memory.few_shot_memory_layer import Memory, MemoryItem
 
-__all__ = ["FewShotMemory", "Memory"]
+__all__ = ["Memory", "MemoryItem"]
