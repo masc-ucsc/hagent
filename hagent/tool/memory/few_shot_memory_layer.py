@@ -497,35 +497,485 @@ class Memory:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
         
-        elif language == 'Verilog':
-            # Placeholder for Verilog error analysis
-            errors.append("Verilog compilation not implemented")
-            analysis['description'] = "Verilog error analysis would be done here"
+        elif language in ['Verilog', 'SystemVerilog']:
+            # Verilog/SystemVerilog implementation using Icarus Verilog
+            suffix = '.v' if language == 'Verilog' else '.sv'
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(code.encode('utf-8'))
             
+            try:
+                # Use iverilog for compilation checking
+                result = subprocess.run(['iverilog', '-t', 'null', tmp_path], 
+                                    capture_output=True, text=True, timeout=10)
+                
+                if result.returncode != 0:
+                    error_lines = [line for line in result.stderr.strip().split('\n') if line]
+                    errors = error_lines
+                    
+                    # Parse Verilog errors
+                    if errors:
+                        # Extract line number if available
+                        line_match = re.search(r':(\d+):', errors[0])
+                        if line_match:
+                            analysis['line_number'] = int(line_match.group(1))
+                        
+                        # Determine error type
+                        error_msg = errors[0].lower()
+                        if "syntax error" in error_msg:
+                            analysis['error_type'] = 'syntax_error'
+                            analysis['specific_issue'] = 'syntax error'
+                        elif "undeclared" in error_msg:
+                            analysis['error_type'] = 'undeclared_symbol'
+                            analysis['specific_issue'] = 'undeclared symbol'
+                        elif "mismatch" in error_msg:
+                            analysis['error_type'] = 'type_mismatch'
+                            analysis['specific_issue'] = 'type mismatch'
+                        elif "assign" in error_msg and "wire" in error_msg:
+                            analysis['error_type'] = 'wire_assignment'
+                            analysis['specific_issue'] = 'invalid wire assignment'
+                        elif "width" in error_msg:
+                            analysis['error_type'] = 'width_mismatch'
+                            analysis['specific_issue'] = 'bus width mismatch'
+                        else:
+                            analysis['error_type'] = 'verilog_error'
+                            analysis['specific_issue'] = 'verilog compilation error'
+                        
+                        # Set description
+                        analysis['description'] = errors[0]
+                        
+                        # Get context
+                        if analysis['line_number']:
+                            lines = code.split('\n')
+                            if 0 <= analysis['line_number']-1 < len(lines):
+                                analysis['context'] = lines[analysis['line_number']-1].strip()
+                
+                # Try verilator as an additional check if iverilog doesn't find errors
+                if not errors:
+                    try:
+                        result = subprocess.run(['verilator', '--lint-only', '-Wall', tmp_path], 
+                                            capture_output=True, text=True, timeout=10)
+                        if result.returncode != 0:
+                            error_lines = [line for line in result.stderr.strip().split('\n') if line]
+                            errors = error_lines
+                            
+                            # Basic parsing - verilator has a different format
+                            if errors:
+                                for line in errors:
+                                    if "ERROR" in line:
+                                        line_match = re.search(r':(\d+):', line)
+                                        if line_match:
+                                            analysis['line_number'] = int(line_match.group(1))
+                                        analysis['description'] = line
+                                        analysis['error_type'] = 'verilog_error'
+                                        analysis['specific_issue'] = 'verilog compilation error'
+                                        break
+                    except (FileNotFoundError, subprocess.TimeoutExpired):
+                        pass  # Verilator not available, continue with iverilog results
+            
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                errors.append(f"Verilog compilation tools not available")
+                analysis['description'] = "Could not find Verilog compilation tools (iverilog/verilator)"
+            
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+        
         elif language == 'VHDL':
-            # Placeholder for VHDL error analysis
-            errors.append("VHDL compilation not implemented")
-            analysis['description'] = "VHDL error analysis would be done here"
+            # VHDL implementation with GHDL
+            with tempfile.NamedTemporaryFile(suffix='.vhd', delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(code.encode('utf-8'))
             
+            try:
+                # Use GHDL for syntax checking
+                result = subprocess.run(['ghdl', '-s', '--std=08', tmp_path], 
+                                    capture_output=True, text=True, timeout=10)
+                
+                if result.returncode != 0:
+                    error_lines = [line for line in result.stderr.strip().split('\n') if line]
+                    errors = error_lines
+                    
+                    # Parse VHDL errors
+                    if errors:
+                        # Extract line number if available
+                        line_match = re.search(r':(\d+):(\d+):', errors[0])
+                        if line_match:
+                            analysis['line_number'] = int(line_match.group(1))
+                        
+                        # Determine error type
+                        error_msg = errors[0].lower()
+                        if "expect" in error_msg and "found" in error_msg:
+                            analysis['error_type'] = 'syntax_error'
+                            analysis['specific_issue'] = 'syntax error'
+                        elif "no declaration" in error_msg:
+                            analysis['error_type'] = 'undeclared_symbol'
+                            analysis['specific_issue'] = 'undeclared symbol'
+                        elif "already declared" in error_msg:
+                            analysis['error_type'] = 'redeclaration'
+                            analysis['specific_issue'] = 'symbol already declared'
+                        elif "type mismatch" in error_msg:
+                            analysis['error_type'] = 'type_mismatch'
+                            analysis['specific_issue'] = 'type mismatch'
+                        elif "missing" in error_msg:
+                            analysis['error_type'] = 'missing_element'
+                            analysis['specific_issue'] = 'missing element'
+                        else:
+                            analysis['error_type'] = 'vhdl_error'
+                            analysis['specific_issue'] = 'VHDL compilation error'
+                        
+                        # Set description
+                        analysis['description'] = errors[0]
+                        
+                        # Get context
+                        if analysis['line_number']:
+                            lines = code.split('\n')
+                            if 0 <= analysis['line_number']-1 < len(lines):
+                                analysis['context'] = lines[analysis['line_number']-1].strip()
+            
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                errors.append("VHDL compilation tools not available")
+                analysis['description'] = "Could not find VHDL compilation tools (GHDL)"
+            
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+        
         elif language == 'Chisel':
-            # Placeholder for Chisel error analysis
-            errors.append("Chisel compilation not implemented")
-            analysis['description'] = "Chisel (Scala-based HDL) error analysis would be done here"
+            # Chisel (Scala-based HDL) using the Scala compiler
+            with tempfile.NamedTemporaryFile(suffix='.scala', delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(code.encode('utf-8'))
             
+            try:
+                # Use scalac for basic syntax checking
+                result = subprocess.run(['scalac', tmp_path], 
+                                    capture_output=True, text=True, timeout=15)
+                
+                if result.returncode != 0:
+                    error_lines = [line for line in result.stderr.strip().split('\n') if line]
+                    errors = error_lines
+                    
+                    # Parse Scala errors
+                    if errors:
+                        # Extract line number
+                        line_match = re.search(r':(\d+):', errors[0])
+                        if line_match:
+                            analysis['line_number'] = int(line_match.group(1))
+                        
+                        # Determine error type
+                        error_msg = ' '.join(errors).lower()
+                        if "not found" in error_msg:
+                            analysis['error_type'] = 'symbol_not_found'
+                            analysis['specific_issue'] = 'symbol not found'
+                        elif "expected" in error_msg and (";" in error_msg or "{" in error_msg or "}" in error_msg):
+                            analysis['error_type'] = 'syntax_error'
+                            analysis['specific_issue'] = 'syntax error'
+                        elif "type mismatch" in error_msg:
+                            analysis['error_type'] = 'type_mismatch'
+                            analysis['specific_issue'] = 'type mismatch'
+                        elif "overloaded" in error_msg:
+                            analysis['error_type'] = 'overloaded_method'
+                            analysis['specific_issue'] = 'ambiguous method overload'
+                        elif "class not found" in error_msg or "object not found" in error_msg:
+                            analysis['error_type'] = 'module_connection'
+                            analysis['specific_issue'] = 'module connection error'
+                        else:
+                            analysis['error_type'] = 'chisel_error'
+                            analysis['specific_issue'] = 'chisel compilation error'
+                        
+                        # Set description
+                        analysis['description'] = errors[0]
+                        
+                        # Get context
+                        if analysis['line_number']:
+                            lines = code.split('\n')
+                            if 0 <= analysis['line_number']-1 < len(lines):
+                                analysis['context'] = lines[analysis['line_number']-1].strip()
+            
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                errors.append("Scala/Chisel compilation tools not available")
+                analysis['description'] = "Could not find Scala compilation tools"
+            
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+        
         elif language == 'PyRTL':
-            # Placeholder for PyRTL error analysis
-            errors.append("PyRTL compilation not implemented")
-            analysis['description'] = "PyRTL error analysis would be done here"
+            # PyRTL is Python-based, so we use Python's error detection and custom checks
+            with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as tmp:
+                tmp_path = tmp.name
+                # Add PyRTL import at the top if not already present
+                if "import pyrtl" not in code.lower():
+                    tmp.write(b"import pyrtl\n")
+                tmp.write(code.encode('utf-8'))
+                tmp.flush()
             
+            try:
+                # First check Python syntax
+                py_result = subprocess.run([sys.executable, '-m', 'py_compile', tmp_path], 
+                                       capture_output=True, text=True, timeout=10)
+                
+                if py_result.returncode != 0:
+                    # Python syntax error
+                    error_lines = [line for line in py_result.stderr.strip().split('\n') if line]
+                    errors = error_lines
+                    
+                    # Parse Python errors as before
+                    if errors:
+                        match = re.search(r'File ".*", line (\d+)', errors[0])
+                        if match:
+                            analysis['line_number'] = int(match.group(1))
+                        
+                        analysis['error_type'] = 'syntax_error'
+                        analysis['specific_issue'] = 'syntax error'
+                        analysis['description'] = errors[-1] if errors else "Syntax error in PyRTL code"
+                
+                else:
+                    # Try to actually run the PyRTL code to check for PyRTL-specific errors
+                    try:
+                        # Run with a timeout
+                        run_result = subprocess.run([sys.executable, tmp_path], 
+                                       capture_output=True, text=True, timeout=10)
+                        
+                        if run_result.returncode != 0:
+                            # PyRTL execution error
+                            error_lines = [line for line in run_result.stderr.strip().split('\n') if line]
+                            errors = error_lines
+                            
+                            # Parse PyRTL-specific errors
+                            if errors:
+                                # Extract line number if available
+                                line_match = re.search(r'line (\d+)', ' '.join(errors))
+                                if line_match:
+                                    analysis['line_number'] = int(line_match.group(1))
+                                
+                                # Determine error type
+                                error_text = ' '.join(errors).lower()
+                                if "wirevector" in error_text:
+                                    analysis['error_type'] = 'wire_error'
+                                    analysis['specific_issue'] = 'invalid wire operation'
+                                elif "assignment" in error_text:
+                                    analysis['error_type'] = 'wire_assignment'
+                                    analysis['specific_issue'] = 'invalid wire assignment'
+                                elif "block" in error_text and "error" in error_text:
+                                    analysis['error_type'] = 'block_error'
+                                    analysis['specific_issue'] = 'block instantiation error'
+                                else:
+                                    analysis['error_type'] = 'pyrtl_error'
+                                    analysis['specific_issue'] = 'PyRTL execution error'
+                                
+                                analysis['description'] = errors[0] if errors else "Error in PyRTL code"
+                    
+                    except subprocess.TimeoutExpired:
+                        errors.append("PyRTL execution timed out (possible infinite loop)")
+                        analysis['error_type'] = 'timeout'
+                        analysis['specific_issue'] = 'execution timeout'
+                        analysis['description'] = "PyRTL execution timed out - possible infinite loop"
+            
+            except Exception as e:
+                errors.append(f"Error analyzing PyRTL code: {str(e)}")
+                analysis['description'] = f"Error analyzing PyRTL code: {str(e)}"
+            
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+        
         elif language == 'Spade':
-            # Placeholder for Spade error analysis
-            errors.append("Spade compilation not implemented")
-            analysis['description'] = "Spade hardware description language error analysis would be done here"
+            # Spade hardware description language
+            with tempfile.NamedTemporaryFile(suffix='.spade', delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(code.encode('utf-8'))
             
+            try:
+                # Use a simple regex-based approach to identify common Spade errors
+                # since the compiler might not be available in many environments
+                
+                # Check for missing parentheses
+                paren_errors = []
+                open_parens = code.count('(')
+                close_parens = code.count(')')
+                if open_parens > close_parens:
+                    paren_errors.append(f"Missing {open_parens - close_parens} closing parentheses ')'")
+                elif close_parens > open_parens:
+                    paren_errors.append(f"Missing {close_parens - open_parens} opening parentheses '('")
+                
+                # Check for missing braces
+                brace_errors = []
+                open_braces = code.count('{')
+                close_braces = code.count('}')
+                if open_braces > close_braces:
+                    brace_errors.append(f"Missing {open_braces - close_braces} closing braces '}}'")
+                elif close_braces > open_braces:
+                    brace_errors.append(f"Missing {close_braces - open_braces} opening braces '{{'")
+                
+                # Check for common Spade keywords
+                if "Accel" not in code and "Kernel" not in code and "Module" not in code:
+                    errors.append("Missing Spade component declaration (Accel/Kernel/Module)")
+                    analysis['error_type'] = 'missing_component'
+                    analysis['specific_issue'] = 'missing component declaration'
+                    analysis['description'] = "No Accel, Kernel or Module declaration found"
+                
+                # Add any parenthesis/brace errors
+                if paren_errors or brace_errors:
+                    errors.extend(paren_errors)
+                    errors.extend(brace_errors)
+                    analysis['error_type'] = 'missing_parenthesis'
+                    analysis['specific_issue'] = 'missing parentheses or braces'
+                    analysis['description'] = '; '.join(paren_errors + brace_errors)
+                
+                # Check for undefined variables using a simple pattern
+                lines = code.split('\n')
+                for i, line in enumerate(lines):
+                    # Look for variable assignments
+                    if '=' in line and 'val' not in line and 'var' not in line:
+                        var_name = line.split('=')[0].strip()
+                        # Check if this variable is defined previously
+                        is_defined = False
+                        for prev_line in lines[:i]:
+                            if f"val {var_name}" in prev_line or f"var {var_name}" in prev_line:
+                                is_defined = True
+                                break
+                        
+                        if not is_defined and not var_name.startswith("_"):
+                            errors.append(f"Potentially undefined variable: {var_name} at line {i+1}")
+                            analysis['error_type'] = 'undefined_variable'
+                            analysis['specific_issue'] = 'undefined variable'
+                            analysis['description'] = f"Variable '{var_name}' might be undefined"
+                            analysis['line_number'] = i+1
+                            analysis['context'] = line.strip()
+                            break
+                
+                # Try to run the Spade compiler if available
+                try:
+                    # This assumes a 'spade' command is available
+                    result = subprocess.run(['spade', 'check', tmp_path], 
+                                        capture_output=True, text=True, timeout=15)
+                    
+                    if result.returncode != 0:
+                        error_lines = [line for line in result.stderr.strip().split('\n') if line]
+                        if error_lines:
+                            errors = error_lines  # Replace heuristic errors with actual compiler errors
+                            
+                            # Extract line number if available
+                            line_match = re.search(r':(\d+):', error_lines[0])
+                            if line_match:
+                                analysis['line_number'] = int(line_match.group(1))
+                            
+                            analysis['description'] = error_lines[0]
+                            
+                            # Update context if line number found
+                            if analysis['line_number']:
+                                if 0 <= analysis['line_number']-1 < len(lines):
+                                    analysis['context'] = lines[analysis['line_number']-1].strip()
+                
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    # Spade compiler not available, continue with heuristic analysis
+                    if not errors:
+                        errors.append("Spade analysis performed without compiler - potential errors might be missed")
+            
+            except Exception as e:
+                errors.append(f"Error analyzing Spade code: {str(e)}")
+                analysis['description'] = f"Error analyzing Spade code: {str(e)}"
+            
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+        
         elif language == 'Silice':
-            # Placeholder for Silice error analysis
-            errors.append("Silice compilation not implemented")
-            analysis['description'] = "Silice hardware description language error analysis would be done here"
+            # Silice hardware description language
+            with tempfile.NamedTemporaryFile(suffix='.sil', delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(code.encode('utf-8'))
+            
+            try:
+                # Use heuristic analysis for Silice
+                errors = []
+                
+                # Check for semicolons
+                lines = code.split('\n')
+                for i, line in enumerate(lines):
+                    # Remove comments
+                    line = re.sub(r'//.*$', '', line)
+                    
+                    # Skip empty lines or lines that don't need semicolons
+                    if not line.strip() or line.strip().endswith('{') or line.strip().endswith('}'):
+                        continue
+                    
+                    # Check if line needs a semicolon
+                    if (not line.strip().endswith(';') and 
+                        not line.strip().endswith(')') and
+                        not line.strip().endswith('else') and
+                        not line.strip().startswith('algorithm') and
+                        not line.strip().startswith('else') and
+                        not line.strip().startswith('if') and
+                        not line.strip().startswith('while')):
+                        
+                        errors.append(f"Missing semicolon at line {i+1}: {line.strip()}")
+                        analysis['error_type'] = 'missing_semicolon'
+                        analysis['specific_issue'] = 'missing semicolon'
+                        analysis['description'] = f"Line might be missing a semicolon"
+                        analysis['line_number'] = i+1
+                        analysis['context'] = line.strip()
+                        break
+                
+                # Check for algorithm definition
+                if 'algorithm' not in code:
+                    errors.append("No 'algorithm' definition found in Silice code")
+                    analysis['error_type'] = 'missing_algorithm'
+                    analysis['specific_issue'] = 'missing algorithm definition'
+                    analysis['description'] = "No algorithm definition found"
+                
+                # Check for brace matching
+                open_braces = code.count('{')
+                close_braces = code.count('}')
+                if open_braces != close_braces:
+                    diff = abs(open_braces - close_braces)
+                    if open_braces > close_braces:
+                        msg = f"Missing {diff} closing braces '}}'"
+                    else:
+                        msg = f"Missing {diff} opening braces '{{'"
+                    
+                    errors.append(msg)
+                    analysis['error_type'] = 'mismatched_brackets'
+                    analysis['specific_issue'] = 'mismatched braces'
+                    analysis['description'] = msg
+                
+                # Try to run the Silice compiler if available
+                try:
+                    # This assumes a 'silice' command is available
+                    result = subprocess.run(['silice', '--check', tmp_path], 
+                                        capture_output=True, text=True, timeout=15)
+                    
+                    if result.returncode != 0:
+                        error_lines = [line for line in result.stderr.strip().split('\n') if line]
+                        if error_lines:
+                            errors = error_lines  # Replace heuristic errors with actual compiler errors
+                            
+                            # Extract line number if available
+                            line_match = re.search(r'line (\d+)', ' '.join(error_lines))
+                            if line_match:
+                                analysis['line_number'] = int(line_match.group(1))
+                            
+                            analysis['description'] = error_lines[0]
+                            
+                            # Update context if line number found
+                            if analysis['line_number']:
+                                if 0 <= analysis['line_number']-1 < len(lines):
+                                    analysis['context'] = lines[analysis['line_number']-1].strip()
+                
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    # Silice compiler not available, continue with heuristic analysis
+                    if not errors:
+                        errors.append("Silice analysis performed without compiler - potential errors might be missed")
+            
+            except Exception as e:
+                errors.append(f"Error analyzing Silice code: {str(e)}")
+                analysis['description'] = f"Error analyzing Silice code: {str(e)}"
+            
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
         
         # Generate keywords and tags based on analysis
         base_keywords = [language]
@@ -541,6 +991,10 @@ class Memory:
                     tags.append('syntax')
                 elif any(category in analysis['error_type'] for category in ['variable', 'uninitialized']):
                     tags.append('variables')
+                elif any(category in analysis['error_type'] for category in ['wire', 'assignment', 'width']):
+                    tags.append('hdl wiring')
+                elif any(category in analysis['error_type'] for category in ['module', 'connection']):
+                    tags.append('module connection')
             else:
                 tags = base_tags
         else:
@@ -777,7 +1231,7 @@ class FewShotMemory:
             # Generate embedding if not already present
             embedding_text = getattr(memory, 'embedding_text', memory.faulty_code)
             if not hasattr(memory, 'embedding') or memory.embedding is None:
-                memory.embedding = self.model.encode(embedding_text)
+                memory.embedding = self.model.encode([embedding_text])[0]
                 
             item = {
                 "id": memory.id,

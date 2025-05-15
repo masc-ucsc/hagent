@@ -2,13 +2,13 @@ query:
   code: "#include <iostream>\nusing namespace std;\n\nint main() {\n    int a = 5;\n\
     \    int result = a + b; // ❌ 'b' is not declared\n    cout << \"Result: \" <<
     result << endl;\n    return 0;\n}\n"
-  timestamp: '2025-05-15 11:35:43'
+  timestamp: '2025-05-15 11:55:03'
 results:
   count: 1
   exact_match_found: true
   matches:
-    - id: 653b5b5d-7bb0-4335-a8cd-e51ebcc77e0d
-      content: "C++ Bug: Fix the bug in this code. Error: /var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmplid0ixzq.cpp:6:22:
+    - id: d5dfa013-bdcd-4f09-805b-e964a25e5d9e
+      content: "C++ Bug: Fix the bug in this code. Error: /var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp2pkvt6_z.cpp:6:22:
         error: use of undeclared identifier 'b'"
       error_type: unknown
       bug_category: unknown
@@ -16,7 +16,7 @@ results:
         \  int a = 5;\n    int result = a + b; // ❌ 'b' is not declared\n    cout
         << \"Result: \" << result << endl;\n    return 0;\n}\n"
       fixed_code: ''
-      timestamp: '202505151134'
+      timestamp: '202505151154'
       keywords:
         - C++
         - unknown
@@ -28,7 +28,7 @@ results:
         - cpp
       context: 'C++ programming bug fix: unknown'
       compiler_errors:
-        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmplid0ixzq.cpp:6:22:
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp2pkvt6_z.cpp:6:22:
           error: use of undeclared identifier 'b'"
         - "    6 |     int result = a + b; // ❌ 'b' is not declared"
         - '      |                      ^'

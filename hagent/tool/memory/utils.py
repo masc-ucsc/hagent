@@ -16,9 +16,31 @@ sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def normalize_code(code: str) -> str:
     """Normalize code for better comparison by removing extra whitespace and comments"""
-    # Remove C++ style comments
-    code = re.sub(r'//.*?\n', '\n', code)
-    code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
+    # Determine language based on content to handle language-specific comments
+    language = "generic"
+    if "module" in code and ("endmodule" in code or "wire" in code or "reg" in code):
+        language = "verilog"
+    elif "entity" in code and "architecture" in code:
+        language = "vhdl"
+    elif "circuit" in code and ("module" in code or "io" in code) and "extends" in code:
+        language = "chisel"
+    
+    # Remove language-specific comments
+    if language == "verilog":
+        # Remove Verilog/SystemVerilog style comments
+        code = re.sub(r'//.*?\n', '\n', code)
+        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
+    elif language == "vhdl":
+        # Remove VHDL style comments
+        code = re.sub(r'--.*?\n', '\n', code)
+    elif language == "chisel":
+        # Remove Scala/Chisel style comments
+        code = re.sub(r'//.*?\n', '\n', code)
+        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
+    else:
+        # Default: Remove C++ style comments
+        code = re.sub(r'//.*?\n', '\n', code)
+        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
     
     # Remove blank lines and leading/trailing whitespace
     lines = [line.strip() for line in code.splitlines() if line.strip()]

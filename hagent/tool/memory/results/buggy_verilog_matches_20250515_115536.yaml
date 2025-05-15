@@ -1,0 +1,96 @@
+query:
+  code: "module trivial( input a, input b, output c);\nassign c = a ^ b\nendmodule\n\
+    \n"
+  timestamp: '2025-05-15 11:55:36'
+results:
+  count: 3
+  exact_match_found: false
+  matches:
+    - id: 549a06ea-0a15-4a80-9de7-a0832ad825ee
+      content: "Spade Bug #14: Fix the undefined variable in this code. Error: Variable
+        'output' might be undefined"
+      error_type: undefined_variable
+      bug_category: undefined variable
+      faulty_code: "// Simple Spade program with missing parenthesis\n\n@module\n
+        fn not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\n
+        fn main() -> () {\n  let a = 1'b0;\n  // Bug: Missing closing parenthesis\n\
+        \  let b = not_gate(a;\n  \n  assert(b == 1'b1);\n} "
+      fixed_code: "// Simple Spade program with correct parenthesis\n\n@module\nfn
+        not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\n
+        fn main() -> () {\n  let a = 1'b0;\n  let b = not_gate(a);\n  \n  assert(b
+        == 1'b1);\n} "
+      timestamp: '202505151154'
+      keywords:
+        - bug
+        - Spade
+        - error
+        - undefined variable
+      tags:
+        - spade
+        - undefined variable
+        - debugging
+        - variables
+      context: 'Spade programming bug fix: undefined variable'
+      compiler_errors:
+        - Missing Spade component declaration (Accel/Kernel/Module)
+        - Missing 1 closing parentheses ')'
+        - 'Potentially undefined variable: output at line 5'
+    - id: 5e11c482-bf42-4615-a86f-dd919ee1b737
+      content: 'PyRTL Bug #12: Fix the PyRTL execution error in this code. Error:
+        Traceback (most recent call last):'
+      error_type: pyrtl_error
+      bug_category: pyrtl error
+      faulty_code: "import pyrtl\n\n# Simple half adder with missing wire assignment\n
+        \n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output
+        wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
+        \n# Connect sum output\nsum_out <<= a ^ b\n\n# Bug: Missing assignment to
+        carry_out\n# carry_out <<= a & b "
+      fixed_code: "import pyrtl\n\n# Simple half adder with correct wire assignments\n
+        \n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output
+        wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
+        \n# Connect outputs\nsum_out <<= a ^ b\ncarry_out <<= a & b "
+      timestamp: '202505151154'
+      keywords:
+        - bug
+        - PyRTL execution error
+        - PyRTL
+        - error
+      tags:
+        - pyrtl error
+        - debugging
+        - pyrtl
+      context: 'PyRTL programming bug fix: PyRTL execution error'
+      compiler_errors:
+        - 'Traceback (most recent call last):'
+        - '  File "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpetet6bwy.py",
+          line 1, in <module>'
+        - '    import pyrtl'
+        - "ModuleNotFoundError: No module named 'pyrtl'"
+    - id: e37c30c4-3f8d-48d9-a914-d363a40e388c
+      content: 'Chisel Bug #11: Fix the code error: Could not find Scala compilation
+        tools'
+      error_type: unknown
+      bug_category: module connection
+      faulty_code: "#!/usr/bin/env scala-cli\n//> using scala      \"2.13.14\"\n//>
+        using repository \"sonatype:releases\"\n//> using dep       \"edu.berkeley.cs::chisel3:3.6.1\"\
+        \n//> using plugin    \"edu.berkeley.cs::chisel3-plugin:3.6.1\"\n\nimport
+        chisel3._\n\nclass Adder extends Module {\n  val io = IO(new Bundle {\n  \
+        \  val a = Input(UInt(8.W))\n    val b = Input(UInt(8.W))\n    val sum = Output(UInt(8.W))\n\
+        \  })\n  \n  val result = io.a + io.b\n  \n  // Bug: Missing connection to
+        output\n  io.sum := result\n}\n\nobject AdderMain extends App {\n  chisel3.stage.ChiselStage.emitVerilog(new
+        Adder)\n} "
+      fixed_code: "import chisel3._\n\nclass Adder extends Module {\n  val io = IO(new
+        Bundle {\n    val a = Input(UInt(8.W))\n    val b = Input(UInt(8.W))\n   \
+        \ val sum = Output(UInt(8.W))\n  })\n  \n  val result = io.a + io.b\n  \n\
+        \  // Fixed: Added connection to output\n  io.sum := result\n}\n\nobject AdderMain
+        extends App {\n  chisel3.stage.ChiselStage.emitVerilog(new Adder)\n} "
+      timestamp: '202505151154'
+      keywords:
+        - Chisel
+        - bug
+      tags:
+        - chisel
+        - debugging
+      context: 'Chisel programming bug fix: unknown'
+      compiler_errors:
+        - Scala/Chisel compilation tools not available
