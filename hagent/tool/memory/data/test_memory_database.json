@@ -1,36 +1,36 @@
 [
   {
-    "id": "a273da08-5e66-4ba1-ab3b-728b0e030c7d",
+    "id": "078ee807-5130-4962-8c5c-9359c9d412d4",
     "content": "C++ Bug #8: Fix the missing semicolon in this code. Error: expected ';' at end of declaration",
     "keywords": [
+      "C++",
       "error",
       "missing semicolon",
-      "bug",
-      "C++"
+      "bug"
     ],
     "context": "C++ programming bug fix: missing semicolon",
     "tags": [
+      "debugging",
       "syntax",
       "missing semicolon",
-      "cpp",
-      "debugging"
+      "cpp"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "C++",
     "faulty_code": "#include <iostream>\n\nint main() {\n    int a = 10;\n    int b = 5;\n    \n    // Bug: Syntactical error using incorrect division operator syntax\n    int result = a : b;  // Using ':' instead of '/' for division\n    \n    std::cout << \"Result: \" << result << std::endl;\n    \n    return 0;\n}",
     "fixed_code": "#include <iostream>\n\nint main() {\n    int a = 10;\n    int b = 5;\n    \n    int result = a / b;\n    \n    std::cout << \"Result: \" << result << std::endl;\n    \n    return 0;\n}",
     "compiler_errors": [
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpwqpj9lyt.cpp:8:20: error: expected ';' at end of declaration",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpx29pm_va.cpp:8:20: error: expected ';' at end of declaration",
       "    8 |     int result = a : b;  // Using ':' instead of '/' for division",
       "      |                    ^",
       "      |                    ;",
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpwqpj9lyt.cpp:8:22: warning: expression result unused [-Wunused-value]",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpx29pm_va.cpp:8:22: warning: expression result unused [-Wunused-value]",
       "    8 |     int result = a : b;  // Using ':' instead of '/' for division",
       "      |                      ^",
       "1 warning and 1 error generated."
     ],
     "language": "cpp",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": 8,
     "error_type": "missing_semicolon",
     "bug_category": "missing semicolon",
@@ -38,34 +38,34 @@
     "embedding_index": 0
   },
   {
-    "id": "943f2780-0e5b-4baf-bb96-220494665f65",
+    "id": "8efbf202-901f-4fc0-bcbc-823ac88f8db1",
     "content": "C++ Bug #10: Fix the missing semicolon in this code. Error: expected ';' at end of declaration",
     "keywords": [
+      "C++",
       "error",
       "missing semicolon",
-      "bug",
-      "C++"
+      "bug"
     ],
     "context": "C++ programming bug fix: missing semicolon",
     "tags": [
+      "debugging",
       "syntax",
       "missing semicolon",
-      "cpp",
-      "debugging"
+      "cpp"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "C++",
     "faulty_code": "#include <iostream>\n\nint main() {\n    // Bug: Syntax error in variable declaration (missing semicolon)\n    int number    // Missing semicolon after declaration\n    \n    number = 10;\n    \n    std::cout << \"Number: \" << number << std::endl;\n    \n    return 0;\n} ",
     "fixed_code": "#include <iostream>\n\nint main() {\n    // Fixed: Proper variable declaration with semicolon\n    int number;  // Properly terminated with semicolon\n    \n    number = 10;\n    \n    std::cout << \"Number: \" << number << std::endl;\n    \n    return 0;\n} ",
     "compiler_errors": [
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmphwlv7lju.cpp:5:15: error: expected ';' at end of declaration",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpyuovjbyu.cpp:5:15: error: expected ';' at end of declaration",
       "    5 |     int number    // Missing semicolon after declaration",
       "      |               ^",
       "      |               ;",
       "1 error generated."
     ],
     "language": "cpp",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": 5,
     "error_type": "missing_semicolon",
     "bug_category": "missing semicolon",
@@ -73,18 +73,18 @@
     "embedding_index": 1
   },
   {
-    "id": "5de6bf05-d60e-41a7-8656-7fca2f3b8fac",
+    "id": "037c4025-3629-4d60-b9ac-52a62ed17575",
     "content": "Silice Bug #15: Fix the code error: Silice hardware description language error analysis would be done here",
     "keywords": [
-      "bug",
-      "Silice"
+      "Silice",
+      "bug"
     ],
     "context": "Silice programming bug fix: unknown",
     "tags": [
       "silice",
       "debugging"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "Silice",
     "faulty_code": "// Simple Silice program with missing semicolon\n\nalgorithm main(output uint8 led) {\n  uint1 state = 0;\n  \n  // Bug: missing semicolon at end of line\n  led = state ? 8b11111111 : 8b00000000\n  \n  while (1) {\n    state = ~state;\n  }\n} ",
     "fixed_code": "// Simple LED blinker in Silice - fixed version\n\nalgorithm main(output uint8 led) {\n  uint1 state = 0;\n  \n  led = state ? 8b11111111 : 8b00000000;\n  \n  while (1) {\n    state = ~state;\n  }\n} ",
@@ -92,7 +92,7 @@
       "Silice compilation not implemented"
     ],
     "language": "silice",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": null,
     "error_type": "unknown",
     "bug_category": "missing semicolon",
@@ -100,7 +100,7 @@
     "embedding_index": 2
   },
   {
-    "id": "e7f63dd5-753b-4abb-a795-3598b47a9f2b",
+    "id": "b5782226-4e2c-420d-a46b-943fdc3b9315",
     "content": "Spade Bug #14: Fix the code error: Spade hardware description language error analysis would be done here",
     "keywords": [
       "Spade",
@@ -108,10 +108,10 @@
     ],
     "context": "Spade programming bug fix: unknown",
     "tags": [
-      "spade",
-      "debugging"
+      "debugging",
+      "spade"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "Spade",
     "faulty_code": "// Simple Spade program with missing parenthesis\n\n@module\nfn not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\nfn main() -> () {\n  let a = 1'b0;\n  // Bug: Missing closing parenthesis\n  let b = not_gate(a;\n  \n  assert(b == 1'b1);\n} ",
     "fixed_code": "// Simple Spade program with correct parenthesis\n\n@module\nfn not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\nfn main() -> () {\n  let a = 1'b0;\n  let b = not_gate(a);\n  \n  assert(b == 1'b1);\n} ",
@@ -119,7 +119,7 @@
       "Spade compilation not implemented"
     ],
     "language": "spade",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": null,
     "error_type": "unknown",
     "bug_category": "missing parenthesis",
@@ -127,18 +127,18 @@
     "embedding_index": 3
   },
   {
-    "id": "bcc2b5e3-2c34-4ee8-81fa-6d2f7a34ef63",
+    "id": "6e1b1af6-893c-4b1a-acb7-7e3bc9eeb936",
     "content": "C++ Bug #5: Fix the code error: Code contains errors not detected by automatic analysis",
     "keywords": [
-      "bug",
-      "C++"
+      "C++",
+      "bug"
     ],
     "context": "C++ programming bug fix: unknown",
     "tags": [
-      "cpp",
-      "debugging"
+      "debugging",
+      "cpp"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "C++",
     "faulty_code": "#include <iostream>\n\nint main() {\n    int* ptr = nullptr;\n    *ptr = 10;  // Bug: Dereferencing null pointer\n    std::cout << \"Value at ptr: \" << *ptr << std::endl;\n    return 0;\n}",
     "fixed_code": "#include <iostream>\n\nint main() {\n    int value = 0;\n    int* ptr = &value;\n    *ptr = 10;  // Fixed: Properly initialized pointer\n    std::cout << \"Value at ptr: \" << *ptr << std::endl;\n    return 0;\n} ",
@@ -146,7 +146,7 @@
       "Code contains errors not detected by automatic analysis"
     ],
     "language": "cpp",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": null,
     "error_type": "unknown",
     "bug_category": "null pointer",
@@ -154,18 +154,18 @@
     "embedding_index": 4
   },
   {
-    "id": "4756ef0d-1f7b-4a8d-9076-bd2c12feb36e",
+    "id": "4a360316-7aac-455e-abed-4b74dc1f80e2",
     "content": "Chisel Bug #11: Fix the code error: Chisel (Scala-based HDL) error analysis would be done here",
     "keywords": [
-      "bug",
-      "Chisel"
+      "Chisel",
+      "bug"
     ],
     "context": "Chisel programming bug fix: unknown",
     "tags": [
-      "chisel",
-      "debugging"
+      "debugging",
+      "chisel"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "Chisel",
     "faulty_code": "#!/usr/bin/env scala-cli\n//> using scala      \"2.13.14\"\n//> using repository \"sonatype:releases\"\n//> using dep       \"edu.berkeley.cs::chisel3:3.6.1\"\n//> using plugin    \"edu.berkeley.cs::chisel3-plugin:3.6.1\"\n\nimport chisel3._\n\nclass Adder extends Module {\n  val io = IO(new Bundle {\n    val a = Input(UInt(8.W))\n    val b = Input(UInt(8.W))\n    val sum = Output(UInt(8.W))\n  })\n  \n  val result = io.a + io.b\n  \n  // Bug: Missing connection to output\n  io.sum := result\n}\n\nobject AdderMain extends App {\n  chisel3.stage.ChiselStage.emitVerilog(new Adder)\n} ",
     "fixed_code": "import chisel3._\n\nclass Adder extends Module {\n  val io = IO(new Bundle {\n    val a = Input(UInt(8.W))\n    val b = Input(UInt(8.W))\n    val sum = Output(UInt(8.W))\n  })\n  \n  val result = io.a + io.b\n  \n  // Fixed: Added connection to output\n  io.sum := result\n}\n\nobject AdderMain extends App {\n  chisel3.stage.ChiselStage.emitVerilog(new Adder)\n} ",
@@ -173,7 +173,7 @@
       "Chisel compilation not implemented"
     ],
     "language": "chisel",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": null,
     "error_type": "unknown",
     "bug_category": "module connection",
@@ -181,33 +181,33 @@
     "embedding_index": 5
   },
   {
-    "id": "f586af2d-a360-4626-8826-9d796c3a70f2",
+    "id": "69ad6a66-4def-48d5-b1c8-3d0bf7e88141",
     "content": "C++ Bug #7: Fix the syntax error in this code. Error: expected '(' for function-style cast or type construction",
     "keywords": [
+      "C++",
       "error",
       "syntax error",
-      "bug",
-      "C++"
+      "bug"
     ],
     "context": "C++ programming bug fix: syntax error",
     "tags": [
       "syntax error",
+      "debugging",
       "syntax",
-      "cpp",
-      "debugging"
+      "cpp"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "C++",
     "faulty_code": "#include <iostream>\n\nint main() {\n    // Bug: Syntactical error in memory allocation (missing 'new' keyword)\n    int* data = int[100];  // Incorrect syntax for memory allocation\n    \n    for (int i = 0; i < 100; i++) {\n        data[i] = i;\n    }\n    \n    std::cout << \"Array sum: \" << data[0] + data[99] << std::endl;\n    \n    delete[] data;\n    \n    return 0;\n} ",
     "fixed_code": "#include <iostream>\n\nint main() {\n    // Fixed: Proper syntax for memory allocation with 'new' keyword\n    int* data = new int[100];  // Correct allocation syntax\n    \n    for (int i = 0; i < 100; i++) {\n        data[i] = i;\n    }\n    \n    std::cout << \"Array sum: \" << data[0] + data[99] << std::endl;\n    \n    delete[] data;  // Proper memory deallocation\n    \n    return 0;\n} ",
     "compiler_errors": [
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp07xpw545.cpp:5:20: error: expected '(' for function-style cast or type construction",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpzvsi1t9a.cpp:5:20: error: expected '(' for function-style cast or type construction",
       "    5 |     int* data = int[100];  // Incorrect syntax for memory allocation",
       "      |                 ~~~^",
       "1 error generated."
     ],
     "language": "cpp",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": 5,
     "error_type": "syntax_error",
     "bug_category": "syntax error",
@@ -215,36 +215,36 @@
     "embedding_index": 6
   },
   {
-    "id": "21c00d4e-f4a4-46ac-ae99-8eaff4f70dc9",
+    "id": "40d76d09-94db-40d4-9df2-b2b6eda31e30",
     "content": "C++ Bug #3: Fix the mismatched brackets or parentheses in this code. Error: expected ')'",
     "keywords": [
+      "C++",
       "error",
       "mismatched brackets or parentheses",
-      "bug",
-      "C++"
+      "bug"
     ],
     "context": "C++ programming bug fix: mismatched brackets or parentheses",
     "tags": [
+      "debugging",
       "syntax",
-      "cpp",
       "mismatched brackets",
-      "debugging"
+      "cpp"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "C++",
     "faulty_code": "#include <iostream>\n\nint main() {\n    for (int i = 0; i < 5; i++ {\n        std::cout << \"Iteration: \" << i << std::endl;\n    }\n    return 0;\n}",
     "fixed_code": "#include <iostream>\n\nint main() {\n    for (int i = 0; i < 5; i++) {\n        std::cout << \"Iteration: \" << i << std::endl;\n    }\n    return 0;\n}",
     "compiler_errors": [
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpuqv7gedx.cpp:4:32: error: expected ')'",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpy9_21mhk.cpp:4:32: error: expected ')'",
       "    4 |     for (int i = 0; i < 5; i++ {",
       "      |                                ^",
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpuqv7gedx.cpp:4:9: note: to match this '('",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpy9_21mhk.cpp:4:9: note: to match this '('",
       "    4 |     for (int i = 0; i < 5; i++ {",
       "      |         ^",
       "1 error generated."
     ],
     "language": "cpp",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": 4,
     "error_type": "mismatched_brackets",
     "bug_category": "mismatched brackets",
@@ -252,7 +252,7 @@
     "embedding_index": 7
   },
   {
-    "id": "b163b010-e881-4037-ab65-ed9f995c6b35",
+    "id": "66799894-5882-494b-9370-18c83a7e6264",
     "content": "VHDL Bug #13: Fix the code error: VHDL error analysis would be done here",
     "keywords": [
       "VHDL",
@@ -263,7 +263,7 @@
       "debugging",
       "vhdl"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "VHDL",
     "faulty_code": "library IEEE;\nuse IEEE.STD_LOGIC_1164.ALL;\n\nentity Inverter is\n  Port ( input : in  STD_LOGIC;\n         output : out STD_LOGIC);\nend Inverter;\n\narchitecture Behavioral of Inverter is\n  -- Bug: Missing semicolon after signal declaration\n  signal intermediate : STD_LOGIC\nbegin\n  intermediate <= not input;\n  output <= intermediate;\nend Behavioral; ",
     "fixed_code": "library IEEE;\nuse IEEE.STD_LOGIC_1164.ALL;\n\nentity Inverter is\n  Port ( input : in  STD_LOGIC;\n         output : out STD_LOGIC);\nend Inverter;\n\narchitecture Behavioral of Inverter is\n  -- Fixed: Added semicolon after signal declaration\n  signal intermediate : STD_LOGIC;\nbegin\n  intermediate <= not input;\n  output <= intermediate;\nend Behavioral; ",
@@ -271,7 +271,7 @@
       "VHDL compilation not implemented"
     ],
     "language": "vhdl",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": null,
     "error_type": "unknown",
     "bug_category": "signal declaration",
@@ -279,33 +279,33 @@
     "embedding_index": 8
   },
   {
-    "id": "21ad7afd-a45f-4ca5-9be3-522087ef4cca",
+    "id": "5f162c57-ed19-41f3-a700-e34921c202c9",
     "content": "C++ Bug #4: Fix the syntax error in this code. Error: expected '(' after 'while'",
     "keywords": [
+      "C++",
       "error",
       "syntax error",
-      "bug",
-      "C++"
+      "bug"
     ],
     "context": "C++ programming bug fix: syntax error",
     "tags": [
       "syntax error",
+      "debugging",
       "syntax",
-      "cpp",
-      "debugging"
+      "cpp"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "C++",
     "faulty_code": "#include <iostream>\n#include <chrono>\n#include <thread>\n\nint main() {\n    int count = 0;\n    int limit = 5;\n    \n    // Bug: Syntax error in while loop (missing parentheses)\n    while count < limit {\n        std::cout << \"Count: \" << count << std::endl;\n        count++;\n        \n        // Add a small delay for visual effect\n        std::this_thread::sleep_for(std::chrono::milliseconds(100));\n    }\n    \n    std::cout << \"Loop completed with count = \" << count << std::endl;\n    return 0;\n}",
     "fixed_code": "#include <iostream>\n#include <chrono>\n#include <thread>\n\nint main() {\n    int count = 0;\n    int limit = 5;  // Fixed: limit is 5, so loop will run 5 times\n    \n    // Fixed: Proper while loop syntax with parentheses\n    while (count < limit) {\n        std::cout << \"Count: \" << count << std::endl;\n        count++;  // Fixed: Going in correct direction\n        \n        // Add a small delay for visual effect\n        std::this_thread::sleep_for(std::chrono::milliseconds(100));\n    }\n    \n    std::cout << \"Loop completed with count = \" << count << std::endl;\n    return 0;\n}",
     "compiler_errors": [
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp87t3u3kv.cpp:10:11: error: expected '(' after 'while'",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpt0vxgvg_.cpp:10:11: error: expected '(' after 'while'",
       "   10 |     while count < limit {",
       "      |           ^",
       "1 error generated."
     ],
     "language": "cpp",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": 10,
     "error_type": "syntax_error",
     "bug_category": "syntax error",
@@ -313,34 +313,34 @@
     "embedding_index": 9
   },
   {
-    "id": "93638add-4a99-489b-9aae-ceaaeef39bc9",
+    "id": "ee5be397-9710-4720-9357-f7d2ebfcde0f",
     "content": "C++ Bug #1: Fix the missing semicolon in this code. Error: expected ';' at end of declaration",
     "keywords": [
+      "C++",
       "error",
       "missing semicolon",
-      "bug",
-      "C++"
+      "bug"
     ],
     "context": "C++ programming bug fix: missing semicolon",
     "tags": [
+      "debugging",
       "syntax",
       "missing semicolon",
-      "cpp",
-      "debugging"
+      "cpp"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "C++",
     "faulty_code": "#include <iostream>\n\nint main() {\n    int x = 5\n    std::cout << \"The value of x is: \" << x << std::endl;\n    return 0;\n}\n",
     "fixed_code": "#include <iostream>\n\nint main() {\n    int x = 5;\n    std::cout << \"The value of x is: \" << x << std::endl;\n    return 0;\n} ",
     "compiler_errors": [
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp4yhk2id2.cpp:4:14: error: expected ';' at end of declaration",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp9hq7jreo.cpp:4:14: error: expected ';' at end of declaration",
       "    4 |     int x = 5",
       "      |              ^",
       "      |              ;",
       "1 error generated."
     ],
     "language": "cpp",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": 4,
     "error_type": "missing_semicolon",
     "bug_category": "missing semicolon",
@@ -348,18 +348,18 @@
     "embedding_index": 10
   },
   {
-    "id": "e63e7978-6c63-4989-a42b-c9110db41e11",
+    "id": "9cef7549-366b-41a5-bf85-a15bb77234fd",
     "content": "PyRTL Bug #12: Fix the code error: PyRTL error analysis would be done here",
     "keywords": [
-      "bug",
-      "PyRTL"
+      "PyRTL",
+      "bug"
     ],
     "context": "PyRTL programming bug fix: unknown",
     "tags": [
       "debugging",
       "pyrtl"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "PyRTL",
     "faulty_code": "import pyrtl\n\n# Simple half adder with missing wire assignment\n\n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n\n# Connect sum output\nsum_out <<= a ^ b\n\n# Bug: Missing assignment to carry_out\n# carry_out <<= a & b ",
     "fixed_code": "import pyrtl\n\n# Simple half adder with correct wire assignments\n\n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n\n# Connect outputs\nsum_out <<= a ^ b\ncarry_out <<= a & b ",
@@ -367,7 +367,7 @@
       "PyRTL compilation not implemented"
     ],
     "language": "pyrtl",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": null,
     "error_type": "unknown",
     "bug_category": "wire assignment",
@@ -375,44 +375,44 @@
     "embedding_index": 11
   },
   {
-    "id": "9ca771df-32af-43bb-ac61-67f88ffc39e1",
+    "id": "59c0a7f9-4ec9-45f5-952b-fa2a0e5eb36d",
     "content": "C++ Bug #9: Fix the undeclared variable in this code. Error: use of undeclared identifier 'value2'; did you mean 'value'?",
     "keywords": [
-      "undeclared variable",
+      "C++",
       "error",
-      "bug",
-      "C++"
+      "undeclared variable",
+      "bug"
     ],
     "context": "C++ programming bug fix: undeclared variable",
     "tags": [
-      "variables",
+      "debugging",
       "undeclared variable",
       "cpp",
-      "debugging"
+      "variables"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "C++",
     "faulty_code": "#include <iostream>\n\nint main() {\n    int value = 5;\n    \n    if (value > 0) {\n        // Bug: Syntax error in variable declaration (missing type)\n        value2 = 10;  // Missing variable type declaration\n        value2++;\n    }\n    \n    std::cout << \"Value: \" << value << std::endl;\n    \n    return 0;\n} ",
     "fixed_code": "#include <iostream>\n\nint main() {\n    int value = 5;\n    \n    if (value > 0) {\n        int value2 = 10;\n        value2++;\n    }\n    \n    std::cout << \"Value: \" << value << std::endl;  // Prints 11\n    \n    return 0;\n} ",
     "compiler_errors": [
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp5djyr7fp.cpp:8:9: error: use of undeclared identifier 'value2'; did you mean 'value'?",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpwzyfbgue.cpp:8:9: error: use of undeclared identifier 'value2'; did you mean 'value'?",
       "    8 |         value2 = 10;  // Missing variable type declaration",
       "      |         ^~~~~~",
       "      |         value",
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp5djyr7fp.cpp:4:9: note: 'value' declared here",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpwzyfbgue.cpp:4:9: note: 'value' declared here",
       "    4 |     int value = 5;",
       "      |         ^",
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp5djyr7fp.cpp:9:9: error: use of undeclared identifier 'value2'; did you mean 'value'?",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpwzyfbgue.cpp:9:9: error: use of undeclared identifier 'value2'; did you mean 'value'?",
       "    9 |         value2++;",
       "      |         ^~~~~~",
       "      |         value",
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp5djyr7fp.cpp:4:9: note: 'value' declared here",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpwzyfbgue.cpp:4:9: note: 'value' declared here",
       "    4 |     int value = 5;",
       "      |         ^",
       "2 errors generated."
     ],
     "language": "cpp",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": 8,
     "error_type": "undeclared_variable",
     "bug_category": "undeclared variable",
@@ -420,36 +420,36 @@
     "embedding_index": 12
   },
   {
-    "id": "8aee4923-bb64-452d-b199-fda28719edde",
+    "id": "e5c2a1bb-380f-4979-a1fc-c31b35ebb459",
     "content": "C++ Bug #2: Fix the undeclared variable in this code. Error: use of undeclared identifier 'y'",
     "keywords": [
-      "undeclared variable",
+      "C++",
       "error",
-      "bug",
-      "C++"
+      "undeclared variable",
+      "bug"
     ],
     "context": "C++ programming bug fix: undeclared variable",
     "tags": [
-      "variables",
+      "debugging",
       "undeclared variable",
       "cpp",
-      "debugging"
+      "variables"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "C++",
     "faulty_code": "#include <iostream>\n\nint main() {\n    y = 10;  // Bug: y is used before being declared\n    std::cout << \"The value of y is: \" << y << std::endl;\n    return 0;\n} ",
     "fixed_code": "#include <iostream>\n\nint main() {\n    int y = 10;  // Fixed: y is now declared as an int\n    std::cout << \"The value of y is: \" << y << std::endl;\n    return 0;\n} ",
     "compiler_errors": [
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpr53fxrbq.cpp:4:5: error: use of undeclared identifier 'y'",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpidjx1y08.cpp:4:5: error: use of undeclared identifier 'y'",
       "    4 |     y = 10;  // Bug: y is used before being declared",
       "      |     ^",
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpr53fxrbq.cpp:5:43: error: use of undeclared identifier 'y'",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpidjx1y08.cpp:5:43: error: use of undeclared identifier 'y'",
       "    5 |     std::cout << \"The value of y is: \" << y << std::endl;",
       "      |                                           ^",
       "2 errors generated."
     ],
     "language": "cpp",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": 4,
     "error_type": "undeclared_variable",
     "bug_category": "undeclared variable",
@@ -457,40 +457,40 @@
     "embedding_index": 13
   },
   {
-    "id": "a5e8c5a9-0ca9-4c7d-8960-e1f7be737419",
+    "id": "3fb1fbdc-c4d5-402b-9c45-c31bafd6d219",
     "content": "C++ Bug #6: Fix the syntax error in this code. Error: array initializer must be an initializer list",
     "keywords": [
+      "C++",
       "error",
       "syntax error",
-      "bug",
-      "C++"
+      "bug"
     ],
     "context": "C++ programming bug fix: syntax error",
     "tags": [
       "syntax error",
+      "debugging",
       "syntax",
-      "cpp",
-      "debugging"
+      "cpp"
     ],
-    "timestamp": "202505151121",
+    "timestamp": "202505151134",
     "category": "C++",
     "faulty_code": "#include <iostream>\n\nint main() {\n    // Bug: Syntactical error in array declaration (missing semicolon and using comma instead of braces)\n    int arr[5] = 1, 2, 3, 4, 5\n    \n    for (int i = 0; i < 5; i++) {\n        std::cout << \"Element \" << i << \": \" << arr[i] << std::endl;\n    }\n    return 0;\n}",
     "fixed_code": "#include <iostream>\n\nint main() {\n    // Fixed: Proper array declaration with correct syntax\n    int arr[5] = {1, 2, 3, 4, 5};\n    \n    for (int i = 0; i < 5; i++) {  // Fixed: Proper bounds checking\n        std::cout << \"Element \" << i << \": \" << arr[i] << std::endl;\n    }\n    return 0;\n} ",
     "compiler_errors": [
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmphy2jvx15.cpp:5:9: error: array initializer must be an initializer list",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp805nzq3m.cpp:5:9: error: array initializer must be an initializer list",
       "    5 |     int arr[5] = 1, 2, 3, 4, 5",
       "      |         ^",
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmphy2jvx15.cpp:5:21: error: expected unqualified-id",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp805nzq3m.cpp:5:21: error: expected unqualified-id",
       "    5 |     int arr[5] = 1, 2, 3, 4, 5",
       "      |                     ^",
-      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmphy2jvx15.cpp:5:20: error: expected ';' at end of declaration",
+      "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp805nzq3m.cpp:5:20: error: expected ';' at end of declaration",
       "    5 |     int arr[5] = 1, 2, 3, 4, 5",
       "      |                    ^",
       "      |                    ;",
       "3 errors generated."
     ],
     "language": "cpp",
-    "created_at": "2025-05-15T11:21:07.260368",
+    "created_at": "2025-05-15T11:34:52.755740",
     "line_number": 5,
     "error_type": "syntax_error",
     "bug_category": "syntax error",

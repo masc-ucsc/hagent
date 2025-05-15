@@ -157,24 +157,41 @@ class Memory:
                               memory_cache_file: Path, 
                               sample_db_path: Path) -> None:
         """Load memories from cache or create new ones if needed"""
-        create_new_memories = True
-        
         # Set the cache file path in the memory system
         memory_system.cache_file = str(memory_cache_file)
         
+        # Try to load from cache first
+        cache_loaded = False
         if memory_cache_file.exists():
             print(f"Loading cached memories from {memory_cache_file}")
             try:
                 with open(memory_cache_file, 'rb') as f:
                     memory_system.memories = pickle.load(f)
-                print(f"Successfully loaded {len(memory_system.memories)} memories")
-                create_new_memories = False
+                print(f"Successfully loaded {len(memory_system.memories)} memories from cache")
+                cache_loaded = True
             except Exception as e:
-                print(f"Error loading cached memories: {e}. Will recreate memories.")
-        else:
-            print(f"No cached memories found. Creating new memories.")
+                print(f"Error loading cached memories: {e}. Will try database.")
         
-        if create_new_memories:
+        # If cache loading failed, try database
+        if not cache_loaded and sample_db_path.exists():
+            print(f"Attempting to load from database at {sample_db_path}")
+            try:
+                # Load from database and then create cache
+                memory_system.db_path = str(sample_db_path)
+                memory_system.load_database()
+                
+                # Save to cache for next time
+                print("Creating cache from database...")
+                with open(memory_cache_file, 'wb') as f:
+                    pickle.dump(memory_system.memories, f)
+                print(f"Successfully cached {len(memory_system.memories)} memories")
+                cache_loaded = True
+            except Exception as e:
+                print(f"Error loading from database: {e}. Will create new memories.")
+        
+        # If both failed, create new memories
+        if not cache_loaded:
+            print(f"No cached memories or database found. Creating new memories.")
             # Load examples from the original database
             cpp_bug_examples = load_cpp_bugs_dataset(sample_db_path)
             print(f"Loaded {len(cpp_bug_examples)} examples from {sample_db_path}")
@@ -183,11 +200,8 @@ class Memory:
             print(f"Adding examples to memory system...")
             for example in cpp_bug_examples:
                 memory_system.add_from_example(example)
-                
-            # Cache memories for future runs
-            with open(memory_cache_file, 'wb') as f:
-                pickle.dump(memory_system.memories, f)
-            print(f"Successfully cached {len(memory_system.memories)} memories")
+            
+            # At this point, both database and cache should be updated by the add_from_example calls
     
     @staticmethod
     def process_matches(matches: List['Memory'], 
@@ -609,30 +623,90 @@ class FewShotMemory:
         self.model = SentenceTransformer(model_name)
         self.memories = {}  # Stores Memory objects by ID
         
-        # Check if database exists
-        if not os.path.exists(self.db_path) and auto_create_data:
-            print(f"Database not found at {self.db_path}. Creating test data...")
-            
-            # Create test data
-            json_path, yaml_path = self.create_sample_data(
-                programs_path=programs_path,
-                output_path=self.db_path.replace('.yaml', '.json').replace('.yml', '.json'),
-                output_yaml_path=self.db_path,
-                create_embeddings=True
-            )
-            
-            if json_path and yaml_path:
-                print(f"Created test data at {json_path} and {yaml_path}")
-                # The database is now created and self.db_path is updated
+        # CHANGED: First try to load from cache, then fallback to database
+        cache_loaded = self._try_load_from_cache()
         
-        # Load the database (either existing or newly created)
-        self.load_database()
+        # If cache loading failed, try to load from database
+        if not cache_loaded:
+            print(f"Cache loading failed or not available. Trying database...")
+            database_loaded = self._try_load_from_database()
+            
+            # If neither cache nor database worked and auto_create_data is enabled, create data
+            if not database_loaded and auto_create_data:
+                print(f"Database not found at {self.db_path}. Creating test data...")
+                
+                # Create test data
+                json_path, yaml_path = self.create_sample_data(
+                    programs_path=programs_path,
+                    output_path=self.db_path.replace('.yaml', '.json').replace('.yml', '.json'),
+                    output_yaml_path=self.db_path,
+                    create_embeddings=True
+                )
+                
+                if json_path and yaml_path:
+                    print(f"Created test data at {json_path} and {yaml_path}")
+                    # Save to cache for faster loading next time
+                    print("Creating cache from new database...")
+                    self._save_to_cache()
     
-    def load_database(self) -> None:
+    def _try_load_from_cache(self) -> bool:
+        """
+        Try to load memories from cache file
+        
+        Returns:
+            bool: True if successfully loaded from cache, False otherwise
+        """
+        if os.path.exists(self.cache_file):
+            try:
+                print(f"Loading memories from cache file: {self.cache_file}")
+                with open(self.cache_file, 'rb') as f:
+                    self.memories = pickle.load(f)
+                print(f"Successfully loaded {len(self.memories)} memories from cache")
+                return True
+            except Exception as e:
+                print(f"Error loading from cache: {e}")
+        return False
+
+    def _try_load_from_database(self) -> bool:
+        """
+        Try to load memories from database file
+        
+        Returns:
+            bool: True if successfully loaded from database, False otherwise
+        """
+        if os.path.exists(self.db_path):
+            try:
+                print(f"Loading memories from database: {self.db_path}")
+                # Use existing load_database logic with a return value
+                self.load_database()
+                if self.memories:
+                    print(f"Successfully loaded {len(self.memories)} memories from database")
+                    # After loading from database, update the cache for faster future loads
+                    self._save_to_cache()
+                    return True
+            except Exception as e:
+                print(f"Error loading from database: {e}")
+        return False
+
+    def _save_to_cache(self) -> None:
+        """Save current memories to cache file"""
+        if not self.memories:
+            print("No memories to cache")
+            return
+        
+        try:
+            print(f"Saving {len(self.memories)} memories to cache: {self.cache_file}")
+            with open(self.cache_file, 'wb') as f:
+                pickle.dump(self.memories, f)
+            print(f"Successfully cached {len(self.memories)} memories")
+        except Exception as e:
+            print(f"Error saving to cache: {e}")
+
+    def load_database(self) -> bool:
         """Load memories from database (JSON or YAML) if it exists"""
         if not os.path.exists(self.db_path):
             print(f"No existing database found at {self.db_path}")
-            return
+            return False
             
         try:
             # Get file extension to determine format
@@ -681,9 +755,11 @@ class FewShotMemory:
                 self.memories[memory_item.id] = memory_item
             
             print(f"Loaded {len(self.memories)} items from database at {self.db_path}")
+            return True
         except Exception as e:
             print(f"Error loading database: {e}")
             self.memories = {}
+            return False
     
     def save_database(self, output_path: Optional[str] = None) -> None:
         """Save memories to database (JSON or YAML)"""
@@ -797,17 +873,17 @@ class FewShotMemory:
             embedding_text=f"C++ programming bug fix: {error_type} {original_code}"
         )
         
-        # Add to memories and save
+        # Add to memories
         self.memories[memory_id] = memory_item
+        
+        # Update both database and cache
+        print(f"Adding new memory with ID: {memory_id}")
+        
+        # Save to database first
         self.save_database()
         
-        # Update the cache file if it exists
-        if self.cache_file:
-            try:
-                with open(self.cache_file, 'wb') as f:
-                    pickle.dump(self.memories, f)
-            except Exception as e:
-                print(f"Error updating cache file {self.cache_file}: {e}")
+        # Then save to cache - this is now the primary storage
+        self._save_to_cache()
         
         return memory_id
     
