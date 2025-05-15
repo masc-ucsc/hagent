@@ -1,0 +1,15 @@
+// Simple Spade program with missing parenthesis
+
+@module
+fn not_gate(input: bit) -> (output: bit) {
+  output = !input;
+}
+
+@module
+fn main() -> () {
+  let a = 1'b0;
+  // Bug: Missing closing parenthesis
+  let b = not_gate(a;
+  
+  assert(b == 1'b1);
+} 

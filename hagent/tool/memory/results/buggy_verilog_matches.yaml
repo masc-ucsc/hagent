@@ -1,0 +1,29 @@
+query:
+  code: "module trivial( input a, input b, output c);\nassign c = a ^ b\nendmodule\n\
+    \n"
+  timestamp: '2025-05-15 10:37:19'
+results:
+  count: 1
+  exact_match_found: true
+  matches:
+    - id: f598be13-cb7c-4ba4-b880-986593f86d0c
+      content: 'C++ Bug: Fix the bug in this code. Error: Verilog compilation not
+        implemented'
+      error_type: unknown
+      bug_category: unknown
+      faulty_code: "module trivial( input a, input b, output c);\nassign c = a ^ b\n\
+        endmodule\n\n"
+      fixed_code: ''
+      timestamp: '202505151037'
+      keywords:
+        - C++
+        - unknown
+        - error
+        - bug
+      tags:
+        - debugging
+        - unknown
+        - cpp
+      context: 'C++ programming bug fix: unknown'
+      compiler_errors:
+        - Verilog compilation not implemented
