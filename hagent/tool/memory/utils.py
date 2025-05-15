@@ -127,7 +127,7 @@ class CppBugExample:
     timestamp: str
     category: str
     faulty_code: str
-    fixed_code: str
+    fix_answer: str
     compiler_errors: List[str]
     language: str
     line_number: Optional[int]
@@ -135,6 +135,11 @@ class CppBugExample:
     bug_category: str
     embedding_text: str
     embedding_index: int
+    
+    @property
+    def fixed_code(self):
+        """Alias for fix_answer for backward compatibility"""
+        return self.fix_answer
 
 def load_cpp_bugs_dataset(file_path: Union[str, Path]) -> List[CppBugExample]:
     """
@@ -169,6 +174,11 @@ def load_cpp_bugs_dataset(file_path: Union[str, Path]) -> List[CppBugExample]:
     
     for bug_idx, bug in enumerate(data):
         try:
+            # Handle both fix_answer and fixed_code (legacy) format
+            fix_answer = bug.get("fix_answer")
+            if fix_answer is None:
+                fix_answer = bug.get("fixed_code", "")  # Fall back to fixed_code if fix_answer is not present
+                
             sample = CppBugExample(
                 id=bug["id"],
                 content=bug["content"],
@@ -178,7 +188,7 @@ def load_cpp_bugs_dataset(file_path: Union[str, Path]) -> List[CppBugExample]:
                 timestamp=bug["timestamp"],
                 category=bug["category"],
                 faulty_code=bug["faulty_code"],
-                fixed_code=bug["fixed_code"],
+                fix_answer=fix_answer,
                 compiler_errors=bug["compiler_errors"],
                 language=bug["language"],
                 line_number=bug.get("line_number"),

@@ -1,0 +1,39 @@
+query:
+  code: "import pyrtl\n\n# Simple half adder with missing wire assignment\n\n# Input
+    wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output wires\nsum_out
+    = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n\n# Connect sum
+    output\nsum_out <<= a ^ b\n\n# Bug: Missing assignment to carry_out\n# carry_out
+    <<= a & b "
+  timestamp: '2025-05-15 14:48:19'
+results:
+  count: 1
+  exact_match_found: true
+  matches:
+    - id: 3470ae7b-c283-40ee-b315-5e2696324abc
+      content: 'Bug: Fix the bug in this code. Error: Traceback (most recent call
+        last):'
+      error_type: unknown
+      bug_category: unknown
+      faulty_code: "import pyrtl\n\n# Simple half adder with missing wire assignment\n
+        \n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output
+        wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
+        \n# Connect sum output\nsum_out <<= a ^ b\n\n# Bug: Missing assignment to
+        carry_out\n# carry_out <<= a & b "
+      fix_answer: "import pyrtl\n\n# Simple half adder with correct wire assignments\n
+        \n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output
+        wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
+        \n# Connect outputs\nsum_out <<= a ^ b\ncarry_out <<= a & b "
+      confidence: 1.0
+      timestamp: '202505151255'
+      keywords:
+        - pyrtl
+        - unknown
+        - error
+        - bug
+      tags:
+        - debugging
+        - unknown
+        - pyrtl
+      context: 'pyrtl programming bug fix: unknown'
+      compiler_errors:
+        - 'Traceback (most recent call last):'

@@ -34,13 +34,14 @@ class Memory:
                  timestamp: Optional[str] = None,
                  category: Optional[str] = None,
                  faulty_code: Optional[str] = None,
-                 fixed_code: Optional[str] = None,
+                 fix_answer: Optional[str] = None,
                  compiler_errors: Optional[List[str]] = None,
                  language: Optional[str] = None,
                  line_number: Optional[int] = None,
                  error_type: Optional[str] = None,
                  bug_category: Optional[str] = None,
-                 embedding_text: Optional[str] = None):
+                 embedding_text: Optional[str] = None,
+                 confidence: Optional[float] = None):
         
         self.content = content
         self.id = id or str(uuid.uuid4())
@@ -57,13 +58,24 @@ class Memory:
         
         # C++ Bug specific attributes
         self.faulty_code = faulty_code
-        self.fixed_code = fixed_code or ""
+        self.fix_answer = fix_answer or ""
         self.compiler_errors = compiler_errors or []
         self.language = language or "cpp"
         self.line_number = line_number
         self.error_type = error_type or "unknown"
         self.bug_category = bug_category or "unknown"
         self.embedding_text = embedding_text or content
+        self.confidence = confidence or 1.0
+    
+    @property
+    def fixed_code(self):
+        """Alias for fix_answer for backward compatibility"""
+        return self.fix_answer
+        
+    @fixed_code.setter
+    def fixed_code(self, value):
+        """Setter for fixed_code that updates fix_answer"""
+        self.fix_answer = value
     
     @staticmethod
     def read_cpp_file(file_path):
@@ -84,7 +96,8 @@ class Memory:
             "error_type": getattr(item, 'error_type', 'unknown'),
             "bug_category": getattr(item, 'bug_category', 'unknown'),
             "faulty_code": item.faulty_code,
-            "fixed_code": getattr(item, 'fixed_code', ""),
+            "fix_answer": getattr(item, 'fix_answer', ""),
+            "confidence": getattr(item, 'confidence', 1.0),
             "timestamp": item.timestamp,
             "keywords": getattr(item, 'keywords', []),
             "tags": getattr(item, 'tags', []),
@@ -229,10 +242,10 @@ class Memory:
                 print("\nExact match found! Suggested fix will be in the output file.")
                 
                 # Print suggested fix
-                if top_match.fixed_code:
+                if top_match.fix_answer:
                     print("\nSuggested fix:")
                     print("```")
-                    print(top_match.fixed_code)
+                    print(top_match.fix_answer)
                     print("```")
                     
             # Save to YAML
@@ -1199,6 +1212,11 @@ class FewShotMemory:
                 if "embedding" in item and item["embedding"]:
                     embedding = np.array(item["embedding"])
                 
+                # Handle both fix_answer and fixed_code fields for backward compatibility
+                fix_answer = item.get("fix_answer")
+                if fix_answer is None:
+                    fix_answer = item.get("fixed_code", "")
+                
                 memory_item = Memory(
                     id=item["id"],
                     content=item["content"],
@@ -1208,13 +1226,14 @@ class FewShotMemory:
                     timestamp=item.get("timestamp"),
                     category=item.get("category", "C++"),
                     faulty_code=item.get("faulty_code", ""),
-                    fixed_code=item.get("fixed_code", ""),
+                    fix_answer=fix_answer,
                     compiler_errors=item.get("compiler_errors", []),
                     language=item.get("language", "cpp"),
                     line_number=item.get("line_number"),
                     error_type=item.get("error_type", "unknown"),
                     bug_category=item.get("bug_category", "unknown"),
-                    embedding_text=item.get("embedding_text", "")
+                    embedding_text=item.get("embedding_text", ""),
+                    confidence=item.get("confidence", 1.0)
                 )
                 
                 # Add embedding to memory object
@@ -1257,7 +1276,8 @@ class FewShotMemory:
                 "timestamp": memory.timestamp,
                 "category": memory.category,
                 "faulty_code": memory.faulty_code,
-                "fixed_code": memory.fixed_code,
+                "fix_answer": memory.fix_answer,
+                "confidence": memory.confidence,
                 "compiler_errors": memory.compiler_errors,
                 "language": getattr(memory, "language", "cpp"),
                 "line_number": getattr(memory, "line_number", None),
@@ -1330,7 +1350,7 @@ class FewShotMemory:
             bug_category = "syntax"
         elif any(kw in error_msg for kw in ["wire", "port", "connection"]):
             bug_category = "hdl_wiring"
-    
+
         # Generate a content description
         content = f"Bug: Fix the {error_type if error_type != 'unknown' else 'bug'} in this code."
         
@@ -1355,13 +1375,14 @@ class FewShotMemory:
             timestamp=datetime.now().strftime("%Y%m%d%H%M"),
             category=language.upper(),
             faulty_code=fix_question,
-            fixed_code=fix_answer,
+            fix_answer=fix_answer,
             compiler_errors=compiler_errors,
             language=language,
             line_number=line_number,
             error_type=error_type,
             bug_category=bug_category,
-            embedding_text=f"{language} programming bug fix: {error_type} {fix_question}"
+            embedding_text=f"{language} programming bug fix: {error_type} {fix_question}",
+            confidence=1.0
         )
         
         # Add to memories
@@ -1387,7 +1408,7 @@ class FewShotMemory:
             fix_question: The code to find matches for
             
         Returns:
-            List of Memory objects representing the matches
+            List of Memory objects with fix_answer and confidence attributes
         """
         # Default top_k value
         top_k = 3
@@ -1398,6 +1419,8 @@ class FewShotMemory:
         for memory in self.memories.values():
             if normalize_code(memory.faulty_code) == normalized_code:
                 print(f"Found exact match: {memory.id}")
+                # Set confidence to 1.0 for exact match
+                memory.confidence = 1.0
                 return [memory]
         
         # If no exact match, use embeddings to find similar
@@ -1428,9 +1451,15 @@ class FewShotMemory:
         
         # Sort by similarity (descending) and return top k
         similarities.sort(key=lambda x: x[1], reverse=True)
-        top_k_memories = [self.memories[memory_id] for memory_id, _ in similarities[:top_k]]
+        top_k_results = []
         
-        return top_k_memories
+        for memory_id, similarity in similarities[:top_k]:
+            memory = self.memories[memory_id]
+            # Set confidence based on similarity score
+            memory.confidence = float(similarity)
+            top_k_results.append(memory)
+            
+        return top_k_results
 
     def add_from_example(self, example: CppBugExample) -> str:
         """Add a memory item from a CppBugExample"""
@@ -1439,10 +1468,13 @@ class FewShotMemory:
         if example.line_number:
             err.loc = example.line_number
         
+        # Use fix_answer for the fix
+        fix_answer = example.fix_answer
+        
         return self.add(
             err=err,
             fix_question=example.faulty_code,
-            fix_answer=example.fixed_code
+            fix_answer=fix_answer
         )
 
     def create_sample_data(self, programs_path=None, output_path=None, output_yaml_path=None, create_embeddings=True):
@@ -1551,7 +1583,8 @@ class FewShotMemory:
                 "timestamp": timestamp,
                 "category": memory.category,
                 "faulty_code": memory.faulty_code,
-                "fixed_code": memory.fixed_code,
+                "fix_answer": memory.fix_answer,
+                "confidence": memory.confidence,
                 "compiler_errors": compiler_errors,
                 "language": memory.language,
                 "created_at": iso_timestamp,

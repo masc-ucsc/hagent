@@ -4,8 +4,10 @@ from typing import Optional, Callable, List, Dict, Tuple
 import os
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
+from pathlib import Path
 
 from hagent.tool.compile import Diagnostic
+from hagent.tool.memory import FewShotMemory
 
 
 def process_multiline_strings(obj):
@@ -57,13 +59,14 @@ class React:
         # Initialize internal state
         self.error_message: str = ''
         self._is_ready: bool = False
-        self._db_path: Optional[str] = None
-        self._db: Dict[str, Dict[str, str]] = {}  # Mapping: error type -> sample fix
+        self._memory: Optional[FewShotMemory] = None
         self._learn_mode: bool = False
         self._max_iterations: int = 5
         self.last_code: str = ''
         self._log: List[Dict] = []  # Records iteration details
         self._lang_prefix: str = '//'
+        # For backwards compatibility with tests
+        self._db: Dict[str, Dict[str, str]] = {}
 
     def setup(
         self, db_path: Optional[str] = None, learn: bool = False, max_iterations: int = 5, comment_prefix: str = '//'
@@ -71,7 +74,7 @@ class React:
         """
         Prepares the React tool for usage.
         - Clears internal state.
-        - Loads or initializes the DB data.
+        - Initializes the memory system.
         - Configures learn mode, iteration limit, and comment prefix.
         - Sets _is_ready if successful.
 
@@ -83,75 +86,59 @@ class React:
         self._learn_mode = learn
         self._max_iterations = max_iterations
         self._lang_prefix = comment_prefix
-        self._db_path = db_path
+        # Reset backwards compatibility DB
+        self._db = {}
 
-        if self._db_path:
-            if os.path.exists(self._db_path):
-                try:
-                    self._load_db()
-                except Exception as e:
-                    self.error_message = f'Failed to load DB: {e}'
-                    self._is_ready = False
-                    return False
-            else:
-                if self._learn_mode:
-                    self._db = {}
-                    try:
-                        self._save_db()
-                    except Exception as e:
-                        self.error_message = f'Failed to create DB: {e}'
-                        self._is_ready = False
-                        return False
-                else:
+        try:
+            # Initialize memory system with provided database path
+            if db_path:
+                # Check if file exists - for backward compatibility with tests
+                if not learn and not os.path.exists(db_path):
                     self.error_message = 'Database file not found and learn mode is disabled.'
                     self._is_ready = False
                     return False
-        else:
-            self._db = {}
+                    
+                # Ensure parent directory exists
+                db_path_obj = Path(db_path)
+                db_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                
+                self._memory = FewShotMemory(
+                    db_path=db_path,
+                    auto_create_data=learn  # Only create data if in learn mode
+                )
+                
+                # For backwards compatibility, load memories into _db
+                self._sync_memory_to_db()
+            else:
+                # Create an in-memory instance if no path is provided
+                self._memory = FewShotMemory(auto_create_data=False)
+            
+            self._is_ready = True
+            return True
+        except Exception as e:
+            self.error_message = f'Failed to initialize memory system: {e}'
+            self._is_ready = False
+            return False
 
-        self._is_ready = True
-        return True
-
-    def _load_db(self) -> None:
+    # Memory system handles database loading and saving
+    
+    def _sync_memory_to_db(self):
         """
-        Reads the YAML database file from `_db_path` into `_db`.
+        Syncs memory system to _db for backwards compatibility with tests
         """
-        if not os.path.exists(self._db_path):
-            self._db = {}
+        if not self._memory:
             return
-
-        yaml_loader = YAML(typ='safe')
-        with open(self._db_path, 'r', encoding='utf-8') as f:
-            data = yaml_loader.load(f)
-            if data is None:
-                data = {}
-            # Ensure the data is a mapping.
-            assert isinstance(data, dict), 'Database file must contain a mapping'
-            self._db = data
-
-    def _save_db(self) -> None:
-        """
-        Writes `_db` back to disk (only if learn mode is enabled) using
-        literal block style for multiline strings.
-        """
-        if self._learn_mode and self._db_path:
-            yaml_writer = YAML()
-            # Configure indentation for better readability.
-            yaml_writer.indent(mapping=2, sequence=4, offset=2)
-            # Process _db to wrap multiline strings.
-            processed_db = process_multiline_strings(self._db)
-            with open(self._db_path, 'w', encoding='utf-8') as f:
-                yaml_writer.dump(processed_db, f)
-
-    def _add_error_example(self, error_type: str, fix_question: str, fix_answer: str) -> None:
-        """
-        Updates `_db` with a new error example if not already present.
-        Immediately saves if learning mode is enabled.
-        """
-        if error_type not in self._db:
-            self._db[error_type] = {'fix_question': fix_question, 'fix_answer': fix_answer}
-            if self._learn_mode:
-                self._save_db()
+            
+        # Clear existing DB
+        self._db = {}
+        
+        # Add each memory to _db
+        for memory in self._memory.memories.values():
+            if hasattr(memory, 'error_type') and memory.error_type:
+                self._db[memory.error_type] = {
+                    'fix_question': memory.faulty_code,
+                    'fix_answer': memory.fix_answer
+                }
 
     def _get_delta(self, code: str, loc: int, window: int = 5) -> Tuple[str, int, int]:
         """
@@ -216,16 +203,23 @@ class React:
                 return current_text
 
             error_type = diagnostics[0].msg
-            fix_example = self._db.get(error_type, {'fix_question': '', 'fix_answer': ''})
-            assert isinstance(fix_example, dict), f'Corrupt llm_wrap DB {self._db_path}'
+            
+            # Find similar examples from memory
+            similar_examples = self._memory.find(err=diagnostics[0], fix_question=current_text)
+            fix_example = {"fix_question": "", "fix_answer": ""}
+            if similar_examples:
+                # Use the best match from memory
+                best_match = similar_examples[0]
+                fix_example = {
+                    "fix_question": best_match.faulty_code,
+                    "fix_answer": best_match.fix_answer
+                }
+            assert isinstance(fix_example, dict), 'Memory result corrupted'
 
             if iteration == 1:
                 # Use a delta: only a few lines around the first error.
                 delta, start_line, end_line = self._get_delta(current_text, diagnostics[0].loc)
-                # Compute relative error location in the delta.
-                # relative_loc = diagnostics[0].loc - start_line + 1
                 try:
-                    # annotated = insert_comment(delta, diagnostics[0].to_str(), self._lang_prefix, relative_loc)
                     annotated = diagnostics[0].insert_comment(delta, self._lang_prefix)
                 except Exception as e:
                     self.error_message = f'Failed to insert diagnostic comment in delta: {e}'
@@ -239,7 +233,6 @@ class React:
             else:
                 # Use the full code in subsequent iterations.
                 try:
-                    # annotated = insert_comment(current_text, diagnostics[0].to_str(), self._lang_prefix, diagnostics[0].loc)
                     annotated = diagnostics[0].insert_comment(current_text, self._lang_prefix)
                 except Exception as e:
                     self.error_message = f'Failed to insert diagnostic comment: {e}'
@@ -257,13 +250,15 @@ class React:
 
             if not new_diagnostics:
                 if self._learn_mode:
-                    self._add_error_example(error_type, fix_question, fix_answer)
+                    memory_id = self._memory.add(diagnostics[0], fix_question, fix_answer)
+                    print(f"Added fix to memory with ID: {memory_id}")
                 self.last_code = new_text
                 return new_text
             else:
-                new_error_type = new_diagnostics[0].error
+                new_error_type = new_diagnostics[0].msg
                 if new_error_type != error_type and self._learn_mode:
-                    self._add_error_example(error_type, fix_question, fix_answer)
+                    memory_id = self._memory.add(diagnostics[0], fix_question, fix_answer)
+                    print(f"Added partial fix to memory with ID: {memory_id}")
                 current_text = new_text
 
         self.last_code = current_text
@@ -274,3 +269,33 @@ class React:
         Returns the log of the iterations.
         """
         return self._log
+
+    def _add_error_example(self, error_type: str, fix_question: str, fix_answer: str) -> None:
+        """
+        Adds an error example to the memory system using the error type as content.
+        Used for backward compatibility with tests.
+        
+        Args:
+            error_type: The type of error
+            fix_question: The code with the error
+            fix_answer: The fixed code
+        """
+        if not self._memory:
+            self.error_message = "Memory system not initialized"
+            return
+        
+        # Create a minimal diagnostic
+        diagnostic = Diagnostic(error_type)
+        
+        # Add to memory system
+        self._memory.add(
+            err=diagnostic,
+            fix_question=fix_question,
+            fix_answer=fix_answer
+        )
+        
+        # For backwards compatibility with tests
+        self._db[error_type] = {
+            'fix_question': fix_question,
+            'fix_answer': fix_answer
+        }

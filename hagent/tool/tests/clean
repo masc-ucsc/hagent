@@ -1,3 +1,5 @@
 rm -rf dummy_db.yaml foo.yaml __pycache__ .litellm_cache data
 rm -rf test_react_compile_slang_simple.log
 rm -rf foo_embeddings.yaml.pkl
+rm -rf cached_memories
+rm -rf data

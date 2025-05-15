@@ -1,12 +1,12 @@
 query:
   code: "module trivial( input a, input b, output c);\nassign c = a ^ b\nendmodule\n\
     \n"
-  timestamp: '2025-05-15 12:17:25'
+  timestamp: '2025-05-15 12:56:14'
 results:
   count: 3
   exact_match_found: false
   matches:
-    - id: e5d596c3-f887-458a-be9b-4d6329c53538
+    - id: 91632273-9e07-4fe9-9f28-4e097224286a
       content: 'Bug: Fix the bug in this code. Error: Missing Spade component declaration
         (Accel/Kernel/Module)'
       error_type: unknown
@@ -15,11 +15,12 @@ results:
         fn not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\n
         fn main() -> () {\n  let a = 1'b0;\n  // Bug: Missing closing parenthesis\n\
         \  let b = not_gate(a;\n  \n  assert(b == 1'b1);\n} "
-      fixed_code: "// Simple Spade program with correct parenthesis\n\n@module\nfn
+      fix_answer: "// Simple Spade program with correct parenthesis\n\n@module\nfn
         not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\n
         fn main() -> () {\n  let a = 1'b0;\n  let b = not_gate(a);\n  \n  assert(b
         == 1'b1);\n} "
-      timestamp: '202505151216'
+      confidence: 0.41198912262916565
+      timestamp: '202505151255'
       keywords:
         - spade
         - unknown
@@ -32,7 +33,7 @@ results:
       context: 'spade programming bug fix: unknown'
       compiler_errors:
         - Missing Spade component declaration (Accel/Kernel/Module)
-    - id: 2335d196-562d-48ec-85a1-819bc7929f91
+    - id: 3470ae7b-c283-40ee-b315-5e2696324abc
       content: 'Bug: Fix the bug in this code. Error: Traceback (most recent call
         last):'
       error_type: unknown
@@ -42,11 +43,12 @@ results:
         wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
         \n# Connect sum output\nsum_out <<= a ^ b\n\n# Bug: Missing assignment to
         carry_out\n# carry_out <<= a & b "
-      fixed_code: "import pyrtl\n\n# Simple half adder with correct wire assignments\n
+      fix_answer: "import pyrtl\n\n# Simple half adder with correct wire assignments\n
         \n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output
         wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
         \n# Connect outputs\nsum_out <<= a ^ b\ncarry_out <<= a & b "
-      timestamp: '202505151216'
+      confidence: 0.3958778977394104
+      timestamp: '202505151255'
       keywords:
         - pyrtl
         - unknown
@@ -59,7 +61,7 @@ results:
       context: 'pyrtl programming bug fix: unknown'
       compiler_errors:
         - 'Traceback (most recent call last):'
-    - id: edc5e6fc-6df0-44ba-8838-271a8ac9f917
+    - id: c7388854-85c3-4bd3-aa92-8b25528dd9cf
       content: 'Bug: Fix the bug in this code. Error: Scala/Chisel compilation tools
         not available'
       error_type: unknown
@@ -72,12 +74,13 @@ results:
         \  })\n  \n  val result = io.a + io.b\n  \n  // Bug: Missing connection to
         output\n  io.sum := result\n}\n\nobject AdderMain extends App {\n  chisel3.stage.ChiselStage.emitVerilog(new
         Adder)\n} "
-      fixed_code: "import chisel3._\n\nclass Adder extends Module {\n  val io = IO(new
+      fix_answer: "import chisel3._\n\nclass Adder extends Module {\n  val io = IO(new
         Bundle {\n    val a = Input(UInt(8.W))\n    val b = Input(UInt(8.W))\n   \
         \ val sum = Output(UInt(8.W))\n  })\n  \n  val result = io.a + io.b\n  \n\
         \  // Fixed: Added connection to output\n  io.sum := result\n}\n\nobject AdderMain
         extends App {\n  chisel3.stage.ChiselStage.emitVerilog(new Adder)\n} "
-      timestamp: '202505151216'
+      confidence: 0.32949936389923096
+      timestamp: '202505151255'
       keywords:
         - chisel
         - unknown

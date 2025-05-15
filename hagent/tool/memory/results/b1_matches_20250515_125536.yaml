@@ -2,12 +2,12 @@ query:
   code: "#include <iostream>\nusing namespace std;\n\nint main() {\n    int a = 5;\n\
     \    int result = a + b; // ❌ 'b' is not declared\n    cout << \"Result: \" <<
     result << endl;\n    return 0;\n}\n"
-  timestamp: '2025-05-15 12:16:18'
+  timestamp: '2025-05-15 12:55:36'
 results:
   count: 3
   exact_match_found: false
   matches:
-    - id: 35f5039d-dd0b-4ca3-9aee-0164c72cc8cc
+    - id: e83cf9bc-09db-4526-a5ce-754f28e8c2b9
       content: "Bug: Fix the missing_element in this code. Error: expected ';' at
         end of declaration"
       error_type: missing_element
@@ -17,10 +17,11 @@ results:
         syntax\n    int result = a : b;  // Using ':' instead of '/' for division\n\
         \    \n    std::cout << \"Result: \" << result << std::endl;\n    \n    return
         0;\n}"
-      fixed_code: "#include <iostream>\n\nint main() {\n    int a = 10;\n    int b
+      fix_answer: "#include <iostream>\n\nint main() {\n    int a = 10;\n    int b
         = 5;\n    \n    int result = a / b;\n    \n    std::cout << \"Result: \" <<
         result << std::endl;\n    \n    return 0;\n}"
-      timestamp: '202505151216'
+      confidence: 0.7526969909667969
+      timestamp: '202505151255'
       keywords:
         - cpp
         - missing_element
@@ -33,7 +34,7 @@ results:
       context: 'cpp programming bug fix: missing_element'
       compiler_errors:
         - expected ';' at end of declaration
-    - id: 0402d24b-5d75-4c64-834e-964129206f02
+    - id: 18d53af3-8b39-46da-98b6-ae04bce61dff
       content: "Bug: Fix the missing_element in this code. Error: expected ';' at
         end of declaration"
       error_type: missing_element
@@ -42,11 +43,12 @@ results:
         in variable declaration (missing semicolon)\n    int number    // Missing
         semicolon after declaration\n    \n    number = 10;\n    \n    std::cout <<
         \"Number: \" << number << std::endl;\n    \n    return 0;\n} "
-      fixed_code: "#include <iostream>\n\nint main() {\n    // Fixed: Proper variable
+      fix_answer: "#include <iostream>\n\nint main() {\n    // Fixed: Proper variable
         declaration with semicolon\n    int number;  // Properly terminated with semicolon\n\
         \    \n    number = 10;\n    \n    std::cout << \"Number: \" << number <<
         std::endl;\n    \n    return 0;\n} "
-      timestamp: '202505151216'
+      confidence: 0.7015782594680786
+      timestamp: '202505151255'
       keywords:
         - cpp
         - missing_element
@@ -59,7 +61,7 @@ results:
       context: 'cpp programming bug fix: missing_element'
       compiler_errors:
         - expected ';' at end of declaration
-    - id: c10f0133-2046-4715-b935-b23cae9f0d3c
+    - id: 8afa0e75-bee3-469e-9f8d-b690668da97f
       content: "Bug: Fix the undefined_symbol in this code. Error: use of undeclared
         identifier 'value2'; did you mean 'value'?"
       error_type: undefined_symbol
@@ -69,11 +71,12 @@ results:
         (missing type)\n        value2 = 10;  // Missing variable type declaration\n\
         \        value2++;\n    }\n    \n    std::cout << \"Value: \" << value <<
         std::endl;\n    \n    return 0;\n} "
-      fixed_code: "#include <iostream>\n\nint main() {\n    int value = 5;\n    \n\
+      fix_answer: "#include <iostream>\n\nint main() {\n    int value = 5;\n    \n\
         \    if (value > 0) {\n        int value2 = 10;\n        value2++;\n    }\n\
         \    \n    std::cout << \"Value: \" << value << std::endl;  // Prints 11\n\
         \    \n    return 0;\n} "
-      timestamp: '202505151216'
+      confidence: 0.7006446123123169
+      timestamp: '202505151255'
       keywords:
         - cpp
         - undefined_symbol
