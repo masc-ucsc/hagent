@@ -1,0 +1,77 @@
+query:
+  code: "module trivial( input a, input b, output c);\nassign c = a ^ b\nendmodule\n\
+    \n"
+  timestamp: '2025-05-15 11:01:09'
+results:
+  count: 3
+  exact_match_found: false
+  matches:
+    - id: 54ec545f-d84b-4af9-a240-d1cea2814895
+      content: 'Spade Bug #14: Fix the code error: Spade hardware description language
+        error analysis would be done here'
+      error_type: unknown
+      bug_category: missing parenthesis
+      faulty_code: "// Simple Spade program with missing parenthesis\n\n@module\n
+        fn not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\n
+        fn main() -> () {\n  let a = 1'b0;\n  // Bug: Missing closing parenthesis\n\
+        \  let b = not_gate(a;\n  \n  assert(b == 1'b1);\n} "
+      fixed_code: "// Simple Spade program with correct parenthesis\n\n@module\nfn
+        not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\n
+        fn main() -> () {\n  let a = 1'b0;\n  let b = not_gate(a);\n  \n  assert(b
+        == 1'b1);\n} "
+      timestamp: '202505151100'
+      keywords:
+        - Spade
+        - bug
+      tags:
+        - spade
+        - debugging
+      context: 'Spade programming bug fix: unknown'
+      compiler_errors:
+        - Spade compilation not implemented
+    - id: c3aea093-297c-484f-92bb-762249a08751
+      content: 'PyRTL Bug #12: Fix the code error: PyRTL error analysis would be done
+        here'
+      error_type: unknown
+      bug_category: wire assignment
+      faulty_code: "import pyrtl\n\n# Simple half adder with missing wire assignment\n
+        \n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output
+        wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
+        \n# Connect sum output\nsum_out <<= a ^ b\n\n# Bug: Missing assignment to
+        carry_out\n # carry_out <<= a & b "
+      fixed_code: "import pyrtl\n\n# Simple half adder with correct wire assignments\n
+        \n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output
+        wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
+        \n# Connect outputs\nsum_out <<= a ^ b\ncarry_out <<= a & b "
+      timestamp: '202505151100'
+      keywords:
+        - PyRTL
+        - bug
+      tags:
+        - pyrtl
+        - debugging
+      context: 'PyRTL programming bug fix: unknown'
+      compiler_errors:
+        - PyRTL compilation not implemented
+    - id: 72978e77-1f30-4433-8a2b-2f79b5c7bae4
+      content: 'Silice Bug #15: Fix the code error: Silice hardware description language
+        error analysis would be done here'
+      error_type: unknown
+      bug_category: missing semicolon
+      faulty_code: "// Simple Silice program with missing semicolon\n\nalgorithm main(output
+        uint8 led) {\n  uint1 state = 0;\n  \n  // Bug: missing semicolon at end of
+        line\n  led = state ? 8b11111111 : 8b00000000\n  \n  while (1) {\n    state
+        = ~state;\n  }\n} "
+      fixed_code: "// Simple LED blinker in Silice - fixed version\n\nalgorithm main(output
+        uint8 led) {\n  uint1 state = 0;\n  \n  led = state ? 8b11111111 : 8b00000000;\n\
+        \  \n  while (1) {\n    state = ~state;\n  }\n} "
+      timestamp: '202505151100'
+      keywords:
+        - Silice
+        - bug
+      tags:
+        - silice
+        - debugging
+      context: 'Silice programming bug fix: unknown'
+      compiler_errors:
+        - Silice compilation not implemented

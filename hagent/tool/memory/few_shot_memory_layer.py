@@ -95,6 +95,13 @@ class Memory:
     @staticmethod
     def save_examples_to_yaml(matches, query_code, output_file, exact_match=False):
         """Save found examples to a YAML file"""
+        # Create default output file if not provided
+        if not output_file:
+            results_dir = Path("results")
+            results_dir.mkdir(exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = str(results_dir / f"matches_{timestamp}.yaml")
+        
         # Create the output directory if it doesn't exist
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,9 +192,14 @@ class Memory:
     @staticmethod
     def process_matches(matches: List['Memory'], 
                        test_code: str, 
-                       output_file: str) -> None:
+                       output_file: Optional[str] = None,
+                       program_path: Optional[Path] = None) -> None:
         """Process and display matches found by the memory system"""
         exact_match = False
+        
+        # Determine output file path if not provided
+        if program_path and not output_file:
+            output_file = Memory.determine_output_file(output_file, program_path)
         
         if matches:
             print(f"Found {len(matches)} similar examples")
@@ -214,6 +226,8 @@ class Memory:
         else:
             print("No similar examples found")
             Memory.save_examples_to_yaml([], test_code, output_file, False)
+        
+        print(f"Results saved to {output_file}")
     
     @staticmethod
     def save_databases(memory_system: 'FewShotMemory', 
@@ -237,11 +251,26 @@ class Memory:
     @staticmethod
     def determine_output_file(output_file: Optional[str], 
                              program_path: Path) -> str:
-        """Determine the output file path"""
+        """
+        Determine the output file path, creates results directory if needed,
+        and adds a timestamp to differentiate results of the same files.
+        
+        Args:
+            output_file: Optional custom output file path
+            program_path: Path of the input program file
+            
+        Returns:
+            String path to the output file
+        """
         if not output_file:
+            # Create results directory if it doesn't exist
+            results_dir = Path("results")
+            results_dir.mkdir(exist_ok=True)
+            
+            # Add timestamp to filename to differentiate results of same files
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             file_name = program_path.stem
-            output_file = f"results/{file_name}_matches_{timestamp}.yaml"
+            output_file = str(results_dir / f"{file_name}_matches_{timestamp}.yaml")
         return output_file
 
     @staticmethod
@@ -782,8 +811,19 @@ class FewShotMemory:
         
         return memory_id
     
-    def find(self, original_code: str, errors: List[str] = None) -> List[Memory]:
-        """Find exact or similar matches for a code example"""
+    def find(self, original_code: str, errors: List[str] = None, program_path: Optional[Path] = None, save_results: bool = False) -> List[Memory]:
+        """
+        Find exact or similar matches for a code example
+        
+        Args:
+            original_code: The code to find matches for
+            errors: Optional list of compiler errors to aid in matching
+            program_path: Optional path to the program file (for results saving)
+            save_results: Whether to save results to a file
+            
+        Returns:
+            List of Memory objects representing the matches
+        """
         # Default top_k value
         top_k = 3
         
@@ -793,7 +833,14 @@ class FewShotMemory:
         for memory in self.memories.values():
             if normalize_code(memory.faulty_code) == normalized_code:
                 print(f"Found exact match: {memory.id}")
-                return [memory]
+                matches = [memory]
+                
+                # Save results if requested and program_path is provided
+                if save_results and program_path:
+                    output_file = Memory.determine_output_file(None, program_path)
+                    Memory.process_matches(matches, original_code, output_file)
+                    
+                return matches
         
         # If no exact match, use embeddings to find similar
         if not self.memories:
@@ -805,7 +852,7 @@ class FewShotMemory:
         if errors and len(errors) > 0:
             error_summary = " ".join(errors[:3])  # Include up to 3 errors in the embedding
             query_text = f"{original_code} {error_summary}"
-            
+        
         query_embedding = self.model.encode([query_text])[0]
         
         # Calculate similarities with all memory items
@@ -823,6 +870,11 @@ class FewShotMemory:
         # Sort by similarity (descending) and return top k
         similarities.sort(key=lambda x: x[1], reverse=True)
         top_k_memories = [self.memories[memory_id] for memory_id, _ in similarities[:top_k]]
+        
+        # Save results if requested and program_path is provided
+        if save_results and program_path:
+            output_file = Memory.determine_output_file(None, program_path)
+            Memory.process_matches(top_k_memories, original_code, output_file)
         
         return top_k_memories
     

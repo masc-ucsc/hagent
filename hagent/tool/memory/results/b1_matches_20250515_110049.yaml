@@ -1,0 +1,35 @@
+query:
+  code: "#include <iostream>\nusing namespace std;\n\nint main() {\n    int a = 5;\n\
+    \    int result = a + b; // ❌ 'b' is not declared\n    cout << \"Result: \" <<
+    result << endl;\n    return 0;\n}\n"
+  timestamp: '2025-05-15 11:00:49'
+results:
+  count: 1
+  exact_match_found: true
+  matches:
+    - id: 7ea9790a-f23a-4a78-b2e6-8783e375ef0e
+      content: "C++ Bug: Fix the bug in this code. Error: /var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpjrtvw29m.cpp:6:22:
+        error: use of undeclared identifier 'b'"
+      error_type: unknown
+      bug_category: unknown
+      faulty_code: "#include <iostream>\nusing namespace std;\n\nint main() {\n  \
+        \  int a = 5;\n    int result = a + b; // ❌ 'b' is not declared\n    cout
+        << \"Result: \" << result << endl;\n    return 0;\n}\n"
+      fixed_code: ''
+      timestamp: '202505151100'
+      keywords:
+        - C++
+        - unknown
+        - error
+        - bug
+      tags:
+        - debugging
+        - unknown
+        - cpp
+      context: 'C++ programming bug fix: unknown'
+      compiler_errors:
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpjrtvw29m.cpp:6:22:
+          error: use of undeclared identifier 'b'"
+        - "    6 |     int result = a + b; // ❌ 'b' is not declared"
+        - '      |                      ^'
+        - 1 error generated.

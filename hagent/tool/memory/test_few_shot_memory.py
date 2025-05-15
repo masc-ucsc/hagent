@@ -35,9 +35,13 @@ def main():
     language = Memory.detect_language(test_program_path)
     print(f"Detected language: {language}")
     
-    # Find similar examples first
+    # Find similar examples first - now with automatic results saving
     print("Searching for similar code...")
-    matches = memory_system.find(original_code=test_code)
+    matches = memory_system.find(
+        original_code=test_code,
+        program_path=test_program_path,
+        save_results=True
+    )
     
     # Check if an exact match exists
     memory_exists = False
@@ -59,15 +63,6 @@ def main():
             errors=compiler_errors
         )
         print(f"Added to memory with ID: {memory_id}")
-    
-    # Determine output file
-    results_dir = Path("results")
-    results_dir.mkdir(exist_ok=True)
-    output_file = results_dir / f"{test_program_path.stem}_matches.yaml"
-    
-    # Process matches
-    print(f"Processing matches and saving results to {output_file}")
-    Memory.process_matches(matches, test_code, str(output_file))
     
     print(f"Memory saved to database at {memory_system.db_path}")
     print(f"Memory system contains {len(memory_system.memories)} examples")
