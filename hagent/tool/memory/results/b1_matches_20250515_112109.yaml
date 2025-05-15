@@ -2,12 +2,12 @@ query:
   code: "#include <iostream>\nusing namespace std;\n\nint main() {\n    int a = 5;\n\
     \    int result = a + b; // ❌ 'b' is not declared\n    cout << \"Result: \" <<
     result << endl;\n    return 0;\n}\n"
-  timestamp: '2025-05-15 11:00:38'
+  timestamp: '2025-05-15 11:21:09'
 results:
   count: 3
   exact_match_found: false
   matches:
-    - id: 96c34674-e633-44cc-869b-0d35187a4a2b
+    - id: a273da08-5e66-4ba1-ab3b-728b0e030c7d
       content: "C++ Bug #8: Fix the missing semicolon in this code. Error: expected
         ';' at end of declaration"
       error_type: missing_semicolon
@@ -20,30 +20,30 @@ results:
       fixed_code: "#include <iostream>\n\nint main() {\n    int a = 10;\n    int b
         = 5;\n    \n    int result = a / b;\n    \n    std::cout << \"Result: \" <<
         result << std::endl;\n    \n    return 0;\n}"
-      timestamp: '202505151100'
+      timestamp: '202505151121'
       keywords:
         - error
-        - C++
+        - missing semicolon
         - bug
-        - missing semicolon
+        - C++
       tags:
-        - missing semicolon
         - syntax
+        - missing semicolon
         - cpp
         - debugging
       context: 'C++ programming bug fix: missing semicolon'
       compiler_errors:
-        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp1zwfcnbw.cpp:8:20:
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpwqpj9lyt.cpp:8:20:
           error: expected ';' at end of declaration"
         - "    8 |     int result = a : b;  // Using ':' instead of '/' for division"
         - '      |                    ^'
         - '      |                    ;'
-        - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp1zwfcnbw.cpp:8:22:
+        - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpwqpj9lyt.cpp:8:22:
           warning: expression result unused [-Wunused-value]'
         - "    8 |     int result = a : b;  // Using ':' instead of '/' for division"
         - '      |                      ^'
         - 1 warning and 1 error generated.
-    - id: 013e270f-5042-4076-8947-5581ab288a5d
+    - id: 93638add-4a99-489b-9aae-ceaaeef39bc9
       content: "C++ Bug #1: Fix the missing semicolon in this code. Error: expected
         ';' at end of declaration"
       error_type: missing_semicolon
@@ -52,26 +52,26 @@ results:
         << \"The value of x is: \" << x << std::endl;\n    return 0;\n}\n"
       fixed_code: "#include <iostream>\n\nint main() {\n    int x = 5;\n    std::cout
         << \"The value of x is: \" << x << std::endl;\n    return 0;\n} "
-      timestamp: '202505151100'
+      timestamp: '202505151121'
       keywords:
         - error
-        - C++
+        - missing semicolon
         - bug
-        - missing semicolon
+        - C++
       tags:
-        - missing semicolon
         - syntax
+        - missing semicolon
         - cpp
         - debugging
       context: 'C++ programming bug fix: missing semicolon'
       compiler_errors:
-        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpdwdpx9kv.cpp:4:14:
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp4yhk2id2.cpp:4:14:
           error: expected ';' at end of declaration"
         - '    4 |     int x = 5'
         - '      |              ^'
         - '      |              ;'
         - 1 error generated.
-    - id: 4045e199-31d1-4453-bf41-f8e5ad748d61
+    - id: 943f2780-0e5b-4baf-bb96-220494665f65
       content: "C++ Bug #10: Fix the missing semicolon in this code. Error: expected
         ';' at end of declaration"
       error_type: missing_semicolon
@@ -84,20 +84,20 @@ results:
         declaration with semicolon\n    int number;  // Properly terminated with semicolon\n\
         \    \n    number = 10;\n    \n    std::cout << \"Number: \" << number <<
         std::endl;\n    \n    return 0;\n} "
-      timestamp: '202505151100'
+      timestamp: '202505151121'
       keywords:
         - error
-        - C++
+        - missing semicolon
         - bug
-        - missing semicolon
+        - C++
       tags:
-        - missing semicolon
         - syntax
+        - missing semicolon
         - cpp
         - debugging
       context: 'C++ programming bug fix: missing semicolon'
       compiler_errors:
-        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp18hbl49x.cpp:5:15:
+        - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmphwlv7lju.cpp:5:15:
           error: expected ';' at end of declaration"
         - '    5 |     int number    // Missing semicolon after declaration'
         - '      |               ^'

@@ -1041,14 +1041,10 @@ class FewShotMemory:
                     if memory_id in self.memories:
                         self.memories[memory_id].embedding = embedding
                 
-                # Determine embeddings output path
-                if output_path is None:
-                    # Use default path
-                    data_dir = Path(__file__).parent / "data"
-                    data_dir.mkdir(exist_ok=True)
-                    embeddings_path = data_dir / "code_embeddings.npy"
-                else:
-                    embeddings_path = Path(output_path).parent / "code_embeddings.npy"
+                # Determine embeddings output path - now in cached_memories directory with more descriptive name
+                cache_dir = Path("cached_memories")
+                cache_dir.mkdir(exist_ok=True)
+                embeddings_path = cache_dir / "memory_embeddings.npy"
                 
                 # Save embeddings
                 np.save(str(embeddings_path), embeddings)
