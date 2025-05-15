@@ -10,6 +10,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from ruamel.yaml import YAML
+from hagent.tool.compile import Diagnostic
 
 # Initialize SentenceTransformer model (this will be reused)
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -207,3 +208,35 @@ def load_cpp_bugs_dataset(file_path: Union[str, Path]) -> List[CppBugExample]:
         print(f"  {error_type}: {count}")
     
     return samples
+
+def create_diagnostic_from_errors(error_msgs: List[str], file_path: Optional[str] = "", line_number: Optional[int] = 0) -> Diagnostic:
+    """
+    Create a Diagnostic object from a list of error messages
+    
+    Args:
+        error_msgs: List of error messages
+        file_path: Path to the file with the error
+        line_number: Line number where the error occurred
+        
+    Returns:
+        A Diagnostic object representing the error
+    """
+    if not error_msgs:
+        # Create an empty diagnostic if no errors
+        return Diagnostic("")
+    
+    # Use the first error message as the main message
+    diag = Diagnostic(error_msgs[0])
+    
+    # Set additional fields
+    diag.file = file_path
+    
+    # If line number wasn't extracted from the error message, use the provided one
+    if hasattr(diag, 'loc') and diag.loc <= 0 and line_number > 0:
+        diag.loc = line_number
+    
+    # Add any additional error messages as hints
+    if len(error_msgs) > 1:
+        diag.hint = "\n".join(error_msgs[1:])
+    
+    return diag

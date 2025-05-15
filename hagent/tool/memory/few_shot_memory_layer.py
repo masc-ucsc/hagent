@@ -352,7 +352,7 @@ class Memory:
         return "unknown bug"
 
     @staticmethod
-    def get_compiler_errors(code: str, language: str, file_name: str) -> Tuple[List[str], Dict[str, Any]]:
+    def get_compiler_errors(code: str, language: str, file_name: str) -> Tuple[List[str], Dict[str, Any], Optional[Diagnostic]]:
         """
         Compile the code and return errors and analysis.
         
@@ -362,7 +362,7 @@ class Memory:
             file_name: Original file name for context
             
         Returns:
-            Tuple of (error_messages, analysis_data)
+            Tuple of (error_messages, analysis_data, diagnostic)
         """
         errors = []
         analysis = {
@@ -375,6 +375,7 @@ class Memory:
             'keywords': [],
             'tags': []
         }
+        diagnostic = None
         
         if language == 'C++':
             with tempfile.NamedTemporaryFile(suffix='.cpp', delete=False) as tmp:
@@ -1011,7 +1012,21 @@ class Memory:
             if not analysis['description']:
                 analysis['description'] = generic_error
         
-        return errors, analysis
+        # Create a diagnostic from the errors
+        if errors:
+            error_msg = errors[0]
+            diagnostic = Diagnostic(error_msg)
+            diagnostic.file = file_name
+            diagnostic.loc = analysis['line_number'] or 0
+            diagnostic.error = analysis['severity'] == 'error'
+            if len(errors) > 1:
+                diagnostic.hint = '\n'.join(errors[1:])
+        else:
+            # Create an empty diagnostic
+            diagnostic = Diagnostic("")
+            diagnostic.file = file_name
+        
+        return errors, analysis, diagnostic
 
     @staticmethod
     def generate_bug_description(analysis, bug_number, file_name):
@@ -1272,59 +1287,81 @@ class FewShotMemory:
         except Exception as e:
             print(f"Error saving database to {output_path}: {e}")
     
-    def add(self, 
-            original_code: str, 
-            fixed_code: str = None, 
-            errors: List[str] = None) -> str:
-        """Add a new memory item"""
-        # Determine error type from errors if possible
+    def add(self, err: Diagnostic, fix_question: str, fix_answer: str = None) -> str:
+        """
+        Add a new memory item using Diagnostic object
+        
+        Args:
+            err: Diagnostic object containing error information
+            fix_question: The code with the error (faulty code)
+            fix_answer: The fixed code (if available)
+            
+        Returns:
+            String ID of the newly created memory
+        """
+        # Extract error information from Diagnostic
         error_type = "unknown"
         bug_category = "unknown"
+        line_number = err.loc if hasattr(err, 'loc') else None
+        compiler_errors = [err.msg] if hasattr(err, 'msg') and err.msg else []
         
-        if errors and len(errors) > 0:
-            # Try to extract error type from compiler errors
-            first_error = errors[0].lower()
-            if "syntax" in first_error:
+        # Determine error type from Diagnostic message
+        if hasattr(err, 'msg') and err.msg:
+            error_msg = err.msg.lower()
+            if "syntax" in error_msg:
                 error_type = "syntax_error"
-            elif "undefined" in first_error:
+            elif "undefined" in error_msg or "undeclared" in error_msg:
                 error_type = "undefined_symbol"
-            elif "redefinition" in first_error:
+            elif "redefinition" in error_msg or "redeclared" in error_msg:
                 error_type = "redefinition_error"
-            elif "expected" in first_error:
+            elif "expected" in error_msg:
                 error_type = "missing_element"
-            
-            # Categorize the bug
-            if any(kw in first_error for kw in ["memory", "allocation", "free", "leak"]):
-                bug_category = "memory_management"
-            elif any(kw in first_error for kw in ["type", "conversion"]):
-                bug_category = "type_error"
-            elif any(kw in first_error for kw in ["syntax", "token", "expected"]):
-                bug_category = "syntax"
+            elif "semicolon" in error_msg:
+                error_type = "missing_semicolon"
+            elif "brackets" in error_msg or "parenthesis" in error_msg or "brace" in error_msg:
+                error_type = "mismatched_brackets"
         
+        # Categorize the bug
+        if any(kw in error_msg for kw in ["memory", "allocation", "free", "leak"]):
+            bug_category = "memory_management"
+        elif any(kw in error_msg for kw in ["type", "conversion"]):
+            bug_category = "type_error"
+        elif any(kw in error_msg for kw in ["syntax", "token", "expected"]):
+            bug_category = "syntax"
+        elif any(kw in error_msg for kw in ["wire", "port", "connection"]):
+            bug_category = "hdl_wiring"
+    
         # Generate a content description
-        content = f"C++ Bug: Fix the {error_type if error_type != 'unknown' else 'bug'} in this code."
+        content = f"Bug: Fix the {error_type if error_type != 'unknown' else 'bug'} in this code."
         
-        if errors and len(errors) > 0:
-            error_msg = errors[0].split('\n')[0] if '\n' in errors[0] else errors[0]
-            content += f" Error: {error_msg}"
+        if hasattr(err, 'msg') and err.msg:
+            content += f" Error: {err.msg}"
+        
+        # Get the language from the file or code content
+        language = "cpp"  # Default
+        if hasattr(err, 'file') and err.file:
+            language_from_file = Memory.detect_language(Path(err.file))
+            if language_from_file != 'Unknown':
+                language = Memory.get_language_code(language_from_file)
         
         # Create memory item
         memory_id = str(uuid.uuid4())
         memory_item = Memory(
             id=memory_id,
             content=content,
-            keywords=["C++", error_type, "error", "bug"],
-            context=f"C++ programming bug fix: {error_type}",
-            tags=["debugging", error_type.replace('_', ' '), "cpp"],
+            keywords=[language, error_type, "error", "bug"],
+            context=f"{language} programming bug fix: {error_type}",
+            tags=["debugging", error_type.replace('_', ' '), language],
             timestamp=datetime.now().strftime("%Y%m%d%H%M"),
-            category="C++",
-            faulty_code=original_code,
-            fixed_code=fixed_code,
-            compiler_errors=errors,
-            language="cpp",
+            category=language.upper(),
+            faulty_code=fix_question,
+            fixed_code=fix_answer,
+            compiler_errors=compiler_errors,
+            language=language,
+            line_number=line_number,
             error_type=error_type,
             bug_category=bug_category,
-            embedding_text=f"C++ programming bug fix: {error_type} {original_code}"
+            embedding_text=f"{language} programming bug fix: {error_type} {fix_question}"
         )
         
         # Add to memories
@@ -1340,16 +1377,14 @@ class FewShotMemory:
         self._save_to_cache()
         
         return memory_id
-    
-    def find(self, original_code: str, errors: List[str] = None, program_path: Optional[Path] = None, save_results: bool = False) -> List[Memory]:
+
+    def find(self, err: Diagnostic, fix_question: str) -> List[Memory]:
         """
-        Find exact or similar matches for a code example
+        Find exact or similar matches for a code example using Diagnostic information
         
         Args:
-            original_code: The code to find matches for
-            errors: Optional list of compiler errors to aid in matching
-            program_path: Optional path to the program file (for results saving)
-            save_results: Whether to save results to a file
+            err: Diagnostic object containing error information
+            fix_question: The code to find matches for
             
         Returns:
             List of Memory objects representing the matches
@@ -1358,30 +1393,24 @@ class FewShotMemory:
         top_k = 3
         
         # Check for exact match first (using normalized code)
-        normalized_code = normalize_code(original_code)
+        normalized_code = normalize_code(fix_question)
         
         for memory in self.memories.values():
             if normalize_code(memory.faulty_code) == normalized_code:
                 print(f"Found exact match: {memory.id}")
-                matches = [memory]
-                
-                # Save results if requested and program_path is provided
-                if save_results and program_path:
-                    output_file = Memory.determine_output_file(None, program_path)
-                    Memory.process_matches(matches, original_code, output_file)
-                    
-                return matches
+                return [memory]
         
         # If no exact match, use embeddings to find similar
         if not self.memories:
             print("No memories in database")
             return []
         
-        # Generate embedding for query - if errors are provided, include them
-        query_text = original_code
-        if errors and len(errors) > 0:
-            error_summary = " ".join(errors[:3])  # Include up to 3 errors in the embedding
-            query_text = f"{original_code} {error_summary}"
+        # Generate embedding for query - include diagnostic information
+        query_text = fix_question
+        if hasattr(err, 'msg') and err.msg:
+            query_text += f" {err.msg}"
+        if hasattr(err, 'hint') and err.hint:
+            query_text += f" {err.hint}"
         
         query_embedding = self.model.encode([query_text])[0]
         
@@ -1401,19 +1430,19 @@ class FewShotMemory:
         similarities.sort(key=lambda x: x[1], reverse=True)
         top_k_memories = [self.memories[memory_id] for memory_id, _ in similarities[:top_k]]
         
-        # Save results if requested and program_path is provided
-        if save_results and program_path:
-            output_file = Memory.determine_output_file(None, program_path)
-            Memory.process_matches(top_k_memories, original_code, output_file)
-        
         return top_k_memories
-    
+
     def add_from_example(self, example: CppBugExample) -> str:
         """Add a memory item from a CppBugExample"""
+        # Create a simple Diagnostic object from the example
+        err = Diagnostic(example.compiler_errors[0] if example.compiler_errors else "")
+        if example.line_number:
+            err.loc = example.line_number
+        
         return self.add(
-            original_code=example.faulty_code,
-            fixed_code=example.fixed_code,
-            errors=example.compiler_errors
+            err=err,
+            fix_question=example.faulty_code,
+            fix_answer=example.fixed_code
         )
 
     def create_sample_data(self, programs_path=None, output_path=None, output_yaml_path=None, create_embeddings=True):
@@ -1481,8 +1510,11 @@ class FewShotMemory:
             buggy_code = Memory.read_code_file(buggy_file)
             fixed_code = Memory.read_code_file(fixed_file)
             
-            # Get compiler errors and analysis
-            compiler_errors, analysis = Memory.get_compiler_errors(buggy_code, language, filename)
+            # Get compiler errors, analysis, and diagnostic
+            compiler_errors, analysis, diagnostic = Memory.get_compiler_errors(buggy_code, language, filename)
+            
+            # Set file path in diagnostic
+            diagnostic.file = str(buggy_file)
             
             # Generate bug description
             description = Memory.generate_bug_description(analysis, bug_number, filename)
@@ -1499,40 +1531,15 @@ class FewShotMemory:
             embedding_text = analysis.get('embedding_text', f"{context} {buggy_code[:500]}")
             embedding_texts.append(embedding_text)
             
-            # Create memory object
-            memory_id = str(uuid.uuid4())
-            
-            # Determine bug category, prioritizing analysis results over filename patterns
-            bug_category = "unknown"
-            if analysis.get('bug_category') and analysis['bug_category'] != "unknown":
-                bug_category = analysis['bug_category']
-            elif analysis.get('error_type') and analysis['error_type'] != "unknown":
-                # Use error type as category if specific category not available
-                bug_category = analysis['error_type'].replace('_', ' ')
-            else:
-                # As last resort, try to extract from filename pattern
-                bug_category = Memory.extract_bug_type(filename)
-            
-            memory = Memory(
-                id=memory_id,
-                content=f"{language} Bug #{bug_number}: {description}",
-                keywords=analysis['keywords'],
-                context=context,
-                tags=analysis['tags'],
-                timestamp=timestamp,
-                category=language,
-                faulty_code=buggy_code,
-                fixed_code=fixed_code,
-                compiler_errors=compiler_errors,
-                language=language_code,
-                line_number=analysis.get('line_number'),
-                error_type=analysis.get('error_type', 'unknown'),
-                bug_category=bug_category,
-                embedding_text=embedding_text
+            # Create memory object using diagnostic and add to examples
+            memory_id = self.add(
+                err=diagnostic,
+                fix_question=buggy_code,
+                fix_answer=fixed_code
             )
             
-            # Add to memories dictionary
-            self.memories[memory_id] = memory
+            # Get the memory we just added and add to sample data
+            memory = self.memories[memory_id]
             
             # Add to sample data for output
             memory_dict = {
@@ -1545,7 +1552,7 @@ class FewShotMemory:
                 "category": memory.category,
                 "faulty_code": memory.faulty_code,
                 "fixed_code": memory.fixed_code,
-                "compiler_errors": memory.compiler_errors,
+                "compiler_errors": compiler_errors,
                 "language": memory.language,
                 "created_at": iso_timestamp,
                 "line_number": memory.line_number,

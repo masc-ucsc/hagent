@@ -1,19 +1,18 @@
-  - id: 09dbf701-d03e-41de-8718-8d6d29b66db3
-    content: "C++ Bug #8: Fix the missing semicolon in this code. Error: expected
-      ';' at end of declaration"
+  - id: 35f5039d-dd0b-4ca3-9aee-0164c72cc8cc
+    content: "Bug: Fix the missing_element in this code. Error: expected ';' at end
+      of declaration"
     keywords:
-      - missing semicolon
-      - bug
-      - C++
-      - error
-    context: 'C++ programming bug fix: missing semicolon'
-    tags:
-      - missing semicolon
       - cpp
-      - syntax
+      - missing_element
+      - error
+      - bug
+    context: 'cpp programming bug fix: missing_element'
+    tags:
       - debugging
-    timestamp: '202505151154'
-    category: C++
+      - missing element
+      - cpp
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\n\nint main() {\n    int a = 10;\n    int b
       = 5;\n    \n    // Bug: Syntactical error using incorrect division operator
       syntax\n    int result = a : b;  // Using ':' instead of '/' for division\n\
@@ -23,21 +22,12 @@
       5;\n    \n    int result = a / b;\n    \n    std::cout << \"Result: \" << result
       << std::endl;\n    \n    return 0;\n}"
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpfze8micg.cpp:8:20: error:
-        expected ';' at end of declaration"
-      - "    8 |     int result = a : b;  // Using ':' instead of '/' for division"
-      - '      |                    ^'
-      - '      |                    ;'
-      - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpfze8micg.cpp:8:22: warning:
-        expression result unused [-Wunused-value]'
-      - "    8 |     int result = a : b;  // Using ':' instead of '/' for division"
-      - '      |                      ^'
-      - 1 warning and 1 error generated.
+      - expected ';' at end of declaration
     language: cpp
     line_number: 8
-    error_type: missing_semicolon
-    bug_category: missing semicolon
-    embedding_text: "C++ programming bug fix: missing semicolon #include <iostream>\n
+    error_type: missing_element
+    bug_category: syntax
+    embedding_text: "cpp programming bug fix: missing_element #include <iostream>\n
       \nint main() {\n    int a = 10;\n    int b = 5;\n    \n    // Bug: Syntactical
       error using incorrect division operator syntax\n    int result = a : b;  //
       Using ':' instead of '/' for division\n    \n    std::cout << \"Result: \" <<
@@ -427,22 +417,21 @@
       - 0.002121974481269717
       - -0.0609341524541378
       - 0.0044263796880841255
-  - id: 49fae715-853c-4bf7-8a09-b2f7917a9217
-    content: "C++ Bug #10: Fix the missing semicolon in this code. Error: expected
-      ';' at end of declaration"
+  - id: 0402d24b-5d75-4c64-834e-964129206f02
+    content: "Bug: Fix the missing_element in this code. Error: expected ';' at end
+      of declaration"
     keywords:
-      - missing semicolon
-      - bug
-      - C++
-      - error
-    context: 'C++ programming bug fix: missing semicolon'
-    tags:
-      - missing semicolon
       - cpp
-      - syntax
+      - missing_element
+      - error
+      - bug
+    context: 'cpp programming bug fix: missing_element'
+    tags:
       - debugging
-    timestamp: '202505151154'
-    category: C++
+      - missing element
+      - cpp
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\n\nint main() {\n    // Bug: Syntax error in
       variable declaration (missing semicolon)\n    int number    // Missing semicolon
       after declaration\n    \n    number = 10;\n    \n    std::cout << \"Number:
@@ -452,17 +441,12 @@
       \    \n    number = 10;\n    \n    std::cout << \"Number: \" << number << std::endl;\n\
       \    \n    return 0;\n} "
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp64p3at89.cpp:5:15: error:
-        expected ';' at end of declaration"
-      - '    5 |     int number    // Missing semicolon after declaration'
-      - '      |               ^'
-      - '      |               ;'
-      - 1 error generated.
+      - expected ';' at end of declaration
     language: cpp
     line_number: 5
-    error_type: missing_semicolon
-    bug_category: missing semicolon
-    embedding_text: "C++ programming bug fix: missing semicolon #include <iostream>\n
+    error_type: missing_element
+    bug_category: syntax
+    embedding_text: "cpp programming bug fix: missing_element #include <iostream>\n
       \nint main() {\n    // Bug: Syntax error in variable declaration (missing semicolon)\n\
       \    int number    // Missing semicolon after declaration\n    \n    number
       = 10;\n    \n    std::cout << \"Number: \" << number << std::endl;\n    \n \
@@ -852,22 +836,21 @@
       - -0.04584946855902672
       - -0.023080408573150635
       - -0.015238523483276367
-  - id: 22680c46-699f-4c6b-a5fa-4cd11c4f1c83
-    content: 'Silice Bug #15: Fix the missing semicolon in this code. Error: Line
-      might be missing a semicolon'
+  - id: 97e7a884-5bd7-4d04-959b-167a124a7bfc
+    content: 'Bug: Fix the missing_semicolon in this code. Error: Missing semicolon
+      at line 7: led = state ? 8b11111111 : 8b00000000'
     keywords:
-      - missing semicolon
-      - bug
-      - error
-      - Silice
-    context: 'Silice programming bug fix: missing semicolon'
-    tags:
-      - missing semicolon
-      - syntax
-      - debugging
       - silice
-    timestamp: '202505151154'
-    category: Silice
+      - missing_semicolon
+      - error
+      - bug
+    context: 'silice programming bug fix: missing_semicolon'
+    tags:
+      - debugging
+      - missing semicolon
+      - silice
+    timestamp: '202505151216'
+    category: SILICE
     faulty_code: "// Simple Silice program with missing semicolon\n\nalgorithm main(output
       uint8 led) {\n  uint1 state = 0;\n  \n  // Bug: missing semicolon at end of
       line\n  led = state ? 8b11111111 : 8b00000000\n  \n  while (1) {\n    state
@@ -880,8 +863,8 @@
     language: silice
     line_number: 7
     error_type: missing_semicolon
-    bug_category: missing semicolon
-    embedding_text: "Silice programming bug fix: missing semicolon // Simple Silice
+    bug_category: unknown
+    embedding_text: "silice programming bug fix: missing_semicolon // Simple Silice
       program with missing semicolon\n\nalgorithm main(output uint8 led) {\n  uint1
       state = 0;\n  \n  // Bug: missing semicolon at end of line\n  led = state ?
       8b11111111 : 8b00000000\n  \n  while (1) {\n    state = ~state;\n  }\n} "
@@ -1270,22 +1253,21 @@
       - -0.016499854624271393
       - 0.008096967823803425
       - -0.011888287030160427
-  - id: 549a06ea-0a15-4a80-9de7-a0832ad825ee
-    content: "Spade Bug #14: Fix the undefined variable in this code. Error: Variable
-      'output' might be undefined"
+  - id: e5d596c3-f887-458a-be9b-4d6329c53538
+    content: 'Bug: Fix the bug in this code. Error: Missing Spade component declaration
+      (Accel/Kernel/Module)'
     keywords:
-      - bug
-      - Spade
-      - error
-      - undefined variable
-    context: 'Spade programming bug fix: undefined variable'
-    tags:
       - spade
-      - undefined variable
+      - unknown
+      - error
+      - bug
+    context: 'spade programming bug fix: unknown'
+    tags:
       - debugging
-      - variables
-    timestamp: '202505151154'
-    category: Spade
+      - unknown
+      - spade
+    timestamp: '202505151216'
+    category: SPADE
     faulty_code: "// Simple Spade program with missing parenthesis\n\n@module\nfn
       not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\n
       fn main() -> () {\n  let a = 1'b0;\n  // Bug: Missing closing parenthesis\n\
@@ -1295,17 +1277,15 @@
       \  let a = 1'b0;\n  let b = not_gate(a);\n  \n  assert(b == 1'b1);\n} "
     compiler_errors:
       - Missing Spade component declaration (Accel/Kernel/Module)
-      - Missing 1 closing parentheses ')'
-      - 'Potentially undefined variable: output at line 5'
     language: spade
     line_number: 5
-    error_type: undefined_variable
-    bug_category: undefined variable
-    embedding_text: "Spade programming bug fix: undefined variable // Simple Spade
-      program with missing parenthesis\n\n@module\nfn not_gate(input: bit) -> (output:
-      bit) {\n  output = !input;\n}\n\n@module\nfn main() -> () {\n  let a = 1'b0;\n\
-      \  // Bug: Missing closing parenthesis\n  let b = not_gate(a;\n  \n  assert(b
-      == 1'b1);\n} "
+    error_type: unknown
+    bug_category: unknown
+    embedding_text: "spade programming bug fix: unknown // Simple Spade program with
+      missing parenthesis\n\n@module\nfn not_gate(input: bit) -> (output: bit) {\n\
+      \  output = !input;\n}\n\n@module\nfn main() -> () {\n  let a = 1'b0;\n  //
+      Bug: Missing closing parenthesis\n  let b = not_gate(a;\n  \n  assert(b == 1'b1);\n\
+      } "
     embedding:
       - -0.04719275236129761
       - 0.024651696905493736
@@ -1691,18 +1671,21 @@
       - 0.03547050431370735
       - 0.004813891835510731
       - -0.034678392112255096
-  - id: 5c6c8165-aa5b-4965-a394-12a5567e4517
-    content: 'C++ Bug #5: Fix the code error: Code contains errors not detected by
-      automatic analysis'
+  - id: d492dd51-7813-4d4e-b9f8-4739bcecd1d5
+    content: 'Bug: Fix the bug in this code. Error: Code contains errors not detected
+      by automatic analysis'
     keywords:
-      - bug
-      - C++
-    context: 'C++ programming bug fix: unknown'
-    tags:
       - cpp
+      - unknown
+      - error
+      - bug
+    context: 'cpp programming bug fix: unknown'
+    tags:
       - debugging
-    timestamp: '202505151154'
-    category: C++
+      - unknown
+      - cpp
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\n\nint main() {\n    int* ptr = nullptr;\n \
       \   *ptr = 10;  // Bug: Dereferencing null pointer\n    std::cout << \"Value
       at ptr: \" << *ptr << std::endl;\n    return 0;\n}"
@@ -1712,10 +1695,10 @@
     compiler_errors:
       - Code contains errors not detected by automatic analysis
     language: cpp
-    line_number:
+    line_number: 0
     error_type: unknown
-    bug_category: null pointer
-    embedding_text: "C++ programming bug fix: unknown #include <iostream>\n\nint main()
+    bug_category: unknown
+    embedding_text: "cpp programming bug fix: unknown #include <iostream>\n\nint main()
       {\n    int* ptr = nullptr;\n    *ptr = 10;  // Bug: Dereferencing null pointer\n\
       \    std::cout << \"Value at ptr: \" << *ptr << std::endl;\n    return 0;\n}"
     embedding:
@@ -2103,18 +2086,21 @@
       - -0.08383546024560928
       - -0.04077399894595146
       - 0.06550788134336472
-  - id: e37c30c4-3f8d-48d9-a914-d363a40e388c
-    content: 'Chisel Bug #11: Fix the code error: Could not find Scala compilation
-      tools'
+  - id: edc5e6fc-6df0-44ba-8838-271a8ac9f917
+    content: 'Bug: Fix the bug in this code. Error: Scala/Chisel compilation tools
+      not available'
     keywords:
-      - Chisel
-      - bug
-    context: 'Chisel programming bug fix: unknown'
-    tags:
       - chisel
+      - unknown
+      - error
+      - bug
+    context: 'chisel programming bug fix: unknown'
+    tags:
       - debugging
-    timestamp: '202505151154'
-    category: Chisel
+      - unknown
+      - chisel
+    timestamp: '202505151216'
+    category: CHISEL
     faulty_code: "#!/usr/bin/env scala-cli\n//> using scala      \"2.13.14\"\n//>
       using repository \"sonatype:releases\"\n//> using dep       \"edu.berkeley.cs::chisel3:3.6.1\"\
       \n//> using plugin    \"edu.berkeley.cs::chisel3-plugin:3.6.1\"\n\nimport chisel3._\n
@@ -2131,17 +2117,18 @@
     compiler_errors:
       - Scala/Chisel compilation tools not available
     language: chisel
-    line_number:
+    line_number: 0
     error_type: unknown
-    bug_category: module connection
-    embedding_text: "Chisel programming bug fix: unknown #!/usr/bin/env scala-cli\n
+    bug_category: unknown
+    embedding_text: "chisel programming bug fix: unknown #!/usr/bin/env scala-cli\n
       //> using scala      \"2.13.14\"\n//> using repository \"sonatype:releases\"\
       \n//> using dep       \"edu.berkeley.cs::chisel3:3.6.1\"\n//> using plugin \
       \   \"edu.berkeley.cs::chisel3-plugin:3.6.1\"\n\nimport chisel3._\n\nclass Adder
       extends Module {\n  val io = IO(new Bundle {\n    val a = Input(UInt(8.W))\n\
       \    val b = Input(UInt(8.W))\n    val sum = Output(UInt(8.W))\n  })\n  \n \
       \ val result = io.a + io.b\n  \n  // Bug: Missing connection to output\n  io.sum
-      := result\n}\n\nobject AdderMain extends A"
+      := result\n}\n\nobject AdderMain extends App {\n  chisel3.stage.ChiselStage.emitVerilog(new
+      Adder)\n} "
     embedding:
       - -0.07679197937250137
       - -0.05148478224873543
@@ -2527,22 +2514,21 @@
       - -0.07838219404220581
       - 0.005447014234960079
       - 0.005354616325348616
-  - id: bec3f41b-9833-4a78-817d-5edacc4311d7
-    content: "C++ Bug #7: Fix the syntax error in this code. Error: expected '(' for
-      function-style cast or type construction"
+  - id: 45ddb4c8-db26-4121-844a-d025bbc575e2
+    content: "Bug: Fix the missing_element in this code. Error: expected '(' for function-style
+      cast or type construction"
     keywords:
-      - syntax error
-      - bug
-      - C++
-      - error
-    context: 'C++ programming bug fix: syntax error'
-    tags:
       - cpp
-      - syntax error
+      - missing_element
+      - error
+      - bug
+    context: 'cpp programming bug fix: missing_element'
+    tags:
       - debugging
-      - syntax
-    timestamp: '202505151154'
-    category: C++
+      - missing element
+      - cpp
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\n\nint main() {\n    // Bug: Syntactical error
       in memory allocation (missing 'new' keyword)\n    int* data = int[100];  //
       Incorrect syntax for memory allocation\n    \n    for (int i = 0; i < 100; i++)
@@ -2555,18 +2541,14 @@
       data[99] << std::endl;\n    \n    delete[] data;  // Proper memory deallocation\n\
       \    \n    return 0;\n} "
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpu8xg9phs.cpp:5:20: error:
-        expected '(' for function-style cast or type construction"
-      - '    5 |     int* data = int[100];  // Incorrect syntax for memory allocation'
-      - '      |                 ~~~^'
-      - 1 error generated.
+      - expected '(' for function-style cast or type construction
     language: cpp
     line_number: 5
-    error_type: syntax_error
-    bug_category: syntax error
-    embedding_text: "C++ programming bug fix: syntax error #include <iostream>\n\n
-      int main() {\n    // Bug: Syntactical error in memory allocation (missing 'new'
-      keyword)\n    int* data = int[100];  // Incorrect syntax for memory allocation\n\
+    error_type: missing_element
+    bug_category: type_error
+    embedding_text: "cpp programming bug fix: missing_element #include <iostream>\n
+      \nint main() {\n    // Bug: Syntactical error in memory allocation (missing
+      'new' keyword)\n    int* data = int[100];  // Incorrect syntax for memory allocation\n\
       \    \n    for (int i = 0; i < 100; i++) {\n        data[i] = i;\n    }\n  \
       \  \n    std::cout << \"Array sum: \" << data[0] + data[99] << std::endl;\n\
       \    \n    delete[] data;\n    \n    return 0;\n} "
@@ -2955,22 +2937,20 @@
       - -0.0738959014415741
       - -0.053769301623106
       - -0.05224129185080528
-  - id: 3246b028-2dd5-470e-bac6-9d0172b26c5c
-    content: "C++ Bug #3: Fix the mismatched brackets or parentheses in this code.
-      Error: expected ')'"
+  - id: b9a56e31-ba5f-41f1-85da-29c7859239ea
+    content: "Bug: Fix the missing_element in this code. Error: expected ')'"
     keywords:
-      - mismatched brackets or parentheses
-      - bug
-      - C++
-      - error
-    context: 'C++ programming bug fix: mismatched brackets or parentheses'
-    tags:
-      - mismatched brackets
       - cpp
-      - syntax
+      - missing_element
+      - error
+      - bug
+    context: 'cpp programming bug fix: missing_element'
+    tags:
       - debugging
-    timestamp: '202505151154'
-    category: C++
+      - missing element
+      - cpp
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\n\nint main() {\n    for (int i = 0; i < 5;
       i++ {\n        std::cout << \"Iteration: \" << i << std::endl;\n    }\n    return
       0;\n}"
@@ -2978,22 +2958,14 @@
       {\n        std::cout << \"Iteration: \" << i << std::endl;\n    }\n    return
       0;\n}"
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpocpivtrm.cpp:4:32: error:
-        expected ')'"
-      - '    4 |     for (int i = 0; i < 5; i++ {'
-      - '      |                                ^'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpocpivtrm.cpp:4:9: note:
-        to match this '('"
-      - '    4 |     for (int i = 0; i < 5; i++ {'
-      - '      |         ^'
-      - 1 error generated.
+      - expected ')'
     language: cpp
     line_number: 4
-    error_type: mismatched_brackets
-    bug_category: mismatched brackets
-    embedding_text: "C++ programming bug fix: mismatched brackets or parentheses #include
-      <iostream>\n\nint main() {\n    for (int i = 0; i < 5; i++ {\n        std::cout
-      << \"Iteration: \" << i << std::endl;\n    }\n    return 0;\n}"
+    error_type: missing_element
+    bug_category: syntax
+    embedding_text: "cpp programming bug fix: missing_element #include <iostream>\n
+      \nint main() {\n    for (int i = 0; i < 5; i++ {\n        std::cout << \"Iteration:
+      \" << i << std::endl;\n    }\n    return 0;\n}"
     embedding:
       - -0.057189878076314926
       - 0.07689584791660309
@@ -3379,17 +3351,19 @@
       - -0.10430075228214264
       - -0.019520774483680725
       - 0.012743069790303707
-  - id: bcf9e623-654e-48f0-975b-5eb3dde7b887
-    content: 'VHDL Bug #13: Fix the code error: Could not find VHDL compilation tools
-      (GHDL)'
+  - id: 48f0172f-b7e8-464a-afb4-fe1be34160c1
+    content: 'Bug: Fix the bug in this code. Error: VHDL compilation tools not available'
     keywords:
-      - bug
-      - VHDL
-    context: 'VHDL programming bug fix: unknown'
-    tags:
       - vhdl
+      - unknown
+      - error
+      - bug
+    context: 'vhdl programming bug fix: unknown'
+    tags:
       - debugging
-    timestamp: '202505151154'
+      - unknown
+      - vhdl
+    timestamp: '202505151216'
     category: VHDL
     faulty_code: "library IEEE;\nuse IEEE.STD_LOGIC_1164.ALL;\n\nentity Inverter is\n\
       \  Port ( input : in  STD_LOGIC;\n         output : out STD_LOGIC);\nend Inverter;\n
@@ -3404,10 +3378,10 @@
     compiler_errors:
       - VHDL compilation tools not available
     language: vhdl
-    line_number:
+    line_number: 0
     error_type: unknown
-    bug_category: signal declaration
-    embedding_text: "VHDL programming bug fix: unknown library IEEE;\nuse IEEE.STD_LOGIC_1164.ALL;\n
+    bug_category: unknown
+    embedding_text: "vhdl programming bug fix: unknown library IEEE;\nuse IEEE.STD_LOGIC_1164.ALL;\n
       \nentity Inverter is\n  Port ( input : in  STD_LOGIC;\n         output : out
       STD_LOGIC);\nend Inverter;\n\narchitecture Behavioral of Inverter is\n  -- Bug:
       Missing semicolon after signal declaration\n  signal intermediate : STD_LOGIC\n\
@@ -3797,22 +3771,21 @@
       - -0.005191804375499487
       - -0.018052853643894196
       - 0.007268869783729315
-  - id: 03ebc31a-2181-4829-afba-703f2b9440f3
-    content: "C++ Bug #4: Fix the syntax error in this code. Error: expected '(' after
+  - id: 02ead24a-0e63-45a6-912c-fea5653d60fa
+    content: "Bug: Fix the missing_element in this code. Error: expected '(' after
       'while'"
     keywords:
-      - syntax error
-      - bug
-      - C++
-      - error
-    context: 'C++ programming bug fix: syntax error'
-    tags:
       - cpp
-      - syntax error
+      - missing_element
+      - error
+      - bug
+    context: 'cpp programming bug fix: missing_element'
+    tags:
       - debugging
-      - syntax
-    timestamp: '202505151154'
-    category: C++
+      - missing element
+      - cpp
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\n#include <chrono>\n#include <thread>\n\nint
       main() {\n    int count = 0;\n    int limit = 5;\n    \n    // Bug: Syntax error
       in while loop (missing parentheses)\n    while count < limit {\n        std::cout
@@ -3829,19 +3802,15 @@
       \    }\n    \n    std::cout << \"Loop completed with count = \" << count <<
       std::endl;\n    return 0;\n}"
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpb3gh8tn4.cpp:10:11: error:
-        expected '(' after 'while'"
-      - '   10 |     while count < limit {'
-      - '      |           ^'
-      - 1 error generated.
+      - expected '(' after 'while'
     language: cpp
     line_number: 10
-    error_type: syntax_error
-    bug_category: syntax error
-    embedding_text: "C++ programming bug fix: syntax error #include <iostream>\n#include
-      <chrono>\n#include <thread>\n\nint main() {\n    int count = 0;\n    int limit
-      = 5;\n    \n    // Bug: Syntax error in while loop (missing parentheses)\n \
-      \   while count < limit {\n        std::cout << \"Count: \" << count << std::endl;\n\
+    error_type: missing_element
+    bug_category: syntax
+    embedding_text: "cpp programming bug fix: missing_element #include <iostream>\n
+      #include <chrono>\n#include <thread>\n\nint main() {\n    int count = 0;\n \
+      \   int limit = 5;\n    \n    // Bug: Syntax error in while loop (missing parentheses)\n\
+      \    while count < limit {\n        std::cout << \"Count: \" << count << std::endl;\n\
       \        count++;\n        \n        // Add a small delay for visual effect\n\
       \        std::this_thread::sleep_for(std::chrono::milliseconds(100));\n    }\n\
       \    \n    std::cout << \"Loop completed with count = \" << count << std::endl;\n\
@@ -4231,38 +4200,32 @@
       - -0.051092177629470825
       - -0.012596414424479008
       - 0.004000208340585232
-  - id: 10a6f6d6-6cc4-4e94-9d93-7e9855d51c57
-    content: "C++ Bug #1: Fix the missing semicolon in this code. Error: expected
-      ';' at end of declaration"
+  - id: a6dcaaa3-077a-470d-86ad-c4de8a30a9c1
+    content: "Bug: Fix the missing_element in this code. Error: expected ';' at end
+      of declaration"
     keywords:
-      - missing semicolon
-      - bug
-      - C++
-      - error
-    context: 'C++ programming bug fix: missing semicolon'
-    tags:
-      - missing semicolon
       - cpp
-      - syntax
+      - missing_element
+      - error
+      - bug
+    context: 'cpp programming bug fix: missing_element'
+    tags:
       - debugging
-    timestamp: '202505151154'
-    category: C++
+      - missing element
+      - cpp
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\n\nint main() {\n    int x = 5\n    std::cout
       << \"The value of x is: \" << x << std::endl;\n    return 0;\n}\n"
     fixed_code: "#include <iostream>\n\nint main() {\n    int x = 5;\n    std::cout
       << \"The value of x is: \" << x << std::endl;\n    return 0;\n} "
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpaoawy0sg.cpp:4:14: error:
-        expected ';' at end of declaration"
-      - '    4 |     int x = 5'
-      - '      |              ^'
-      - '      |              ;'
-      - 1 error generated.
+      - expected ';' at end of declaration
     language: cpp
     line_number: 4
-    error_type: missing_semicolon
-    bug_category: missing semicolon
-    embedding_text: "C++ programming bug fix: missing semicolon #include <iostream>\n
+    error_type: missing_element
+    bug_category: syntax
+    embedding_text: "cpp programming bug fix: missing_element #include <iostream>\n
       \nint main() {\n    int x = 5\n    std::cout << \"The value of x is: \" << x
       << std::endl;\n    return 0;\n}\n"
     embedding:
@@ -4650,21 +4613,20 @@
       - -0.05107424780726433
       - -0.017605355009436607
       - 0.020662078633904457
-  - id: 5e11c482-bf42-4615-a86f-dd919ee1b737
-    content: 'PyRTL Bug #12: Fix the PyRTL execution error in this code. Error: Traceback
-      (most recent call last):'
+  - id: 2335d196-562d-48ec-85a1-819bc7929f91
+    content: 'Bug: Fix the bug in this code. Error: Traceback (most recent call last):'
     keywords:
-      - bug
-      - PyRTL execution error
-      - PyRTL
-      - error
-    context: 'PyRTL programming bug fix: PyRTL execution error'
-    tags:
-      - pyrtl error
-      - debugging
       - pyrtl
-    timestamp: '202505151154'
-    category: PyRTL
+      - unknown
+      - error
+      - bug
+    context: 'pyrtl programming bug fix: unknown'
+    tags:
+      - debugging
+      - unknown
+      - pyrtl
+    timestamp: '202505151216'
+    category: PYRTL
     faulty_code: "import pyrtl\n\n# Simple half adder with missing wire assignment\n
       \n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output
       wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
@@ -4676,17 +4638,13 @@
       \n# Connect outputs\nsum_out <<= a ^ b\ncarry_out <<= a & b "
     compiler_errors:
       - 'Traceback (most recent call last):'
-      - '  File "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpetet6bwy.py",
-        line 1, in <module>'
-      - '    import pyrtl'
-      - "ModuleNotFoundError: No module named 'pyrtl'"
     language: pyrtl
     line_number: 1
-    error_type: pyrtl_error
-    bug_category: pyrtl error
-    embedding_text: "PyRTL programming bug fix: PyRTL execution error import pyrtl\n
-      \n# Simple half adder with missing wire assignment\n\n# Input wires\na = pyrtl.Input(1,
-      'a')\nb = pyrtl.Input(1, 'b')\n\n# Output wires\nsum_out = pyrtl.Output(1, 'sum')\n
+    error_type: unknown
+    bug_category: unknown
+    embedding_text: "pyrtl programming bug fix: unknown import pyrtl\n\n# Simple half
+      adder with missing wire assignment\n\n# Input wires\na = pyrtl.Input(1, 'a')\n
+      b = pyrtl.Input(1, 'b')\n\n# Output wires\nsum_out = pyrtl.Output(1, 'sum')\n
       carry_out = pyrtl.Output(1, 'carry')\n\n# Connect sum output\nsum_out <<= a
       ^ b\n\n# Bug: Missing assignment to carry_out\n# carry_out <<= a & b "
     embedding:
@@ -5074,22 +5032,21 @@
       - 0.011220837943255901
       - 0.0105067053809762
       - -0.021084558218717575
-  - id: 1b22eb12-311c-4292-b900-3682a42758fe
-    content: "C++ Bug #9: Fix the undeclared variable in this code. Error: use of
-      undeclared identifier 'value2'; did you mean 'value'?"
+  - id: c10f0133-2046-4715-b935-b23cae9f0d3c
+    content: "Bug: Fix the undefined_symbol in this code. Error: use of undeclared
+      identifier 'value2'; did you mean 'value'?"
     keywords:
-      - undeclared variable
-      - bug
-      - C++
-      - error
-    context: 'C++ programming bug fix: undeclared variable'
-    tags:
       - cpp
-      - undeclared variable
+      - undefined_symbol
+      - error
+      - bug
+    context: 'cpp programming bug fix: undefined_symbol'
+    tags:
       - debugging
-      - variables
-    timestamp: '202505151154'
-    category: C++
+      - undefined symbol
+      - cpp
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\n\nint main() {\n    int value = 5;\n    \n\
       \    if (value > 0) {\n        // Bug: Syntax error in variable declaration
       (missing type)\n        value2 = 10;  // Missing variable type declaration\n\
@@ -5100,30 +5057,12 @@
       \   \n    std::cout << \"Value: \" << value << std::endl;  // Prints 11\n  \
       \  \n    return 0;\n} "
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpke4qg5pr.cpp:8:9: error:
-        use of undeclared identifier 'value2'; did you mean 'value'?"
-      - '    8 |         value2 = 10;  // Missing variable type declaration'
-      - '      |         ^~~~~~'
-      - '      |         value'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpke4qg5pr.cpp:4:9: note:
-        'value' declared here"
-      - '    4 |     int value = 5;'
-      - '      |         ^'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpke4qg5pr.cpp:9:9: error:
-        use of undeclared identifier 'value2'; did you mean 'value'?"
-      - '    9 |         value2++;'
-      - '      |         ^~~~~~'
-      - '      |         value'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpke4qg5pr.cpp:4:9: note:
-        'value' declared here"
-      - '    4 |     int value = 5;'
-      - '      |         ^'
-      - 2 errors generated.
+      - use of undeclared identifier 'value2'; did you mean 'value'?
     language: cpp
     line_number: 8
-    error_type: undeclared_variable
-    bug_category: undeclared variable
-    embedding_text: "C++ programming bug fix: undeclared variable #include <iostream>\n
+    error_type: undefined_symbol
+    bug_category: unknown
+    embedding_text: "cpp programming bug fix: undefined_symbol #include <iostream>\n
       \nint main() {\n    int value = 5;\n    \n    if (value > 0) {\n        // Bug:
       Syntax error in variable declaration (missing type)\n        value2 = 10;  //
       Missing variable type declaration\n        value2++;\n    }\n    \n    std::cout
@@ -5513,22 +5452,21 @@
       - -0.15699613094329834
       - -0.024687767028808594
       - -0.00893973559141159
-  - id: 372944ce-0cd6-434e-8a5d-779993c0d50d
-    content: "C++ Bug #2: Fix the undeclared variable in this code. Error: use of
-      undeclared identifier 'y'"
+  - id: 23105343-da06-4798-8507-10d95ed64d19
+    content: "Bug: Fix the undefined_symbol in this code. Error: use of undeclared
+      identifier 'y'"
     keywords:
-      - undeclared variable
-      - bug
-      - C++
-      - error
-    context: 'C++ programming bug fix: undeclared variable'
-    tags:
       - cpp
-      - undeclared variable
+      - undefined_symbol
+      - error
+      - bug
+    context: 'cpp programming bug fix: undefined_symbol'
+    tags:
       - debugging
-      - variables
-    timestamp: '202505151154'
-    category: C++
+      - undefined symbol
+      - cpp
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\n\nint main() {\n    y = 10;  // Bug: y is used
       before being declared\n    std::cout << \"The value of y is: \" << y << std::endl;\n\
       \    return 0;\n} "
@@ -5536,20 +5474,12 @@
       is now declared as an int\n    std::cout << \"The value of y is: \" << y <<
       std::endl;\n    return 0;\n} "
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpympa7br5.cpp:4:5: error:
-        use of undeclared identifier 'y'"
-      - '    4 |     y = 10;  // Bug: y is used before being declared'
-      - '      |     ^'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpympa7br5.cpp:5:43: error:
-        use of undeclared identifier 'y'"
-      - '    5 |     std::cout << "The value of y is: " << y << std::endl;'
-      - '      |                                           ^'
-      - 2 errors generated.
+      - use of undeclared identifier 'y'
     language: cpp
     line_number: 4
-    error_type: undeclared_variable
-    bug_category: undeclared variable
-    embedding_text: "C++ programming bug fix: undeclared variable #include <iostream>\n
+    error_type: undefined_symbol
+    bug_category: unknown
+    embedding_text: "cpp programming bug fix: undefined_symbol #include <iostream>\n
       \nint main() {\n    y = 10;  // Bug: y is used before being declared\n    std::cout
       << \"The value of y is: \" << y << std::endl;\n    return 0;\n} "
     embedding:
@@ -5937,22 +5867,21 @@
       - -0.08166059106588364
       - -0.009391224011778831
       - -0.0013711225474253297
-  - id: d7f3a4a1-c4c3-48ba-be88-ee72abb82af7
-    content: 'C++ Bug #6: Fix the syntax error in this code. Error: array initializer
-      must be an initializer list'
+  - id: 08e8c253-7576-4a10-9203-32cc09831299
+    content: 'Bug: Fix the bug in this code. Error: array initializer must be an initializer
+      list'
     keywords:
-      - syntax error
-      - bug
-      - C++
-      - error
-    context: 'C++ programming bug fix: syntax error'
-    tags:
       - cpp
-      - syntax error
+      - unknown
+      - error
+      - bug
+    context: 'cpp programming bug fix: unknown'
+    tags:
       - debugging
-      - syntax
-    timestamp: '202505151154'
-    category: C++
+      - unknown
+      - cpp
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\n\nint main() {\n    // Bug: Syntactical error
       in array declaration (missing semicolon and using comma instead of braces)\n\
       \    int arr[5] = 1, 2, 3, 4, 5\n    \n    for (int i = 0; i < 5; i++) {\n \
@@ -5963,29 +5892,16 @@
       = 0; i < 5; i++) {  // Fixed: Proper bounds checking\n        std::cout << \"\
       Element \" << i << \": \" << arr[i] << std::endl;\n    }\n    return 0;\n} "
     compiler_errors:
-      - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpggrv3ukf.cpp:5:9: error:
-        array initializer must be an initializer list'
-      - '    5 |     int arr[5] = 1, 2, 3, 4, 5'
-      - '      |         ^'
-      - '/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpggrv3ukf.cpp:5:21: error:
-        expected unqualified-id'
-      - '    5 |     int arr[5] = 1, 2, 3, 4, 5'
-      - '      |                     ^'
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpggrv3ukf.cpp:5:20: error:
-        expected ';' at end of declaration"
-      - '    5 |     int arr[5] = 1, 2, 3, 4, 5'
-      - '      |                    ^'
-      - '      |                    ;'
-      - 3 errors generated.
+      - array initializer must be an initializer list
     language: cpp
     line_number: 5
-    error_type: syntax_error
-    bug_category: syntax error
-    embedding_text: "C++ programming bug fix: syntax error #include <iostream>\n\n
-      int main() {\n    // Bug: Syntactical error in array declaration (missing semicolon
-      and using comma instead of braces)\n    int arr[5] = 1, 2, 3, 4, 5\n    \n \
-      \   for (int i = 0; i < 5; i++) {\n        std::cout << \"Element \" << i <<
-      \": \" << arr[i] << std::endl;\n    }\n    return 0;\n}"
+    error_type: unknown
+    bug_category: unknown
+    embedding_text: "cpp programming bug fix: unknown #include <iostream>\n\nint main()
+      {\n    // Bug: Syntactical error in array declaration (missing semicolon and
+      using comma instead of braces)\n    int arr[5] = 1, 2, 3, 4, 5\n    \n    for
+      (int i = 0; i < 5; i++) {\n        std::cout << \"Element \" << i << \": \"
+      << arr[i] << std::endl;\n    }\n    return 0;\n}"
     embedding:
       - -0.000724589976016432
       - 0.0858355239033699
@@ -6371,831 +6287,828 @@
       - -0.03707904741168022
       - -0.06122799217700958
       - 0.015579107217490673
-  - id: d5dfa013-bdcd-4f09-805b-e964a25e5d9e
-    content: "C++ Bug: Fix the bug in this code. Error: /var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp2pkvt6_z.cpp:6:22:
-      error: use of undeclared identifier 'b'"
+  - id: 86f760d2-6916-431b-a4e3-23165d5c2355
+    content: "Bug: Fix the undefined_symbol in this code. Error: use of undeclared
+      identifier 'b'"
     keywords:
-      - C++
-      - unknown
+      - cpp
+      - undefined_symbol
       - error
       - bug
-    context: 'C++ programming bug fix: unknown'
+    context: 'cpp programming bug fix: undefined_symbol'
     tags:
       - debugging
-      - unknown
+      - undefined symbol
       - cpp
-    timestamp: '202505151154'
-    category: C++
+    timestamp: '202505151216'
+    category: CPP
     faulty_code: "#include <iostream>\nusing namespace std;\n\nint main() {\n    int
       a = 5;\n    int result = a + b; // ❌ 'b' is not declared\n    cout << \"Result:
       \" << result << endl;\n    return 0;\n}\n"
     fixed_code: ''
     compiler_errors:
-      - "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmp2pkvt6_z.cpp:6:22: error:
-        use of undeclared identifier 'b'"
-      - "    6 |     int result = a + b; // ❌ 'b' is not declared"
-      - '      |                      ^'
-      - 1 error generated.
+      - use of undeclared identifier 'b'
     language: cpp
-    line_number:
-    error_type: unknown
+    line_number: 6
+    error_type: undefined_symbol
     bug_category: unknown
-    embedding_text: "C++ programming bug fix: unknown #include <iostream>\nusing namespace
-      std;\n\nint main() {\n    int a = 5;\n    int result = a + b; // ❌ 'b' is not
-      declared\n    cout << \"Result: \" << result << endl;\n    return 0;\n}\n"
+    embedding_text: "cpp programming bug fix: undefined_symbol #include <iostream>\n
+      using namespace std;\n\nint main() {\n    int a = 5;\n    int result = a + b;
+      // ❌ 'b' is not declared\n    cout << \"Result: \" << result << endl;\n    return
+      0;\n}\n"
     embedding:
-      - -0.04502193257212639
-      - 0.07912823557853699
-      - 0.030785400420427322
-      - -0.02878047712147236
-      - -0.11670418828725815
-      - 0.0336785651743412
-      - -0.02020367421209812
-      - 0.026388105005025864
-      - -0.0014651197707280517
-      - 0.03320825472474098
-      - 0.0665326863527298
-      - -0.03926686570048332
-      - 0.027714204043149948
-      - -0.02303391695022583
-      - -0.04137561097741127
-      - -0.005915881600230932
-      - -0.09920371323823929
-      - -0.02111382968723774
-      - -0.007063648197799921
-      - -0.050436295568943024
-      - 0.00805647298693657
-      - 0.022361358627676964
-      - -0.07852160185575485
-      - 0.016090258955955505
-      - 0.0661112368106842
-      - -0.010828124359250069
-      - -0.09207800775766373
-      - -0.036475770175457
-      - 0.0786244347691536
-      - -0.0356338806450367
-      - -0.005068405065685511
-      - -0.015465312637388706
-      - 0.0012579488102346659
-      - 0.07394209504127502
-      - -0.04160498082637787
-      - 0.006664408836513758
-      - 0.023461436852812767
-      - -0.10253223031759262
-      - -0.010640747845172882
-      - 0.003245180007070303
-      - -0.005543312523514032
-      - 0.032486312091350555
-      - -0.015432995744049549
-      - 0.021049831062555313
-      - 0.005764417815953493
-      - 0.045762643218040466
-      - -0.05599699169397354
-      - -0.024497926235198975
-      - -0.007656175643205643
-      - -0.028724662959575653
-      - -0.08883699774742126
-      - 0.09207846224308014
-      - 0.022358104586601257
-      - -0.02713373303413391
-      - 0.011689734645187855
-      - -0.04674254357814789
-      - 0.01643313094973564
-      - 0.006954639218747616
-      - 0.0340314619243145
-      - -0.02753255143761635
-      - -0.027219578623771667
-      - 0.0003697845677379519
-      - 0.007313831243664026
-      - -0.043710384517908096
-      - 0.024191714823246002
-      - -0.04199142009019852
-      - 0.005366183817386627
-      - 0.014487327076494694
-      - 0.012531407177448273
-      - 0.02492476999759674
-      - -0.07933707535266876
-      - -0.0019134925678372383
-      - 0.02700243890285492
-      - 0.04705074802041054
-      - -0.038947854191064835
-      - -0.010725322179496288
-      - -0.06475576758384705
-      - -0.013080496340990067
-      - -0.024315258488059044
-      - 0.021246271207928658
-      - -0.028305210173130035
-      - -0.0065401173196733
-      - -0.05911620333790779
-      - -0.019511854276061058
-      - 0.0937729924917221
-      - 0.026107463985681534
-      - -0.0317562036216259
-      - -0.02072904445230961
-      - 0.01647435687482357
-      - -0.07346441596746445
-      - 0.03671872988343239
-      - -0.04250418394804001
-      - -0.0660528615117073
-      - 0.04957692325115204
-      - 0.05691985413432121
-      - -0.04623553529381752
-      - 0.09449563920497894
-      - -0.0352531373500824
-      - -0.06659799814224243
-      - 0.034362826496362686
-      - -0.06095679849386215
-      - 0.05809956416487694
-      - 0.03145858645439148
-      - 0.03875410929322243
-      - -0.0432230681180954
-      - -0.03769662231206894
-      - 0.10694476217031479
-      - 0.02587106265127659
-      - 0.042953360825777054
-      - -0.14343418180942535
-      - -0.00984998233616352
-      - -0.054786741733551025
-      - 0.012542537413537502
-      - -0.0650368258357048
-      - 0.021865392103791237
-      - 0.0033596500288695097
-      - -0.020555151626467705
-      - -0.03341605141758919
-      - 0.06010386720299721
-      - -0.05295657739043236
-      - 0.04944474622607231
-      - -0.043262965977191925
-      - -0.06639125943183899
-      - 0.04631585627794266
-      - -0.056467656046152115
-      - -0.021219933405518532
-      - 0.014887833036482334
-      - 4.662759238325872e-33
-      - -0.035675227642059326
-      - -0.07301574945449829
-      - -0.04699495807290077
-      - 0.10306747257709503
-      - -0.00493802921846509
-      - 0.01930992119014263
-      - -0.0609244629740715
-      - 0.04892943426966667
-      - 0.008463065139949322
-      - -0.032567620277404785
-      - 0.05313136428594589
-      - -0.14915156364440918
-      - 0.033872488886117935
-      - 0.06393986940383911
-      - 0.034647148102521896
-      - 0.03763595595955849
-      - 0.07204562425613403
-      - 0.011564675718545914
-      - 0.03340918570756912
-      - -0.0334392674267292
-      - 0.05957935377955437
-      - 0.03823703154921532
-      - -0.004643543623387814
-      - 0.011662298813462257
-      - -0.0007588158478029072
-      - 0.05970769003033638
-      - 0.051440417766571045
-      - -0.09540726989507675
-      - 0.01044226810336113
-      - -0.013956373557448387
-      - 0.028881074860692024
-      - 0.009602941572666168
-      - 0.08451954275369644
-      - 0.01704218052327633
-      - 0.043329402804374695
-      - 0.06206498295068741
-      - 0.026051785796880722
-      - 0.07461222261190414
-      - -0.03344012051820755
-      - 0.04033166915178299
-      - -0.023976149037480354
-      - -0.011297188699245453
-      - -0.05104801803827286
-      - -2.879037083403091e-06
-      - 0.06499514728784561
-      - 0.01765153929591179
-      - -0.023853788152337074
-      - -0.02716919593513012
-      - -0.04544670134782791
-      - -0.12904107570648193
-      - -0.07270362973213196
-      - 0.13337142765522003
-      - -0.013243221677839756
-      - 0.08556504547595978
-      - 0.01569852977991104
-      - 0.022427907213568687
-      - 0.01217903196811676
-      - 0.03406578674912453
-      - -0.1218576580286026
-      - 0.039788637310266495
-      - -0.04934241250157356
-      - 0.10439513623714447
-      - 0.025708837434649467
-      - -0.008767309598624706
-      - -0.10271201282739639
-      - -0.0017064000712707639
-      - 0.011750556528568268
-      - -0.021808652207255363
-      - 0.10455863922834396
-      - 0.06592398136854172
-      - -0.08134016394615173
-      - 0.02130562998354435
-      - -0.009472525678575039
-      - 0.07917971909046173
-      - 0.046500202268362045
-      - 0.020253334194421768
-      - -0.02843642793595791
-      - -0.07488323003053665
-      - -0.00014436904166359454
-      - -0.010492613539099693
-      - 0.04737798497080803
-      - -0.013642292469739914
-      - 0.06422960758209229
-      - -0.029356176033616066
-      - 0.02745751105248928
-      - -0.023604875430464745
-      - -0.022706443443894386
-      - -0.03704104200005531
-      - 0.012111322954297066
-      - -0.0015999560710042715
-      - 0.04647466540336609
-      - -0.047348517924547195
-      - 0.09634282439947128
-      - 0.0666225254535675
-      - -0.03875197470188141
-      - -7.066706164526899e-33
-      - -0.05743776261806488
-      - 0.046082768589258194
-      - -0.02636992558836937
-      - -0.09070969372987747
-      - -0.10122190415859222
-      - 0.03203660994768143
-      - 0.01023717038333416
-      - -0.1202869638800621
-      - -0.03625002130866051
-      - 0.10325270146131516
-      - 0.043172452598810196
-      - -0.0010058390907943249
-      - 0.03745947778224945
-      - 0.08609821647405624
-      - 0.06138835847377777
-      - 0.0027098769787698984
-      - -0.010723672807216644
-      - -0.010408842004835606
-      - -0.0025854066479951143
-      - 0.1099420115351677
-      - 0.020473342388868332
-      - 0.006225056480616331
-      - 0.005132399965077639
-      - -0.03294815123081207
-      - 0.04181545227766037
-      - 0.14312170445919037
-      - 0.051005057990550995
-      - 0.0022487256210297346
-      - 0.041085731238126755
-      - -0.06435827910900116
-      - 0.020154789090156555
-      - 0.01060023158788681
-      - -0.02899044007062912
-      - -0.008285564370453358
-      - 0.011486837640404701
-      - -0.00591143686324358
-      - -0.04864637926220894
-      - -0.043782494962215424
-      - -0.04306855425238609
-      - 0.008403397165238857
-      - 0.07244382798671722
-      - -0.03833372890949249
-      - 0.04935714229941368
-      - -0.0012299584923312068
-      - 0.059083644300699234
-      - -0.03959013149142265
-      - 0.02955276519060135
-      - -0.002535527804866433
-      - 0.048994168639183044
-      - -0.03846489638090134
-      - 0.02587038278579712
-      - -0.06068237125873566
-      - -0.1360454112291336
-      - -0.0816502571105957
-      - -0.017170695587992668
-      - 0.009175834245979786
-      - 0.002280294895172119
-      - 0.05878351256251335
-      - 0.018033934757113457
-      - 0.043290551751852036
-      - -0.06611315906047821
-      - -0.023394562304019928
-      - -0.00994124822318554
-      - -0.04388939589262009
-      - 0.008483408018946648
-      - 0.004925316199660301
-      - -0.0007171299075707793
-      - 0.04479420930147171
-      - 0.026160473003983498
-      - -0.06499265879392624
-      - 0.003681722329929471
-      - 0.11511215567588806
-      - 0.044335782527923584
-      - -0.05714262276887894
-      - -0.04993782192468643
-      - 0.07559095323085785
-      - -0.0025067743845283985
-      - 0.02989964745938778
-      - 0.0015729613369330764
-      - 0.0577295646071434
-      - -0.059778742492198944
-      - 0.02909846231341362
-      - 0.02623438648879528
-      - 0.008131957612931728
-      - -0.02935926988720894
-      - 0.005637746769934893
-      - 0.04294414445757866
-      - 0.02970539778470993
-      - -0.03543178737163544
-      - -0.008373416028916836
-      - 0.033387985080480576
-      - 0.04268495365977287
-      - -0.08257269114255905
-      - 0.028036771342158318
-      - 0.009980724193155766
-      - -3.737142861837128e-08
-      - 0.01766941323876381
-      - -0.08872281759977341
-      - -0.09221756458282471
-      - -0.04199308156967163
-      - 0.0033874884247779846
-      - -0.023202700540423393
-      - -0.04522550106048584
-      - -0.09856967628002167
-      - -0.03173498064279556
-      - -0.04304949939250946
-      - -0.08221976459026337
-      - -0.03912312164902687
-      - -0.019654590636491776
-      - -0.028596453368663788
-      - 0.012458967976272106
-      - -0.085442453622818
-      - -0.07009237259626389
-      - -0.08477513492107391
-      - -0.0003958481247536838
-      - -0.0980447456240654
-      - -0.03331930562853813
-      - -0.03657727316021919
-      - 0.043529074639081955
-      - -0.0027828083839267492
-      - -0.09159693121910095
-      - -0.04259634017944336
-      - 0.03291238099336624
-      - 0.05675234645605087
-      - 0.017347954213619232
-      - -0.04189150407910347
-      - 0.07590217143297195
-      - 0.11523930728435516
-      - -0.009518067352473736
-      - 0.014578004367649555
-      - 0.09073705226182938
-      - 0.009076003916561604
-      - 0.1295604109764099
-      - 0.06559589505195618
-      - 0.012249951250851154
-      - 0.06714966893196106
-      - -0.07091786712408066
-      - -0.005334011744707823
-      - 0.020798077806830406
-      - 0.0550653301179409
-      - 0.005328357685357332
-      - -0.014618257991969585
-      - -0.0028572583105415106
-      - 0.016705233603715897
-      - 0.029871126636862755
-      - -0.0119295259937644
-      - -0.006550448480993509
-      - -0.01742815040051937
-      - 0.0340413823723793
-      - 0.04088185355067253
-      - 0.041575852781534195
-      - -0.09674906730651855
-      - -0.03076871670782566
-      - -0.11645160615444183
-      - -0.05533664673566818
-      - 0.003578628646209836
-      - 0.015520980581641197
-      - -0.09928526729345322
-      - 0.0122586814686656
-      - 0.019035853445529938
-  - id: 941a0b0d-2384-4dab-949b-d5e1d009e08a
-    content: 'C++ Bug: Fix the bug in this code. Error: Verilog compilation tools
-      not available'
+      - -0.04067365452647209
+      - 0.06555163860321045
+      - 0.03239652141928673
+      - -0.03676409274339676
+      - -0.11277977377176285
+      - 0.030084794387221336
+      - -0.04103272780776024
+      - 0.02045738883316517
+      - 0.0040295361541211605
+      - 0.0028892401605844498
+      - 0.0770263597369194
+      - -0.031602777540683746
+      - 0.013803159818053246
+      - -0.016196850687265396
+      - -0.01929432712495327
+      - 0.0029294744599610567
+      - -0.060563620179891586
+      - -0.043555546551942825
+      - 0.03498252108693123
+      - -0.029983900487422943
+      - -0.00714128278195858
+      - -0.009085324592888355
+      - -0.09394881874322891
+      - 0.04105709120631218
+      - 0.058196235448122025
+      - -0.007357469759881496
+      - -0.06176099553704262
+      - -0.04443550109863281
+      - 0.07297728955745697
+      - -0.026602670550346375
+      - -0.0071580372750759125
+      - -0.04456915706396103
+      - -0.009227482602000237
+      - 0.02505136840045452
+      - -0.0057673524133861065
+      - 0.06424812972545624
+      - 0.03750937804579735
+      - -0.12609794735908508
+      - -0.010759257711470127
+      - 0.006848171819001436
+      - -0.0036893209908157587
+      - 0.03378581255674362
+      - -0.05297775939106941
+      - 0.02409043349325657
+      - -0.005815071519464254
+      - 0.05538416653871536
+      - -0.042404357343912125
+      - 0.029566068202257156
+      - -0.03233030438423157
+      - -0.048869915306568146
+      - -0.06559637933969498
+      - 0.06658291071653366
+      - 0.030038820579648018
+      - -0.05371587723493576
+      - 0.02869129367172718
+      - -0.05885476991534233
+      - -0.0033575629349797964
+      - 0.023504553362727165
+      - 0.03169933706521988
+      - -0.03715052083134651
+      - -0.053522899746894836
+      - 0.012535671703517437
+      - 0.04366866871714592
+      - -0.0456196554005146
+      - 0.03466328978538513
+      - -0.028360797092318535
+      - -0.017073234543204308
+      - 0.029484068974852562
+      - -0.0010579980444163084
+      - 0.04966246336698532
+      - -0.08251471072435379
+      - -0.01320597529411316
+      - 0.00854022242128849
+      - 0.049464207142591476
+      - -0.015775097534060478
+      - -0.03051636554300785
+      - -0.056350767612457275
+      - -0.0391237847507
+      - -0.014080818742513657
+      - 0.0016669216565787792
+      - -0.04132463037967682
+      - -0.016093453392386436
+      - -0.05408880487084389
+      - -0.010259474627673626
+      - 0.08794110268354416
+      - 0.01039490383118391
+      - -0.009771201759576797
+      - -0.015389415435492992
+      - 0.007860297337174416
+      - -0.07189587503671646
+      - 0.045260149985551834
+      - -0.004012682940810919
+      - -0.07610723376274109
+      - 0.03734424337744713
+      - 0.0487491600215435
+      - -0.03743394464254379
+      - 0.07883554697036743
+      - -0.05328264459967613
+      - -0.0635567456483841
+      - 0.03758988156914711
+      - -0.06410079449415207
+      - 0.061484526842832565
+      - 0.05341443046927452
+      - 0.007179080508649349
+      - -0.04936275631189346
+      - -0.019435757771134377
+      - 0.09638047218322754
+      - -0.007279171142727137
+      - 0.030175723135471344
+      - -0.10663587599992752
+      - -0.014345313422381878
+      - -0.025935085490345955
+      - -0.005510424729436636
+      - -0.09401955455541611
+      - 0.05802319571375847
+      - 0.022855691611766815
+      - -0.04202523082494736
+      - -0.06101515144109726
+      - 0.07346027344465256
+      - -0.056442491710186005
+      - 0.027739588171243668
+      - -0.06414307653903961
+      - -0.06756892800331116
+      - 0.07318921387195587
+      - -0.06258965283632278
+      - -0.00876579899340868
+      - 0.011335404589772224
+      - 3.9738119175425146e-33
+      - -0.05741293355822563
+      - -0.06061312556266785
+      - -0.06846344470977783
+      - 0.09523285925388336
+      - -0.0112485121935606
+      - 0.01953512616455555
+      - -0.025660760700702667
+      - 0.03504675626754761
+      - -0.023338014259934425
+      - -0.024308521300554276
+      - 0.03422705456614494
+      - -0.13478901982307434
+      - 0.035019729286432266
+      - 0.08874630182981491
+      - 0.03241473808884621
+      - 0.0034462185576558113
+      - 0.07080070674419403
+      - 0.02909555472433567
+      - 0.028194179758429527
+      - -0.04251895472407341
+      - 0.04306504875421524
+      - 0.024326182901859283
+      - -0.0048232064582407475
+      - 0.027219707146286964
+      - 0.015513486228883266
+      - 0.09309738129377365
+      - 0.026742829009890556
+      - -0.06821580976247787
+      - 0.0047584702260792255
+      - -0.024301767349243164
+      - 0.044307053089141846
+      - 0.02581988275051117
+      - 0.033320412039756775
+      - 0.0084753492847085
+      - 0.011325343511998653
+      - 0.062408529222011566
+      - 0.017784159630537033
+      - 0.05510959401726723
+      - -0.03430316969752312
+      - 0.03196796029806137
+      - 0.0099866958335042
+      - -0.017731735482811928
+      - -0.052025917917490005
+      - 0.006317964289337397
+      - 0.06294237822294235
+      - 0.02126048319041729
+      - -0.012149963527917862
+      - -0.05881480500102043
+      - -0.05674741789698601
+      - -0.1442309468984604
+      - -0.05657419562339783
+      - 0.12912552058696747
+      - -0.012440771795809269
+      - 0.06729359924793243
+      - 0.015787193551659584
+      - 0.0036002646666020155
+      - -0.028638219460844994
+      - 0.006702234502881765
+      - -0.11729839444160461
+      - 0.006015750579535961
+      - -0.003196907229721546
+      - 0.11790798604488373
+      - 0.018190953880548477
+      - -0.011014037765562534
+      - -0.07417826354503632
+      - 0.004815533757209778
+      - -0.027630969882011414
+      - -0.008456994779407978
+      - 0.1417912095785141
+      - 0.04370269924402237
+      - -0.05426464229822159
+      - 0.04011419788002968
+      - 0.016424447298049927
+      - 0.08142425864934921
+      - 0.044689878821372986
+      - 0.02855265885591507
+      - -0.03703678771853447
+      - -0.08009890466928482
+      - 0.01672646403312683
+      - 0.008418657816946507
+      - 0.0253492072224617
+      - -0.025605270639061928
+      - 0.05723091587424278
+      - -0.07771949470043182
+      - 0.08039028942584991
+      - -0.004689665976911783
+      - 0.0034429815132170916
+      - -0.03349717706441879
+      - -0.008132874965667725
+      - 0.02213779278099537
+      - 0.05402735620737076
+      - -0.04484116658568382
+      - 0.10991600155830383
+      - 0.05265706032514572
+      - -0.048276375979185104
+      - -6.973793621669967e-33
+      - -0.05214811861515045
+      - 0.05007173493504524
+      - -0.008372566662728786
+      - -0.09008024632930756
+      - -0.0936613380908966
+      - 0.030578862875699997
+      - -0.019184138625860214
+      - -0.1193837895989418
+      - -0.03809933364391327
+      - 0.10432925820350647
+      - 0.022100092843174934
+      - -0.012703826650977135
+      - 0.057038258761167526
+      - 0.08974938839673996
+      - 0.07325855642557144
+      - 0.020634092390537262
+      - -0.04883400723338127
+      - -0.0037541971541941166
+      - -0.008807559497654438
+      - 0.07520408928394318
+      - -0.0027233492583036423
+      - 0.017102500423789024
+      - 0.021153990179300308
+      - 0.0011685340432450175
+      - 0.017589304596185684
+      - 0.1466318964958191
+      - 0.07822444289922714
+      - -0.01539949793368578
+      - 0.06042623519897461
+      - -0.06009996309876442
+      - 0.004104628227651119
+      - 0.035990774631500244
+      - -0.052069783210754395
+      - 0.0057647814974188805
+      - 0.016131993383169174
+      - -0.028562549501657486
+      - -0.06187831610441208
+      - -0.035111624747514725
+      - -0.03862456604838371
+      - -0.004180563613772392
+      - 0.08702435344457626
+      - -0.026923324912786484
+      - 0.02842116728425026
+      - 0.0038603362627327442
+      - 0.050656192004680634
+      - -0.04359287768602371
+      - 0.028507430106401443
+      - -0.023903677240014076
+      - 0.023367470130324364
+      - -0.04615597799420357
+      - 0.00745878042653203
+      - -0.04895699769258499
+      - -0.11739461123943329
+      - -0.0878673568367958
+      - -0.029335657134652138
+      - 0.048073288053274155
+      - 0.016475867480039597
+      - 0.08304706960916519
+      - 0.030381940305233
+      - 0.04050904139876366
+      - -0.09856949001550674
+      - -0.036889757961034775
+      - -0.00017916335491463542
+      - -0.030217871069908142
+      - 0.020510418340563774
+      - -0.016533399000763893
+      - -0.010787013918161392
+      - 0.02501113899052143
+      - 0.05283786356449127
+      - -0.0656329020857811
+      - -0.014254385605454445
+      - 0.14803744852542877
+      - 0.022845659404993057
+      - -0.03763145953416824
+      - -0.03953175991773605
+      - 0.09079563617706299
+      - -0.0030452741775661707
+      - 0.06098633632063866
+      - 0.010268514044582844
+      - 0.06253242492675781
+      - -0.05157460272312164
+      - 0.0359053835272789
+      - 0.03158281743526459
+      - 0.016749057918787003
+      - -0.04623162001371384
+      - -0.025330370292067528
+      - 0.042108532041311264
+      - 0.011540031060576439
+      - -0.0439409464597702
+      - -0.037819501012563705
+      - 0.0380818210542202
+      - 0.050437066704034805
+      - -0.044133514165878296
+      - 0.042661458253860474
+      - 0.016511812806129456
+      - -3.6858608609691146e-08
+      - 0.00646678963676095
+      - -0.045238420367240906
+      - -0.07169178873300552
+      - -0.057725049555301666
+      - 0.012632692232728004
+      - -0.01716630719602108
+      - -0.04616228863596916
+      - -0.12667112052440643
+      - -0.05665694177150726
+      - -0.02515425533056259
+      - -0.09595141559839249
+      - -0.026122188195586205
+      - -0.019798921421170235
+      - -0.0138784721493721
+      - 0.00233187316916883
+      - -0.10046884417533875
+      - -0.07667771726846695
+      - -0.06812693923711777
+      - 0.010552939027547836
+      - -0.10221030563116074
+      - -0.035706404596567154
+      - -0.011825297959148884
+      - 0.03265666216611862
+      - 0.021742356941103935
+      - -0.06994300335645676
+      - -0.0603901669383049
+      - 0.007374123204499483
+      - 0.06630919128656387
+      - 0.01908164471387863
+      - -0.042819682508707047
+      - 0.09874226152896881
+      - 0.10357040166854858
+      - -0.0053838943131268024
+      - -0.014481033198535442
+      - 0.11201752722263336
+      - 0.004528321325778961
+      - 0.1171894371509552
+      - 0.04484271630644798
+      - 0.0023578894324600697
+      - 0.07787731289863586
+      - -0.026229511946439743
+      - -0.01659909263253212
+      - 0.023898836225271225
+      - 0.022244280204176903
+      - 0.008297523483633995
+      - -0.002179686212912202
+      - 0.0020600808784365654
+      - 0.006657951977103949
+      - -0.006686456501483917
+      - -0.007333497051149607
+      - -0.0016763269668444991
+      - 0.01084190234541893
+      - 0.0007138981018215418
+      - 0.04360503330826759
+      - 0.057721372693777084
+      - -0.08354565501213074
+      - -0.05441296100616455
+      - -0.09076909720897675
+      - -0.06107143685221672
+      - -0.004265102092176676
+      - 0.025952890515327454
+      - -0.07864983379840851
+      - -0.0065996539779007435
+      - 0.003302305471152067
+  - id: 95caa4cf-0ace-4f56-a54b-be79a26787c7
+    content: 'Bug: Fix the bug in this code. Error: Verilog compilation tools not
+      available'
     keywords:
-      - C++
+      - verilog
       - unknown
       - error
       - bug
-    context: 'C++ programming bug fix: unknown'
+    context: 'verilog programming bug fix: unknown'
     tags:
       - debugging
       - unknown
-      - cpp
-    timestamp: '202505151155'
-    category: C++
+      - verilog
+    timestamp: '202505151217'
+    category: VERILOG
     faulty_code: "module trivial( input a, input b, output c);\nassign c = a ^ b\n\
       endmodule\n\n"
     fixed_code: ''
     compiler_errors:
       - Verilog compilation tools not available
-    language: cpp
-    line_number:
+    language: verilog
+    line_number: 0
     error_type: unknown
     bug_category: unknown
-    embedding_text: "C++ programming bug fix: unknown module trivial( input a, input
-      b, output c);\nassign c = a ^ b\nendmodule\n\n"
+    embedding_text: "verilog programming bug fix: unknown module trivial( input a,
+      input b, output c);\nassign c = a ^ b\nendmodule\n\n"
     embedding:
-      - -0.03513219207525253
-      - 0.04106516391038895
-      - -0.1417832374572754
-      - 0.0414331778883934
-      - -0.023376595228910446
-      - 0.0038414124865084887
-      - -0.027549387887120247
-      - 0.0192356389015913
-      - -0.10330814868211746
-      - 0.0013482329668477178
-      - 0.05799774453043938
-      - -0.04876318201422691
-      - 0.02070252038538456
-      - 0.05523117631673813
-      - -0.014719067141413689
-      - 0.09310971945524216
-      - -0.09067148715257645
-      - 0.05362630635499954
-      - -0.036589719355106354
-      - 0.0026993080973625183
-      - -0.061443865299224854
-      - 0.02645307593047619
-      - -0.0389280840754509
-      - 0.03114810585975647
-      - 0.0029218343552201986
-      - 0.008389361202716827
-      - -0.00924285314977169
-      - -0.06009013578295708
-      - 0.012928023003041744
-      - -0.07330828160047531
-      - -0.02896752953529358
-      - 0.06817233562469482
-      - -0.02548806369304657
-      - 0.007465494330972433
-      - 0.02241772972047329
-      - 0.053798794746398926
-      - -0.043573733419179916
-      - -0.06859708577394485
-      - -0.0014632489765062928
-      - -0.07808065414428711
-      - 0.00816311314702034
-      - 0.05469239130616188
-      - -0.0027785347774624825
-      - 0.02462296187877655
-      - -0.075821653008461
-      - 0.025514429435133934
-      - -0.01196513045579195
-      - 0.042784590274095535
-      - -0.008204146288335323
-      - -0.01691233366727829
-      - 0.024574415758252144
-      - -0.04397452622652054
-      - -0.01863127201795578
-      - -0.008287332020699978
-      - -0.00013404779019765556
-      - -0.016110364347696304
-      - 0.06074004992842674
-      - -0.04080120846629143
-      - 0.05859692394733429
-      - 0.003535981522873044
-      - -0.014792043715715408
-      - 0.045960113406181335
-      - -0.029899781569838524
-      - -0.08307965844869614
-      - 0.09642796963453293
-      - 0.012141553685069084
-      - 0.02712172456085682
-      - -0.040706027299165726
-      - -0.05314689502120018
-      - 0.014147240668535233
-      - -0.06200862675905228
-      - -0.027741141617298126
-      - -0.0664965808391571
-      - 0.12024147063493729
-      - -0.009346861392259598
-      - -0.06555788218975067
-      - -0.0527832992374897
-      - 0.08150452375411987
-      - 0.0047128694131970406
-      - 0.0435466431081295
-      - 5.892082117497921e-05
-      - 0.009606631472706795
-      - -0.06043235957622528
-      - 0.08159639686346054
-      - 0.09080162644386292
-      - -0.05871861055493355
-      - -0.0638040080666542
-      - 0.05492185056209564
-      - 0.04917413368821144
-      - 0.019883479923009872
-      - 0.0038608508184552193
-      - -0.05798637494444847
-      - 0.016453435644507408
-      - 0.04930529370903969
-      - 0.06669106334447861
-      - -0.0723782479763031
-      - 0.0937284454703331
-      - 0.07573027908802032
-      - -0.06070522218942642
-      - -0.04457393288612366
-      - 0.008819694630801678
-      - -0.010321909561753273
-      - -0.020358877256512642
-      - 0.06320659816265106
-      - 0.021296624094247818
-      - -0.009171612560749054
-      - -0.007229986134916544
-      - 0.01953366957604885
-      - 0.05941521003842354
-      - -0.09357783943414688
-      - -0.004241316579282284
-      - -0.0782499834895134
-      - 0.018492909148335457
-      - -0.08969658613204956
-      - 0.01576799899339676
-      - 0.06822604686021805
-      - 0.08147814869880676
-      - 0.0624014213681221
-      - -0.023042721673846245
-      - 0.055868543684482574
-      - -0.006228916812688112
-      - 0.04843202233314514
-      - -0.011157927103340626
-      - 0.05973740294575691
-      - 0.027435794472694397
-      - 0.000173725129570812
-      - -0.03184095397591591
-      - 1.6291758215502984e-34
-      - -0.05708920583128929
-      - 0.025850098580121994
-      - -0.033056098967790604
-      - 0.09652385115623474
-      - 0.05950648710131645
-      - 0.06892792880535126
-      - -0.01927018165588379
-      - 0.05587168037891388
-      - -0.030522914603352547
-      - -0.02688395045697689
-      - -0.049248967319726944
-      - -0.040270812809467316
-      - 0.031064771115779877
-      - 0.09722943603992462
-      - 0.032958850264549255
-      - -0.023485176265239716
-      - 0.03211097791790962
-      - -0.03556934744119644
-      - -0.029855960980057716
-      - -0.0534474179148674
-      - 0.08284958451986313
-      - 0.10462632030248642
-      - 0.02085801400244236
-      - -0.11036355048418045
-      - 0.02094358019530773
-      - 0.062760129570961
-      - 0.051124926656484604
-      - -0.006990645080804825
-      - 0.0889975056052208
-      - 0.019444184377789497
-      - 0.016117502003908157
-      - 0.043183621019124985
-      - 0.05583130195736885
-      - 0.040748562663793564
-      - 0.03518383204936981
-      - 0.0036257626488804817
-      - 0.036981478333473206
-      - 0.03189201280474663
-      - -0.03630886599421501
-      - -0.12143580615520477
-      - 0.04487286135554314
-      - 0.06811338663101196
-      - -0.06117323786020279
-      - -0.015363109298050404
-      - 0.022057946771383286
-      - -0.08322704583406448
-      - -0.021082967519760132
-      - 0.04830068349838257
-      - -0.006887882947921753
-      - -0.1064356192946434
-      - -0.028313377872109413
-      - 0.023446792736649513
-      - -0.023842815309762955
-      - -0.036900270730257034
-      - -0.011795849539339542
-      - 0.007697890046983957
-      - 0.03376453369855881
-      - 0.05034114420413971
-      - -0.033801570534706116
-      - 0.025811444967985153
-      - 0.021063119173049927
-      - 0.09445302933454514
-      - -0.01036557462066412
-      - 0.042913634330034256
-      - -0.08261067420244217
-      - 0.03365473076701164
-      - -0.059367746114730835
-      - 0.014948522672057152
-      - 0.07237029075622559
-      - 0.006284947507083416
-      - -0.045389674603939056
-      - 0.002711300738155842
-      - -0.02028757520020008
-      - 0.030195506289601326
-      - -0.06154296547174454
-      - 0.05253295972943306
-      - -0.08391951769590378
-      - -0.10608778893947601
-      - -0.030819440260529518
-      - -0.06307162344455719
-      - 0.043370045721530914
-      - 0.04375055804848671
-      - 0.07235285639762878
-      - -0.049062442034482956
-      - -0.006878023501485586
-      - -0.07193563878536224
-      - -0.03331809118390083
-      - -0.04491879791021347
-      - -0.06546089798212051
-      - 0.02020079456269741
-      - 0.028034618124365807
-      - -0.014933954924345016
-      - 0.019709525629878044
-      - 0.04267602041363716
-      - 0.018158644437789917
-      - -2.7921530172051257e-33
-      - -0.01356469001621008
-      - 0.006010676734149456
-      - 0.015466131269931793
-      - -0.004529574420303106
-      - -0.007916721515357494
-      - -0.038010552525520325
-      - -0.022863728925585747
-      - -0.08280874788761139
-      - 0.06422843784093857
-      - 0.12614095211029053
-      - 0.029903285205364227
-      - -0.028869854286313057
-      - 0.03972720354795456
-      - 0.05580555647611618
-      - 0.07591564208269119
-      - 0.03532201796770096
-      - -0.06654995679855347
-      - -0.0013355460250750184
-      - 0.02227383479475975
-      - 0.004499605856835842
-      - -0.04651397466659546
-      - 0.0017124409787356853
-      - 0.008855096064507961
-      - -0.08936738967895508
-      - 0.030161039903759956
-      - 0.0921381488442421
-      - -0.06284079700708389
-      - 0.05811915919184685
-      - 0.10039161890745163
-      - 0.00531697366386652
-      - -0.03648359328508377
-      - 0.006419324781745672
-      - -0.03639230504631996
-      - -0.061240408569574356
-      - -0.00040244238334707916
-      - 0.025268660858273506
-      - -0.05641160160303116
-      - -0.04421168938279152
-      - 0.06832647323608398
-      - -0.0015639154007658362
-      - 0.047954853624105453
-      - 0.037093523889780045
-      - 0.07080015540122986
-      - 0.055827170610427856
-      - 0.06263413280248642
-      - -0.08473113924264908
-      - 0.052874673157930374
-      - 0.02493743784725666
-      - 0.06050132215023041
-      - -0.06913275271654129
-      - -0.0516907200217247
-      - -0.09572593867778778
-      - -0.003375239670276642
-      - -0.016879549250006676
-      - -0.0479140467941761
-      - -0.020823640748858452
-      - 0.04760909080505371
-      - 0.06253493577241898
-      - 0.014066210947930813
-      - -0.010853324085474014
-      - 4.780035305884667e-05
-      - -0.012951236218214035
-      - 0.016864122822880745
-      - -0.07530713826417923
-      - 0.006450277753174305
-      - 0.010873154737055302
-      - -0.018979262560606003
-      - 0.019193589687347412
-      - 0.09279308468103409
-      - -0.11937016248703003
-      - 0.11790497601032257
-      - 0.09237498790025711
-      - -0.034530553966760635
-      - -0.04139503091573715
-      - -0.05062442272901535
-      - 0.1267419308423996
-      - -0.022027350962162018
-      - 0.0017038800287991762
-      - -0.010438148863613605
-      - 0.004267658106982708
-      - -0.024510523304343224
-      - -0.042415156960487366
-      - 0.0033580290619283915
-      - 0.004777541849762201
-      - 0.020404476672410965
-      - -0.0831744447350502
-      - 0.03330375999212265
-      - 0.03766766935586929
-      - -0.00761905824765563
-      - 0.057033929973840714
-      - -0.034578725695610046
-      - -0.012129247188568115
-      - -0.0033423611894249916
-      - 0.045248132199048996
-      - 0.013901948928833008
-      - -2.559733403018072e-08
-      - -0.03410620987415314
-      - -0.04578292369842529
-      - -0.11542246490716934
-      - -0.02061362750828266
-      - 0.04640107974410057
-      - -0.07128062099218369
-      - -0.00934543926268816
-      - -0.03721816465258598
-      - -0.013900510035455227
-      - -0.06278898566961288
-      - -0.04998507723212242
-      - -0.03226014971733093
-      - -0.01039962936192751
-      - 0.035302188247442245
-      - -0.01690368726849556
-      - -0.03433213010430336
-      - -0.047473665326833725
-      - -0.08191592991352081
-      - -0.012556635774672031
-      - -0.04900190234184265
-      - -0.045289259403944016
-      - -0.03932543843984604
-      - 0.08545846492052078
-      - 0.04101834446191788
-      - -0.11510246247053146
-      - -0.049979668110609055
-      - 0.011188778094947338
-      - 0.06751080602407455
-      - 0.09492011368274689
-      - -0.11213800311088562
-      - -0.0034400864969938993
-      - 0.03924651816487312
-      - -0.022066673263907433
-      - -0.0472281351685524
-      - -0.08674225211143494
-      - 0.03206827864050865
-      - 0.0514889732003212
-      - -0.037780359387397766
-      - -0.009387198835611343
-      - 0.029431119561195374
-      - 0.05256137624382973
-      - 0.012745348736643791
-      - -0.0909784808754921
-      - 0.042671337723731995
-      - -0.0034648412838578224
-      - -0.0014593165833503008
-      - 0.020895104855298996
-      - -0.02015799656510353
-      - -0.11304984241724014
-      - 0.03014248050749302
-      - 0.0651697888970375
-      - -0.00896519422531128
-      - -0.0030370745807886124
-      - 0.008186154998838902
-      - 0.03336377814412117
-      - -0.06289810687303543
-      - -0.09690792858600616
-      - 0.021210461854934692
-      - -0.0071651386097073555
-      - 0.03009020909667015
-      - -0.04827435314655304
-      - 0.023822244256734848
-      - 0.004330002702772617
-      - 0.04986945912241936
+      - -0.02502422407269478
+      - 0.03283480554819107
+      - -0.1516084223985672
+      - 0.031881432980298996
+      - -0.014831938780844212
+      - -0.009081795811653137
+      - -0.0040036095306277275
+      - 0.02081540785729885
+      - -0.11208193004131317
+      - 0.010399135760962963
+      - 0.04755827412009239
+      - -0.04466432332992554
+      - 0.04039246216416359
+      - 0.04108684882521629
+      - 0.006717090494930744
+      - 0.10896768420934677
+      - -0.09326966851949692
+      - 0.06696412712335587
+      - -0.05132559314370155
+      - -0.037757374346256256
+      - -0.06157689914107323
+      - 0.029982062056660652
+      - -0.006402296479791403
+      - 0.04671319201588631
+      - -0.01701567880809307
+      - -0.007887645624577999
+      - -0.011929024010896683
+      - -0.03498046472668648
+      - 0.012682619504630566
+      - -0.07199331372976303
+      - -0.02157272957265377
+      - 0.08134869486093521
+      - -0.03611663728952408
+      - 0.02130073308944702
+      - 0.0540182888507843
+      - 0.05977260693907738
+      - -0.06780102103948593
+      - -0.03536854311823845
+      - -0.010401524603366852
+      - -0.07262862473726273
+      - 0.024358438327908516
+      - 0.03557434678077698
+      - 0.0022873729467391968
+      - 0.010808129794895649
+      - -0.056924134492874146
+      - 0.021723954007029533
+      - -0.02649572864174843
+      - 0.0577290914952755
+      - -0.026009054854512215
+      - 0.016226094216108322
+      - 0.02066812850534916
+      - -0.059135425835847855
+      - -0.04051492363214493
+      - -0.031170284375548363
+      - -0.001292107510380447
+      - -0.013783233240246773
+      - 0.062377870082855225
+      - -0.0294834952801466
+      - 0.049287907779216766
+      - 0.0011274365242570639
+      - -0.01188586838543415
+      - 0.04222545772790909
+      - -0.04688968136906624
+      - -0.07832620292901993
+      - 0.08369798958301544
+      - 0.022516850382089615
+      - 0.029488205909729004
+      - -0.009615420363843441
+      - -0.034342147409915924
+      - 0.02602626383304596
+      - -0.0387287512421608
+      - -0.03843764215707779
+      - -0.04350284859538078
+      - 0.09727345407009125
+      - -0.0002723130164667964
+      - -0.07237036526203156
+      - 0.013046969659626484
+      - 0.06755227595567703
+      - 0.009236291982233524
+      - 0.027218367904424667
+      - -0.04600271210074425
+      - -0.018038921058177948
+      - -0.0797543004155159
+      - 0.08122558146715164
+      - 0.05074496194720268
+      - -0.07687926292419434
+      - -0.07600211352109909
+      - 0.07970873266458511
+      - 0.0699562132358551
+      - 0.03768010810017586
+      - 0.0057605248875916
+      - -0.040140267461538315
+      - 0.005381362978368998
+      - 0.04067735746502876
+      - 0.0801457092165947
+      - -0.028399748727679253
+      - 0.07552871853113174
+      - 0.05006072297692299
+      - -0.08684562146663666
+      - -0.043682828545570374
+      - 0.007400174625217915
+      - 0.009364861063659191
+      - -0.010259809903800488
+      - 0.07224944978952408
+      - 0.025488585233688354
+      - -0.010534517467021942
+      - 0.007388098165392876
+      - 0.02320495806634426
+      - 0.021128706634044647
+      - -0.09495848417282104
+      - 0.00618856493383646
+      - -0.05530329421162605
+      - 0.05171306058764458
+      - -0.054076675325632095
+      - 0.024849068373441696
+      - 0.05405578762292862
+      - 0.0995650440454483
+      - 0.07355479151010513
+      - -0.02446627989411354
+      - 0.05116432160139084
+      - 0.020398356020450592
+      - 0.06515341252088547
+      - 0.005830771289765835
+      - 0.05075995251536369
+      - 0.06383397430181503
+      - -0.0247963797301054
+      - -0.014327103272080421
+      - -4.851702982872921e-36
+      - -0.05288270115852356
+      - 0.029052838683128357
+      - -0.017773417755961418
+      - 0.08674563467502594
+      - 0.07486351579427719
+      - 0.09067325294017792
+      - -0.016199031844735146
+      - 0.04772806912660599
+      - -0.0548529252409935
+      - 0.021404501050710678
+      - -0.06284528225660324
+      - -0.048804838210344315
+      - 0.02309158258140087
+      - 0.053798433393239975
+      - 0.01273473259061575
+      - -0.0025750568602234125
+      - 0.025643890723586082
+      - -0.04509193077683449
+      - -0.04265564680099487
+      - -0.01802198588848114
+      - 0.09622833132743835
+      - 0.10014642775058746
+      - 0.03422151133418083
+      - -0.111758291721344
+      - -0.031450267881155014
+      - 0.0326976403594017
+      - 0.02736809104681015
+      - -0.016980573534965515
+      - 0.08448338508605957
+      - 0.039679888635873795
+      - 0.00777825154364109
+      - 0.03440985456109047
+      - 0.05190984904766083
+      - 0.01558874174952507
+      - 0.025373689830303192
+      - -0.0065026115626096725
+      - 0.010626401752233505
+      - 0.05332699790596962
+      - 0.006307861302047968
+      - -0.09510022401809692
+      - 0.04279273375868797
+      - 0.0660894513130188
+      - -0.06279782205820084
+      - -0.008311925455927849
+      - 0.02113427221775055
+      - -0.11755732446908951
+      - -0.03766179829835892
+      - 0.08530096709728241
+      - -0.004111362621188164
+      - -0.07689186185598373
+      - -0.00788093637675047
+      - -0.012215355411171913
+      - -0.01488789264112711
+      - -0.0858154371380806
+      - -0.009436977095901966
+      - 0.005349577404558659
+      - 0.031167887151241302
+      - 0.07317275553941727
+      - -0.04341756924986839
+      - 0.05486578121781349
+      - 0.019457845017313957
+      - 0.09336657077074051
+      - -0.025464888662099838
+      - 0.04243353754281998
+      - -0.05487651377916336
+      - 0.005217285361140966
+      - -0.053477585315704346
+      - 0.006115265656262636
+      - 0.05865402892231941
+      - -0.02882969006896019
+      - -0.039766985923051834
+      - 0.004862810485064983
+      - -0.033967871218919754
+      - 0.04450074955821037
+      - -0.053656745702028275
+      - 0.028031662106513977
+      - -0.06260523945093155
+      - -0.08826468884944916
+      - -0.013970770873129368
+      - -0.07100566476583481
+      - 0.06294704973697662
+      - 0.06340460479259491
+      - 0.029147164896130562
+      - -0.04150983691215515
+      - 0.008620872162282467
+      - -0.05582438036799431
+      - -0.03541813790798187
+      - -0.02780161425471306
+      - -0.07095243036746979
+      - 0.011265123263001442
+      - 0.03702354058623314
+      - -0.03022502176463604
+      - 0.041853081434965134
+      - 0.009978297166526318
+      - 0.02996937930583954
+      - -2.0458211846214934e-33
+      - -0.04716204106807709
+      - 0.03295212984085083
+      - 0.006320737302303314
+      - 0.027345415204763412
+      - 0.0006389569607563317
+      - -0.07871581614017487
+      - -0.009946638718247414
+      - -0.08323635160923004
+      - 0.07441907376050949
+      - 0.14362719655036926
+      - 0.029692891985177994
+      - -0.03317597135901451
+      - 0.014812273904681206
+      - 0.044540077447891235
+      - 0.0818309336900711
+      - 0.03543122857809067
+      - -0.06399299204349518
+      - 0.0014619046123698354
+      - 0.05845952033996582
+      - 0.008613983169198036
+      - -0.05309664085507393
+      - 0.011863362975418568
+      - 0.020425856113433838
+      - -0.06698016077280045
+      - 0.012448582798242569
+      - 0.08047782629728317
+      - -0.07195425778627396
+      - 0.0878915786743164
+      - 0.0816095620393753
+      - -0.005749538075178862
+      - -0.01767951250076294
+      - -0.016539884731173515
+      - -0.0418965183198452
+      - -0.033034954220056534
+      - 0.00930852722376585
+      - -0.0029456638731062412
+      - -0.041106194257736206
+      - -0.02893410250544548
+      - 0.07286229729652405
+      - -0.025809388607740402
+      - 0.04251335188746452
+      - 0.049382179975509644
+      - 0.04288274049758911
+      - 0.049767930060625076
+      - 0.03378100320696831
+      - -0.049879513680934906
+      - 0.04273614287376404
+      - 0.011718313209712505
+      - 0.057826340198516846
+      - -0.08719997853040695
+      - -0.04110812768340111
+      - -0.08393718302249908
+      - 0.0011721409391611814
+      - -0.03529300540685654
+      - -0.04434123635292053
+      - -0.035593416541814804
+      - 0.042470116168260574
+      - 0.05676742643117905
+      - 0.022411547601222992
+      - 0.0013188839657232165
+      - -0.003801998682320118
+      - -0.011080378666520119
+      - 0.016079237684607506
+      - -0.06357830762863159
+      - 0.0020301416516304016
+      - 0.01228077057749033
+      - -0.03516685590147972
+      - 0.04359471797943115
+      - 0.08870318531990051
+      - -0.13065338134765625
+      - 0.10595650970935822
+      - 0.09207627922296524
+      - -0.06105799973011017
+      - -0.05636871978640556
+      - -0.05618780106306076
+      - 0.13157422840595245
+      - -0.03786792233586311
+      - -0.037546366453170776
+      - 1.5734527551103383e-05
+      - -0.001323147676885128
+      - -0.05184140428900719
+      - -0.04422677308320999
+      - -0.005416568834334612
+      - 0.014461223036050797
+      - 0.002047587651759386
+      - -0.09678111225366592
+      - 0.07243718206882477
+      - 0.09066543728113174
+      - 0.019694995135068893
+      - 0.044504739344120026
+      - -0.03763151541352272
+      - -0.028615090996026993
+      - 0.018592365086078644
+      - 0.05243275314569473
+      - 0.04180704057216644
+      - -2.4741940052308564e-08
+      - -0.030210649594664574
+      - -0.03219565376639366
+      - -0.11373927444219589
+      - 0.0023875045590102673
+      - 0.027350999414920807
+      - -0.05296360328793526
+      - -0.023827683180570602
+      - 0.000700934964697808
+      - -0.004953744821250439
+      - -0.05820317938923836
+      - -0.036022890359163284
+      - -0.029622625559568405
+      - 0.00580302020534873
+      - 0.05108073353767395
+      - -0.030668776482343674
+      - -0.0019501327769830823
+      - -0.02154073677957058
+      - -0.08021973073482513
+      - -0.007176259066909552
+      - -0.053811874240636826
+      - -0.03322487697005272
+      - -0.03290662541985512
+      - 0.07437342405319214
+      - 0.030753878876566887
+      - -0.10034677386283875
+      - -0.056675273925065994
+      - -0.008922802284359932
+      - 0.04662400856614113
+      - 0.0907144844532013
+      - -0.11719584465026855
+      - 0.02324635721743107
+      - -0.007886293344199657
+      - 0.004933245945721865
+      - -0.03725245222449303
+      - -0.10095938295125961
+      - -0.017271436750888824
+      - 0.05864589661359787
+      - -0.0376233346760273
+      - 0.019651800394058228
+      - 0.02295861952006817
+      - 0.0350438617169857
+      - 0.021213185042142868
+      - -0.10452444851398468
+      - 0.03256191313266754
+      - -0.0536467544734478
+      - -0.03570844978094101
+      - 0.005451207514852285
+      - -0.035228073596954346
+      - -0.11584636569023132
+      - 0.027715737000107765
+      - 0.06755965203046799
+      - -0.013456509448587894
+      - 0.019031256437301636
+      - -0.02073189988732338
+      - 0.04453253373503685
+      - -0.07445282489061356
+      - -0.10168285667896271
+      - 0.014420056715607643
+      - 0.010710586793720722
+      - 0.04259633645415306
+      - -0.06648364663124084
+      - 0.07379846274852753
+      - -0.014300200156867504
+      - 0.012664539739489555

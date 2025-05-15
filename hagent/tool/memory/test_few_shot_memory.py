@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 from hagent.tool.memory.few_shot_memory_layer import FewShotMemory, Memory
 from hagent.tool.memory.utils import normalize_code
+from hagent.tool.compile import Diagnostic
 
 def main():
     # Parse command line arguments - simplified to only require program path
@@ -35,13 +36,25 @@ def main():
     language = Memory.detect_language(test_program_path)
     print(f"Detected language: {language}")
     
-    # Find similar examples first - now with automatic results saving
+    # Get compiler errors and diagnostic
+    compiler_errors, analysis, diagnostic = Memory.get_compiler_errors(test_code, language, test_program_path.name)
+    
+    # Update diagnostic with file path if it's not set
+    if not diagnostic.file:
+        diagnostic.file = str(test_program_path)
+    
+    # Find similar examples first
     print("Searching for similar code...")
     matches = memory_system.find(
-        original_code=test_code,
-        program_path=test_program_path,
-        save_results=True
+        err=diagnostic,
+        fix_question=test_code
     )
+    
+    # Save results manually since we removed that from find()
+    results_dir = Path("results")
+    results_dir.mkdir(exist_ok=True)
+    output_file = Memory.determine_output_file(None, test_program_path)
+    Memory.process_matches(matches, test_code, output_file)
     
     # Check if an exact match exists
     memory_exists = False
@@ -54,13 +67,10 @@ def main():
     
     # Add to memory only if it doesn't already exist
     if not memory_exists:
-        # Get compiler errors for better analysis
-        compiler_errors, _ = Memory.get_compiler_errors(test_code, language, test_program_path.name)
-        
         memory_id = memory_system.add(
-            original_code=test_code,
-            fixed_code=None,
-            errors=compiler_errors
+            err=diagnostic,
+            fix_question=test_code,
+            fix_answer=None
         )
         print(f"Added to memory with ID: {memory_id}")
     

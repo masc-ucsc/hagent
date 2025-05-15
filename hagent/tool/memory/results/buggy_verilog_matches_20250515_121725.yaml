@@ -1,16 +1,16 @@
 query:
   code: "module trivial( input a, input b, output c);\nassign c = a ^ b\nendmodule\n\
     \n"
-  timestamp: '2025-05-15 11:55:36'
+  timestamp: '2025-05-15 12:17:25'
 results:
   count: 3
   exact_match_found: false
   matches:
-    - id: 549a06ea-0a15-4a80-9de7-a0832ad825ee
-      content: "Spade Bug #14: Fix the undefined variable in this code. Error: Variable
-        'output' might be undefined"
-      error_type: undefined_variable
-      bug_category: undefined variable
+    - id: e5d596c3-f887-458a-be9b-4d6329c53538
+      content: 'Bug: Fix the bug in this code. Error: Missing Spade component declaration
+        (Accel/Kernel/Module)'
+      error_type: unknown
+      bug_category: unknown
       faulty_code: "// Simple Spade program with missing parenthesis\n\n@module\n
         fn not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\n
         fn main() -> () {\n  let a = 1'b0;\n  // Bug: Missing closing parenthesis\n\
@@ -19,27 +19,24 @@ results:
         not_gate(input: bit) -> (output: bit) {\n  output = !input;\n}\n\n@module\n
         fn main() -> () {\n  let a = 1'b0;\n  let b = not_gate(a);\n  \n  assert(b
         == 1'b1);\n} "
-      timestamp: '202505151154'
+      timestamp: '202505151216'
       keywords:
-        - bug
-        - Spade
-        - error
-        - undefined variable
-      tags:
         - spade
-        - undefined variable
+        - unknown
+        - error
+        - bug
+      tags:
         - debugging
-        - variables
-      context: 'Spade programming bug fix: undefined variable'
+        - unknown
+        - spade
+      context: 'spade programming bug fix: unknown'
       compiler_errors:
         - Missing Spade component declaration (Accel/Kernel/Module)
-        - Missing 1 closing parentheses ')'
-        - 'Potentially undefined variable: output at line 5'
-    - id: 5e11c482-bf42-4615-a86f-dd919ee1b737
-      content: 'PyRTL Bug #12: Fix the PyRTL execution error in this code. Error:
-        Traceback (most recent call last):'
-      error_type: pyrtl_error
-      bug_category: pyrtl error
+    - id: 2335d196-562d-48ec-85a1-819bc7929f91
+      content: 'Bug: Fix the bug in this code. Error: Traceback (most recent call
+        last):'
+      error_type: unknown
+      bug_category: unknown
       faulty_code: "import pyrtl\n\n# Simple half adder with missing wire assignment\n
         \n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output
         wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
@@ -49,28 +46,24 @@ results:
         \n# Input wires\na = pyrtl.Input(1, 'a')\nb = pyrtl.Input(1, 'b')\n\n# Output
         wires\nsum_out = pyrtl.Output(1, 'sum')\ncarry_out = pyrtl.Output(1, 'carry')\n
         \n# Connect outputs\nsum_out <<= a ^ b\ncarry_out <<= a & b "
-      timestamp: '202505151154'
+      timestamp: '202505151216'
       keywords:
-        - bug
-        - PyRTL execution error
-        - PyRTL
-        - error
-      tags:
-        - pyrtl error
-        - debugging
         - pyrtl
-      context: 'PyRTL programming bug fix: PyRTL execution error'
+        - unknown
+        - error
+        - bug
+      tags:
+        - debugging
+        - unknown
+        - pyrtl
+      context: 'pyrtl programming bug fix: unknown'
       compiler_errors:
         - 'Traceback (most recent call last):'
-        - '  File "/var/folders/33/2m8c0r8s1cq6tfdwpfpy9ycc0000gn/T/tmpetet6bwy.py",
-          line 1, in <module>'
-        - '    import pyrtl'
-        - "ModuleNotFoundError: No module named 'pyrtl'"
-    - id: e37c30c4-3f8d-48d9-a914-d363a40e388c
-      content: 'Chisel Bug #11: Fix the code error: Could not find Scala compilation
-        tools'
+    - id: edc5e6fc-6df0-44ba-8838-271a8ac9f917
+      content: 'Bug: Fix the bug in this code. Error: Scala/Chisel compilation tools
+        not available'
       error_type: unknown
-      bug_category: module connection
+      bug_category: unknown
       faulty_code: "#!/usr/bin/env scala-cli\n//> using scala      \"2.13.14\"\n//>
         using repository \"sonatype:releases\"\n//> using dep       \"edu.berkeley.cs::chisel3:3.6.1\"\
         \n//> using plugin    \"edu.berkeley.cs::chisel3-plugin:3.6.1\"\n\nimport
@@ -84,13 +77,16 @@ results:
         \ val sum = Output(UInt(8.W))\n  })\n  \n  val result = io.a + io.b\n  \n\
         \  // Fixed: Added connection to output\n  io.sum := result\n}\n\nobject AdderMain
         extends App {\n  chisel3.stage.ChiselStage.emitVerilog(new Adder)\n} "
-      timestamp: '202505151154'
+      timestamp: '202505151216'
       keywords:
-        - Chisel
+        - chisel
+        - unknown
+        - error
         - bug
       tags:
-        - chisel
         - debugging
-      context: 'Chisel programming bug fix: unknown'
+        - unknown
+        - chisel
+      context: 'chisel programming bug fix: unknown'
       compiler_errors:
         - Scala/Chisel compilation tools not available
