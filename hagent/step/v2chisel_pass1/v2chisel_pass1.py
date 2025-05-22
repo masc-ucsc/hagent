@@ -15,7 +15,8 @@ from hagent.core.llm_wrap import LLM_wrap
 
 from hagent.tool.chisel2v import Chisel2v
 from hagent.tool.code_scope import Code_scope
-from hagent.step.apply_diff.apply_diff import Apply_diff
+# from hagent.step.apply_diff.apply_diff import Apply_diff
+from hagent.tool.chisel_diff_applier import ChiselDiffApplier
 
 from hagent.tool.extract_verilog_diff_keywords import Extract_verilog_diff_keywords
 from hagent.tool.fuzzy_grep import Fuzzy_grep
@@ -334,34 +335,26 @@ class V2Chisel_pass1(Step):
             print('==============================================')
 
             generated_diff = self._strip_markdown_fences(response_list[0])
-            apply_step = Apply_diff()
-            apply_step.set_io(self.input_file, self.output_file)
-            apply_step.input_data = data
-            apply_step.setup()
+            # apply with ChiselDiffApplier instead of Apply_diff
+            applier = ChiselDiffApplier()
+            chisel_original = data.get('chisel_original', '')
             try:
-                data = apply_step.run(data)
-                chisel_updated = data.get('chisel_candidate', '')
-                print('Applied the diff.')
+                chisel_updated = applier.apply_diff(generated_diff, chisel_original)
+                data['chisel_candidate'] = chisel_updated
+                print('Applied the diff via ChiselDiffApplier.')
             except Exception as ex:
                 err = str(ex)
                 if 'apply_diff verification failed' in err:
-                    # call helper — it only retries on apply errors, then returns as soon as an apply succeeds
                     cu, new_diff, apply_ok = self._handle_diff_not_found(
-                        data,
-                        generated_diff,
-                        err,
-                        verilog_diff_text,
-                        chisel_original
+                        data, generated_diff, err, verilog_diff_text, chisel_original
                     )
                     if apply_ok:
-                        # we now have a valid chisel_updated and new diff; proceed to verify_candidate below
                         chisel_updated = cu
                         generated_diff = new_diff
                         print('Applied the diff after diff_not_found retry.')
-                        # fall through to Verify_candidate
                     else:
                         last_error_msg = err
-                        continue  # no apply succeeded, back to next prompt_i
+                        continue
                 else:
                     raise
 
@@ -448,18 +441,15 @@ class V2Chisel_pass1(Step):
             generated_diff = self._strip_markdown_fences(resp[0])
 
             # try apply again
-            apply_step = Apply_diff()
-            apply_step.set_io(self.input_file, self.output_file)
-            data['generated_diff']  = generated_diff
-            data['chisel_original'] = chisel_original
-            apply_step.input_data = data
-            apply_step.setup()
+            # apply with ChiselDiffApplier
+            applier = ChiselDiffApplier()
             try:
-                data = apply_step.run(data)
+                chisel_updated = applier.apply_diff(generated_diff, chisel_original)
+                data['chisel_candidate'] = chisel_updated
             except Exception as e:
                 last_error_msg = str(e)
                 continue
-
+            
             # if we got here, apply_diff succeeded!
             chisel_updated = data.get('chisel_candidate', '')
             # restore context before returning

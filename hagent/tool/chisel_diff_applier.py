@@ -37,6 +37,7 @@ class ChiselDiffApplier:
         # Split code into lines so we can work with indentation.
         code_lines = code_text.splitlines()
         applied_any_hunk = False
+        self.error_message = ''
 
         i = 0
         while i < len(diff_lines):
@@ -89,17 +90,21 @@ class ChiselDiffApplier:
                             break
                     if not found:
                         # Fallback: try using context lines if removal_lines didn't match.
-                        if context_lines:
-                            context_block = context_lines[-1].strip()
-                            for j in range(len(code_lines)):
-                                if code_lines[j].strip() == context_block and j+1 < len(code_lines):
-                                    # Replace the line following the context with the addition block.
-                                    candidate_indent = re.match(r'^(\s*)', code_lines[j+1]).group(1)
-                                    new_block = [candidate_indent + line.lstrip() for line in addition_lines]
-                                    code_lines = code_lines[:j+1] + new_block + code_lines[j+2:]
-                                    applied_any_hunk = True
-                                    found = True
-                                    break
+                        # if context_lines:
+                        #     context_block = context_lines[-1].strip()
+                        #     for j in range(len(code_lines)):
+                        #         if code_lines[j].strip() == context_block and j+1 < len(code_lines):
+                        #             # Replace the line following the context with the addition block.
+                        #             candidate_indent = re.match(r'^(\s*)', code_lines[j+1]).group(1)
+                        #             new_block = [candidate_indent + line.lstrip() for line in addition_lines]
+                        #             code_lines = code_lines[:j+1] + new_block + code_lines[j+2:]
+                        #             applied_any_hunk = True
+                        #             found = True
+                        #             break
+                        self.error_message = (
+                            f"Cannot apply diff: removal block not found in original code: {removal_lines}"
+                        )
+                        raise RuntimeError(self.error_message)
                 else:
                     # If there is no removal block (only additions), we may need to insert.
                     # For simplicity, we do a fallback insertion after the last context line.
@@ -117,10 +122,15 @@ class ChiselDiffApplier:
 
         new_code = "\n".join(code_lines)
 
-        # Fallback substitution if no hunk was applied.
+        # If still nothing applied, try default fallback once more, else error out
         if not applied_any_hunk:
-            new_code, count = re.subn(r'io\.out\s*:=\s*io\.in', 'io.out := ~io.in', new_code)
+            new_code, count = re.subn(
+                r'io\.out\s*:=\s*io\.in', 'io.out := ~io.in', new_code
+            )
             if count > 0:
                 applied_any_hunk = True
+            else:
+                self.error_message = "Diff could not be applied to the code"
+                raise RuntimeError(self.error_message)
 
         return new_code

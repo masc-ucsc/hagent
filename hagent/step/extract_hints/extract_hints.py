@@ -3,6 +3,7 @@ from hagent.tool.metadata_mapper import MetadataMapper
 from hagent.tool.extract_verilog_diff_keywords import Extract_verilog_diff_keywords
 from hagent.tool.fuzzy_grep import Fuzzy_grep
 from hagent.tool.code_scope import Code_scope
+from typing import Optional
 
 class Extract_hints(Step):
     """
@@ -15,6 +16,11 @@ class Extract_hints(Step):
     Emits:
       - hints: str
     """
+
+    def __init__(self, metadata_context: Optional[int] = None):
+        super().__init__()
+        # optional override from agent
+        self._meta = metadata_context
     def setup(self):
         super().setup()
         # Initialize metadata mapper with original/fixed Verilog
@@ -24,6 +30,11 @@ class Extract_hints(Step):
         )
         # Default fuzzy-grep threshold
         self.threshold = self.input_data.get('threshold', 80)
+        self.metadata_context = (
+            self._meta
+            if self._meta is not None
+            else self.input_data.get('metadata_context', 10)
+        )
         self.setup_called = True
 
     def run(self, data):
@@ -35,7 +46,8 @@ class Extract_hints(Step):
         if pointers:
             # same defaults as your monolithic version
             before = 5
-            after  = data.get('metadata_context', 10)
+            # after  = data.get('metadata_context', 10)
+            after = self.metadata_context
             snippet = self.metadata_mapper.slice_chisel_by_pointers(
                 chisel_original, pointers, before=before, after=after
             )

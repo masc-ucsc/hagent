@@ -34,8 +34,7 @@ from hagent.tool.extract_code import Extract_code_verilog, Extract_code_chisel
 from hagent.tool.equiv_check import Equiv_check
 from hagent.tool.compile_slang import Compile_slang
 from hagent.tool.chisel2v import Chisel2v
-# from hagent.tool.chisel_diff_applier import ChiselDiffApplier
-from hagent.step.apply_diff.apply_diff import Apply_diff
+from hagent.tool.chisel_diff_applier import ChiselDiffApplier
 from hagent.step.v2chisel_pass1.v2chisel_pass1 import V2Chisel_pass1
 from hagent.tool.react import React
 from hagent.tool.compile import Diagnostic
@@ -181,12 +180,13 @@ class V2chisel_fix(Step):
             print(f"[V2ChiselFix] Computed unified verilog_diff:\n{self.verilog_diff_str}")
             
         # --- Phase 1: prompt3 refinements (up to 2 attempts) ---
-        for attempt in (1, 2):
+        prompt3_iteration = 1
+        for attempt in range(1, prompt3_iteration + 1):
             print(f"[V2ChiselFix] prompt3 refinement attempt {attempt}")
             self.meta = self.base_metadata_context + 20 * (attempt)
             print(f"[V2ChiselFix] using metadata_context = {self.meta}")
             self.input_data['metadata_context'] = self.meta
-            hint_step = Extract_hints()
+            hint_step = Extract_hints(metadata_context=self.meta)
             hint_step.set_io(self.input_file, self.output_file)
             hint_step.input_data = {
                 'verilog_original':  self.verilog_original_str,
@@ -197,7 +197,6 @@ class V2chisel_fix(Step):
             }
             hint_step.setup()
             hint_out = hint_step.run(hint_step.input_data)
-            # self.chisel_subset = hint_out.get('chisel_subset', '')
             self.chisel_subset = hint_out.get('hints', '').strip()
             print(
                 f"[V2ChiselFix] regenerated chisel_subset "
@@ -231,9 +230,30 @@ class V2chisel_fix(Step):
                 return result
 
         # --- Phase 2: prompt4 refinements (up to 2 attempts) ---
-        for attempt in (1, 2):
+        prompt4_iteration = 1
+        for attempt in range(1, prompt4_iteration + 1):
             print(f"[V2ChiselFix] prompt4 refinement attempt {attempt}")
+            self.meta = self.base_metadata_context + 30 * (attempt)
+            self.input_data['metadata_context'] = self.meta
+            hint_step = Extract_hints(metadata_context=self.meta)
+            hint_step.set_io(self.input_file, self.output_file)
+            hint_step.input_data = {
+                'verilog_original':  self.verilog_original_str,
+                'verilog_fixed':     self.verilog_fixed_str,
+                'verilog_diff':      self.verilog_diff_str,
+                'chisel_original':   self.chisel_original,
+                'metadata_context':  self.meta,
+            }
+            hint_step.setup()
+            hint_out = hint_step.run(hint_step.input_data)
+            self.chisel_subset = hint_out.get('hints', '').strip()
+            print(
+                f"[V2ChiselFix] regenerated chisel_subset "
+                f"with metadata_context={self.meta}:\n{self.chisel_subset}"
+            )
+
             new_diff = self._refine_chisel_code_with_prompt4(chisel_original, lec_error, attempt)
+
             if not new_diff.strip():
                 continue
             # cand_code = ChiselDiffApplier().apply_diff(new_diff, chisel_original)
@@ -259,25 +279,7 @@ class V2chisel_fix(Step):
         # --- Fallback: React-driven refinement ---
         print("[V2ChiselFix] Both LLM phases failed, entering React-driven refinement")      
 
-        def check_callback(code: str):
-            # Use _run_chisel2v to compile and then _check_equivalence to verify the candidate.
-            is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(code)
-            if not is_valid:
-                # Create a dummy diagnostic with the error message.
-                return [Diagnostic(f"Compilation error: {error_msg}")]
-            is_equiv, lec_err = self._check_equivalence(verilog_fixed, verilog_candidate_temp)
-            if is_equiv:
-                return []  # No diagnostics if equivalent.
-            else:
-                return [Diagnostic(f"LEC failed: {lec_err}")]
-
-        def fix_callback(code: str, diag, fix_example, delta, iteration):
-            # Use your prompt-based diff generation (prompt3) to attempt a fix.
-            new_diff = self._refine_chisel_code(code, diag.msg, iteration)
-            # applier = ChiselDiffApplier()
-            # new_code = applier.apply_diff(new_diff, code)
-            new_code = self._apply_diff(code, new_diff)
-            return new_code
+        
 
         react_tool = React()
         if not react_tool.setup(db_path=None, learn=False, max_iterations=5, comment_prefix="//"):
@@ -306,6 +308,25 @@ class V2chisel_fix(Step):
         }
         result['lec'] = 1
         return result      
+    
+    def check_callback(self, code: str):
+        # Use _run_chisel2v to compile and then _check_equivalence to verify the candidate.
+        is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(code)
+        if not is_valid:
+            # Create a dummy diagnostic with the error message.
+            return [Diagnostic(f"Compilation error: {error_msg}")]
+        is_equiv, lec_err = self._check_equivalence(self.verilog_fixed_str, verilog_candidate_temp)
+        if is_equiv:
+            return []  # No diagnostics if equivalent.
+        else:
+            return [Diagnostic(f"LEC failed: {lec_err}")]
+    def fix_callback(self, code: str, diag, fix_example, delta, iteration):
+        # Use your prompt-based diff generation (prompt3) to attempt a fix.
+        new_diff = self._refine_chisel_code(code, diag.msg, iteration)
+        # applier = ChiselDiffApplier()
+        # new_code = applier.apply_diff(new_diff, code)
+        new_code = self._apply_diff(code, new_diff)
+        return new_code
 
     def _check_candidate_with_compiler(self,candidate_verilog: str) -> (bool, str):
         """
@@ -328,6 +349,8 @@ class V2chisel_fix(Step):
         current_code = chisel_code
         for i in range(1, max_iterations + 1):
             current_chisel_diff = diff_code(self.chisel_original, current_code)
+            print("\ncurrent_chisel_diff:", current_chisel_diff)
+            print("\n compiler_error:", compiler_error)
 
             prompt_dict = {
                 'current_chisel_diff': current_chisel_diff,
@@ -369,51 +392,77 @@ class V2chisel_fix(Step):
                         compiler_error = error_msg
                         break
         return current_code
-    
-    def _try_apply(self, original: str, diff: str) -> str:
-        """Apply a single diff; may raise DiffContextError."""
-        step = Apply_diff()
-        step.set_io(self.input_file, self.output_file)
-        step.input_data = {
-            'chisel_original': original,
-            'generated_diff':  diff
-        }
-        step.setup()
-        try:
-            return step.run(step.input_data)['chisel_candidate']
-        except Exception as e:
-            msg = str(e)
-            if CONTEXT_ERR_PATTERNS.search(msg):
-                raise DiffContextError(msg)
-            raise
 
     def _apply_diff(self, original: str, initial_diff: str) -> str:
         diff = initial_diff
         for attempt in range(1, self.max_retries + 1):
             try:
-                chisel = self._try_apply(original, diff)
+                chisel = ChiselDiffApplier().apply_diff(diff, original)
                 print(f"[V2ChiselFix] Applied diff on attempt {attempt}")
                 return chisel
-            except DiffContextError as e:
-                print(f"[V2ChiselFix] Context error on attempt {attempt}: {e}")
-                diff = self._refine_diff_not_found(diff)
-        raise RuntimeError(f"Failed to apply diff after {self.max_retries} attempts")
+            except RuntimeError as e:
+                applier_error = str(e)
+                print(f"[V2ChiselFix] Context error on attempt {attempt}: {applier_error}")
+                # bump metadata_context by 20 lines per retry
+                self.meta = self.base_metadata_context + 20 * attempt
+                self.input_data['metadata_context'] = self.meta
+                print(f"[V2ChiselFix] metadata_context increased to {self.meta}")
+
+                # regenerate a better diff, now passing applier_error
+                diff = self._refine_diff_not_found(diff, applier_error)
+                print(f"[V2ChiselFix] obtained new diff, retrying (attempt {attempt})")
+
+        # all retries exhausted
+        raise RuntimeError(f"_apply_diff failed after {self.max_retries} attempts")
     
 
-    def _refine_diff_not_found(self, old_diff: str) -> str:
-        """Ask the LLM once to regenerate a better diff."""
+    def _refine_diff_not_found(self, old_diff: str, applier_error: str) -> str:
+        """
+        When Apply_diff fails due to missing context, regenerate hints
+        at the current metadata_context and then ask the LLM for a better diff.
+        """
+        # 1) regenerate hint lines for this new metadata_context using the pass1 helper
+        print("metadate:", self.meta)
+        v2c_pass1 = V2Chisel_pass1()
+        v2c_pass1.input_file  = self.input_file
+        v2c_pass1.output_file = self.output_file
+        # carry forward any llm overrides from pass1
+        v2c_pass1.input_data   = {
+            'llm': self.template_config.template_dict.get('v2chisel_pass1', {}).get('llm', {})
+        }
+        v2c_pass1.setup()
+        new_hints = v2c_pass1._extract_chisel_subset(
+            self.chisel_original,
+            self.verilog_diff_str,
+            threshold_override=self.meta
+        )
+        self.chisel_subset = new_hints.strip()
+        print(f"[V2ChiselFix] regenerated chisel_subset for diff_not_found (meta={self.meta}):\n{self.chisel_subset}")
+ 
+
+        # 2) now ask the LLM for a new diff with fresh hints
         cfg = self.template_config.template_dict[self.refine_llm.name.lower()]
+        if 'prompt_diff_not_found' not in cfg:
+            self.error("Missing 'prompt_diff_not_found' in prompt configuration.")
         self.refine_llm.chat_template = LLM_template(cfg['prompt_diff_not_found'])
         prompt = {
-            'generate_diff': old_diff,
+            'generate_diff':    old_diff,
             'metadata_context': self.meta,
-            'chisel_subset': self.chisel_subset,
+            'chisel_subset':    self.chisel_subset,
+            'applier_error':    applier_error,
         }
         answers = self.refine_llm.inference(prompt, 'prompt_diff_not_found', n=1)
+        if not answers:
+            print('\n=== LLM RESPONSE: EMPTY ===\n')
+        print('\n================ LLM RESPONSE (prompt_not_found) ================')
+        print(answers[0])
+        print('======================================================================')
         for txt in answers:
-            diff = self.chisel_extractor.parse(txt)
-            if diff:
-                return diff
+            diff_candidate = self.chisel_extractor.parse(txt)
+            if diff_candidate:
+                return diff_candidate
+
+        # 3) fallback to the original diff if LLM gives nothing usable
         return old_diff
 
 
@@ -480,7 +529,7 @@ class V2chisel_fix(Step):
         return '\n'.join(diff_lines)
 
     def _check_equivalence(self, gold_code: str, gate_code: str):
-        if not gold_code.strip() or not gold_code.strip():
+        if not gold_code.strip() or not gate_code.strip():
             return (False, 'Missing code for equivalence check')
         eq_checker = Equiv_check()
         if not eq_checker.setup():

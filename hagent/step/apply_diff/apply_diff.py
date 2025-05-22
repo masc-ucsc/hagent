@@ -20,6 +20,7 @@ class Apply_diff(Step):
     def run(self, data):
         original  = data.get('chisel_original', '')
         diff_text = data.get('generated_diff', '')
+        print("\n********diff_text:", diff_text)
 
         # Apply the diff
         candidate = self.applier.apply_diff(diff_text, original)
@@ -37,8 +38,6 @@ class Apply_diff(Step):
         
         # DEBUG: print both diffs for inspection
         print("=== apply_diff: input diff ===")
-        print(diff_text)
-        print("=== apply_diff: recomputed diff ===")
         print(diff_text)
 
         # Verify each removal existed in original, and each addition appears in candidate

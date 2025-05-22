@@ -21,7 +21,7 @@ v2chisel_fix:
         ```
         Additionally, based on further code analysis, here are new hints extracted from the chisel_original with hints "->" marking the lines that are most likely to require changes:
         ```
-        {new_hints}
+        {chisel_subset}
         ```
         Please generate a new unified diff that only modifies existing lines.
         Can you give me a Chisel diff that could work?
@@ -118,5 +118,9 @@ v2chisel_fix:
         ```
         {compiler_error}
         ```
+        # Lines from the original chisel code marked with `->` that point to areas most likely needing changes:
+        # ```
+        # {new_hints}
+        # ```
         Please generate a minimal unified diff that fixes the compilation error so that the code can compile.
         *Note*: Only output the unified diff.
