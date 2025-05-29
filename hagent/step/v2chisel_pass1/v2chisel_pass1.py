@@ -336,7 +336,6 @@ class V2Chisel_pass1(Step):
             try:
                 chisel_updated = applier.apply_diff(generated_diff, chisel_original)
                 data['chisel_candidate'] = chisel_updated
-                print('Applied the diff via ChiselDiffApplier.')
             except Exception as ex:
                 print("Applier has some errors.")
                 err = str(ex)
@@ -357,9 +356,6 @@ class V2Chisel_pass1(Step):
                     # any other exception we don’t know how to recover from
                     raise
 
-            # print("===== FINAL CHISEL CODE AFTER DIFF APPLIER (attempt {}) =====".format(attempt))
-            # print(chisel_updated)
-            print('Applied the diff.')
 
             # delegate compilation & basic validity check to our new Verify_candidate step
             print("DEBUG: about to run Verify_candidate")

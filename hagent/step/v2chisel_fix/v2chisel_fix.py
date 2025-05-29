@@ -279,7 +279,6 @@ class V2chisel_fix(Step):
         # --- Fallback: React-driven refinement ---
         print("[V2ChiselFix] Both LLM phases failed, entering React-driven refinement")      
 
-        
 
         react_tool = React()
         if not react_tool.setup(db_path=None, learn=False, max_iterations=5, comment_prefix="//"):
@@ -288,13 +287,13 @@ class V2chisel_fix(Step):
         initial_candidate = chisel_changed if chisel_changed.strip() else chisel_original
         # --- We will only get here if both LLM phases fail ---
         print(f"[V2ChiselFix] Calling React.react_cycle with initial_candidate length={len(initial_candidate)}")
-        refined_chisel = react_tool.react_cycle(initial_candidate, check_callback, fix_callback)
+        refined_chisel = react_tool.react_cycle(initial_candidate, self.check_callback, self.fix_callback)
         if not refined_chisel:
             print("[ERROR] React failed to refine the code.  Marking equivalence as failed.")
             result['chisel_fixed'] = {
                 'original_chisel': chisel_original,
                 'refined_chisel': chisel_original,
-                'chisel_diff': "",
+                'chisel_diff': new_diff,
                 'equiv_passed': False,
             }
             result['lec'] = 0
@@ -448,10 +447,11 @@ class V2chisel_fix(Step):
         prompt = {
             'generate_diff':    old_diff,
             'metadata_context': self.meta,
-            'chisel_subset':    self.chisel_subset,
+            'new_hints':    self.chisel_subset,
             'applier_error':    applier_error,
+            'verilog_diff': self.verilog_diff_str,
         }
-        answers = self.refine_llm.inference(prompt, 'prompt_diff_not_found', n=1)
+        answers = self.refine_llm.inference(prompt, 'prompt_diff_not_found', n=5)
         if not answers:
             print('\n=== LLM RESPONSE: EMPTY ===\n')
         print('\n================ LLM RESPONSE (prompt_not_found) ================')

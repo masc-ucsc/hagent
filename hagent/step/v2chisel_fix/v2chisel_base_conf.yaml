@@ -11,7 +11,13 @@ v2chisel_fix:
         You are an AI specialized in debugging and refining Chisel code to match a given Verilog specification.
     - role: user
       content: |
-        The unified diff you provided refers to lines not present in the current Chisel source:
+        I have a Scala program that generates Verilog. I made modifications to the Verilog code and now need to update the corresponding Chisel code.
+
+        The fixed Verilog represents the desired changes. Here is the unified diff between the original and fixed Verilog:
+        ```
+        {verilog_diff}
+        ```
+        The unified diff you provided refers to lines not present in the current Chisel source, here is the buggy chisel diff:
         ```
         {generate_diff}
         ```
@@ -21,10 +27,9 @@ v2chisel_fix:
         ```
         Additionally, based on further code analysis, here are new hints extracted from the chisel_original with hints "->" marking the lines that are most likely to require changes:
         ```
-        {chisel_subset}
+        {new_hints}
         ```
-        Please generate a new unified diff that only modifies existing lines.
-        Can you give me a Chisel diff that could work?
+        Please provide a unified diff that implements all necessary updates to the Chisel code and please generate a new unified diff that only modifies existing lines.
         Output *only* the diff in unified diff format with only the minimal hunk containing the changed lines and no additional commentary or headers or Note.
         PLEASE No explanation, no Note. ONLY diff
 
