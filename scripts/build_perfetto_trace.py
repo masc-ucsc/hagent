@@ -4,7 +4,6 @@ Script to build a Perfetto Trace from a run directory with input/output YAML fil
 
 import argparse
 import logging
-import os
 
 from typing import (
     List,
@@ -48,9 +47,9 @@ def generate_perfetto_trace(yaml_files: List[str], output_file: str, asynchronou
     # Initial YAMLs used as inputs for a Pipe.
     initial, inputs, outputs = parse_yaml_files(yaml_files)
 
-    logger.debug(f'Initial YAML files: %s', initial)
-    logger.debug(f'Input YAML files: %s', inputs)
-    logger.debug(f'Output YAML files: %s', outputs)
+    logger.debug('Initial YAML files: %s', initial)
+    logger.debug('Input YAML files: %s', inputs)
+    logger.debug('Output YAML files: %s', outputs)
 
     Tracer.save_perfetto_trace(
         dependencies=(initial, inputs, outputs), filename=output_file, asynchronous=asynchronous, step_offset=step_offset
