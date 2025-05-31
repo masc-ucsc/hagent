@@ -1,8 +1,10 @@
 import re
 from abc import ABC, abstractmethod
 
+from hagent.core.tracer import TracerABCMetaClass
 
-class Extract_code(ABC):
+
+class Extract_code(metaclass=TracerABCMetaClass):
     @abstractmethod
     def parse(self, prompt: str, verilog_path: str) -> str:
         pass
