@@ -495,7 +495,6 @@ class Tracer:
                     step = cls.get_step_from_yaml(g, yaml_file)
                     step.tid = step_id
                     orig_event_ts = step.ts
-                    visited.add(yaml_file)
                     # If it is the first layer, we know that steps should be placed at timestamp 0.
                     if layer_idx == 0:
                         step.ts = 0
@@ -523,6 +522,7 @@ class Tracer:
                             step_offset = step.ts
                             subevent.ts = step_offset + interstep_offset
                             subevent.tid = step_id
+                    visited.add(yaml_file)
 
     @classmethod
     def save_perfetto_trace(cls, dependencies: Tuple[set, set, set],
