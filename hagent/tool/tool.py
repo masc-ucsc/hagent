@@ -4,10 +4,12 @@ from typing import Optional
 import os
 import shutil
 import subprocess
-from abc import ABC, abstractmethod
+from abc import abstractmethod
+
+from hagent.core.tracer import TracerABCMetaClass
 
 
-class Tool(ABC):
+class Tool(metaclass=TracerABCMetaClass):
     """
     Base class for all HAgent tools.
 
