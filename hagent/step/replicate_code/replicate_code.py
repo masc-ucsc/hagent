@@ -98,12 +98,12 @@ class Replicate_code(Step):
         
         x = 1
         #get the optimized code from result and save it in ~/hagent/generated_yamls/<top_name>_optimized.v
-        output_dir = os.path.dirname(self.output_file)
+        output_dir = os.path.dirname(os.path.abspath(self.output_file))
         for markdown in codes_passing_lec:
             optimized_ver = self.verilog_extractor.parse(markdown)
             if optimized_ver:
                 #filename = os.path.join(output_dir , f'{data['top_name']}_optimized_{x}.v') 
-                filename = os.path.join(output_dir , f'option_{x}.v') 
+                filename = os.path.join(output_dir , f'option_{x}.v')
                 x += 1
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
                 with open(filename, 'w') as f:
