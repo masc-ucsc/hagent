@@ -8,6 +8,5 @@ code_content: |
 top_name: "and_gate_behavioral"
 
 llm:
-  model: "ollama/gemma3:4b" # Cheap fireworks model
+  model: "ollama/gemma3:4b"
   drop_params: true
-
