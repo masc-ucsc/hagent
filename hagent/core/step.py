@@ -14,6 +14,7 @@ from hagent.core.llm_wrap import dict_deep_merge
 from hagent.core.llm_wrap import LLM_wrap
 from hagent.core.tracer import Tracer, TracerMetaClass, s_to_us
 
+
 def wrap_literals(obj):
     # Recursively wrap multiline strings as LiteralScalarString for nicer YAML output.
     if isinstance(obj, dict):
@@ -164,7 +165,7 @@ class Step(metaclass=TracerMetaClass):
         raise ValueError(msg)
 
     def augment_output_data(self, output_data: dict, start: float, elapsed: float, history: list):
-        output_data["step"] = self.__class__.__name__
+        output_data['step'] = self.__class__.__name__
         output_data['tracing'] = {}
         output_data['tracing']['start'] = s_to_us(start)
         output_data['tracing']['elapsed'] = s_to_us(elapsed)
