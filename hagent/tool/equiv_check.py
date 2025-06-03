@@ -3,7 +3,7 @@ import re
 import subprocess
 import tempfile
 import sys
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 
 class Equiv_check:
@@ -105,10 +105,17 @@ class Equiv_check:
         gate_v_filename = self._write_temp_verilog(work_dir, gate_code, 'gate')
 
         # 3) Run standard 'equiv -assert' approach
-        code_equiv, out_equiv, err_equiv = self._run_equiv_method(work_dir, gold_v_filename, gate_v_filename, gold_top, gate_top)
+        code_equiv, out_equiv, err_equiv = self._run_equiv_method(
+            work_dir, gold_v_filename, gate_v_filename, gold_top, gate_top
+        )
         method1_result = self._analyze_yosys_result(code_equiv, out_equiv, err_equiv, method='equiv')
         if method1_result is not None:
             self.equivalence_check_result = method1_result
+            if method1_result is False:
+                # store parsed failures into counterexample_info
+                failures = self.parse_equiv_failures(out_equiv, err_equiv)
+                if failures:
+                    self.counterexample_info = failures
             return method1_result
 
         # 4) If method 1 inconclusive, do the SMT-based approach
@@ -124,6 +131,56 @@ class Equiv_check:
     def get_counterexample(self) -> Optional[str]:
         """Returns the stored counterexample info if available."""
         return self.counterexample_info
+    
+    def parse_equiv_failures(self, out: str, err: str) -> List[Tuple[str, str]]:
+        """
+        Scan Yosys stdout/stderr for lines indicating an unproven $equiv. Return
+        a list of (module_name, io_name) pairs, or, if we only see the summary
+        "Found N unproven $equiv cells", return a placeholder entry
+        ("<summary>", "<N unproven equiv cells>").
+        """
+        failures: List[Tuple[str, str]] = []
+
+        # Pattern 1: “Trying to prove $equiv for \MODULE.IO: failed.”
+        pat1 = re.compile(
+            r"""Trying to prove \$equiv for \\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+):\s*failed"""
+        )
+
+        # Pattern 2: “Unproven $equiv ...: \MODULE.IO_NAME_gold \MODULE.IO_NAME_gate”
+        pat2 = re.compile(
+            r"""Unproven \$equiv [^:]*:\s*\\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)_(?:gold|gate)"""
+        )
+
+        # Pattern 3: summary "ERROR: Found N unproven $equiv cells in 'equiv_status ...'."
+        pat3 = re.compile(
+            r"""ERROR:\s*Found\s+(\d+)\s+unproven\s+\$equiv\s+cells""", flags=re.IGNORECASE
+        )
+
+        for line in out.splitlines() + err.splitlines():
+            # Check for "Trying to prove $equiv for \Module.IO: failed"
+            m1 = pat1.search(line)
+            if m1:
+                module, io_name = m1.group(1), m1.group(2)
+                failures.append((module, io_name))
+                continue
+
+            # Check for "Unproven $equiv ...: \Module.IO_gold \Module.IO_gate"
+            m2 = pat2.search(line)
+            if m2:
+                module, io_name = m2.group(1), m2.group(2)
+                failures.append((module, io_name))
+                continue
+
+            # Check for summary "ERROR: Found 3 unproven $equiv cells"
+            m3 = pat3.search(line)
+            if m3:
+                count = m3.group(1)
+                # We don't know module/IO here, just store a summary
+                failures.append(("<summary>", f"{count} unproven $equiv cells"))
+                continue
+
+        return failures
+
 
     # ------------------- Internal Helpers -------------------
 
