@@ -14,6 +14,7 @@ import sys
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 from hagent.tool.equiv_check import Equiv_check
+from typing import List, Tuple
 
 def main():
     if len(sys.argv) < 2:
@@ -70,9 +71,12 @@ def main():
     elif result is False:
         print('Designs are NOT equivalent.')
         lec_val = 0
-        cex = checker.get_counterexample()
-        if cex:
-            print(f'Counterexample: {cex}')
+        # Retrieve list of (module, io_name) tuples
+        cex_list: List[Tuple[str, str]] = checker.get_counterexample() or []
+        if cex_list:
+            print('Found mismatches in the following signals:')
+            for module_name, io_name in cex_list:
+                print(f'  • Module "{module_name}", IO "{io_name}"')
     else:
         # Inconclusive
         print('Equivalence check inconclusive.')
