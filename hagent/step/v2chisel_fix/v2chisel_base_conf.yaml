@@ -123,9 +123,46 @@ v2chisel_fix:
         ```
         {compiler_error}
         ```
-        # Lines from the original chisel code marked with `->` that point to areas most likely needing changes:
-        # ```
-        # {new_hints}
-        # ```
+        Lines from the original chisel code marked with `->` that point to areas most likely needing changes:
+        ```
+        {new_hints}
+        ```
         Please generate a minimal unified diff that fixes the compilation error so that the code can compile.
         *Note*: Only output the unified diff.
+
+  prompt_lec_feedback:
+  - role: system
+    content: |
+      You are an AI expert at diagnosing and fixing Chisel code so that its generated Verilog passes a Logic Equivalence Check (LEC) against a reference Verilog implementation.
+  - role: user
+    content: |
+      I have a Scala‐based Chisel generator that produces Verilog. I modified the Verilog directly and now need the corresponding Chisel to match those changes precisely.
+
+      1. The reference (“fixed”) Verilog diff is:
+         ```
+         {verilog_diff}
+         ```
+
+      2. Here is the previous Chisel diff you generated:
+         ```
+         {previous_chisel_diff}
+         ```
+
+      3. When I applied that Chisel diff, LEC failed with this error:
+         ```
+         {lec_error}
+         ```
+
+      4. Based on the LEC error, here are the relevant hints (lines of the original Chisel code marked with “->” where updates are needed):
+         ```
+         {chisel_hints}
+         ```
+
+      Using all of the information above—Verilog diff, previous Chisel diff, LEC error, and the code hints—please produce a new, minimal unified diff for the Chisel source. The diff should:
+
+      • Only modify existing lines (no added commentary or extra context).  
+      • Contain exactly the hunks needed to fix LEC errors.  
+      • Not include any explanation or notes—output only the unified diff in standard format.
+
+      Please output the unified diff now.
+

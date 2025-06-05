@@ -156,6 +156,11 @@ class V2chisel_fix(Step):
             lec_error = 'No verilog_fixed provided'
         else:
             initial_equiv, lec_error = self._check_equivalence(verilog_fixed, verilog_candidate)
+            # If not equivalent, lec_error may be a list of (module, io) tuples
+            if initial_equiv is False and isinstance(lec_error, list):
+                print("[WARN] LEC found mismatches in the following signals:")
+                for module_name, io_name in lec_error:
+                    print(f"  • Module \"{module_name}\", IO \"{io_name}\"")
 
         if initial_equiv:
             print('[INFO] Designs are already equivalent; no refinement needed.')
@@ -231,6 +236,7 @@ class V2chisel_fix(Step):
 
         # --- Phase 2: prompt4 refinements (up to 2 attempts) ---
         prompt4_iteration = 1
+        last_prompt4_diff = ""
         for attempt in range(1, prompt4_iteration + 1):
             print(f"[V2ChiselFix] prompt4 refinement attempt {attempt}")
             self.meta = self.base_metadata_context + 30 * (attempt)
@@ -256,6 +262,7 @@ class V2chisel_fix(Step):
 
             if not new_diff.strip():
                 continue
+            last_prompt4_diff = new_diff
             # cand_code = ChiselDiffApplier().apply_diff(new_diff, chisel_original)
             cand_code = self._apply_diff(chisel_original, new_diff)
             ok, verilog_temp, err = self._run_chisel2v(cand_code)
@@ -275,10 +282,30 @@ class V2chisel_fix(Step):
                 }
                 result['lec'] = 1
                 return result
+            
+        # --- Phase 3: prompt_lec_feedback refinement (if prompt4 failed) ---
+        print("[V2ChiselFix] prompt_lec_feedback refinement")
+        feedback_diff = self._refine_chisel_code_with_lec_feedback(
+            chisel_original, last_prompt4_diff, lec_error
+        )
+        if feedback_diff.strip():
+            cand_code = self._apply_diff(chisel_original, feedback_diff)
+            ok, verilog_temp, err = self._run_chisel2v(cand_code)
+            if ok:
+                equiv, lec_error = self._check_equivalence(self.verilog_fixed_str, verilog_temp)
+                if equiv:
+                    print("[V2ChiselFix] prompt_lec_feedback succeeded")
+                    result['chisel_fixed'] = {
+                        'original_chisel': chisel_original,
+                        'refined_chisel':  cand_code,
+                        'chisel_diff':     feedback_diff,
+                        'equiv_passed':    True,
+                    }
+                    result['lec'] = 1
+                    return result
 
         # --- Fallback: React-driven refinement ---
-        print("[V2ChiselFix] Both LLM phases failed, entering React-driven refinement")      
-
+        print("[V2ChiselFix] Both LLM phases failed, entering React-driven refinement")
 
         react_tool = React()
         if not react_tool.setup(db_path=None, learn=False, max_iterations=5, comment_prefix="//"):
@@ -308,6 +335,127 @@ class V2chisel_fix(Step):
         result['lec'] = 1
         return result      
     
+    def _extract_modules_from_lec_error(self, lec_error: str) -> list:
+        """
+        Parse the raw lec_error string for lines like:
+          • Module "control", IO "_GEN_1"
+        Return a de-duplicated list of module names, excluding any "<summary>" entries.
+        """
+        if not lec_error:
+            return []
+
+        # Find every occurrence of: Module "SomeName"
+        pattern = r'Module\s+"([^"]+)"'
+        matches = re.findall(pattern, lec_error)
+
+        # Filter out placeholders (e.g. "<summary>") and de-duplicate while preserving order
+        modules = [m for m in matches if not m.startswith('<')]
+        unique_modules = list(dict.fromkeys(modules))
+        return unique_modules
+    
+    def _extract_chisel_code_for_modules(self, chisel_text: str, module_names: list) -> str:
+        """
+        Given the full Chisel source (chisel_text) and a list of module names,
+        locate each definition of `class <ModuleName> extends Module { … }` and extract
+        that entire block (from the 'class' line through its matching closing '}').
+        Return a single string concatenating all found blocks, separated by two newlines.
+        """
+        hints = []
+
+        for mod in module_names:
+            # Build a regex to find the 'class <mod> extends Module' line
+            # We search for: class <mod> (optionally generic params) extends Module
+            class_pattern = rf'class\s+{re.escape(mod)}\b.*?extends\s+Module'
+            match = re.search(class_pattern, chisel_text)
+            if not match:
+                # If we didn’t find "class <mod> extends Module", skip it
+                continue
+
+            # The start index of the match
+            start_idx = match.start()
+
+            # Now locate the first '{' after the match—this begins the module body
+            brace_open_idx = chisel_text.find('{', match.end())
+            if brace_open_idx == -1:
+                continue  # malformed or no body
+
+            # Perform a simple brace‐counting to find the matching closing '}'
+            depth = 0
+            idx = brace_open_idx
+            text_len = len(chisel_text)
+
+            while idx < text_len:
+                char = chisel_text[idx]
+                if char == '{':
+                    depth += 1
+                elif char == '}':
+                    depth -= 1
+                    if depth == 0:
+                        # Found the matching closing brace for this class
+                        end_idx = idx
+                        break
+                idx += 1
+            else:
+                # If we exhausted the string without depth returning to 0, skip
+                continue
+
+            # Slice out from `start_idx` through `end_idx` (inclusive) to capture the whole class
+            module_block = chisel_text[start_idx : end_idx + 1]
+            hints.append(module_block.strip())
+
+        # Join all found blocks with two newlines (for readability)
+        return "\n\n".join(hints).strip()
+
+
+    def _refine_chisel_code_with_lec_feedback(self, original: str, prev_diff: str, lec_error: str):
+        """
+        Uses prompt_lec_feedback to generate a new Chisel diff.
+        The prompt includes the Verilog diff, the previous Chisel diff, the LEC error, and code hints.
+        """
+        
+        # 1) Extract a de-duped list of module names from lec_error
+        modules = self._extract_modules_from_lec_error(lec_error)
+
+        # 2) From the full chisel_original, extract each module's code block
+        chisel_original = original  # your original Chisel string from YAML
+        module_hints_code = self._extract_chisel_code_for_modules(chisel_original, modules)
+
+        # 3) Combine with any preexisting chisel_subset hints (if you still want them)
+        combined_hints = module_hints_code
+        if self.chisel_subset.strip():
+            # If you do want to keep pass1 hints, you can prepend them:
+            combined_hints = self.chisel_subset.strip() + "\n\n" + module_hints_code
+
+        print(f"[V2ChiselFix] Modules from LEC error: {modules}")
+        print(f"[V2ChiselFix] Extracted Chisel code hints for those modules:\n{module_hints_code}\n")
+
+        # 4) Build and send the LLM prompt
+        full_config = self.template_config.template_dict.get(self.refine_llm.name.lower(), {})
+        prompt_template = LLM_template(full_config["prompt_lec_feedback"])
+        self.refine_llm.chat_template = prompt_template
+
+        prompt_dict = {
+            'verilog_diff':            self.verilog_diff_str,
+            'previous_chisel_diff':    prev_diff or "",
+            'lec_error':               lec_error or "LEC failed",
+            'chisel_hints':            combined_hints,
+        }
+        print('\n================ LLM QUERY (prompt_lec_feedback) ================')
+        answers = self.refine_llm.inference(prompt_dict, prompt_index="prompt_lec_feedback", n=1, max_history=10)
+        if not answers:
+            print('\n=== LLM RESPONSE (prompt_lec_feedback): EMPTY ===\n')
+            return ""
+
+        print('\n================ LLM RESPONSE (prompt_lec_feedback) ================')
+        print(answers[0])
+        print('=====================================================================')
+
+        for txt in answers:
+            diff = self.chisel_extractor.parse(txt)
+            if diff:
+                return diff
+        return ""
+
     def check_callback(self, code: str):
         # Use _run_chisel2v to compile and then _check_equivalence to verify the candidate.
         is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(code)
@@ -354,6 +502,7 @@ class V2chisel_fix(Step):
             prompt_dict = {
                 'current_chisel_diff': current_chisel_diff,
                 'compiler_error': compiler_error,
+                'new_hints': self.chisel_subset,
             }
 
             full_config = self.template_config.template_dict.get(self.refine_llm.name.lower(), {})
@@ -420,43 +569,48 @@ class V2chisel_fix(Step):
         When Apply_diff fails due to missing context, regenerate hints
         at the current metadata_context and then ask the LLM for a better diff.
         """
-        # 1) regenerate hint lines for this new metadata_context using the pass1 helper
+        # 1) regenerate hint lines for this new metadata_context using Extract_hints directly
         print("metadate:", self.meta)
-        v2c_pass1 = V2Chisel_pass1()
-        v2c_pass1.input_file  = self.input_file
-        v2c_pass1.output_file = self.output_file
-        # carry forward any llm overrides from pass1
-        v2c_pass1.input_data   = {
-            'llm': self.template_config.template_dict.get('v2chisel_pass1', {}).get('llm', {})
+
+        hint_step = Extract_hints(metadata_context=self.meta)
+        hint_step.set_io(self.input_file, self.output_file)
+        hint_step.input_data = {
+            'verilog_original': self.verilog_original_str,
+            'verilog_fixed':    self.verilog_diff_str,  # pass the diff as before
+            'verilog_diff':     self.verilog_diff_str,
+            'chisel_original':  self.chisel_original,
+            'metadata_context': self.meta,
         }
-        v2c_pass1.setup()
-        new_hints = v2c_pass1._extract_chisel_subset(
-            self.chisel_original,
-            self.verilog_diff_str,
-            threshold_override=self.meta
-        )
-        self.chisel_subset = new_hints.strip()
+        hint_step.setup()
+        hint_out = hint_step.run(hint_step.input_data)
+
+        new_hints = hint_out.get('hints', '').strip()
+        self.chisel_subset = new_hints
         print(f"[V2ChiselFix] regenerated chisel_subset for diff_not_found (meta={self.meta}):\n{self.chisel_subset}")
- 
+
 
         # 2) now ask the LLM for a new diff with fresh hints
         cfg = self.template_config.template_dict[self.refine_llm.name.lower()]
         if 'prompt_diff_not_found' not in cfg:
             self.error("Missing 'prompt_diff_not_found' in prompt configuration.")
         self.refine_llm.chat_template = LLM_template(cfg['prompt_diff_not_found'])
+
         prompt = {
             'generate_diff':    old_diff,
             'metadata_context': self.meta,
-            'new_hints':    self.chisel_subset,
+            'new_hints':        self.chisel_subset,
             'applier_error':    applier_error,
-            'verilog_diff': self.verilog_diff_str,
+            'verilog_diff':     self.verilog_diff_str,
         }
+
         answers = self.refine_llm.inference(prompt, 'prompt_diff_not_found', n=5)
         if not answers:
             print('\n=== LLM RESPONSE: EMPTY ===\n')
+
         print('\n================ LLM RESPONSE (prompt_not_found) ================')
         print(answers[0])
         print('======================================================================')
+
         for txt in answers:
             diff_candidate = self.chisel_extractor.parse(txt)
             if diff_candidate:
@@ -465,53 +619,6 @@ class V2chisel_fix(Step):
         # 3) fallback to the original diff if LLM gives nothing usable
         return old_diff
 
-
-    # def _refine_diff_not_found(self, data: dict, generated_diff: str, err_msg: str, verilog_diff: str, chisel_original: str):
-    #     """
-    #     Regenerate a unified diff when Apply_diff fails due to missing-context errors,
-    #     then attempt to apply it. Returns a tuple:
-    #       (updated_chisel_code, new_diff_text, apply_success_flag)
-    #     """
-    #     # 1) Ask the LLM for a new diff
-    #     prompt_dict = {
-    #         'generate_diff':     generated_diff,
-    #         'metadata_context':  self.meta,
-    #         'chisel_subset':     self.chisel_subset,
-    #     }
-    #     cfg = self.template_config.template_dict.get(self.refine_llm.name.lower(), {})
-    #     if 'prompt_diff_not_found' not in cfg:
-    #         self.error("Missing 'prompt_diff_not_found' in prompt configuration.")
-    #     self.refine_llm.chat_template = LLM_template(cfg['prompt_diff_not_found'])
-    #     answers = self.refine_llm.inference(
-    #         prompt_dict,
-    #         prompt_index='prompt_diff_not_found',
-    #         n=1,
-    #         max_history=10
-    #     )
-
-    #     # 2) For each candidate diff, try applying it immediately
-    #     for txt in answers:
-    #         diff_candidate = self.chisel_extractor.parse(txt)
-    #         if not diff_candidate:
-    #             continue
-
-    #         apply_step = Apply_diff()
-    #         apply_step.set_io(self.input_file, self.output_file)
-    #         trial_data = data.copy()
-    #         trial_data['generated_diff'] = diff_candidate
-    #         apply_step.input_data = trial_data
-    #         apply_step.setup()
-    #         try:
-    #             result = apply_step.run(trial_data)
-    #             chisel_candidate = result.get('chisel_candidate', '')
-    #             # success!
-    #             return chisel_candidate, diff_candidate, True
-    #         except Exception:
-    #             # failed to apply this diff, try the next one
-    #             continue
-
-    #     # 3) If no new diff applied cleanly, return original
-    #     return chisel_original, generated_diff, False
 
     def _generate_diff(self, old_code: str, new_code: str) -> str:
         """
