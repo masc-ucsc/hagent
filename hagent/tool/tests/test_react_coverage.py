@@ -105,31 +105,43 @@ class TestReactCoverage(unittest.TestCase):
             insert_comment(code, comment, "#", 10)
     
     def test_setup(self):
-        """Test the setup method."""
-        # Test with non-existent DB file and learn mode disabled
+        """Test the setup method with FewShotMemory."""
+        # Fails when the DB file does not exist and learning is disabled
         result = self.react.setup(db_path="nonexistent.yaml", learn=False)
         self.assertFalse(result)
         self.assertIn("Database file not found", self.react.error_message)
-        
-        # Test with non-existent DB file and learn mode enabled
+
+        # Creates a new cache when learning is enabled
         result = self.react.setup(db_path=self.temp_db.name, learn=True)
         self.assertTrue(result)
-        
-        # Test with existing DB file
-        with open(self.temp_db.name, 'w') as f:
-            f.write("error_type1:\n  fix_question: 'question'\n  fix_answer: 'answer'\n")
+
+        # Prepare an existing memory cache with one entry
+        import pickle
+
+        data = {
+            "1": {
+                "id": "1",
+                "error_type": "error_type1",
+                "faulty_code": "question",
+                "fix_answer": "answer",
+            }
+        }
+        with open(self.temp_db.name, "wb") as f:
+            pickle.dump(data, f)
+
+        # Loading the cache should populate the backward compatible _db
         result = self.react.setup(db_path=self.temp_db.name, learn=False)
         self.assertTrue(result)
         self.assertEqual(self.react._db["error_type1"]["fix_question"], "question")
-        
-        # Test with corrupt DB file
-        with open(self.temp_db.name, 'w') as f:
-            f.write("error_type1: 'not a dict'\n")
+
+        # Corrupt file should be ignored but still succeed
+        with open(self.temp_db.name, "w") as f:
+            f.write("corrupt data")
 
         result = self.react.setup(db_path=self.temp_db.name, learn=False)
         self.assertTrue(result)
-        
-        # Test with no DB file
+
+        # Setup without a DB path uses an in-memory cache
         result = self.react.setup(learn=True, max_iterations=10, comment_prefix="//")
         self.assertTrue(result)
         self.assertEqual(self.react._max_iterations, 10)
@@ -199,14 +211,14 @@ class TestReactCoverage(unittest.TestCase):
         self.react._add_error_example("error_type2", "question2", "answer2")
         self.assertIn("error_type2", self.react._db)
         
-        # Verify DB was saved
+        # Verify DB was saved regardless of learn mode
         self.react._learn_mode = False
         self.react._add_error_example("error_type3", "question3", "answer3")
-        # This shouldn't be saved to disk since learn_mode is False
+        # Reload and ensure all entries persisted
         self.react.setup(db_path=self.temp_db.name, learn=False)
         self.assertIn("error_type1", self.react._db)
         self.assertIn("error_type2", self.react._db)
-        self.assertNotIn("error_type3", self.react._db)
+        self.assertIn("error_type3", self.react._db)
     
     def test_get_log(self):
         """Test the get_log method."""
@@ -292,16 +304,18 @@ class TestReactCoverage(unittest.TestCase):
         # Test with code that has an error that can be fixed
         result = self.react.react_cycle("This code has an error1", check_callback, fix_callback)
         self.assertIn("This code has a fixed1", result)
-        
-        # Check if the error example was added to the DB
-        self.assertIn("Error type 1", self.react._db)
-        
+
+        # Check if the error example was added to memory
+        found = any(m.error_type == "Error type 1" for m in self.react._memory.memories.values())
+        self.assertTrue(found)
+
         # Test with code that has a different error that can't be fixed
         result = self.react.react_cycle("This code has an error2", check_callback, fix_callback)
         self.assertEqual(result, "")  # Should return empty string if can't fix
-        
+
         # The second error type should not be added since the fix wasn't successful
-        self.assertNotIn("Error type 2", self.react._db)
+        found = any(m.error_type == "Error type 2" for m in self.react._memory.memories.values())
+        self.assertFalse(found)
     
     def test_react_cycle_not_ready(self):
         """Test the react_cycle method when React is not ready."""
@@ -312,54 +326,38 @@ class TestReactCoverage(unittest.TestCase):
     
     # Edge case tests from test_react_edge_cases.py
     
-    @patch('builtins.open', new_callable=mock_open)
-    @patch('ruamel.yaml.YAML.load')
-    def test_load_db_exception(self, mock_yaml_load, mock_file):
-        """Test exception handling in _load_db method."""
-        # Set up the mock to raise an exception
-        mock_yaml_load.side_effect = Exception("Test exception")
-        
-        # Call setup which will call _load_db
+    @patch('hagent.tool.react.FewShotMemory')
+    def test_load_db_exception(self, mock_memory):
+        """Test exception handling during memory initialization."""
+        mock_memory.side_effect = Exception("Test exception")
+
         result = self.react.setup(db_path=self.temp_db.name, learn=False)
-        
-        # Verify the result and error message
+
         self.assertFalse(result)
-        self.assertIn("Failed to load DB", self.react.error_message)
+        self.assertIn("Failed to initialize memory system", self.react.error_message)
         self.assertIn("Test exception", self.react.error_message)
     
-    @patch('builtins.open', new_callable=mock_open)
-    @patch('ruamel.yaml.YAML.dump')
-    def test_save_db_exception(self, mock_yaml_dump, mock_file):
-        """Test exception handling in _save_db method."""
-        # Set up the mock to raise an exception
-        mock_yaml_dump.side_effect = Exception("Test exception")
-        
-        # Setup with learn mode enabled
+    @patch('hagent.tool.react.FewShotMemory.add')
+    def test_save_db_exception(self, mock_add):
+        """Test exception handling when adding to memory fails."""
+        mock_add.side_effect = Exception("Test exception")
+
         self.react.setup(db_path=self.temp_db.name, learn=True)
-        
-        self.react._db["test_error"] = {"fix_question": "test_question", "fix_answer": "test_answer"}
-        try:
+
+        with self.assertRaises(Exception):
             self.react._add_error_example("test_error2", "test_question2", "test_answer2")
-        except Exception:
-            # We expect an exception to be raised
-            pass
-        
-        # Verify that the database was updated even though saving failed
-        self.assertIn("test_error2", self.react._db)
-        self.assertEqual(self.react._db["test_error2"]["fix_question"], "test_question2")
+
+        # The in-memory DB should not include the failed entry
+        self.assertNotIn("test_error2", self.react._db)
     
     def test_load_db_nonexistent_file(self):
-        """Test _load_db with a non-existent file."""
-        # Delete the temp file to ensure it doesn't exist
+        """Setup should fail when the cache file is missing and learning is disabled."""
         if os.path.exists(self.temp_db.name):
             os.remove(self.temp_db.name)
-        
-        # Call _load_db directly
-        self.react._db_path = self.temp_db.name
-        self.react._load_db()
-        
-        # Verify that _db is an empty dict
-        self.assertEqual(self.react._db, {})
+
+        result = self.react.setup(db_path=self.temp_db.name, learn=False)
+        self.assertFalse(result)
+        self.assertIn("Database file not found", self.react.error_message)
     
     def test_react_cycle_no_diagnostics(self):
         """Test react_cycle when check_callback returns no diagnostics."""
@@ -477,20 +475,15 @@ class TestReactCoverage(unittest.TestCase):
         logs = self.react.get_log()
         self.assertEqual(len(logs), 2)
 
-    @patch('builtins.open', new_callable=mock_open)
-    @patch('ruamel.yaml.YAML.dump')
-    def test_save_db_exception_during_setup(self, mock_yaml_dump, mock_file):
-        """Test exception handling in _save_db method during setup."""
-        # Set up the mock to raise an exception
-        mock_yaml_dump.side_effect = Exception("Test exception")
-        
-        # Setup with learn mode enabled and a non-existent DB file
-        # This should trigger the code path in lines 98-104
+    @patch('hagent.tool.react.FewShotMemory')
+    def test_save_db_exception_during_setup(self, mock_memory):
+        """Test exception handling in memory creation during setup."""
+        mock_memory.side_effect = Exception("Test exception")
+
         result = self.react.setup(db_path="nonexistent_db.yaml", learn=True)
-        
-        # Verify the result and error message
+
         self.assertFalse(result)
-        self.assertIn("Failed to create DB", self.react.error_message)
+        self.assertIn("Failed to initialize memory system", self.react.error_message)
         self.assertIn("Test exception", self.react.error_message)
 
 
