@@ -2,7 +2,6 @@
 
 from typing import Optional, Callable, List, Dict, Tuple
 import os
-from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 from pathlib import Path
 
@@ -93,20 +92,20 @@ class React:
                     self.error_message = 'Database file not found and learn mode is disabled.'
                     self._is_ready = False
                     return False
-                    
+
                 # Ensure parent directory exists
                 db_path_obj = Path(db_path)
                 db_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                
+
                 self._memory = FewShotMemory(
                     db_path=db_path,
-                    auto_create_data=learn  # Only create data if in learn mode
+                    auto_create_data=learn,  # Only create data if in learn mode
                 )
-                
+
             else:
                 # Create an in-memory instance if no path is provided
                 self._memory = FewShotMemory(auto_create_data=False)
-            
+
             self._is_ready = True
             return True
         except Exception as e:
@@ -115,7 +114,7 @@ class React:
             return False
 
     # Memory system handles database loading and saving
-    
+
     def _get_delta(self, code: str, loc: int, window: int = 5) -> Tuple[str, int, int]:
         """
         Extracts a delta (subset of code lines) around a specified location.
@@ -179,17 +178,14 @@ class React:
                 return current_text
 
             error_type = diagnostics[0].msg
-            
+
             # Find similar examples from memory
-            similar_examples = self._memory.find(err=diagnostics[0], fix_question=current_text)
-            fix_example = {"fix_question": "", "fix_answer": ""}
+            similar_examples = self._memory.find(error_type=error_type, fix_question=current_text)
+            fix_example = {'fix_question': '', 'fix_answer': ''}
             if similar_examples:
                 # Use the best match from memory
                 best_match = similar_examples[0]
-                fix_example = {
-                    "fix_question": best_match.faulty_code,
-                    "fix_answer": best_match.fix_answer
-                }
+                fix_example = {'fix_question': best_match.faulty_code, 'fix_answer': best_match.fix_answer}
             assert isinstance(fix_example, dict), 'Memory result corrupted'
 
             if iteration == 1:
@@ -227,14 +223,14 @@ class React:
             if not new_diagnostics:
                 if self._learn_mode:
                     memory_id = self._memory.add(diagnostics[0], fix_question, fix_answer)
-                    print(f"Added fix to memory with ID: {memory_id}")
+                    print(f'Added fix to memory with ID: {memory_id}')
                 self.last_code = new_text
                 return new_text
             else:
                 new_error_type = new_diagnostics[0].msg
                 if new_error_type != error_type and self._learn_mode:
                     memory_id = self._memory.add(diagnostics[0], fix_question, fix_answer)
-                    print(f"Added partial fix to memory with ID: {memory_id}")
+                    print(f'Added partial fix to memory with ID: {memory_id}')
                 current_text = new_text
 
         self.last_code = current_text
@@ -250,22 +246,17 @@ class React:
         """
         Adds an error example to the memory system using the error type as content.
         Used for backward compatibility with tests.
-        
+
         Args:
             error_type: The type of error
             fix_question: The code with the error
             fix_answer: The fixed code
         """
         if not self._memory:
-            self.error_message = "Memory system not initialized"
+            self.error_message = 'Memory system not initialized'
             return
+
+        diag = Diagnostic(error_type)
         
-        # Create a minimal diagnostic
-        diagnostic = Diagnostic(error_type)
-        
-        # Add to memory system
-        self._memory.add(
-            err=diagnostic,
-            fix_question=fix_question,
-            fix_answer=fix_answer
-        )
+        self._memory.add(diag=diag, fix_question=fix_question, fix_answer=fix_answer)
+
