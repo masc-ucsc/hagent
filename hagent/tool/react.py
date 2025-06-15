@@ -65,8 +65,6 @@ class React:
         self.last_code: str = ''
         self._log: List[Dict] = []  # Records iteration details
         self._lang_prefix: str = '//'
-        # For backwards compatibility with tests
-        self._db: Dict[str, Dict[str, str]] = {}
 
     def setup(
         self, db_path: Optional[str] = None, learn: bool = False, max_iterations: int = 5, comment_prefix: str = '//'
@@ -86,8 +84,6 @@ class React:
         self._learn_mode = learn
         self._max_iterations = max_iterations
         self._lang_prefix = comment_prefix
-        # Reset backwards compatibility DB
-        self._db = {}
 
         try:
             # Initialize memory system with provided database path
@@ -107,8 +103,6 @@ class React:
                     auto_create_data=learn  # Only create data if in learn mode
                 )
                 
-                # For backwards compatibility, load memories into _db
-                self._sync_memory_to_db()
             else:
                 # Create an in-memory instance if no path is provided
                 self._memory = FewShotMemory(auto_create_data=False)
@@ -122,24 +116,6 @@ class React:
 
     # Memory system handles database loading and saving
     
-    def _sync_memory_to_db(self):
-        """
-        Syncs memory system to _db for backwards compatibility with tests
-        """
-        if not self._memory:
-            return
-            
-        # Clear existing DB
-        self._db = {}
-        
-        # Add each memory to _db
-        for memory in self._memory.memories.values():
-            if hasattr(memory, 'error_type') and memory.error_type:
-                self._db[memory.error_type] = {
-                    'fix_question': memory.faulty_code,
-                    'fix_answer': memory.fix_answer
-                }
-
     def _get_delta(self, code: str, loc: int, window: int = 5) -> Tuple[str, int, int]:
         """
         Extracts a delta (subset of code lines) around a specified location.
@@ -293,9 +269,3 @@ class React:
             fix_question=fix_question,
             fix_answer=fix_answer
         )
-        
-        # For backwards compatibility with tests
-        self._db[error_type] = {
-            'fix_question': fix_question,
-            'fix_answer': fix_answer
-        }

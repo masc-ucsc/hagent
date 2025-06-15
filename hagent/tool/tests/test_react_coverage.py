@@ -132,7 +132,13 @@ class TestReactCoverage(unittest.TestCase):
         # Loading the cache should populate the backward compatible _db
         result = self.react.setup(db_path=self.temp_db.name, learn=False)
         self.assertTrue(result)
-        self.assertEqual(self.react._db["error_type1"]["fix_question"], "question")
+        found_mem = None
+        for mem_id, mem_obj in self.react._memory.memories.items():
+            if hasattr(mem_obj, 'error_type') and mem_obj.error_type == "error_type1":
+                found_mem = mem_obj
+                break
+        self.assertIsNotNone(found_mem, "Memory with error_type 'error_type1' not found")
+        self.assertEqual(found_mem.faulty_code, "question")
 
         # Corrupt file should be ignored but still succeed
         with open(self.temp_db.name, "w") as f:
@@ -203,22 +209,40 @@ class TestReactCoverage(unittest.TestCase):
         
         # Add a new error example
         self.react._add_error_example("error_type1", "question1", "answer1")
-        self.assertIn("error_type1", self.react._db)
-        self.assertEqual(self.react._db["error_type1"]["fix_question"], "question1")
-        self.assertEqual(self.react._db["error_type1"]["fix_answer"], "answer1")
+        # Verify 'error_type1' in memory
+        found_mem1 = None
+        for mem_id, mem_obj in self.react._memory.memories.items():
+            if hasattr(mem_obj, 'error_type') and mem_obj.error_type == "error_type1":
+                found_mem1 = mem_obj
+                break
+        self.assertIsNotNone(found_mem1, "Memory with error_type 'error_type1' not found after add")
+        self.assertEqual(found_mem1.faulty_code, "question1")
+        self.assertEqual(found_mem1.fix_answer, "answer1")
         
         # Add another error example
         self.react._add_error_example("error_type2", "question2", "answer2")
-        self.assertIn("error_type2", self.react._db)
+        # Verify 'error_type2' in memory
+        found_mem2 = None
+        for mem_id, mem_obj in self.react._memory.memories.items():
+            if hasattr(mem_obj, 'error_type') and mem_obj.error_type == "error_type2":
+                found_mem2 = mem_obj
+                break
+        self.assertIsNotNone(found_mem2, "Memory with error_type 'error_type2' not found after add")
+        # Add assertions for faulty_code and fix_answer if needed, similar to error_type1
         
         # Verify DB was saved regardless of learn mode
         self.react._learn_mode = False
         self.react._add_error_example("error_type3", "question3", "answer3")
         # Reload and ensure all entries persisted
         self.react.setup(db_path=self.temp_db.name, learn=False)
-        self.assertIn("error_type1", self.react._db)
-        self.assertIn("error_type2", self.react._db)
-        self.assertIn("error_type3", self.react._db)
+        # Verify all entries persisted in memory after reload
+        error_types_to_check = ["error_type1", "error_type2", "error_type3"]
+        found_in_memory = {et: False for et in error_types_to_check}
+        for mem_id, mem_obj in self.react._memory.memories.items():
+            if hasattr(mem_obj, 'error_type') and mem_obj.error_type in found_in_memory:
+                found_in_memory[mem_obj.error_type] = True
+        for et in error_types_to_check:
+            self.assertTrue(found_in_memory[et], f"Memory for '{et}' not found after reload")
     
     def test_get_log(self):
         """Test the get_log method."""
@@ -348,7 +372,13 @@ class TestReactCoverage(unittest.TestCase):
             self.react._add_error_example("test_error2", "test_question2", "test_answer2")
 
         # The in-memory DB should not include the failed entry
-        self.assertNotIn("test_error2", self.react._db)
+        # Verify 'test_error2' is not in memory
+        found_mem_error2 = False
+        for mem_id, mem_obj in self.react._memory.memories.items():
+            if hasattr(mem_obj, 'error_type') and mem_obj.error_type == "test_error2":
+                found_mem_error2 = True
+                break
+        self.assertFalse(found_mem_error2, "Memory with error_type 'test_error2' should not be found")
     
     def test_load_db_nonexistent_file(self):
         """Setup should fail when the cache file is missing and learning is disabled."""
@@ -434,42 +464,42 @@ class TestReactCoverage(unittest.TestCase):
         self.react.setup(db_path=self.temp_db.name, learn=True, max_iterations=3)
         
         # Mock callbacks with a counter to control behavior
-        iteration_counter = [0]
+        check_call_count = [0] # Use a new name to avoid confusion
         
         def check_callback(code: str) -> List[Diagnostic]:
-            iteration_counter[0] += 1
-            if iteration_counter[0] == 1:
-                # First iteration - return error type 1
+            check_call_count[0] += 1
+            if check_call_count[0] == 1: # React Iteration 1, initial check
                 return [MockDiagnosticWithError("Error type 1", 1)]
-            elif iteration_counter[0] == 2:
-                # Second iteration - return error type 2 (different error)
+            elif check_call_count[0] == 2: # React Iteration 1, post-fix check
+                # Code is "Code that now has Error type 2"
                 return [MockDiagnosticWithError("Error type 2", 2)]
-            else:
-                # Third iteration - no errors
+            elif check_call_count[0] == 3: # React Iteration 2, initial check
+                # Code is "Code that now has Error type 2"
+                return [MockDiagnosticWithError("Error type 2", 2)]
+            elif check_call_count[0] == 4: # React Iteration 2, post-fix check
+                # Code is "Fixed code"
                 return []
+            return [] # Default safety
         
         def fix_callback(code: str, diag: Diagnostic, fix_example: Dict[str, str], delta: bool, iteration: int) -> str:
-            # Always return a fixed code
-            # Manually add both error types to the database to ensure they're present
             if diag.msg == "Error type 1":
-                self.react._add_error_example("Error type 1", "This code has errors", "Fixed code")
+                return "Code that now has Error type 2"
             elif diag.msg == "Error type 2":
-                self.react._add_error_example("Error type 2", "This code has errors", "Fixed code")
-            
-            # Add both error types to the database directly to ensure the test passes
-            # This simulates what would happen if both errors were encountered and fixed
-            self.react._db["Error type 1"] = {"fix_question": "This code has errors", "fix_answer": "Fixed code"}
-            self.react._db["Error type 2"] = {"fix_question": "This code has errors", "fix_answer": "Fixed code"}
-            
-            return "Fixed code"
+                return "Fixed code"
+            # Adding a fallback for safety, though it shouldn't be hit in this specific test's flow
+            self.fail(f"fix_callback called with unexpected error: {diag.msg}")
         
         # Test with code that will have different error types
         result = self.react.react_cycle("This code has errors", check_callback, fix_callback)
         self.assertIn("Fixed code", result)
         
-        # Check if both error examples were added to the DB
-        self.assertIn("Error type 1", self.react._db)
-        self.assertIn("Error type 2", self.react._db)
+        # Check if 'Error type 1' was added to memory
+        found_et1 = any(hasattr(m, 'error_type') and m.error_type == "Error type 1" for m in self.react._memory.memories.values())
+        self.assertTrue(found_et1, "Memory for 'Error type 1' not found after learning cycle")
+
+        # Check if 'Error type 2' was added to memory
+        found_et2 = any(hasattr(m, 'error_type') and m.error_type == "Error type 2" for m in self.react._memory.memories.values())
+        self.assertTrue(found_et2, "Memory for 'Error type 2' not found after learning cycle")
         
         # Check log
         logs = self.react.get_log()
