@@ -57,6 +57,10 @@ jobs:
           poetry install
       - name: Run tests with coverage
         run: poetry run pytest --cov --cov-branch --cov-report=xml
+      - name: List coverage files
+        run: |
+          find . -name "coverage.xml" -type f
+          ls -la coverage.xml || echo "coverage.xml not found in root"
       - name: Upload coverage reports to Codecov
         if: always()
         uses: codecov/codecov-action@v5
