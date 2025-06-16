@@ -1,7 +1,17 @@
 import os
 import subprocess
 import tempfile
+import types
+import sys
 import pytest
+
+# The v2chisel_fix module previously depended on a now removed `Unified_diff`
+# helper.  Importing the module will fail unless a stub is provided.  The tests
+# only exercise `diff_code` and `_generate_diff`, so a minimal placeholder is
+# sufficient.
+stub = types.ModuleType('unified_diff')
+stub.Unified_diff = object
+sys.modules.setdefault('hagent.step.unified_diff.unified_diff', stub)
 
 from hagent.step.v2chisel_fix.v2chisel_fix import diff_code, V2chisel_fix
 

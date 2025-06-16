@@ -1,7 +1,29 @@
 # hagent/step/v2chisel_fix/tests/test_v2chisel_fix_cli.py
 import sys
 import yaml
+import types
+import sys
 import pytest
+
+# Stub out the heavy LLM wrapper to avoid pulling optional dependencies during
+# tests.  The CLI test only verifies basic wiring and does not exercise LLM
+# functionality.
+class DummyWrap:
+    def __init__(self, *args, **kwargs):
+        self.total_cost = 0.0
+        self.total_tokens = 0
+        self.responses = []
+    def inference(self, *args, **kwargs):
+        return []
+
+
+# Provide a stub for the deprecated `Unified_diff` module so that importing
+# `v2chisel_fix` succeeds during test collection.
+stub = types.ModuleType('unified_diff')
+stub.Unified_diff = object
+sys.modules.setdefault('hagent.step.unified_diff.unified_diff', stub)
+
+import hagent.step.v2chisel_fix.v2chisel_fix as v2_mod
 from hagent.step.v2chisel_fix.v2chisel_fix import V2chisel_fix
 
 def write_yaml(data, path):
@@ -26,6 +48,9 @@ def pass1_yaml(tmp_path):
 
 def test_cli_generates_equivalent_chisel(tmp_path, pass1_yaml, monkeypatch):
     out_yaml = tmp_path / "out.yaml"
+
+    # Use the dummy LLM wrapper to avoid optional dependencies like diskcache.
+    monkeypatch.setattr(v2_mod, "LLM_wrap", DummyWrap)
 
     # stub out _check_equivalence to always pass immediately
     monkeypatch.setattr(
