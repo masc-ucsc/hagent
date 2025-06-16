@@ -32,6 +32,7 @@ numpy = "^2.2.2"
 rapidfuzz = "^3.12.1"
 ruamel-yaml = "^0.18.10"
 fusepy = "^3.0.1"
+networkx = "^3.5"
 
 [build-system]
 requires = ["poetry-core"]
