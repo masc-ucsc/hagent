@@ -69,6 +69,8 @@ Run a subset of tests with coverage:
 poetry run pytest hagent/tool/ --cov=hagent/tool --cov-report=html
 ```
 
+[![codecov](https://codecov.io/gh/masc-ucsc/hagent/graph/badge.svg?token=Hyj2VifE7j)](https://codecov.io/gh/masc-ucsc/hagent)
+
 Check issues and format with ruff:
 ```
 poetry run ruff check hagent
