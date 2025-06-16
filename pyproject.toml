@@ -31,9 +31,7 @@ sounddevice = "^0.5.1"
 numpy = "^2.2.2"
 rapidfuzz = "^3.12.1"
 ruamel-yaml = "^0.18.10"
-# networkx is used for strictly tracing dependencies, not needed if tracing is unused.
-networkx = "^3.4.2"
-sentence-transformers = "^4.1.0"
+fusepy = "^3.0.1"
 
 [build-system]
 requires = ["poetry-core"]
