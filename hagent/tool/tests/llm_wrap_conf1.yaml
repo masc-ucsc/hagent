@@ -28,9 +28,9 @@ test_react_compile_slang_simple:
         {code}
         ```
         As a reference, a similar error for the following code:
-        {fix_question}
+        {fix.question}
         had the following correct answer:
-        {fix_answer}
+        {fix.answer}
 
         Do not provide explanations, and respond just with the fixed code and remove the comment for the error.
 

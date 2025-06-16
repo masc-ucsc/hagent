@@ -5,8 +5,9 @@ import os
 from ruamel.yaml.scalarstring import LiteralScalarString
 from pathlib import Path
 
+import random
 from hagent.tool.compile import Diagnostic
-from hagent.tool.memory import FewShotMemory
+from hagent.tool.memory import FewShotMemory, Memory_shot
 
 
 def process_multiline_strings(obj):
@@ -85,7 +86,6 @@ class React:
         self._lang_prefix = comment_prefix
 
         try:
-            # Initialize memory system with provided database path
             if db_path:
                 # Check if file exists - for backward compatibility with tests
                 if not learn and not os.path.exists(db_path):
@@ -99,12 +99,11 @@ class React:
 
                 self._memory = FewShotMemory(
                     db_path=db_path,
-                    auto_create_data=learn,  # Only create data if in learn mode
+                    learn=learn,  # Only create data if in learn mode
                 )
-
             else:
-                # Create an in-memory instance if no path is provided
-                self._memory = FewShotMemory(auto_create_data=False)
+                assert not learn, 'react.py: Must setup db_path when in learn mode'
+                self._memory = None
 
             self._is_ready = True
             return True
@@ -180,13 +179,14 @@ class React:
             error_type = diagnostics[0].msg
 
             # Find similar examples from memory
-            similar_examples = self._memory.find(error_type=error_type, fix_question=current_text)
-            fix_example = {'fix_question': '', 'fix_answer': ''}
-            if similar_examples:
-                # Use the best match from memory
-                best_match = similar_examples[0]
-                fix_example = {'fix_question': best_match.faulty_code, 'fix_answer': best_match.fix_answer}
-            assert isinstance(fix_example, dict), 'Memory result corrupted'
+            fix_example = Memory_shot(question='', answer='')  #
+            if self._memory:
+                similar_examples = self._memory.find(error_type=error_type, fix_question=current_text)
+                if similar_examples:
+                    if iteration <= 2:
+                        fix_example = similar_examples[0]  # Best example
+                    else:
+                        fix_example = random.choice(similar_examples)
 
             if iteration == 1:
                 # Use a delta: only a few lines around the first error.
@@ -198,8 +198,7 @@ class React:
                     self._log.append(iteration_log)
                     return ''
                 fixed_delta = fix_callback(annotated, diagnostics[0], fix_example, True, iteration)
-                fix_question = annotated
-                fix_answer = fixed_delta
+                fix = Memory_shot(question=annotated, answer=fixed_delta)
                 # Apply the returned patch to the full code.
                 new_text = self._apply_patch(current_text, fixed_delta, start_line, end_line)
             else:
@@ -211,8 +210,7 @@ class React:
                     self._log.append(iteration_log)
                     return ''
                 new_text = fix_callback(annotated, diagnostics[0], fix_example, False, iteration)
-                fix_question = annotated
-                fix_answer = new_text
+                fix = Memory_shot(question=annotated, answer=new_text)
 
             iteration_log['fix'] = new_text
 
@@ -222,14 +220,14 @@ class React:
 
             if not new_diagnostics:
                 if self._learn_mode:
-                    memory_id = self._memory.add(diagnostics[0], fix_question, fix_answer)
+                    memory_id = self._memory.add(error_type=diagnostics[0].msg, fix=fix)
                     print(f'Added fix to memory with ID: {memory_id}')
                 self.last_code = new_text
                 return new_text
             else:
                 new_error_type = new_diagnostics[0].msg
                 if new_error_type != error_type and self._learn_mode:
-                    memory_id = self._memory.add(diagnostics[0], fix_question, fix_answer)
+                    memory_id = self._memory.add(error_type=diagnostics[0].msg, fix=fix)
                     print(f'Added partial fix to memory with ID: {memory_id}')
                 current_text = new_text
 
@@ -241,22 +239,3 @@ class React:
         Returns the log of the iterations.
         """
         return self._log
-
-    def _add_error_example(self, error_type: str, fix_question: str, fix_answer: str) -> None:
-        """
-        Adds an error example to the memory system using the error type as content.
-        Used for backward compatibility with tests.
-
-        Args:
-            error_type: The type of error
-            fix_question: The code with the error
-            fix_answer: The fixed code
-        """
-        if not self._memory:
-            self.error_message = 'Memory system not initialized'
-            return
-
-        diag = Diagnostic(error_type)
-        
-        self._memory.add(diag=diag, fix_question=fix_question, fix_answer=fix_answer)
-

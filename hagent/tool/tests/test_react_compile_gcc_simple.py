@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 from typing import List, Dict
 
-from hagent.tool.react import React
+from hagent.tool.react import React, Memory_shot
 from hagent.tool.compile import Diagnostic
 from hagent.core.llm_wrap import LLM_template, LLM_wrap
 
@@ -72,7 +72,7 @@ def check_callback_cpp(code: str) -> List[Diagnostic]:
             os.remove(tmp_name)
 
 
-def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: dict, delta: bool, iteration_count: int) -> str:
+def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: Memory_shot, delta: bool, iteration_count: int) -> str:
     """
     Calls the LLM wrapper to fix the C++ code based on a given diagnostic.
 
@@ -82,8 +82,8 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: dict, del
     """
     print(f"FIXING ERROR: {diag.msg}, location: {diag.loc}")
     print(f"Current iteration: {iteration_count}, delta mode: {delta}")
-    
-    # For testing, directly fix the missing semicolon error 
+
+    # For testing, directly fix the missing semicolon error
     if "expected ';'" in diag.msg or "expected ';' before" in diag.msg:
         lines = current_code.splitlines()
         # Look for the actual line with std::cout, not just the FIXME_HINT line
@@ -91,7 +91,7 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: dict, del
             # Check both original line and line with FIXME_HINT
             if "std::cout << \"Hello World\" << std::endl" in line and not line.strip().endswith(';'):
                 print(f"Found line to fix at index {i}: {line}")
-                
+
                 # Handle the case where FIXME_HINT has been added
                 if "FIXME_HINT:" in line:
                     # This is a React-inserted comment line, we need to find the actual code line
@@ -105,33 +105,33 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: dict, del
                     # This is normal line without a comment
                     lines[i] = line + ";"
                     return "\n".join(lines)
-    
+
     # More detailed debug about what we're trying to fix
     if delta:
         print("DELTA CODE TO FIX:")
         print(current_code)
-    
+
     # Original LLM-based implementation (kept for reference)
     """
     # Determine the path to the LLM configuration file.
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
-    
+
     try:
         # Initialize LLM_wrap instance using configuration from file.
         # Use the name that exists in the config file
         lw = LLM_wrap(
-            name='test_react_compile_slang_simple', 
-            log_file='test_react_compile_gcc_simple.log', 
+            name='test_react_compile_slang_simple',
+            log_file='test_react_compile_gcc_simple.log',
             conf_file=conf_file
         )
-        
+
         # Call inference with the current code
-        if not fix_example or not fix_example.get('fix_question'):
+        if not fix_example or not fix_example.question:
             results = lw.inference({'code': current_code}, 'direct_prompt', n=1)
         else:
             # Merge fix_example with the current code for the prompt
             results = lw.inference({**fix_example, 'code': current_code}, 'example_prompt', n=1)
-        
+
         if results and len(results) > 0:
             fixed_code = results[0]
             # Return the fixed code if it differs from the current code
@@ -140,59 +140,48 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: dict, del
     except Exception as e:
         print(f"LLM inference failed: {e}")
     """
-    
+
     return current_code
 
 
-def test_react_with_db():
+def test_react_with_memory():
     """Test React with a database file."""
-    # Create a temporary DB file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.yaml') as tmp:
-        tmp_name = tmp.name
-        # Write a sample DB entry
-        tmp.write(b"missing_semicolon:\n  fix_question: 'code with missing semicolon'\n  fix_answer: 'code with semicolon'\n")
-    
-    try:
-        # Initialize React with the DB file
-        react_tool = React()
-        setup_success = react_tool.setup(db_path=tmp_name, learn=True, max_iterations=3)
-        assert setup_success, f"React setup failed: {react_tool.error_message}"
-        
-        # A C++ snippet with a missing semicolon
-        faulty_code = r"""
+
+    react_tool = React()
+    setup_success = react_tool.setup(db_path=tempfile.mkdtemp(), learn=True, max_iterations=3)
+    assert setup_success, f"React setup failed: {react_tool.error_message}"
+
+    # A C++ snippet with a missing semicolon
+    faulty_code = r"""
 #include <iostream>
 
 int main() {
-    std::cout << "Hello World" << std::endl
-    return 0;
+std::cout << "Hello World" << std::endl
+return 0;
 }
 """
-        
-        # Run the React cycle with the provided callbacks
-        fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
-        
-        # Check results
-        assert fixed_code, "Failed to fix the code"
-        assert ";" in fixed_code, "Semicolon not added to the fixed code"
-        
-        # Check the log
-        log = react_tool.get_log()
-        assert len(log) > 0, "Log should contain entries"
-        
-        print("Test with DB passed!")
-    finally:
-        # Clean up
-        if os.path.exists(tmp_name):
-            os.remove(tmp_name)
+
+    # Run the React cycle with the provided callbacks
+    fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
+
+    # Check results
+    assert fixed_code, "Failed to fix the code"
+    assert ";" in fixed_code, "Semicolon not added to the fixed code"
+
+    # Check the log
+    log = react_tool.get_log()
+    assert len(log) > 0, "Log should contain entries"
+
+    print("Test with DB passed!")
 
 
-def test_react_without_db():
+def test_react_without_memory():
     """Test React without a database file."""
     # Initialize React without a DB file
     react_tool = React()
     setup_success = react_tool.setup(learn=False, max_iterations=3, comment_prefix="//")
     assert setup_success, f"React setup failed: {react_tool.error_message}"
-    
+
     # A C++ snippet with a missing semicolon
     faulty_code = r"""
 #include <iostream>
@@ -202,22 +191,22 @@ int main() {
     return 0;
 }
 """
-    
+
     # Run the React cycle with the provided callbacks
     fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
-    
+
     # Check results
     assert fixed_code, "Failed to fix the code"
     assert ";" in fixed_code, "Semicolon not added to the fixed code"
-    
+
     print("Test without DB passed!")
 
 
 if __name__ == '__main__':
     # Run the tests
-    test_react_with_db()
-    test_react_without_db()
-    
+    test_react_with_memory()
+    test_react_without_memory()
+
     # Original example code
     react_tool = React()
     setup_success = react_tool.setup(db_path='foo.yaml', learn=True, max_iterations=3)
