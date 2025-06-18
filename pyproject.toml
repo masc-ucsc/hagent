@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.group.dev.dependencies]
 pytest-cov = "^6.0.0"
-ruff = "^0.11.0"
+ruff = "^0.12.0"
 pydoc-markdown = "^4.8.2"
 
 [tool.ruff]
