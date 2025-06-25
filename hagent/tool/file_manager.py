@@ -1,257 +1,530 @@
+import docker
+import platform
 import os
-import shutil
-import tempfile
-import subprocess
-import fnmatch
+import tarfile
+import io
 import difflib
-from typing import Optional, List, Dict, Tuple, Any
 from datetime import datetime
+from typing import Optional, List, Dict, Tuple, Any
 
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 
+# YAML helper function to format multiline strings correctly
+def process_multiline_strings(obj):
+    """
+    Recursively converts strings containing newlines into a LiteralScalarString
+    so that ruamel.yaml outputs them in literal block style.
+    """
+    if isinstance(obj, dict):
+        return {k: process_multiline_strings(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [process_multiline_strings(item) for item in obj]
+    elif isinstance(obj, str) and '\n' in obj and obj.strip():
+        return LiteralScalarString(obj)
+    return obj
+
+
 class File_manager:
     """
-    Manages an overlay filesystem of files (via fuseoverlaps), tracks in-memory edits,
+    Wrapper to manage docker setups, tracks file state within a container,
     and exports/imports patches as unified diffs in YAML.
     """
 
-    overlay_directory: str
-    error_message: str
+    def __init__(self, image: str) -> None:
+        """
+        Create a new class with the docker image.
+        Verify docker is available, and that the user has permission to run the docker.
 
-    def __init__(self, cwd: Optional[str] = ".") -> None:
+        Initializes internal state; does not create the container yet.
+
+        The object destruction or termination should clear the docker.
         """
-        Create a new overlay with overlay root (temp directory).
-        Initializes internal state; does not scan or apply anything yet.
+        self.image = image
+        self.error_message = ''
+        self._state = 'INITIALIZED'
+        self._workdir = '/home/user'  # Default working directory inside the container
+
+        self.client: Optional[docker.DockerClient] = None
+        self.container: Optional[docker.models.containers.Container] = None
+
+        self._mounts: List[Dict[str, str]] = []
+        self._tracked_files: Dict[str, bytes] = {}
+        self._tracking_extensions: List[str] = []
+
+        # Initialize Docker client with cross-platform support
+        self._initialize_docker_client()
+
+    def _initialize_docker_client(self) -> None:
         """
-        self.cwd = cwd
-        self.overlay_directory = tempfile.mkdtemp(prefix="file_manager_")
-        self.error_message = ""
-        self.tracked_files: List[str] = []
-        self._original_contents: Dict[str, List[str]] = {}
-        self._yaml = YAML()
-        self._yaml.indent(mapping=2, sequence=4, offset=2)
+        Initialize Docker client with support for:
+        - Linux (standard Docker)
+        - macOS with Docker Desktop
+        - macOS with Colima
+        """
+        # First, try the standard docker.from_env() which uses environment variables
+        # and Docker context - this works in most cases
+        first_error = None
+        try:
+            self.client = docker.from_env()
+            if self.client.ping():
+                return  # Success!
+        except Exception as err:
+            first_error = err
+            pass  # Continue to try other methods
+
+        # If from_env() failed, try platform-specific socket paths
+        socket_paths = self._get_docker_socket_paths()
+
+        for socket_path in socket_paths:
+            if os.path.exists(socket_path):
+                try:
+                    self.client = docker.DockerClient(base_url=f'unix://{socket_path}')
+                    if self.client.ping():
+                        return  # Success!
+                except Exception:
+                    continue  # Try next socket path
+
+        # If all attempts failed, set error state
+        self.error_message = (
+            f'Docker client initialization failed. Tried:\n'
+            f'- Environment-based connection\n'
+            f'- Socket paths: {socket_paths}\n'
+            f'Please ensure Docker is running and accessible.\n'
+            f'Original error: {first_error if first_error else "Unknown"}'
+        )
+        self._state = 'ERROR'
+
+    def _get_docker_socket_paths(self) -> List[str]:
+        """
+        Get list of potential Docker socket paths based on the current platform.
+        """
+        system = platform.system().lower()
+        username = os.getenv('USER', os.getenv('USERNAME', 'user'))
+
+        if system == 'darwin':  # macOS
+            return [
+                # Colima (most common alternative on macOS)
+                f'/Users/{username}/.colima/default/docker.sock',
+                os.path.expanduser('~/.colima/default/docker.sock'),
+                # Docker Desktop paths
+                f'/Users/{username}/.docker/run/docker.sock',
+                os.path.expanduser('~/.docker/run/docker.sock'),
+                '/var/run/docker.sock',
+                # Lima (another Docker alternative)
+                f'/Users/{username}/.lima/default/sock/docker.sock',
+                os.path.expanduser('~/.lima/default/sock/docker.sock'),
+            ]
+        elif system == 'linux':
+            return [
+                # Standard Linux Docker socket
+                '/var/run/docker.sock',
+                # Rootless Docker
+                f'/run/user/{os.getuid()}/docker.sock',
+                os.path.expanduser('~/.docker/run/docker.sock'),
+                # Podman compatibility
+                f'/run/user/{os.getuid()}/podman/podman.sock',
+            ]
+        elif system == 'windows':
+            return [
+                # Windows Docker Desktop (named pipe)
+                'npipe:////./pipe/docker_engine',
+            ]
+        else:
+            # Fallback for unknown systems
+            return ['/var/run/docker.sock']
+
+    def get_docker_info(self) -> Dict[str, str]:
+        """
+        Get information about the Docker connection for debugging.
+        """
+        if self.client is None:
+            return {'status': 'ERROR', 'message': self.error_message}
+
+        try:
+            info = self.client.info()
+            version = self.client.version()
+            return {
+                'status': 'CONNECTED',
+                'docker_version': version.get('Version', 'Unknown'),
+                'api_version': version.get('ApiVersion', 'Unknown'),
+                'platform': info.get('OSType', 'Unknown'),
+                'architecture': info.get('Architecture', 'Unknown'),
+                'server_version': info.get('ServerVersion', 'Unknown'),
+            }
+        except Exception as e:
+            return {'status': 'ERROR', 'message': str(e)}
+
+    def __del__(self) -> None:
+        """On destruction, ensures the created docker container is stopped and removed."""
+        if self.container:
+            try:
+                self.container.stop()
+                self.container.remove()
+            except docker.errors.APIError:
+                # Ignore errors on cleanup, e.g., if container was already removed.
+                pass
+
+    def _ensure_workdir_exists(self) -> bool:
+        """Ensure the working directory exists in the container."""
+        try:
+            result = self.container.exec_run(f'mkdir -p {self._workdir}')
+            return result.exit_code == 0
+        except Exception as e:
+            self.error_message = f'Failed to create working directory: {e}'
+            return False
 
     def setup(self) -> bool:
         """
-        Verify fuseoverlaps (and any deps) are available.
-        Returns True on success; on failure, set `error_message` and return False.
+        If a docker container was already configured, this clears it and allows for a new setup.
+        Downloads (docker pull equivalent) and creates, but does not start, a docker container.
         """
+        if self._state == 'ERROR':
+            return False
+        if self.container:
+            self.__del__()  # Clean up previous container
+            self._tracked_files = {}  # Reset tracked files
+
+        try:
+            print(f"Pulling image '{self.image}'... This may take a moment.")
+
+            # Try to pull the image with fallback strategies
+            image_available = False
+
+            # First, check if image exists locally
+            try:
+                self.client.images.get(self.image)
+                print(f"Using cached image '{self.image}'")
+                image_available = True
+            except docker.errors.ImageNotFound:
+                pass
+
+            # If not cached, try to pull
+            if not image_available:
+                try:
+                    self.client.images.pull(self.image)
+                    image_available = True
+                except docker.errors.APIError as e:
+                    error_msg = str(e).lower()
+                    if 'credential' in error_msg or 'unauthorized' in error_msg:
+                        print(f'Warning: Credential issue detected: {e}')
+                        print(f'Please manually pull the image: docker pull {self.image}')
+                        print('Or fix Docker credentials configuration.')
+                        return False
+                    else:
+                        print(f'Failed to pull image: {e}')
+                        return False
+
+            if not image_available:
+                self.error_message = f"Image '{self.image}' is not available"
+                return False
+
+            mount_objs = [
+                docker.types.Mount(target=m['target'], source=os.path.abspath(m['source']), type='bind') for m in self._mounts
+            ]
+
+            # Create the container but keep it alive with a do-nothing command
+            self.container = self.client.containers.create(
+                self.image,
+                command='tail -f /dev/null',  # Keeps container running
+                mounts=mount_objs,
+                working_dir=self._workdir,
+                detach=True,
+            )
+            self.container.start()
+
+            # Ensure working directory exists (Alpine might not have /home/user by default)
+            if not self._ensure_workdir_exists():
+                return False
+
+            self._state = 'CONFIGURED'
+            return True
+        except Exception as e:
+            self.error_message = f'Setup failed: {e}'
+            self._state = 'ERROR'
+            return False
+
+    def add_mount(self, host_path: str, container_path: str) -> bool:
+        """Registers a directory to be mounted from the host. Must be called before setup()."""
+        if self._state != 'INITIALIZED':
+            self.error_message = 'add_mount must be called before setup().'
+            return False
+
+        full_container_path = container_path if os.path.isabs(container_path) else os.path.join(self._workdir, container_path)
+        self._mounts.append({'source': host_path, 'target': full_container_path})
         return True
 
-    def add_dir(
-        self,
-        dir: str,
-        *,
-        recursive: bool = False,
-        ext: Optional[str] = None
-    ) -> None:
-        """
-        Add all files in `dir` (filtered by extension glob `ext`) into the overlay.
-        Does not raise; errors recorded in `error_message`.
-        """
+    def copy_dir(self, host_path: str, container_path: str = '.', ext: Optional[str] = None) -> bool:
+        """Copies a host directory into the container. Must be called after setup()."""
+        if self._state != 'CONFIGURED':
+            self.error_message = 'copy_dir must be called after setup() and before run().'
+            return False
         try:
-            if recursive:
-                for root, _, files in os.walk(dir):
-                    for fn in files:
-                        if ext is None or fnmatch.fnmatch(fn, ext):
-                            self._copy_and_snapshot(os.path.join(root, fn), fn)
+            for root, _, files in os.walk(host_path):
+                for file in files:
+                    if ext and not file.endswith(ext):
+                        continue
+
+                    local_file_path = os.path.join(root, file)
+                    relative_path = os.path.relpath(local_file_path, host_path)
+                    dest_path = os.path.join(container_path, relative_path)
+
+                    if not self.copy_file(local_file_path, dest_path):
+                        return False
+            return True
+        except Exception as e:
+            self.error_message = f"Failed to copy directory '{host_path}': {e}"
+            return False
+
+    def copy_file(self, host_path: str, container_path: Optional[str] = '.') -> bool:
+        """Copies a single file from the host into the container's tracked directory."""
+        if self._state != 'CONFIGURED':
+            self.error_message = 'copy_file must be called after setup() and before run().'
+            return False
+
+        try:
+            # Read the file content from host
+            with open(host_path, 'rb') as f:
+                file_content = f.read()
+
+            filename = os.path.basename(host_path)
+
+            # Determine the destination path in container
+            if container_path == '.':
+                # Copy to working directory with same filename
+                dest_path = self._workdir
+                final_container_path = filename
+            elif container_path.endswith('/') or not os.path.splitext(container_path)[1]:
+                # container_path is a directory
+                dest_path = os.path.join(self._workdir, container_path.rstrip('/'))
+                final_container_path = os.path.join(container_path.rstrip('/'), filename)
             else:
-                for fn in os.listdir(dir):
-                    src = os.path.join(dir, fn)
-                    if os.path.isfile(src) and (ext is None or fnmatch.fnmatch(fn, ext)):
-                        self._copy_and_snapshot(src, fn)
-        except Exception as e:
-            self.error_message = str(e)
+                # container_path includes filename
+                dest_path = os.path.join(self._workdir, os.path.dirname(container_path))
+                final_container_path = container_path
+                filename = os.path.basename(container_path)
 
-    def add_files(self, files: List[str]) -> None:
-        """
-        Add a given list of existing file paths into the overlay for tracking.
-        """
-        for path in files:
-            try:
-                fn = os.path.basename(path)
-                self._copy_and_snapshot(path, fn)
-            except Exception as e:
-                self.error_message = str(e)
+            # Create tar archive in memory
+            tar_stream = io.BytesIO()
+            tar = tarfile.open(fileobj=tar_stream, mode='w')
 
-    def add_file(self, filename: str, content: str) -> None:
-        """
-        Create a new file `filename` in the overlay with the given text content.
-        """
-        dest = os.path.join(self.overlay_directory, filename)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        with open(dest, "w", encoding="utf-8") as f:
-            f.write(content)
-        lines = content.splitlines(keepends=True)
-        self._original_contents[filename] = lines
-        if filename not in self.tracked_files:
-            self.tracked_files.append(filename)
+            # Add file to tar
+            tarinfo = tarfile.TarInfo(name=filename)
+            tarinfo.size = len(file_content)
+            tarinfo.mode = 0o644
+            tar.addfile(tarinfo, io.BytesIO(file_content))
+            tar.close()
 
-    def load_yaml(self, yaml_file: str, name: str) -> bool:
-        """
-        Read a HAgent-style patch YAML and apply all diffs/new files into the overlay.
-        Only read `name` sub entries.
-        Returns False on parse/apply error (use `error_message`).
-        """
-        try:
-            with open(yaml_file) as f:
-                data = self._yaml.load(f)
-            entry = data.get(name)
-            if not entry:
-                self.error_message = f"No entry named {name}"
+            # Reset stream position
+            tar_stream.seek(0)
+
+            # Ensure the destination directory exists
+            if dest_path != self._workdir:
+                self._ensure_container_directory(dest_path)
+
+            # Copy to container using put_archive
+            success = self.container.put_archive(path=dest_path, data=tar_stream.getvalue())
+
+            if success:
+                # Track file content for diffing
+                self._tracked_files[final_container_path] = file_content
+                print(f"Successfully copied '{host_path}' to container path '{final_container_path}'")
+                return True
+            else:
+                self.error_message = f"Failed to copy file '{host_path}' to container"
                 return False
-            for pat in entry.get("patches", []):
-                fn = pat["filename"]
-                diff = pat.get("diff", "")
-                patched = list(difflib.restore(diff.splitlines(keepends=True), 2))
-                dest = os.path.join(self.overlay_directory, fn)
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "w", encoding="utf-8") as outf:
-                    outf.writelines(patched)
-                self._original_contents.setdefault(fn, [])
-                if fn not in self.tracked_files:
-                    self.tracked_files.append(fn)
-            return True
+
         except Exception as e:
-            self.error_message = str(e)
+            self.error_message = f"Failed to copy file '{host_path}': {e}"
             return False
 
-    def set_working_directory(self, path: str) -> None:
-        """
-        Change the virtual cwd for subsequent `run` calls. Default is “.”.
-        """
-        self.cwd = path
-
-    def run(self, command: str) -> Tuple[int, str, str]:
-        """
-        Execute `command` against the overlay (never touching real disk).
-        Returns (exit_code, stdout, stderr).
-        """
-        cwd = os.path.join(self.overlay_directory, self.cwd)
+    def _ensure_container_directory(self, dir_path: str) -> bool:
+        """Ensure a directory exists in the container."""
         try:
-            proc = subprocess.Popen(
-                command,
-                shell=True,
-                cwd=cwd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+            # Create directory if it doesn't exist
+            result = self.container.exec_run(f'mkdir -p {dir_path}')
+            return result.exit_code == 0
+        except Exception as e:
+            self.error_message = f"Failed to create directory '{dir_path}': {e}"
+            return False
+
+    def run(self, command: str, container_path: Optional[str] = '.') -> Tuple[int, str, str]:
+        """Execute command inside the container."""
+        # Allow running in both CONFIGURED and EXECUTED states
+        if self._state not in ['CONFIGURED', 'EXECUTED']:
+            self.error_message = 'run must be called after setup().'
+            return -1, '', self.error_message
+
+        # Set state to EXECUTED after first successful setup
+        if self._state == 'CONFIGURED':
+            self._state = 'EXECUTED'
+
+        # Handle working directory
+        if container_path == '.':
+            workdir = self._workdir
+        else:
+            # If container_path is relative, join with workdir
+            if not os.path.isabs(container_path):
+                workdir = os.path.join(self._workdir, container_path)
+            else:
+                workdir = container_path
+
+        try:
+            shell_command = ['/bin/sh', '-c', command]
+
+            result = self.container.exec_run(
+                shell_command,
+                workdir=workdir,
+                demux=True
             )
-            out, err = proc.communicate()
-            code = proc.returncode
+
+            exit_code = result.exit_code
+            stdout, stderr = result.output
+
+            stdout_str = stdout.decode('utf-8', 'replace') if stdout else ''
+            stderr_str = stderr.decode('utf-8', 'replace') if stderr else ''
+
+            return exit_code, stdout_str, stderr_str
+
         except Exception as e:
-            self.error_message = str(e)
-            return -1, "", str(e)
-        for root, _, files in os.walk(self.overlay_directory):
-            for fn in files:
-                rel = os.path.relpath(os.path.join(root, fn), self.overlay_directory)
-                if rel not in self.tracked_files:
-                    self.tracked_files.append(rel)
-        return code, out.decode("utf-8", errors="ignore"), err.decode("utf-8", errors="ignore")
+            self.error_message = f'Command execution failed: {e}'
+            return -1, '', str(e)
 
-    def get_patch_dict(self) -> Dict[str, Any]:
-        """
-        Return the full in-memory dict of overlay state and unified diffs.
-        """
-        patches = []
-        for fn in self.tracked_files:
-            patches.append({"filename": fn, "diff": self.get_diff(fn)})
-        return {"overlay_directory": self.overlay_directory,
-                "files": list(self.tracked_files),
-                "patches": patches}
 
-    def save_patches(self, yaml_file: str, name: str) -> bool:
-        """
-        Dump current patch-dict to YAML at `yaml_file` under top-level key `name`.
-        Writes in the real cwd, not in the overlay.
-        """
-        def process_multiline_strings(obj):
-            """
-            Recursively convert strings with newlines into LiteralScalarString so that they
-            are output in literal block style.
-            """
-            if isinstance(obj, dict):
-                return {k: process_multiline_strings(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [process_multiline_strings(item) for item in obj]
-            elif isinstance(obj, str) and '\n' in obj:
-                # Wrap the multiline string so that ruamel.yaml outputs it using literal block style.
-                return LiteralScalarString(obj)
-            return obj
+    def get_file_content(self, container_path: str) -> str:
+        """Return the *modified* text content of a file inside the container."""
+        # Allow getting file content in EXECUTED state (and also CONFIGURED for flexibility)
+        if self._state not in ['CONFIGURED', 'EXECUTED']:
+            self.error_message = 'get_file_content must be called after setup().'
+            return ''
 
         try:
-            real_path = (yaml_file if os.path.isabs(yaml_file)
-                         else os.path.join(os.getcwd(), yaml_file))
-            data = {}
-            if os.path.exists(real_path):
-                data = self._yaml.load(open(real_path)) or {}
-            data[name] = self.get_patch_dict()
+            full_path = os.path.join(self._workdir, container_path)
+            bits, stat = self.container.get_archive(full_path)
 
-            processed_data = process_multiline_strings(data)
+            with io.BytesIO() as bio:
+                for chunk in bits:
+                    bio.write(chunk)
+                bio.seek(0)
+                with tarfile.open(fileobj=bio, mode='r') as tar:
+                    member = tar.getmembers()[0]
+                    extracted_file = tar.extractfile(member)
+                    content = extracted_file.read()
 
-            with open(real_path, "w") as outf:
-                self._yaml.dump(processed_data, outf)
-            return True
+            try:
+                return content.decode('utf-8')
+            except UnicodeDecodeError:
+                self.error_message = f"File '{container_path}' is binary or has non-UTF-8 content."
+                return ''
+        except docker.errors.NotFound:
+            self.error_message = f'File not found in container: {container_path}'
+            return ''
         except Exception as e:
-            self.error_message = str(e)
-            return False
-
-    def get_file_content(self, path: str) -> str:
-        """
-        Return the *modified* text content of `path` in the overlay.
-        If missing or binary, return empty string and set `error_message`.
-        """
-        fp = os.path.join(self.overlay_directory, path)
-        try:
-            data = open(fp, "rb").read()
-        except Exception as e:
-            self.error_message = str(e)
-            return ""
-        try:
-            return data.decode("utf-8")
-        except UnicodeDecodeError:
-            self.error_message = "binary file"
-            return ""
+            self.error_message = f'Failed to get file content: {e}'
+            return ''
 
     def get_diff(self, filename: str) -> str:
-        """
-        Return a unified diff between original and modified file.
-        """
-        orig = self._original_contents.get(filename, [])
-        mod_fp = os.path.join(self.overlay_directory, filename)
+        """Return the unified diff (as text) for a single tracked file."""
+        if filename not in self._tracked_files:
+            self.error_message = f"File '{filename}' was not tracked initially."
+            return ''
+
+        original_content_bytes = self._tracked_files[filename]
+        modified_content_str = self.get_file_content(filename)
+
         try:
-            mod_data = open(mod_fp, "rb").read().decode("utf-8")
-            mod = mod_data.splitlines(keepends=True)
-        except Exception:
-            return ""
-        fromfile = filename
-        tofile = os.path.join(self.overlay_directory, filename)
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        diff_lines = list(difflib.unified_diff(
-            orig, mod,
-            fromfile, tofile,
-            now, now,
-            n=3
-        ))
-        return "".join(diff_lines)
+            original_content_str = original_content_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            self.error_message = f"Original file '{filename}' is binary."
+            return ''
+
+        diff_lines = difflib.unified_diff(
+            original_content_str.splitlines(keepends=True),
+            modified_content_str.splitlines(keepends=True),
+            fromfile=f'a/{filename}',
+            tofile=f'b/{filename}',
+        )
+        return ''.join(diff_lines)
+
+    def add_tracking_extension(self, ext: str) -> List[str]:
+        """Adds a file extension to the list of types that will be monitored for changes."""
+        if ext not in self._tracking_extensions:
+            self._tracking_extensions.append(ext)
+        return self._tracking_extensions
+
+    def get_patch_dict(self) -> Dict[str, Any]:
+        """Generate a dictionary of new files and patched files."""
+        if self._state != 'EXECUTED':
+            self.error_message = 'get_patch_dict must be called after run().'
+            return {}
+
+        patches = {'full': [], 'patch': []}
+
+        # Find all files in the working directory
+        exit_code, out, _ = self.run('find . -type f', container_path='.')
+        if exit_code != 0:
+            return patches
+
+        all_files = [f[2:] for f in out.strip().split('\n') if f]  # Clean ./ prefix
+
+        for file_path in all_files:
+            if self._tracking_extensions and not any(file_path.endswith(ext) for ext in self._tracking_extensions):
+                continue
+
+            modified_content_str = self.get_file_content(file_path)
+            if not modified_content_str and self.error_message:  # Likely binary file
+                patches['full'].append({'filename': file_path, 'contents': '[Binary File]'})
+                continue
+
+            if file_path not in self._tracked_files:
+                # This is a new file
+                patches['full'].append({'filename': file_path, 'contents': modified_content_str})
+            else:
+                # This is a modified file, create a diff
+                diff = self.get_diff(file_path)
+                original_len = len(self._tracked_files[file_path])
+
+                # Add as full if diff is large or file is small
+                if original_len == 0 or (len(diff) / original_len > 0.25):
+                    patches['full'].append({'filename': file_path, 'contents': modified_content_str})
+                else:
+                    patches['patch'].append({'filename': file_path, 'diff': diff})
+
+        return patches
+
+    def save_patches(self, host_path: str, name: str) -> bool:
+        """Dump current patch-dict to YAML at host_path."""
+        patch_dict = self.get_patch_dict()
+        if not patch_dict:
+            return False
+
+        try:
+            yaml = YAML()
+            data = {}
+            if os.path.exists(host_path):
+                with open(host_path, 'r') as f:
+                    data = yaml.load(f) or {}
+
+            # Add metadata and process for literal block style
+            patch_with_meta = {
+                'metadata': {'timestamp': datetime.utcnow().isoformat(), 'image': self.image},
+                'patches': process_multiline_strings(patch_dict),
+            }
+            data[name] = patch_with_meta
+
+            with open(host_path, 'w') as f:
+                yaml.dump(data, f)
+            return True
+        except Exception as e:
+            self.error_message = f'Failed to save patches to YAML: {e}'
+            return False
+
+    def load_patches(self, host_path: str) -> bool:
+        """(Not Implemented) Reads a patch YAML and applies it."""
+        self.error_message = 'load_patches is not yet implemented.'
+        return False
 
     def get_error(self) -> str:
-        """
-        Return the first error message (empty if none).
-        """
+        """Return the last recorded error message (empty if none)."""
         return self.error_message
-
-    def _copy_and_snapshot(self, src: str, dst: str) -> None:
-        dest = os.path.join(self.overlay_directory, dst)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        shutil.copyfile(src, dest)
-        try:
-            data = open(dest, "rb").read().decode("utf-8")
-            lines = data.splitlines(keepends=True)
-        except UnicodeDecodeError:
-            lines = []
-        self._original_contents[dst] = lines
-        if dst not in self.tracked_files:
-            self.tracked_files.append(dst)
-

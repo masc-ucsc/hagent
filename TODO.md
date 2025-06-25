@@ -9,6 +9,16 @@ This document has a dump of "potential" TODOs, many are likely to be bad ideas.
  Fix all the llm_wrap calls/configs
  Create class to extract code from markdown from text and return in list
 
+# Docker related
+
+ Mirror a bit the CVDP structure?
+   /code/prompt.json  # entry prompt
+   /code/rtl
+   /code/verif
+   /code/docs
+   /code/rundir  # logs and results from agentic run
+   /app          # installed tools custom run
+
 # New Passes
 
 ## Guardrails
