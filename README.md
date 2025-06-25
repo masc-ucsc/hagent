@@ -223,3 +223,14 @@ A sample usage for the class to implement is the following code:
 
 Create the class Python implementation, do not write unit test or explanation outside the class.
 """
+
+### Docker Issues
+
+If you use OSX and colima, you may get a "docker-crediential-desktop not installed" issue. More likely, you need to delete the "credStore" entry from your config.json at `~/.docker/config.json`
+
+Try in the command line that you can do: (Fix this before, or it will not work)
+```
+docker pull ubuntu:latest
+docker run -it --rm ubuntu:latest
+```
+

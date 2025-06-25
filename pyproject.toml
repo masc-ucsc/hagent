@@ -34,6 +34,7 @@ ruamel-yaml = "^0.18.10"
 fusepy = "^3.0.1"
 networkx = "^3.5"
 chromadb = "^1.0.12"
+docker = "^7.1.0"
 
 [build-system]
 requires = ["poetry-core"]

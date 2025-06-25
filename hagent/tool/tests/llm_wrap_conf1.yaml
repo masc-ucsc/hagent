@@ -3,7 +3,8 @@ test_react_compile_slang_simple:
   model3: "fireworks_ai/accounts/fireworks/models/deepseek-r1"
   model1: "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct"
   llm:
-    model: "openrouter/deepseek/deepseek-r1-distill-llama-8b"
+    model: "openai/gpt-4.1-mini"
+    # model: "openrouter/deepseek/deepseek-r1-distill-llama-8b"
 
   direct_prompt:
     - role: system
