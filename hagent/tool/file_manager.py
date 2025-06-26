@@ -44,7 +44,7 @@ class File_manager:
         self.image = image
         self.error_message = ''
         self._state = 'INITIALIZED'
-        self._workdir = '/home/user'  # Default working directory inside the container
+        self._workdir = '/code/rundir'  # Default working directory inside the container
 
         self.client: Optional[docker.DockerClient] = None
         self.container: Optional[docker.models.containers.Container] = None
@@ -234,7 +234,7 @@ class File_manager:
             )
             self.container.start()
 
-            # Ensure working directory exists (Alpine might not have /home/user by default)
+            # Ensure working directory exists (Alpine might not have /code/rundir by default)
             if not self._ensure_workdir_exists():
                 return False
 
@@ -371,7 +371,9 @@ class File_manager:
                 workdir = container_path
 
         try:
-            shell_command = ['/bin/sh', '-c', command]
+            # Source profile to get proper PATH setup (includes oss-cad-suite tools)
+            wrapped_command = f'source /etc/profile 2>/dev/null || true; {command}'
+            shell_command = ['/bin/sh', '-c', wrapped_command]
 
             result = self.container.exec_run(
                 shell_command,

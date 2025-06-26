@@ -1,6 +1,12 @@
 
 This document has a dump of "potential" TODOs, many are likely to be bad ideas.
 
+# Docker
+
+Avoid warning:
+
+ docker run --platform linux/amd64 -it --rm mascucsc/hagent-builder:latest
+
 # Small TODOs
 
  check_equivalence should have a "top" argument (multiple modules)
@@ -8,6 +14,14 @@ This document has a dump of "potential" TODOs, many are likely to be bad ideas.
 
  Fix all the llm_wrap calls/configs
  Create class to extract code from markdown from text and return in list
+
+# Create easy install for non-hagent developers
+
+ Something like this?
+
+```
+ npx https://github.com/masc-ucsc/hagent
+```
 
 # Docker related
 
