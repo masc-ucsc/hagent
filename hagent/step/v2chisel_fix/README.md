@@ -28,9 +28,9 @@ V2ChiselFix is a step in the hardware design automation pipeline that refines Ch
 ### Running the Pass
 Execute the `v2chisel_fix` pass using the following command:
 ```bash
-poetry run python3 hagent/step/v2chisel_fix/v2chisel_fix.py -o hagent/step/v2chisel_fix/out2.yaml hagent/step/v2chisel_pass1/out2.yaml
+uv run python3 hagent/step/v2chisel_fix/v2chisel_fix.py -o hagent/step/v2chisel_fix/out2.yaml hagent/step/v2chisel_pass1/out2.yaml
 ```
-- `poetry run`: Executes the command within the Poetry-managed virtual environment.
+- `uv run`: Executes the command within the uv-managed virtual environment.
 - `python3 hagent/step/v2chisel_fix/v2chisel_fix.py`: Runs the v2chisel_fix script.
 - `-o hagent/step/v2chisel_fix/out2.yaml`: Specifies the output YAML file where results will be written.
 - `hagent/step/v2chisel_pass1/out2.yaml`: Specifies the input YAML file generated from the previous step (`v2chisel_pass1`).
@@ -103,7 +103,7 @@ By default, `v2chisel_fix` will attempt up to **10** refinement iterations (`lec
 ## Testing
 Run the test suite with coverage using:
 ```bash
-poetry run pytest --cov=hagent --cov-report=html -k "test_v2chisel_fix" -v
+uv run pytest --cov=hagent --cov-report=html -k "test_v2chisel_fix" -v
 ```
 This command will execute all tests related to `v2chisel_fix` and generate an HTML coverage report in the `htmlcov` directory.
 

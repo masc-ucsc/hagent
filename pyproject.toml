@@ -1,14 +1,40 @@
- [tool.poetry]
+ [project]
 name = "hagent"
 version = "0.1.2"
 description = ""
-authors = ["Farzaneh Rabiei <frabieik@ucsc.edu>" , "Jose Renau <renau@ucsc.edu>"]
+authors = [
+    {name = "Farzaneh Rabiei", email = "frabieik@ucsc.edu"},
+    {name = "Jose Renau", email = "renau@ucsc.edu"}
+]
 readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0.2",
+    "litellm>=1.59.10",
+    "diskcache>=5.6.3",
+    "legacy-cgi>=2.6.2", # needed for litlellm with python 3.13 (soon to be fixed, I hope)
+    "pyslang>=8.0.0",
+    "speechrecognition>=3.14.1",
+    "sounddevice>=0.5.1",
+    "numpy>=2.2.2",
+    "rapidfuzz>=3.12.1",
+    "ruamel-yaml>=0.18.10",
+    "fusepy>=3.0.1",
+    "networkx>=3.5",
+    "chromadb>=1.0.12",
+    "docker>=7.1.0",
+    "transformers>=4.30.0",
+    "torch>=2.7.1",
+    "sentence-transformers>=4.1.0",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest-cov = "^6.0.0"
-ruff = "^0.12.0"
-pydoc-markdown = "^4.8.2"
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.12.0",
+    "pydoc-markdown>=4.8.2",
+]
 
 [tool.ruff]
 line-length = 130
@@ -18,27 +44,9 @@ quote-style = "single"
 indent-style = "space"
 docstring-code-format = true
 
-[tool.poetry.dependencies]
-python = "^3.11"
-pyyaml = "^6.0.2"
-litellm = "^1.59.10"
-diskcache = "^5.6.3"
-# legacy-cgi is needed for litlellm with python 3.13 (soon to be fixed, I hope)
-legacy-cgi = "^2.6.2"
-pyslang = "^8.0.0"
-speechrecognition = "^3.14.1"
-sounddevice = "^0.5.1"
-numpy = "^2.2.2"
-rapidfuzz = "^3.12.1"
-ruamel-yaml = "^0.18.10"
-fusepy = "^3.0.1"
-networkx = "^3.5"
-chromadb = "^1.0.12"
-docker = "^7.1.0"
-
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["hagent"]

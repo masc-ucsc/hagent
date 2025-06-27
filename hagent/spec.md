@@ -32,5 +32,5 @@ HAgent code is divided into four key components. Each with a separate directory:
     - A step is supposed to be simple and can have multiple running in parallel.
     - A pipe can have command line options and non-yaml inputs or outputs.
 
-Each Python step or tool should have its own unit tests that run when using `poetry run pytest`
+Each Python step or tool should have its own unit tests that run when using `uv run pytest`
 

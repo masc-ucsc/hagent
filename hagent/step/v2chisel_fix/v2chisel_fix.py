@@ -8,10 +8,10 @@
 
 ## Usage
 
-Run the pass using Poetry:
+Run the pass using uv:
 
 ```bash
-poetry run python3 hagent/step/v2chisel_fix/v2chisel_fix.py -o hagent/step/v2chisel_fix/out2.yaml hagent/step/v2chisel_pass1/out2.yaml
+uv run python3 hagent/step/v2chisel_fix/v2chisel_fix.py -o hagent/step/v2chisel_fix/out2.yaml hagent/step/v2chisel_pass1/out2.yaml
 
 Process Overview
 Reads 'chisel_pass1' data.
