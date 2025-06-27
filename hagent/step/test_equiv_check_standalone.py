@@ -7,7 +7,7 @@ After checking, the script adds a field "lec" with value 1 if the designs
 are equivalent, or 0 otherwise.
 
 Usage:
-  poetry run python3 hagent/step/test_equiv_check_standalone.py input.yaml
+  uv run python3 hagent/step/test_equiv_check_standalone.py input.yaml
 """
 
 import sys

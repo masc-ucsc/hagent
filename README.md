@@ -11,30 +11,86 @@ HAgent stands for **Hardware Agent**, and it consists of a set of Python program
 
 ### Prerequisites
 
-- **Python 3.8** or higher
-- **[Poetry](https://python-poetry.org/docs/#installation)** for managing dependencies
+- **Python 3.11** or higher (required by the project)
+- **[uv](https://docs.astral.sh/uv/getting-started/installation/)** for managing dependencies
 - **Yosys**: Required for benchmarking and testing
+
+#### Installing uv
+
+On macOS and Linux:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+On Windows:
+```bash
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Or using pip:
+```bash
+pip install uv
+```
 
 ### Installation
 
-Install with Python Poetry:
-
+1. **Clone the repository:**
 ```bash
-poetry install
+git clone https://github.com/masc-ucsc/hagent.git
+cd hagent
 ```
 
-If updating HAgent, you may need to update Poetry dependencies too:
-
+2. **Install dependencies with uv:**
 ```bash
-poetry lock
-poetry install
+uv sync
 ```
 
-Each HAgent pipeline may use a different set of LLMs. Overall, we use litellm which support most LLM providers. Set the required API keys (depends on the pipe that you use):
+3. **Verify installation:**
+```bash
+uv run python -c "import hagent; print('HAgent installed successfully')"
+```
+
+#### Updating HAgent
+
+If updating HAgent, you may need to update dependencies too:
 
 ```bash
-export OPENAI_API_KEY=.....
-export SAMBANOVA_API_KEY=....
+git pull
+uv lock
+uv sync
+```
+
+#### Setting up API Keys
+
+Each HAgent pipeline may use a different set of LLMs. We use litellm which supports most LLM providers. Set the required API keys (depends on the pipe that you use):
+
+```bash
+# Required for most pipelines
+export OPENAI_API_KEY=your_openai_key_here
+
+# Optional - depending on which LLM you want to use
+export SAMBANOVA_API_KEY=your_sambanova_key_here
+export ANTHROPIC_API_KEY=your_anthropic_key_here
+export FIREWORKS_AI_API_KEY=your_fireworks_key_here
+```
+
+**Note:** For testing, you can set dummy values for unused providers:
+```bash
+export FIREWORKS_AI_API_KEY=dummy_key_for_testing
+```
+
+### Quick Start
+
+After installation, run a simple test to verify everything works:
+
+```bash
+# Run basic tests
+uv run pytest hagent/step/trivial/tests/
+
+# Run a simple trivial step
+mkdir -p tmp && cd tmp
+uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -o output.yaml
+cat output.yaml
 ```
 
 ### Usage
@@ -50,51 +106,51 @@ export FIREWORKS_AI_API_KEY=whatever_key_you_like_most
 
 To run all the hagent tests:
 ```
-poetry run pytest
+uv run pytest
 ```
 
 To verbose model:
 ```
-poetry run pytest -v
+uv run pytest -v
 ```
 
 Samples with coverage information:
 ```
-poetry run pytest --cov=hagent
-poetry run pytest --cov=hagent/tool --cov-report=html
+uv run pytest --cov=hagent
+uv run pytest --cov=hagent/tool --cov-report=html
 ```
 
 Run a subset of tests with coverage:
 ```
-poetry run pytest hagent/tool/ --cov=hagent/tool --cov-report=html
+uv run pytest hagent/tool/ --cov=hagent/tool --cov-report=html
 ```
 
 [![codecov](https://codecov.io/gh/masc-ucsc/hagent/graph/badge.svg?token=Hyj2VifE7j)](https://codecov.io/gh/masc-ucsc/hagent)
 
 Check issues and format with ruff:
 ```
-poetry run ruff check hagent
-poetry run ruff format hagent
+uv run ruff check hagent
+uv run ruff format hagent
 ```
 
 To generate the top level API specification:
 ```
- poetry run pydoc-markdown >spec.md
- poetry run pydoc-markdown -p hagent/tool --render-toc  >spec_tool.md
+uv run pydoc-markdown >spec.md
+uv run pydoc-markdown -p hagent/tool --render-toc  >spec_tool.md
 ```
 
 #### Trivial
 
 Run the trivial test (hagent/step/tests/test_trivial.py)
 ```
-poetry run pytest -k "test_trivial"
+uv run pytest -k "test_trivial"
 ```
 
 Run a command line trivial.py pass with specific input:
 ```
 mkdir tmp
 cd tmp
-poetry run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -ofoo.yaml
+uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -ofoo.yaml
 cat foo.yaml
 description: |
   test1
@@ -103,8 +159,8 @@ description: |
 
 Gather coverage information about your step (htmlcov):
 ```
-poetry run pytest --cov=hagent/step/trivial
-poetry run pytest --cov=hagent/step/trivial --cov-report=html
+uv run pytest --cov=hagent/step/trivial
+uv run pytest --cov=hagent/step/trivial --cov-report=html
 ```
 
 ## Example of some command line test cases using HAgent
@@ -112,7 +168,7 @@ poetry run pytest --cov=hagent/step/trivial --cov-report=html
 Agent to iterate over buggy Verilog to fix it until it complies correctly with slang:
 ```
 cd tmp
-poetry run python3 ../hagent/tool/tests/test_react_compile_slang_simple.py ../hagent/tool/tests/buggy_verilog.v
+uv run python3 ../hagent/tool/tests/test_react_compile_slang_simple.py ../hagent/tool/tests/buggy_verilog.v
 ```
 
 
@@ -224,12 +280,70 @@ A sample usage for the class to implement is the following code:
 Create the class Python implementation, do not write unit test or explanation outside the class.
 """
 
+## Troubleshooting
+
+### Common uv Issues
+
+#### "uv: command not found"
+Make sure uv is installed and in your PATH:
+```bash
+# Check if uv is installed
+which uv
+
+# If not found, install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc  # or restart your terminal
+```
+
+#### "No such file or directory" when running scripts
+Make sure you're in the correct directory and the script exists:
+```bash
+# Check current directory
+pwd
+ls hagent/step/trivial/
+
+# Run from project root
+cd /path/to/hagent
+uv run python hagent/step/trivial/trivial.py --help
+```
+
+#### Python version issues
+HAgent requires Python 3.11+. Check your Python version:
+```bash
+uv run python --version
+# Should show Python 3.11 or higher
+
+# If using wrong version, uv will automatically download the correct one
+uv python install 3.11
+```
+
+#### API Key not working
+Verify your API keys are set correctly:
+```bash
+echo $OPENAI_API_KEY
+echo $FIREWORKS_AI_API_KEY
+
+# Set in your shell profile (.bashrc, .zshrc, etc.)
+export OPENAI_API_KEY=your_actual_key_here
+```
+
+#### Dependencies out of sync
+If you encounter import errors:
+```bash
+# Clean and reinstall
+uv sync --reinstall
+
+# Or update lock file
+uv lock --upgrade
+uv sync
+```
+
 ### Docker Issues
 
 If you use OSX and colima, you may get a "docker-crediential-desktop not installed" issue. More likely, you need to delete the "credStore" entry from your config.json at `~/.docker/config.json`
 
 Try in the command line that you can do: (Fix this before, or it will not work)
-```
+```bash
 docker pull ubuntu:latest
 docker run -it --rm ubuntu:latest
 ```

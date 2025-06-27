@@ -58,13 +58,7 @@ class FewShotMemory:
         snippet_id = f'snippet_{hash(error_type + fix.question)}'
         self.collection.add(
             documents=[fix.question],
-            metadatas=[
-                {
-                    'fix_question': fix.question,
-                    'fix_answer': fix.answer,
-                    'error_type': error_type
-                }
-            ],
+            metadatas=[{'fix_question': fix.question, 'fix_answer': fix.answer, 'error_type': error_type}],
             ids=[snippet_id],
         )
 
@@ -75,4 +69,6 @@ class FewShotMemory:
             n_results=n_results,
             where={'error_type': {'$eq': error_type}},  # Exact match filter
         )
-        return [Memory_shot(question=metadata['fix_question'],answer=metadata['fix_answer']) for metadata in results['metadatas'][0]]
+        return [
+            Memory_shot(question=metadata['fix_question'], answer=metadata['fix_answer']) for metadata in results['metadatas'][0]
+        ]

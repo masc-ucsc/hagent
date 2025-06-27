@@ -9,7 +9,7 @@ This script:
   4. Prints the extracted words.
 
 Usage example:
-  poetry run python3 extract_verilog_diff_keywords.py \
+  uv run python3 extract_verilog_diff_keywords.py \
       --original_verilog ~/feri/original.v \
       --fixed_verilog ~/feri/fixed.v
 """
