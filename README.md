@@ -45,6 +45,11 @@ cd hagent
 uv sync
 ```
 
+If you run test/developtment
+```
+uv sync --extra dev
+```
+
 3. **Verify installation:**
 ```bash
 uv run python -c "import hagent; print('HAgent installed successfully')"
