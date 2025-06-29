@@ -31,8 +31,11 @@ class File_manager:
     Wrapper to manage docker setups, tracks file state within a container,
     and exports/imports patches as unified diffs in YAML.
     """
+    
+    # Class-level container cache for reuse
+    _container_cache: Dict[str, Any] = {}
 
-    def __init__(self, image: str) -> None:
+    def __init__(self, image: str, reuse_container: bool = True) -> None:
         """
         Create a new class with the docker image.
         Verify docker is available, and that the user has permission to run the docker.
@@ -42,6 +45,7 @@ class File_manager:
         The object destruction or termination should clear the docker.
         """
         self.image = image
+        self.reuse_container = reuse_container
         self.error_message = ''
         self._state = 'INITIALIZED'
         self._workdir = '/code/rundir'  # Default working directory inside the container
@@ -158,13 +162,26 @@ class File_manager:
 
     def __del__(self) -> None:
         """On destruction, ensures the created docker container is stopped and removed."""
-        if self.container:
+        if self.container and not self.reuse_container:
             try:
                 self.container.stop()
                 self.container.remove()
             except docker.errors.APIError:
                 # Ignore errors on cleanup, e.g., if container was already removed.
                 pass
+        
+    @classmethod
+    def cleanup_all_containers(cls) -> None:
+        """Cleanup all cached containers. Call this at the end of test sessions."""
+        for container_key, container_info in cls._container_cache.items():
+            try:
+                container = container_info['container']
+                container.stop()
+                container.remove()
+                print(f"Cleaned up cached container for {container_key}")
+            except Exception as e:
+                print(f"Error cleaning up container {container_key}: {e}")
+        cls._container_cache.clear()
 
     def _ensure_workdir_exists(self) -> bool:
         """Ensure the working directory exists in the container."""
@@ -182,26 +199,51 @@ class File_manager:
         """
         if self._state == 'ERROR':
             return False
-        if self.container:
-            self.__del__()  # Clean up previous container
+            
+        # Generate cache key based on image and mounts
+        cache_key = f"{self.image}:{hash(tuple(sorted(self._mounts, key=lambda x: x['target'])))}"
+        
+        # Try to reuse cached container if enabled
+        if self.reuse_container and cache_key in self._container_cache:
+            cached_info = self._container_cache[cache_key]
+            try:
+                # Check if cached container is still running
+                cached_container = cached_info['container']
+                cached_container.reload()
+                if cached_container.status == 'running':
+                    self.container = cached_container
+                    self._state = 'CONFIGURED'
+                    print(f"Reusing cached container for '{self.image}'")
+                    # Reset tracked files for this instance
+                    self._tracked_files = {}
+                    return True
+                else:
+                    # Container stopped, remove from cache
+                    del self._container_cache[cache_key]
+            except Exception as e:
+                print(f"Cached container unusable, creating new one: {e}")
+                if cache_key in self._container_cache:
+                    del self._container_cache[cache_key]
+        
+        # Clean up existing container if not reusing
+        if self.container and not self.reuse_container:
+            self.__del__()
             self._tracked_files = {}  # Reset tracked files
 
         try:
-            print(f"Pulling image '{self.image}'... This may take a moment.")
-
-            # Try to pull the image with fallback strategies
+            # Skip image pull message for better performance
             image_available = False
 
-            # First, check if image exists locally
+            # First, check if image exists locally (skip pulling)
             try:
                 self.client.images.get(self.image)
-                print(f"Using cached image '{self.image}'")
                 image_available = True
             except docker.errors.ImageNotFound:
                 pass
 
-            # If not cached, try to pull
+            # Only pull if image doesn't exist locally
             if not image_available:
+                print(f"Pulling image '{self.image}'... This may take a moment.")
                 try:
                     self.client.images.pull(self.image)
                     image_available = True
@@ -237,6 +279,14 @@ class File_manager:
             # Ensure working directory exists (Alpine might not have /code/rundir by default)
             if not self._ensure_workdir_exists():
                 return False
+
+            # Cache the container if reuse is enabled
+            if self.reuse_container:
+                self._container_cache[cache_key] = {
+                    'container': self.container,
+                    'image': self.image,
+                    'mounts': self._mounts.copy()
+                }
 
             self._state = 'CONFIGURED'
             return True
