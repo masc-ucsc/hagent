@@ -114,6 +114,11 @@ To run all the hagent tests:
 uv run pytest
 ```
 
+To avoid running all the test all the time, use the testmon:
+```
+uv run pytest --testmon
+```
+
 To verbose model:
 ```
 uv run pytest -v
