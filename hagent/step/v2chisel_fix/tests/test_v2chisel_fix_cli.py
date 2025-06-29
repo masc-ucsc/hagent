@@ -72,6 +72,11 @@ def test_cli_generates_equivalent_chisel(tmp_path, pass1_yaml, monkeypatch):
 
     # Load and compare
     on_disk = yaml.safe_load(out_yaml.read_text())
+
+    # Remove tracing data for comparison
+    on_disk.pop('tracing', None)
+    result_dict.pop('tracing', None)
+
     assert result_dict == on_disk
 
     # Because we stubbed equivalence to pass:
