@@ -9,5 +9,3 @@ top_name: "and_gate_behavioral"
 
 llm:
   model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct"
-  drop_params: true
-

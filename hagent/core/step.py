@@ -170,6 +170,7 @@ class Step(metaclass=TracerMetaClass):
         output_data['tracing']['start'] = s_to_us(start)
         output_data['tracing']['elapsed'] = s_to_us(elapsed)
         # Ensure that "input" is a list for future multi-input support
+        # Store paths relative to where the script was called.
         input = self.input_file
         if isinstance(self.input_file, str):
             input = [self.input_file]

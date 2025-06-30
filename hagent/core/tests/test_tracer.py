@@ -194,7 +194,7 @@ class TestTraceEvent:
 
 
 class TestTracer:
-    def clear(self, clear_tracer):
+    def clear(self, clean_tracer):
         assert len(tracer.Tracer.events) == 0
 
     def test_log(self, base_trace_event, clean_tracer):
@@ -209,10 +209,9 @@ class TestTracer:
 
 class TestGeneratePerfetto:
     def test_generate_simple(self, test_dir, clean_tracer):
-        return
         simple_dir = os.path.join(test_dir, 'simple')
         yaml_files = tracer.scan_for_yamls(simple_dir)
-        initial, inputs, outputs = tracer.parse_yaml_files(yaml_files)
+        initial, inputs, outputs = tracer.parse_yaml_files(simple_dir, yaml_files)
 
         tracer.Tracer.save_perfetto_trace(dependencies=(initial, inputs, outputs), filename='simple_perfetto.json')
 
@@ -225,13 +224,12 @@ class TestGeneratePerfetto:
         assert isinstance(data['traceEvents'], list) is True
 
     def test_generate_multi_input(self, test_dir, clean_tracer):
-        return
         multi_input_dir = os.path.join(test_dir, 'multi_input')
         yaml_files = tracer.scan_for_yamls(multi_input_dir)
-        initial, inputs, outputs = tracer.parse_yaml_files(yaml_files)
+        initial, inputs, outputs = tracer.parse_yaml_files(multi_input_dir, yaml_files)
 
         tracer.Tracer.save_perfetto_trace(
-            dependencies=(initial, inputs, outputs), filename='multi_perfetto.json', asynchronous=True, step_offset=300
+            dependencies=(initial, inputs, outputs), filename='multi_perfetto.json', asynchronous=True
         )
 
         generated_trace = os.path.join(os.getcwd(), 'multi_perfetto.json')
