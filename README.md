@@ -135,6 +135,13 @@ Run a subset of tests with coverage:
 uv run pytest hagent/tool/ --cov=hagent/tool --cov-report=html
 ```
 
+To upload to codecov manually:
+```
+uv run pytest --cov --cov-branch --cov-report=xmlA
+curl -Os https://cli.codecov.io/latest/macos/codecov  # replace macos for linux if needed
+./codecov  --verbose upload-process -f ./coverage.xml
+```
+
 [![codecov](https://codecov.io/gh/masc-ucsc/hagent/graph/badge.svg?token=Hyj2VifE7j)](https://codecov.io/gh/masc-ucsc/hagent)
 
 Check issues and format with ruff:
