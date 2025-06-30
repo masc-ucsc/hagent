@@ -7,7 +7,7 @@ authors = [
     {name = "Jose Renau", email = "renau@ucsc.edu"}
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<4.0"
 dependencies = [
     "pyyaml>=6.0.2",
     "litellm>=1.59.10",
