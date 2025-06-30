@@ -26,6 +26,7 @@ dependencies = [
     "transformers>=4.30.0",
     "torch>=2.7.1",
     "sentence-transformers>=4.1.0",
+    "pytest-codecov>=0.7.0",
 ]
 
 [project.optional-dependencies]
