@@ -8,5 +8,4 @@ code_content: |
 top_name: "and_gate_behavioral"
 
 llm:
-  model: "ollama/gemma3:4b"
-  drop_params: true
+  model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct"

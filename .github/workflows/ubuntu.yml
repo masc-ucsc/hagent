@@ -3,61 +3,65 @@ name: Ubuntu
 on: [push, pull_request]
 
 jobs:
-  install:
-    name: Install Python + Poetry + HAgent package.
+  install_uv:
+    name: Install UV.
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - name: Install poetry
-        run: pipx install poetry
-      - uses: actions/setup-python@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: '3.11'
-          cache: 'poetry'
-          cache-dependency-path: '**/pyproject.toml'
+          # Install a specific version of uv.
+          version: "0.7.17"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
       - name: Install project
-        run: |
-          poetry config virtualenvs.in-project true
-          poetry lock
-          poetry install
+        run: uv sync --extra dev
 
   ruff:
     name: Run Ruff and generate a lint report
     runs-on: ubuntu-latest
-    needs: install
+    needs: install_uv
     steps:
       - uses: actions/checkout@v4
-      - name: Install poetry
-        run: pipx install poetry
-      - uses: actions/setup-python@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: '3.11'
-          cache: 'poetry'
-          cache-dependency-path: '**/pyproject.toml'
+          # Install a specific version of uv.
+          version: "0.7.17"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Install project
+        run: uv sync --extra dev
+
       - name: Run ruff
-        run: poetry run ruff check .
+        run: uv run ruff check .
 
   test:
     name: Run tests with coverage
     runs-on: ubuntu-latest
-    needs: install
+    needs: install_uv
     steps:
       - uses: actions/checkout@v4
-      - name: Install poetry
-        run: pipx install poetry
-      - uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: '3.11'
-          cache: 'poetry'
-          cache-dependency-path: '**/pyproject.toml'
+          # Install a specific version of uv.
+          version: "0.7.17"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
       - name: Install project
-        run: |
-          poetry config virtualenvs.in-project true
-          poetry lock
-          poetry install
+        run: uv sync --extra dev
+
       - name: Run tests with coverage
         run: |
-          poetry run pytest --cov --cov-branch --cov-report=xml
+          uv run pytest --cov --cov-branch --cov-report=xml
           find . -name "coverage.xml" -type f
           ls -la coverage.xml || echo "coverage.xml not found in root"
       - name: Upload coverage reports to Codecov
