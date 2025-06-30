@@ -348,6 +348,23 @@ uv lock --upgrade
 uv sync
 ```
 
+### Perfetto stats
+
+Each run generated yaml file has a tracer entry. This can be extracted and create a perfetto.
+Put all the yaml files in a directory (inputs/outputs). E.g:
+
+```
+uv run ./hagent/step/trivial/trivial.py ./hagent/step/trivial/tests/input1.yaml -o out.yaml
+uv run ./hagent/step/trivial/trivial.py  out.yaml -o out2.yaml
+```
+
+and run this to generate perfetto.json
+```
+uv run ./scripts/build_perfetto_trace.py -i .
+```
+
+To see the results, upload the perfetto.json to https://ui.perfetto.dev/
+
 ### Docker Issues
 
 If you use OSX and colima, you may get a "docker-crediential-desktop not installed" issue. More likely, you need to delete the "credStore" entry from your config.json at `~/.docker/config.json`
