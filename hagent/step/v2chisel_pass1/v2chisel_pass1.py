@@ -95,14 +95,6 @@ class V2Chisel_pass1(Step):
             raise ValueError(self.lw.last_error)
         self.setup_called = True
 
-    # def _generate_diff(self, old_code: str, new_code: str) -> str:
-    #     old_lines = old_code.splitlines()
-    #     new_lines = new_code.splitlines()
-    #     diff_lines = difflib.unified_diff(
-    #         old_lines, new_lines, fromfile='verilog_original.v', tofile='verilog_fixed.v', lineterm='', n=20
-    #     )
-    #     return '\n'.join(diff_lines)
-
     def _is_snippet_empty(self, snippet: str) -> bool:
         """
         Returns True if no meaningful code line is marked in the snippet.
@@ -199,9 +191,6 @@ class V2Chisel_pass1(Step):
         verilog_fixed = data.get('verilog_fixed', '')
         chisel_original = data.get('chisel_original', '')
 
-        # verilog_diff_text = self._generate_diff(verilog_original, verilog_fixed)
-        # --- GENERATE UNIFIED DIFF VIA our new step ---
-        # use the new UnifiedDiff step instead of the old helper
         diff_step = Unified_diff()
         diff_step.set_io(self.input_file, self.output_file)
         diff_step.input_data = {

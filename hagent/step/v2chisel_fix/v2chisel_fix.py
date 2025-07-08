@@ -118,10 +118,6 @@ class V2chisel_fix(Step):
            the updated code is compiled (Chisel2v) and then checked via LEC.
         4) Returns final data with "chisel_fixed" in the YAML.
         """
-        # Only compute and print the unified diff if we have a fixed design to compare
-        # if self.verilog_fixed_str.strip():
-        #     self.verilog_diff_str = diff_code(self.verilog_original_str, self.verilog_fixed_str)
-        #     print(f"[V2ChiselFix] Computed unified diff:\n{self.verilog_diff_str}")
 
         result = data.copy()
         pass1_info = data['chisel_pass1']
@@ -263,7 +259,6 @@ class V2chisel_fix(Step):
             if not new_diff.strip():
                 continue
             last_prompt4_diff = new_diff
-            # cand_code = ChiselDiffApplier().apply_diff(new_diff, chisel_original)
             cand_code = self._apply_diff(chisel_original, new_diff)
             ok, verilog_temp, err = self._run_chisel2v(cand_code)
             if not ok:
@@ -513,11 +508,6 @@ class V2chisel_fix(Step):
             self.refine_llm.chat_template = prompt_template
             # formatted_prompt = self.refine_llm.chat_template.format(prompt_dict)
             print(f'\n================ LLM QUERY (prompt_compiler_fix, iteration {i}) ================')
-            # for chunk in formatted_prompt:
-            #     print("Role: {}".format(chunk.get('role', '<no role>')))
-            #     print("Content:")
-            #     print(chunk.get('content', '<no content>'))
-            #     print("------------------------------------------------")
             answers = self.refine_llm.inference(prompt_dict, prompt_index="prompt_compiler_fix", n=1, max_history=10)
             if not answers:
                 print('\n=== LLM RESPONSE: EMPTY ===\n')
@@ -528,8 +518,6 @@ class V2chisel_fix(Step):
             for txt in answers:
                 diff_code_text = self.chisel_extractor.parse(txt)
                 if diff_code_text:
-                    # applier = ChiselDiffApplier()
-                    # new_code = applier.apply_diff(diff_code_text, current_code)
                     new_code = self._apply_diff(current_code, diff_code_text)
                     is_valid, verilog_candidate, error_msg = self._run_chisel2v(new_code)
                     if is_valid:
@@ -761,11 +749,6 @@ class V2chisel_fix(Step):
         self.refine_llm.chat_template = prompt_template
         formatted_prompt = self.refine_llm.chat_template.format(prompt_dict)
         print('\n================ LLM FORMATTED QUERY (prompt4, attempt {}) ================'.format(attempt))
-        # for chunk in formatted_prompt:
-        #     print("Role: {}".format(chunk.get('role', '<no role>')))
-        #     print("Content:")
-        #     print(chunk.get('content', '<no content>'))
-        #     print("------------------------------------------------")
 
         if not answers:
             print('\n=== LLM RESPONSE: EMPTY ===\n')
@@ -784,8 +767,6 @@ class V2chisel_fix(Step):
                     continue
                 print("[INFO] Evaluating candidate diff:")
                 print(candidate_diff)
-                # applier = ChiselDiffApplier()
-                # test_code = applier.apply_diff(candidate_diff, self.chisel_original)
                 test_code = self._apply_diff(self.chisel_original, candidate_diff)
                 is_valid, verilog_candidate_temp, error_msg = self._run_chisel2v(test_code)
                 if not is_valid:
@@ -814,7 +795,6 @@ class V2chisel_fix(Step):
         c2v = Chisel2v()
         if not c2v.setup():
             return (False, None, 'chisel2v setup failed: ' + c2v.error_message)
-        # module_name = self._find_chisel_classname(chisel_code)
         module_name = "Top"
         if not module_name:
             module_name = 'MyModule'
