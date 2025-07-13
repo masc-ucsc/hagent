@@ -7,6 +7,12 @@ Avoid warning:
 
  docker run --platform linux/amd64 -it --rm mascucsc/hagent-builder:latest
 
+Overlays:
+
+sudo mkdir -p /mnt/merged
+sudo chown user /mnt/merged
+sudo mount -t overlay overlay -o lowerdir=/mnt/lower,upperdir=/mnt/overlay/upper,workdir=/mnt/overlay/work /mnt/merged
+
 # Small TODOs
 
  check_equivalence should have a "top" argument (multiple modules)
