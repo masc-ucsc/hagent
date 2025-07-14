@@ -22,8 +22,17 @@ uv run python -c "import hagent; print('HAgent installed successfully')"
 
 ### Testing
 ```bash
-# Run all tests
+# Run all tests (excludes slow tests by default)
 uv run pytest
+
+# Run fast tests only (explicit)
+uv run pytest -m "not slow"
+
+# Run slow tests only (for regression testing)
+uv run pytest -m slow
+
+# Run all tests including slow ones
+uv run pytest -m ""
 
 # Run tests with coverage
 uv run pytest --cov=hagent --cov-report=html
