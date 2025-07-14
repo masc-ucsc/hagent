@@ -480,8 +480,9 @@ class File_manager:
             success = self.container.put_archive(path=dest_path, data=tar_stream.getvalue())
 
             if success:
-                # Track file content for diffing
-                self._tracked_files[final_container_path] = file_content
+                # Track file content for diffing - use absolute path
+                absolute_path = self._resolve_container_path(final_container_path)
+                self._tracked_files[absolute_path] = file_content
                 print(f"Successfully copied '{host_path}' to container path '{final_container_path}'")
                 return True
             else:
@@ -673,8 +674,9 @@ class File_manager:
             return False
 
         try:
-            # Simply record the path for tracking - no file copying needed
-            self._tracked_paths.add(container_path)
+            # Simply record the path for tracking - use absolute path
+            absolute_path = self._resolve_container_path(container_path)
+            self._tracked_paths.add(absolute_path)
             print(f"Successfully tracking file '{container_path}' in container")
             return True
 
@@ -715,8 +717,21 @@ class File_manager:
                 if ext and not file_path.endswith(ext):
                     continue
 
+                # Always store absolute paths in _tracked_paths
+                if not file_path.startswith('/'):
+                    # If relative path, make it absolute relative to container_path
+                    if container_path == '.':
+                        absolute_path = self._resolve_container_path(file_path)
+                    elif os.path.isabs(container_path):
+                        absolute_path = os.path.join(container_path, file_path)
+                    else:
+                        absolute_path = self._resolve_container_path(os.path.join(container_path, file_path))
+                else:
+                    # Already absolute
+                    absolute_path = file_path
+
                 # Track the file
-                self._tracked_paths.add(container_path)
+                self._tracked_paths.add(absolute_path)
                 tracked_count += 1
 
             print(f"Successfully tracking {tracked_count} files in directory '{container_path}'")
@@ -734,7 +749,7 @@ class File_manager:
 
         try:
             # Create a temporary patch file in the container
-            temp_patch_path = f'/tmp/patch_{len(self._tracked_files) + len(self._tracked_temp_files)}.patch'
+            temp_patch_path = f'/tmp/patch_{len(self._tracked_files) + len(self._tracked_paths)}.patch'
 
             # Write patch content to temporary file using echo and redirection
 
@@ -912,45 +927,55 @@ class File_manager:
             return patches
 
         all_files = [f[2:] for f in out.strip().split('\n') if f]  # Clean ./ prefix
+        
+        # Convert relative paths to absolute for consistent comparison
+        all_files_absolute = [self._resolve_container_path(f) for f in all_files]
+        
+        # Also add all tracked paths to ensure we check files outside working directory
+        all_files_set = set(all_files_absolute)
+        for tracked_path in self._tracked_paths:
+            if tracked_path not in all_files_set:
+                all_files_absolute.append(tracked_path)
+                all_files_set.add(tracked_path)
 
-        for file_path in all_files:
-            if self._tracking_extensions and not any(file_path.endswith(ext) for ext in self._tracking_extensions):
+        for absolute_file_path in all_files_absolute:
+            if self._tracking_extensions and not any(absolute_file_path.endswith(ext) for ext in self._tracking_extensions):
                 continue
 
-            modified_content_str = self.get_file_content(file_path)
+            modified_content_str = self.get_file_content(absolute_file_path)
             if not modified_content_str and self.error_message:  # Likely binary file
-                patches['full'].append({'filename': file_path, 'contents': '[Binary File]'})
+                patches['full'].append({'filename': absolute_file_path, 'contents': '[Binary File]'})
                 continue
 
-            # Check if file is tracked (legacy copy_file or new track_file)
-            is_tracked = file_path in self._tracked_files or file_path in self._tracked_paths
+            # Check if file is tracked (both use absolute paths now)
+            is_tracked = absolute_file_path in self._tracked_files or absolute_file_path in self._tracked_paths
 
             if not is_tracked:
                 # This is a new file
-                patches['full'].append({'filename': file_path, 'contents': modified_content_str})
+                patches['full'].append({'filename': absolute_file_path, 'contents': modified_content_str})
             else:
                 # This is a tracked file, create a diff
-                diff = self.get_diff(file_path)
+                diff = self.get_diff(absolute_file_path)
                 if not diff:  # No changes detected
                     continue
 
                 # Get original file size for comparison
                 original_len = 0
-                if file_path in self._tracked_files:
+                if absolute_file_path in self._tracked_files:
                     # Legacy copy_file approach
-                    original_len = len(self._tracked_files[file_path])
-                elif file_path in self._tracked_paths:
+                    original_len = len(self._tracked_files[absolute_file_path])
+                elif absolute_file_path in self._tracked_paths:
                     # New track_file approach - get size from reference container
                     reference_container = self._get_reference_container()
                     if reference_container:
-                        original_content = self.get_file_content(file_path, container=reference_container)
+                        original_content = self.get_file_content(absolute_file_path, container=reference_container)
                         original_len = len(original_content.encode('utf-8')) if original_content else 0
 
                 # Add as full if diff is large or file is small
                 if original_len == 0 or (len(diff) / original_len > 0.25):
-                    patches['full'].append({'filename': file_path, 'contents': modified_content_str})
+                    patches['full'].append({'filename': absolute_file_path, 'contents': modified_content_str})
                 else:
-                    patches['patch'].append({'filename': file_path, 'diff': diff})
+                    patches['patch'].append({'filename': absolute_file_path, 'diff': diff})
 
         return patches
 
