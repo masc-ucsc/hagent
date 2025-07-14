@@ -27,6 +27,7 @@ def main():
     # 2. Track existing files before making changes
     fm.add_tracking_extension('.scala')
     fm.add_tracking_extension('.v')
+    fm.add_tracking_extension('.sv')
 
     # 3. Check if target files exist before tracking
     ifu_path = '/code/XiangShan/src/main/scala/xiangshan/frontend/IFU.scala'
@@ -44,7 +45,7 @@ def main():
         exit(5)
 
     fm.track_file(ifu_path)
-    fm.track_dir(rtl_path, ext='.v')
+    fm.track_dir(rtl_path, ext='.sv')
 
     # 4. Apply the patch to IFU.scala using the proper API
     old_line = '  f2_flush         := backend_redirect || mmio_redirect || wb_redirect'
