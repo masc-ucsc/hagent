@@ -60,6 +60,9 @@ filterwarnings = [
     "ignore::DeprecationWarning",
    "ignore::UserWarning"
 ]
+markers = [
+    "slow: marks tests as slow (deselected by default)"
+]
 
 [tool.coverage.run]
 omit = [
