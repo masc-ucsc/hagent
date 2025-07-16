@@ -1,0 +1,16 @@
+# io_config.yaml
+
+# Input files
+verilog_code_file: hagent/step/sva_gen/examples/designs/alu.sv
+module_spec: hagent/step/sva_gen/examples/specs/alu.md          # Optional; use 'none' if not available
+parse_tree: hagent/step/sva_gen/examples/trees/alu.txt     # Optional; use 'none' if not available
+extracted_signals: hagent/step/sva_gen/examples/signals/alu_signal_extraction.yaml
+
+# Output files
+output_precondition_file: outputs/preconditions/alu_preconditions.txt
+output_assertion_file: outputs/assertions/alu_assertions.txt
+jg_assertion_file: outputs/jg_assertions/alu_jg_assertion.sv
+
+# LLM log output
+llm_log_file: logs/llm_response_log.yaml
+
