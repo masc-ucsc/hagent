@@ -5,7 +5,8 @@
 
 An AI hardware agent engine to support multiple components in chip design, such as code generation, verification, debugging, and tapeout.
 
-HAgent stands for **Hardware Agent**, and it consists of a set of Python programs and support libraries that can be used to build agents resembling a compiler pipeline (pipe). A pipeline is built out of multiple compiler passes or steps (step). Each step is hermetic with respect to HAgent and uses YAML files as input and output to simplify debugging, testing, and ease of development.
+HAgent is an open-source infrastructure that brings the power of Large Language Models (LLMs) to hardware design. By integrating LLMs with chip design tools in a compiler-inspired pipeline, HAgent enables the creation of custom new EDA flows. Its architecture leverages hermetic Docker-based steps and YAML interfaces to simplify development, debugging, and testing, making it accessible and extensible for researchers and practitioners.
+
 
 ## Quick Introduction
 
@@ -382,3 +383,8 @@ docker pull ubuntu:latest
 docker run -it --rm ubuntu:latest
 ```
 
+For docker/colima, you need to have enough memory. In OSX colima, the default is 2GB. This is fine for small runs, but not things like Xiangshan run. Check that you have at least 32GB of memory.
+
+```
+ docker run --rm busybox cat /proc/meminfo | grep MemTotal
+```
