@@ -254,38 +254,130 @@ class TestFileManagerBasics:
             assert line in content
 
     def test_complete_workflow(self, file_manager, temp_files):
-        """Integration test covering the complete workflow."""
+        """Integration test covering the complete workflow with proper tracking."""
         fm = file_manager
 
-        # 1. Copy files
-        assert fm.copy_file(temp_files['greeting_host_path'], 'greeting.txt')
-        assert fm.copy_file(temp_files['temp_file_host_path'], temp_files['temp_file_name'])
+        # 1. Copy a file first (before any run commands)
+        assert fm.copy_file(temp_files['temp_file_host_path'], 'copied_file.txt'), f'Failed to copy file: {fm.get_error()}'
 
-        # 2. Modify files
-        rc, _, _ = fm.run('echo "World" >> greeting.txt')
+        # 2. Create a file that exists in the original container (like /etc/alpine-release)
+        # Check what files exist in alpine
+        rc, out, _ = fm.run('ls /etc/')
+        assert rc == 0
+        
+        # Use /etc/hostname as it should exist and be simple
+        original_hostname = fm.get_file_content('/etc/hostname')
+        
+        # 3. Track the existing file (this is the key difference - track vs copy)
+        assert fm.track_file('/etc/hostname'), f'Failed to track /etc/hostname: {fm.get_error()}'
+
+        # 4. Modify the tracked file
+        rc, _, _ = fm.run('echo "modified_hostname" > /etc/hostname')
         assert rc == 0
 
-        rc, _, _ = fm.run(f'echo "destroyer" > {temp_files["temp_file_name"]}')
+        # 5. Create a new file (not tracked originally)
+        rc, _, _ = fm.run('echo "I am new" > greetings2.txt')
         assert rc == 0
 
-        # 3. Verify content
-        greeting_content = fm.get_file_content('greeting.txt')
-        assert greeting_content == 'Hello\nWorld\n'
+        # 6. Modify the copied file multiple times to test that final state matters
+        rc, _, _ = fm.run('echo "first change" >> copied_file.txt')
+        assert rc == 0
+        rc, _, _ = fm.run('echo "second change" >> copied_file.txt')
+        assert rc == 0
 
-        temp_content = fm.get_file_content(temp_files['temp_file_name'])
-        assert temp_content == 'destroyer\n'
+        # 7. Verify content
+        hostname_content = fm.get_file_content('/etc/hostname')
+        assert hostname_content == 'modified_hostname\n'
 
-        # 4. Check diffs
-        diff = fm.get_diff('greeting.txt')
-        assert '+World' in diff
+        new_content = fm.get_file_content('greetings2.txt')
+        assert new_content == 'I am new\n'
 
-        # 5. Export patches
+        # 8. Check diff against original container (not copied file)
+        diff = fm.get_diff('/etc/hostname')
+        assert 'modified_hostname' in diff, f'Diff should show hostname was modified. Got: {diff}'
+        assert '/etc/hostname' in diff
+
+        # 9. Get patch dict to test tracked files
+        patches = fm.get_patch_dict()
+        
+        # Should have the modified tracked file and copied file in patches
+        tracked_found = False
+        copied_found = False
+        
+        for patch in patches.get('patch', []) + patches.get('full', []):
+            filename = patch['filename']
+            if '/etc/hostname' in filename:
+                tracked_found = True
+                if 'diff' in patch:
+                    assert 'modified_hostname' in patch['diff']
+            elif 'copied_file.txt' in filename:
+                copied_found = True
+
+        assert tracked_found, 'Should find the tracked and modified /etc/hostname'
+        assert copied_found, 'Should find the copied and modified file'
+
+        # 10. Export patches
         assert fm.save_patches(temp_files['yaml_path'], 'integration_test')
         assert os.path.exists(temp_files['yaml_path'])
 
-        # 6. Verify host files unchanged
+        # 11. Verify host files unchanged
         with open(temp_files['temp_file_host_path'], 'r') as f:
             assert f.read() == 'potato'
+
+    def test_track_directory_with_extension_filter(self, file_manager):
+        """Test that track_dir with extension filter only includes matching files in get_patch_dict."""
+        fm = file_manager
+
+        # 1. Use existing directory /etc which has files
+        # Check what's in /etc first
+        rc, out, _ = fm.run('ls /etc')
+        assert rc == 0
+
+        # 2. Track /etc directory with *.conf extension (Alpine has several .conf files)
+        assert fm.track_dir('/etc', ext='.conf'), f'Failed to track directory: {fm.get_error()}'
+
+        # 3. Modify a .conf file and create a non-.conf file
+        # Modify an existing .conf file
+        rc, _, _ = fm.run('echo "# Modified by test" >> /etc/sysctl.conf')
+        assert rc == 0
+        
+        # Create a new .conf file  
+        rc, _, _ = fm.run('echo "# New config file" > /etc/test.conf')
+        assert rc == 0
+        
+        # Create a non-.conf file (should be ignored)
+        rc, _, _ = fm.run('echo "This should be ignored" > /etc/ignore.txt')
+        assert rc == 0
+
+        # 4. Get patch dict and verify only .conf files are included
+        patches = fm.get_patch_dict()
+        
+        # Collect all filenames from patches
+        all_filenames = []
+        for patch in patches.get('patch', []) + patches.get('full', []):
+            all_filenames.append(patch['filename'])
+        
+        # Check that only .conf files are included
+        conf_files_found = [f for f in all_filenames if f.endswith('.conf')]
+        txt_files_found = [f for f in all_filenames if f.endswith('.txt')]
+        
+        assert len(conf_files_found) >= 1, f'Expected at least 1 .conf file, found: {conf_files_found}'
+        assert len(txt_files_found) == 0, f'Expected 0 .txt files, but found: {txt_files_found}'
+        
+        # Verify that our modified sysctl.conf and new test.conf are present
+        sysctl_found = any('sysctl.conf' in f for f in conf_files_found)
+        test_conf_found = any('test.conf' in f for f in conf_files_found)
+        
+        assert sysctl_found or test_conf_found, f'Expected to find sysctl.conf or test.conf in: {conf_files_found}'
+        
+        # Verify content contains our modifications for any .conf files found
+        for patch in patches.get('patch', []) + patches.get('full', []):
+            if 'sysctl.conf' in patch['filename']:
+                content = patch.get('contents', '') or patch.get('diff', '')
+                assert 'Modified by test' in content, 'sysctl.conf should contain our modification'
+            elif 'test.conf' in patch['filename']:
+                content = patch.get('contents', '') or patch.get('diff', '')
+                assert 'New config file' in content, 'test.conf should contain our content'
 
 
 # Standalone test runner for compatibility
@@ -310,25 +402,38 @@ def test_file_manager_integration():
         fm = File_manager(image='alpine:latest')
         assert fm.setup(), f'Setup failed: {fm.get_error()}'
 
-        # Run the complete workflow
+        # Run the complete workflow with proper tracking
+        # 1. Copy a file first (before any run commands)
         assert fm.copy_file(temp_file_host_path, temp_file_name)
-        assert fm.copy_file(greeting_host_path, 'greeting.txt')
+        
+        # 2. Track an existing file from the container (/etc/hostname)
+        assert fm.track_file('/etc/hostname')
 
-        rc, _, _ = fm.run('echo "World" >> greeting.txt')
+        # 3. Modify tracked file
+        rc, _, _ = fm.run('echo "modified_hostname" > /etc/hostname')
         assert rc == 0
 
+        # 4. Create new file
+        rc, _, _ = fm.run('echo "I am new" > greetings2.txt')
+        assert rc == 0
+
+        # 5. Modify the copied file
         rc, _, _ = fm.run(f'echo "destroyer" > {temp_file_name}')
         assert rc == 0
 
         # Verify results
-        greeting_content = fm.get_file_content('greeting.txt')
-        assert greeting_content == 'Hello\nWorld\n'
+        hostname_content = fm.get_file_content('/etc/hostname')
+        assert hostname_content == 'modified_hostname\n'
+
+        new_content = fm.get_file_content('greetings2.txt')
+        assert new_content == 'I am new\n'
 
         temp_content = fm.get_file_content(temp_file_name)
         assert temp_content == 'destroyer\n'
 
-        diff = fm.get_diff('greeting.txt')
-        assert '+World' in diff
+        # Test diff against original container
+        diff = fm.get_diff('/etc/hostname')
+        assert 'modified_hostname' in diff
 
         assert fm.save_patches(yaml_path, 'standalone_test')
         assert os.path.exists(yaml_path)

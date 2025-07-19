@@ -57,25 +57,26 @@ class File_manager:
 
         self._mounts: List[Dict[str, str]] = []
         self._tracked_files: Dict[str, bytes] = {}  # For copy_file tracked files
-        self._tracked_paths: set = set()  # For track_file tracked paths (new approach)
-        self._tracking_extensions: List[str] = []
+        self._tracked_individual_files: set = set()  # For track_file tracked individual files
+        self._tracked_dirs: List[Dict[str, str]] = []  # For track_dir: [{'path': '/abs/path', 'ext': '.scala'}, ...]
         self._reference_container: Optional[docker.models.containers.Container] = None
         self._image_user: Optional[str] = None  # Cache for image's default user
+        self._has_bash: bool = False  # Track if container has bash available
 
         # Initialize Docker client with cross-platform support
         self._initialize_docker_client()
-    
+
     @property
     def workdir(self) -> str:
         """Get the current working directory path inside the container."""
         return self._workdir
-    
+
     def _resolve_container_path(self, path: str) -> str:
         """Resolve a path relative to _workdir unless it's absolute."""
         if os.path.isabs(path):
             return path
         return os.path.join(self._workdir, path)
-    
+
     def _check_file_exists(self, container_path: str) -> bool:
         """Check if a file exists in the container."""
         full_path = self._resolve_container_path(container_path)
@@ -85,11 +86,24 @@ class File_manager:
         except Exception:
             return False
 
+    def _is_file_in_tracked_dir(self, file_path: str) -> bool:
+        """Check if a file is in one of the tracked directories with matching extension."""
+        for dir_entry in self._tracked_dirs:
+            dir_path = dir_entry['path']
+            ext_filter = dir_entry['ext']
+            
+            # Check if file is in this directory
+            if file_path.startswith(dir_path + '/') or file_path == dir_path:
+                # Check extension filter if specified
+                if ext_filter is None or file_path.endswith(ext_filter):
+                    return True
+        return False
+
     def _get_image_user(self) -> Optional[str]:
         """Get the default user from the Docker image."""
         if self._image_user is not None:
             return self._image_user  # Return cached value (could be empty string)
-        
+
         try:
             if not self.client:
                 return None
@@ -383,6 +397,14 @@ class File_manager:
             if not self._ensure_workdir_exists():
                 return False
 
+            # Check if bash exists in the container
+            result = self.container.exec_run(['test', '-x', '/bin/bash'])
+            if result.exit_code == 0:
+                self._has_bash = True
+            else:
+                self._has_bash = False
+                print(f'Warning: Container image {self.image} does not have /bin/bash available, falling back to /bin/sh')
+
             # Cache the container if reuse is enabled
             if self.reuse_container:
                 self._container_cache[cache_key] = {
@@ -410,8 +432,8 @@ class File_manager:
 
     def copy_dir(self, host_path: str, container_path: str = '.', ext: Optional[str] = None) -> bool:
         """Copies a host directory into the container. Must be called after setup()."""
-        if self._state != 'CONFIGURED':
-            self.error_message = 'copy_dir must be called after setup() and before run().'
+        if self._state not in ['CONFIGURED', 'EXECUTED']:
+            self.error_message = f'copy_dir must be called after setup(). {self._state}'
             return False
         try:
             for root, _, files in os.walk(host_path):
@@ -432,8 +454,8 @@ class File_manager:
 
     def copy_file(self, host_path: str, container_path: Optional[str] = '.') -> bool:
         """Copies a single file from the host into the container's tracked directory."""
-        if self._state != 'CONFIGURED':
-            self.error_message = 'copy_file must be called after setup() and before run().'
+        if self._state not in ['CONFIGURED', 'EXECUTED']:
+            self.error_message = f'copy_file must be called after setup(). {self._state}'
             return False
 
         try:
@@ -530,7 +552,7 @@ class File_manager:
                 self.error_message = f'Failed to create reference container: {e}'
                 return None
         return self._reference_container
-    
+
     def _cleanup_reference_container(self) -> None:
         """Clean up reference container."""
         if self._reference_container:
@@ -568,7 +590,7 @@ class File_manager:
         """Execute command inside the container."""
         # Allow running in both CONFIGURED and EXECUTED states
         if self._state not in ['CONFIGURED', 'EXECUTED']:
-            self.error_message = 'run must be called after setup().'
+            self.error_message = f'run must be called after setup(). {self._state}'
             return -1, '', self.error_message
 
         # Set state to EXECUTED after first successful setup
@@ -586,10 +608,14 @@ class File_manager:
                 workdir = container_path
 
         try:
-            # Source profile to get proper PATH setup (includes oss-cad-suite tools)
-            wrapped_command = f'source /etc/profile 2>/dev/null || true; {command}'
-            shell_command = ['/bin/sh', '-c', wrapped_command]
-            
+            # Use bash with login shell if available, otherwise fall back to sh
+            if self._has_bash:
+                shell_command = ['/bin/bash', '--login', '-c', command]
+            else:
+                # Fall back to sh and try to source /etc/profile for basic environment setup
+                wrapped_command = f'source /etc/profile 2>/dev/null || true; {command}'
+                shell_command = ['/bin/sh', '-c', wrapped_command]
+
             # Get the user to run as (if image has a default user)
             exec_kwargs = {'workdir': workdir, 'demux': True}
             image_user = self._get_image_user()
@@ -616,15 +642,15 @@ class File_manager:
                 }
                 if image_user:
                     exec_create_kwargs['user'] = image_user
-                
+
                 exec_id = self.client.api.exec_create(**exec_create_kwargs)['Id']
-                
+
                 # Start execution with streaming
                 stream = self.client.api.exec_start(exec_id, stream=True, demux=True)
-                
+
                 stdout_lines = []
                 stderr_lines = []
-                
+
                 # Stream and capture output
                 for stdout_chunk, stderr_chunk in stream:
                     if stdout_chunk:
@@ -636,7 +662,7 @@ class File_manager:
                             clean_chunk = chunk_str.rstrip('\n')
                             if clean_chunk:
                                 print(f"{self.image.split('/')[-1]}:run: {clean_chunk}")
-                    
+
                     if stderr_chunk:
                         chunk_str = stderr_chunk.decode('utf-8', 'replace')
                         stderr_lines.append(chunk_str)
@@ -646,16 +672,16 @@ class File_manager:
                             clean_chunk = chunk_str.rstrip('\n')
                             if clean_chunk:
                                 print(f"{self.image.split('/')[-1]}:run: {clean_chunk}")
-                
+
                 # Get the exit code after streaming completes
                 exec_inspect = self.client.api.exec_inspect(exec_id)
                 exit_code = exec_inspect.get('ExitCode', 0)
                 if exit_code is None:
                     exit_code = 0  # Default to 0 if None
-                
+
                 stdout_str = ''.join(stdout_lines)
                 stderr_str = ''.join(stderr_lines)
-                
+
                 return exit_code, stdout_str, stderr_str
 
         except Exception as e:
@@ -667,7 +693,7 @@ class File_manager:
         if self._state not in ['CONFIGURED', 'EXECUTED']:
             self.error_message = 'track_file must be called after setup().'
             return False
-        
+
         # Check if file exists
         if not self._check_file_exists(container_path):
             self.error_message = f'File not found: {container_path}'
@@ -676,7 +702,7 @@ class File_manager:
         try:
             # Simply record the path for tracking - use absolute path
             absolute_path = self._resolve_container_path(container_path)
-            self._tracked_paths.add(absolute_path)
+            self._tracked_individual_files.add(absolute_path)
             print(f"Successfully tracking file '{container_path}' in container")
             return True
 
@@ -685,57 +711,27 @@ class File_manager:
             return False
 
     def track_dir(self, container_path: str = '.', ext: Optional[str] = None) -> bool:
-        """Track all files in an existing directory in the container for change detection."""
+        """Track a directory for change detection. Files will be discovered dynamically in get_patch_dict."""
         if self._state not in ['CONFIGURED', 'EXECUTED']:
             self.error_message = 'track_dir must be called after setup().'
             return False
 
         try:
-            # Find all files in the directory
-            if container_path == '.':
-                find_path = '.'
-                search_dir = '.'
-            else:
-                find_path = container_path
-                # Use the resolved path for the search directory
-                search_dir = '.' if not os.path.isabs(container_path) else '/'
-
-            exit_code, out, stderr = self.run(f'find {find_path} -type f', container_path=search_dir, quiet=True)
+            # Resolve to absolute path
+            absolute_path = self._resolve_container_path(container_path)
+            
+            # Check if directory exists
+            exit_code, _, stderr = self.run(f'test -d "{absolute_path}"', quiet=True)
             if exit_code != 0:
-                self.error_message = f'Failed to list files in directory {container_path}: {stderr}'
+                self.error_message = f'Directory not found: {container_path}'
                 return False
 
-            files = [f.strip() for f in out.strip().split('\n') if f.strip()]
-            tracked_count = 0
-
-            for file_path in files:
-                # Clean up the path (remove ./ prefix if present)
-                if file_path.startswith('./'):
-                    file_path = file_path[2:]
-
-                # Filter by extension if specified
-                if ext and not file_path.endswith(ext):
-                    continue
-
-                # Always store absolute paths in _tracked_paths
-                if not file_path.startswith('/'):
-                    # If relative path, make it absolute relative to container_path
-                    if container_path == '.':
-                        absolute_path = self._resolve_container_path(file_path)
-                    elif os.path.isabs(container_path):
-                        absolute_path = os.path.join(container_path, file_path)
-                    else:
-                        absolute_path = self._resolve_container_path(os.path.join(container_path, file_path))
-                else:
-                    # Already absolute
-                    absolute_path = file_path
-
-                # Track the file
-                self._tracked_paths.add(absolute_path)
-                tracked_count += 1
-
-            print(f"Successfully tracking {tracked_count} files in directory '{container_path}'")
-            return tracked_count > 0
+            # Store directory path and extension for later file discovery
+            dir_entry = {'path': absolute_path, 'ext': ext}
+            self._tracked_dirs.append(dir_entry)
+            
+            print(f"Successfully tracking directory '{container_path}' with extension filter '{ext}'")
+            return True
 
         except Exception as e:
             self.error_message = f'Failed to track directory {container_path}: {e}'
@@ -749,7 +745,7 @@ class File_manager:
 
         try:
             # Create a temporary patch file in the container
-            temp_patch_path = f'/tmp/patch_{len(self._tracked_files) + len(self._tracked_paths)}.patch'
+            temp_patch_path = f'/tmp/patch_{len(self._tracked_files) + len(self._tracked_individual_files) + len(self._tracked_dirs)}.patch'
 
             # Write patch content to temporary file using echo and redirection
 
@@ -781,7 +777,7 @@ class File_manager:
         if self._state not in ['CONFIGURED', 'EXECUTED']:
             self.error_message = 'apply_line_patch must be called after setup().'
             return False
-        
+
         # Check if file exists
         if not self._check_file_exists(container_path):
             self.error_message = f'File not found: {container_path}'
@@ -874,22 +870,25 @@ class File_manager:
     def get_diff(self, filename: str) -> str:
         """Return the unified diff (as text) for a single tracked file."""
         original_content_str = ''
+        
+        # Resolve filename to absolute path for consistent lookups
+        absolute_filename = self._resolve_container_path(filename)
 
         # Check if file was tracked via copy_file (in-memory) - legacy support
-        if filename in self._tracked_files:
-            original_content_bytes = self._tracked_files[filename]
+        if absolute_filename in self._tracked_files:
+            original_content_bytes = self._tracked_files[absolute_filename]
             try:
                 original_content_str = original_content_bytes.decode('utf-8')
             except UnicodeDecodeError:
                 self.error_message = f"Original file '{filename}' is binary."
                 return ''
-        # Check if file was tracked via new track_file (path-only)
-        elif filename in self._tracked_paths:
+        # Check if file was tracked via new track_file (path-only) or is in a tracked directory
+        elif absolute_filename in self._tracked_individual_files or self._is_file_in_tracked_dir(absolute_filename):
             # Get original content from reference container
             reference_container = self._get_reference_container()
             if not reference_container:
                 return ''
-            original_content_str = self.get_file_content(filename, container=reference_container)
+            original_content_str = self.get_file_content(absolute_filename, container=reference_container)
             if not original_content_str and self.error_message:
                 return ''
         else:
@@ -897,7 +896,7 @@ class File_manager:
             return ''
 
         # Get modified content from main container
-        modified_content_str = self.get_file_content(filename)
+        modified_content_str = self.get_file_content(absolute_filename)
 
         diff_lines = difflib.unified_diff(
             original_content_str.splitlines(keepends=True),
@@ -907,12 +906,6 @@ class File_manager:
         )
         return ''.join(diff_lines)
 
-    def add_tracking_extension(self, ext: str) -> List[str]:
-        """Adds a file extension to the list of types that will be monitored for changes."""
-        if ext not in self._tracking_extensions:
-            self._tracking_extensions.append(ext)
-        return self._tracking_extensions
-
     def get_patch_dict(self) -> Dict[str, Any]:
         """Generate a dictionary of new files and patched files."""
         if self._state != 'EXECUTED':
@@ -921,40 +914,67 @@ class File_manager:
 
         patches = {'full': [], 'patch': []}
 
-        # Find all files in the working directory
-        exit_code, out, _ = self.run('find . -type f', container_path='.')
-        if exit_code != 0:
-            return patches
-
-        all_files = [f[2:] for f in out.strip().split('\n') if f]  # Clean ./ prefix
+        # Collect all tracked files from different sources
+        all_tracked_files = set()
         
-        # Convert relative paths to absolute for consistent comparison
-        all_files_absolute = [self._resolve_container_path(f) for f in all_files]
+        # Add files from _tracked_files (legacy copy_file approach) - already absolute paths
+        all_tracked_files.update(self._tracked_files.keys())
         
-        # Also add all tracked paths to ensure we check files outside working directory
-        all_files_set = set(all_files_absolute)
-        for tracked_path in self._tracked_paths:
-            if tracked_path not in all_files_set:
-                all_files_absolute.append(tracked_path)
-                all_files_set.add(tracked_path)
-
-        for absolute_file_path in all_files_absolute:
-            if self._tracking_extensions and not any(absolute_file_path.endswith(ext) for ext in self._tracking_extensions):
+        # Add files from _tracked_individual_files (track_file approach) - already absolute paths
+        all_tracked_files.update(self._tracked_individual_files)
+        
+        # Add files from tracked directories (track_dir approach) - discover dynamically
+        for dir_entry in self._tracked_dirs:
+            dir_path = dir_entry['path']
+            ext_filter = dir_entry['ext']
+            
+            # Find files in this tracked directory
+            exit_code, out, stderr = self.run(f'find "{dir_path}" -type f', quiet=True)
+            if exit_code != 0:
+                # Directory might not exist anymore, skip it
                 continue
+                
+            files = [f.strip() for f in out.strip().split('\n') if f.strip()]
+            for file_path in files:
+                # Apply extension filter if specified
+                if ext_filter and not file_path.endswith(ext_filter):
+                    continue
+                # Normalize path to remove redundant "./" 
+                normalized_path = os.path.normpath(file_path)
+                all_tracked_files.add(normalized_path)
 
+        for absolute_file_path in all_tracked_files:
             modified_content_str = self.get_file_content(absolute_file_path)
             if not modified_content_str and self.error_message:  # Likely binary file
                 patches['full'].append({'filename': absolute_file_path, 'contents': '[Binary File]'})
+                self.error_message = ''  # Clear error for next iteration
                 continue
 
-            # Check if file is tracked (both use absolute paths now)
-            is_tracked = absolute_file_path in self._tracked_files or absolute_file_path in self._tracked_paths
-
-            if not is_tracked:
-                # This is a new file
-                patches['full'].append({'filename': absolute_file_path, 'contents': modified_content_str})
-            else:
-                # This is a tracked file, create a diff
+            # Check if file is tracked via copy_file or track_file (these have original content)
+            is_explicitly_tracked = (absolute_file_path in self._tracked_files or 
+                                    absolute_file_path in self._tracked_individual_files)
+            
+            # Check if file is in a tracked directory
+            is_in_tracked_dir = self._is_file_in_tracked_dir(absolute_file_path)
+            
+            if is_explicitly_tracked or is_in_tracked_dir:
+                # File is tracked, try to create a diff
+                if is_in_tracked_dir and not is_explicitly_tracked:
+                    # File is in tracked directory - check if it exists in reference container first
+                    reference_container = self._get_reference_container()
+                    if reference_container:
+                        ref_content = self.get_file_content(absolute_file_path, container=reference_container)
+                        if not ref_content and self.error_message:
+                            # File doesn't exist in reference, treat as new file
+                            patches['full'].append({'filename': absolute_file_path, 'contents': modified_content_str})
+                            self.error_message = ''  # Clear error
+                            continue
+                    else:
+                        # No reference container, treat as new file
+                        patches['full'].append({'filename': absolute_file_path, 'contents': modified_content_str})
+                        continue
+                
+                # Create diff for tracked file
                 diff = self.get_diff(absolute_file_path)
                 if not diff:  # No changes detected
                     continue
@@ -964,7 +984,7 @@ class File_manager:
                 if absolute_file_path in self._tracked_files:
                     # Legacy copy_file approach
                     original_len = len(self._tracked_files[absolute_file_path])
-                elif absolute_file_path in self._tracked_paths:
+                elif absolute_file_path in self._tracked_individual_files or self._is_file_in_tracked_dir(absolute_file_path):
                     # New track_file approach - get size from reference container
                     reference_container = self._get_reference_container()
                     if reference_container:
@@ -976,6 +996,9 @@ class File_manager:
                     patches['full'].append({'filename': absolute_file_path, 'contents': modified_content_str})
                 else:
                     patches['patch'].append({'filename': absolute_file_path, 'diff': diff})
+            else:
+                # This is a completely new file not in any tracked location
+                patches['full'].append({'filename': absolute_file_path, 'contents': modified_content_str})
 
         return patches
 

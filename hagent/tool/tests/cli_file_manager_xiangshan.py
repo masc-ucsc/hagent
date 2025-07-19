@@ -25,9 +25,7 @@ def main():
         exit(2)
 
     # 2. Track existing files before making changes
-    fm.add_tracking_extension('.scala')
-    fm.add_tracking_extension('.v')
-    fm.add_tracking_extension('.sv')
+    # Extensions are now specified per directory via track_dir()
 
     # 3. Check if target files exist before tracking
     ifu_path = '/code/XiangShan/src/main/scala/xiangshan/frontend/IFU.scala'
