@@ -7,7 +7,6 @@ This script auto-generates **SystemVerilog Assertions (SVAs)** using LLMs based 
 ### 🛠️ Requirements
 
 * Python 3.8+
-* [Poetry](https://python-poetry.org/)
 * OpenAI API access (configured in `llm_config.yaml`)
 
 ---
@@ -61,17 +60,14 @@ default:
 git clone https://github.com/masc-ucsc/hagent.git
 cd hagent
 
-# Install dependencies with Poetry
-poetry install
-
 #Set OpenAI API Key (or other LLM provider)
 export OPENAI_API_KEY=your-api-key
 
 # Cleanup old logs and outputs
 rm -rf gpt_logs/ outputs/ logs/ jg_proj/
 
-# Run via poetry
-poetry run python hagent/step/sva_gen/sva_gen.py \
+# Run via uv
+uv run python hagent/step/sva_gen/sva_gen.py \
     hagent/step/sva_gen/io_config.yaml \
     hagent/step/sva_gen/llm_config.yaml
 ```
