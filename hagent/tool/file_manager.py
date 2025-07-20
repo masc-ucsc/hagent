@@ -36,8 +36,10 @@ class File_manager:
 
     # Class-level container cache for reuse
     _container_cache: Dict[str, Any] = {}
+    # Track active instances to know when to cleanup cache
+    _active_instances: set = set()
 
-    def __init__(self, image: str, reuse_container: bool = True) -> None:
+    def __init__(self, image: str, reuse_container: bool = False) -> None:
         """
         Create a new class with the docker image.
         Verify docker is available, and that the user has permission to run the docker.
@@ -56,15 +58,50 @@ class File_manager:
         self.container: Optional[docker.models.containers.Container] = None
 
         self._mounts: List[Dict[str, str]] = []
-        self._tracked_files: Dict[str, bytes] = {}  # For copy_file tracked files
         self._tracked_individual_files: set = set()  # For track_file tracked individual files
         self._tracked_dirs: List[Dict[str, str]] = []  # For track_dir: [{'path': '/abs/path', 'ext': '.scala'}, ...]
         self._reference_container: Optional[docker.models.containers.Container] = None
         self._image_user: Optional[str] = None  # Cache for image's default user
         self._has_bash: bool = False  # Track if container has bash available
+        self._checkpoints: List[str] = []  # Track created checkpoints for cleanup
 
         # Initialize Docker client with cross-platform support
         self._initialize_docker_client()
+
+        # Register this instance
+        File_manager._active_instances.add(id(self))
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensures cleanup."""
+        self.cleanup()
+        return False
+
+    def cleanup(self) -> None:
+        """Explicitly clean up resources."""
+        # Unregister this instance
+        File_manager._active_instances.discard(id(self))
+
+        if self.container and not self.reuse_container:
+            try:
+                self.container.kill()
+                self.container.remove()
+            except docker.errors.APIError:
+                pass
+        return
+
+        # Clean up reference container
+        self._cleanup_reference_container()
+
+        # Clean up anonymous checkpoints
+        self._cleanup_anonymous_checkpoints()
+
+        # If this is the last active instance, clean up the cache
+        if not File_manager._active_instances:
+            self._cleanup_cache_if_last_instance()
 
     @property
     def workdir(self) -> str:
@@ -91,7 +128,7 @@ class File_manager:
         for dir_entry in self._tracked_dirs:
             dir_path = dir_entry['path']
             ext_filter = dir_entry['ext']
-            
+
             # Check if file is in this directory
             if file_path.startswith(dir_path + '/') or file_path == dir_path:
                 # Check extension filter if specified
@@ -275,16 +312,11 @@ class File_manager:
 
     def __del__(self) -> None:
         """On destruction, ensures the created docker container is stopped and removed."""
-        if self.container and not self.reuse_container:
-            try:
-                self.container.stop()
-                self.container.remove()
-            except docker.errors.APIError:
-                # Ignore errors on cleanup, e.g., if container was already removed.
-                pass
-
-        # Clean up reference container
-        self._cleanup_reference_container()
+        try:
+            self.cleanup()
+        except:
+            # Ignore any errors during destruction cleanup
+            pass
 
     @classmethod
     def cleanup_all_containers(cls) -> None:
@@ -330,8 +362,6 @@ class File_manager:
                     self.container = cached_container
                     self._state = 'CONFIGURED'
                     print(f"Reusing cached container for '{self.image}'")
-                    # Reset tracked files for this instance
-                    self._tracked_files = {}
                     return True
                 else:
                     # Container stopped, remove from cache
@@ -344,7 +374,6 @@ class File_manager:
         # Clean up existing container if not reusing
         if self.container and not self.reuse_container:
             self.__del__()
-            self._tracked_files = {}  # Reset tracked files
 
         try:
             # Skip image pull message for better performance
@@ -502,9 +531,6 @@ class File_manager:
             success = self.container.put_archive(path=dest_path, data=tar_stream.getvalue())
 
             if success:
-                # Track file content for diffing - use absolute path
-                absolute_path = self._resolve_container_path(final_container_path)
-                self._tracked_files[absolute_path] = file_content
                 print(f"Successfully copied '{host_path}' to container path '{final_container_path}'")
                 return True
             else:
@@ -719,7 +745,7 @@ class File_manager:
         try:
             # Resolve to absolute path
             absolute_path = self._resolve_container_path(container_path)
-            
+
             # Check if directory exists
             exit_code, _, stderr = self.run(f'test -d "{absolute_path}"', quiet=True)
             if exit_code != 0:
@@ -729,7 +755,7 @@ class File_manager:
             # Store directory path and extension for later file discovery
             dir_entry = {'path': absolute_path, 'ext': ext}
             self._tracked_dirs.append(dir_entry)
-            
+
             print(f"Successfully tracking directory '{container_path}' with extension filter '{ext}'")
             return True
 
@@ -745,7 +771,7 @@ class File_manager:
 
         try:
             # Create a temporary patch file in the container
-            temp_patch_path = f'/tmp/patch_{len(self._tracked_files) + len(self._tracked_individual_files) + len(self._tracked_dirs)}.patch'
+            temp_patch_path = f'/tmp/patch_{len(self._tracked_individual_files) + len(self._tracked_dirs)}.patch'
 
             # Write patch content to temporary file using echo and redirection
 
@@ -870,29 +896,17 @@ class File_manager:
     def get_diff(self, filename: str) -> str:
         """Return the unified diff (as text) for a single tracked file."""
         original_content_str = ''
-        
+
         # Resolve filename to absolute path for consistent lookups
         absolute_filename = self._resolve_container_path(filename)
 
-        # Check if file was tracked via copy_file (in-memory) - legacy support
-        if absolute_filename in self._tracked_files:
-            original_content_bytes = self._tracked_files[absolute_filename]
-            try:
-                original_content_str = original_content_bytes.decode('utf-8')
-            except UnicodeDecodeError:
-                self.error_message = f"Original file '{filename}' is binary."
-                return ''
-        # Check if file was tracked via new track_file (path-only) or is in a tracked directory
-        elif absolute_filename in self._tracked_individual_files or self._is_file_in_tracked_dir(absolute_filename):
-            # Get original content from reference container
-            reference_container = self._get_reference_container()
-            if not reference_container:
-                return ''
-            original_content_str = self.get_file_content(absolute_filename, container=reference_container)
-            if not original_content_str and self.error_message:
-                return ''
-        else:
-            self.error_message = f"File '{filename}' was not tracked initially."
+        # Check if file was tracked via track_file or is in a tracked directory
+        # Get original content from reference container
+        reference_container = self._get_reference_container()
+        if not reference_container:
+            return ''
+        original_content_str = self.get_file_content(absolute_filename, container=reference_container)
+        if not original_content_str and self.error_message:
             return ''
 
         # Get modified content from main container
@@ -916,30 +930,27 @@ class File_manager:
 
         # Collect all tracked files from different sources
         all_tracked_files = set()
-        
-        # Add files from _tracked_files (legacy copy_file approach) - already absolute paths
-        all_tracked_files.update(self._tracked_files.keys())
-        
+
         # Add files from _tracked_individual_files (track_file approach) - already absolute paths
         all_tracked_files.update(self._tracked_individual_files)
-        
+
         # Add files from tracked directories (track_dir approach) - discover dynamically
         for dir_entry in self._tracked_dirs:
             dir_path = dir_entry['path']
             ext_filter = dir_entry['ext']
-            
+
             # Find files in this tracked directory
             exit_code, out, stderr = self.run(f'find "{dir_path}" -type f', quiet=True)
             if exit_code != 0:
                 # Directory might not exist anymore, skip it
                 continue
-                
+
             files = [f.strip() for f in out.strip().split('\n') if f.strip()]
             for file_path in files:
                 # Apply extension filter if specified
                 if ext_filter and not file_path.endswith(ext_filter):
                     continue
-                # Normalize path to remove redundant "./" 
+                # Normalize path to remove redundant "./"
                 normalized_path = os.path.normpath(file_path)
                 all_tracked_files.add(normalized_path)
 
@@ -950,13 +961,12 @@ class File_manager:
                 self.error_message = ''  # Clear error for next iteration
                 continue
 
-            # Check if file is tracked via copy_file or track_file (these have original content)
-            is_explicitly_tracked = (absolute_file_path in self._tracked_files or 
-                                    absolute_file_path in self._tracked_individual_files)
-            
+            # Check if file is tracked via track_file (these have original content)
+            is_explicitly_tracked = absolute_file_path in self._tracked_individual_files
+
             # Check if file is in a tracked directory
             is_in_tracked_dir = self._is_file_in_tracked_dir(absolute_file_path)
-            
+
             if is_explicitly_tracked or is_in_tracked_dir:
                 # File is tracked, try to create a diff
                 if is_in_tracked_dir and not is_explicitly_tracked:
@@ -973,7 +983,7 @@ class File_manager:
                         # No reference container, treat as new file
                         patches['full'].append({'filename': absolute_file_path, 'contents': modified_content_str})
                         continue
-                
+
                 # Create diff for tracked file
                 diff = self.get_diff(absolute_file_path)
                 if not diff:  # No changes detected
@@ -981,11 +991,8 @@ class File_manager:
 
                 # Get original file size for comparison
                 original_len = 0
-                if absolute_file_path in self._tracked_files:
-                    # Legacy copy_file approach
-                    original_len = len(self._tracked_files[absolute_file_path])
-                elif absolute_file_path in self._tracked_individual_files or self._is_file_in_tracked_dir(absolute_file_path):
-                    # New track_file approach - get size from reference container
+                if absolute_file_path in self._tracked_individual_files or self._is_file_in_tracked_dir(absolute_file_path):
+                    # Get size from reference container
                     reference_container = self._get_reference_container()
                     if reference_container:
                         original_content = self.get_file_content(absolute_file_path, container=reference_container)
@@ -1033,6 +1040,195 @@ class File_manager:
         """(Not Implemented) Reads a patch YAML and applies it."""
         self.error_message = 'load_patches is not yet implemented.'
         return False
+
+    def get_current_tracked_files(self, ext: Optional[str] = None) -> set:
+        """Return a set of unique files currently being tracked.
+
+        Args:
+            ext: Optional extension filter. If provided, only returns files ending with this extension.
+
+        Returns:
+            Set of unique file paths that are currently tracked.
+        """
+        all_tracked_files = set()
+
+        # Add files from _tracked_individual_files (track_file approach) - already absolute paths
+        if ext:
+            all_tracked_files.update(f for f in self._tracked_individual_files if f.endswith(ext))
+        else:
+            all_tracked_files.update(self._tracked_individual_files)
+
+        # Add files from tracked directories (track_dir approach) - discover dynamically
+        if self._state in ['CONFIGURED', 'EXECUTED'] and self.container:
+            for dir_entry in self._tracked_dirs:
+                dir_path = dir_entry['path']
+                dir_ext_filter = dir_entry['ext']
+
+                # Skip this directory if both ext and dir_ext_filter are set but incompatible
+                # (neither is a suffix of the other)
+                if ext and dir_ext_filter:
+                    if not (ext.endswith(dir_ext_filter) or dir_ext_filter.endswith(ext)):
+                        continue
+
+                # Find files in this tracked directory
+                exit_code, out, stderr = self.run(f'find "{dir_path}" -type f', quiet=True)
+                if exit_code == 0:
+                    files = [f.strip() for f in out.strip().split('\n') if f.strip()]
+                    for file_path in files:
+                        # Apply directory extension filter if specified
+                        if dir_ext_filter and not file_path.endswith(dir_ext_filter):
+                            continue
+                        # Apply method extension filter before normalization
+                        if ext and not file_path.endswith(ext):
+                            continue
+                        # Normalize path to remove redundant "./"
+                        normalized_path = os.path.normpath(file_path)
+                        all_tracked_files.add(normalized_path)
+
+        return all_tracked_files
+
+    def image_checkpoint(self, name: Optional[str] = None) -> Optional[str]:
+        """Create a checkpoint (Docker image) from the current container state.
+
+        Args:
+            name: Optional name for the checkpoint. If not provided, creates an anonymous
+                  checkpoint that will be cleaned up when the file_manager exits.
+
+        Returns:
+            The image name/tag of the created checkpoint, or None if failed.
+        """
+        if self._state not in ['CONFIGURED', 'EXECUTED']:
+            self.error_message = 'image_checkpoint must be called after setup().'
+            return None
+
+        if not self.container:
+            self.error_message = 'No container available for checkpoint.'
+            return None
+
+        try:
+            # Generate checkpoint name
+            if name:
+                checkpoint_name = f"{self.image}_checkpoint_{name}"
+            else:
+                # Anonymous checkpoint with timestamp
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # milliseconds
+                checkpoint_name = f"{self.image}_checkpoint_anon_{timestamp}"
+                # Track for cleanup
+                self._checkpoints.append(checkpoint_name)
+
+            # Create image from container
+            print(f"Creating checkpoint '{checkpoint_name}' from current container state...")
+            image = self.container.commit(
+                repository=checkpoint_name.split(':')[0] if ':' in checkpoint_name else checkpoint_name,
+                tag='latest' if ':' not in checkpoint_name else checkpoint_name.split(':', 1)[1],
+                message=f"Checkpoint created by file_manager at {datetime.now().isoformat()}"
+            )
+
+            print(f"Checkpoint created successfully: {checkpoint_name}")
+            return checkpoint_name
+
+        except Exception as e:
+            self.error_message = f'Failed to create checkpoint: {e}'
+            return None
+
+    def _cleanup_anonymous_checkpoints(self) -> None:
+        """Clean up anonymous checkpoints created by this instance."""
+        if not self.client or not self._checkpoints:
+            return
+
+        for checkpoint_name in self._checkpoints:
+            try:
+                # Get the image to find its ID
+                image = self.client.images.get(checkpoint_name)
+                image_id = image.id
+
+                # Find and stop/remove any containers using this image
+                containers = self.client.containers.list(all=True)
+                for container in containers:
+                    try:
+                        # Check if container is using our checkpoint image
+                        if container.image.id == image_id:
+                            print(f'Stopping container {container.short_id} using checkpoint {checkpoint_name}')
+                            if container.status == 'running':
+                                container.stop()
+                            container.remove()
+                    except Exception as e:
+                        print(f'Warning: Failed to cleanup container {container.short_id}: {e}')
+
+                # Now remove the image
+                self.client.images.remove(checkpoint_name, force=True)
+                try:
+                    # Also remove by ID to clean up any dangling references
+                    self.client.images.remove(image_id, force=True)
+                except docker.errors.ImageNotFound:
+                    # Image already removed, which is fine
+                    pass
+
+                print(f'Cleaned up anonymous checkpoint: {checkpoint_name}')
+            except docker.errors.ImageNotFound:
+                # Image doesn't exist, skip
+                pass
+            except Exception as e:
+                print(f'Warning: Failed to clean up checkpoint {checkpoint_name}: {e}')
+
+        self._checkpoints.clear()
+
+    def _cleanup_cache_if_last_instance(self) -> None:
+        """Clean up container cache if this is the last active instance."""
+        try:
+            # Clean up cached containers
+            for container_key, container_info in File_manager._container_cache.items():
+                try:
+                    container = container_info['container']
+                    container.stop()
+                    container.remove()
+                except Exception as e:
+                    # Ignore cleanup errors - container might already be gone
+                    pass
+            File_manager._container_cache.clear()
+        except Exception:
+            # Ignore any errors during cleanup
+            pass
+
+    @classmethod
+    def cleanup_all_anonymous_checkpoints(cls) -> None:
+        """Cleanup all anonymous checkpoints created by any file_manager instance."""
+        try:
+            client = docker.from_env()
+            # Find all images with our anonymous checkpoint pattern
+            all_images = client.images.list()
+            cleaned_count = 0
+
+            for image in all_images:
+                for tag in image.tags:
+                    if '_checkpoint_anon_' in tag:
+                        try:
+                            # Stop and remove any containers using this checkpoint image
+                            containers = client.containers.list(all=True)
+                            for container in containers:
+                                try:
+                                    if container.image.id == image.id:
+                                        print(f'Stopping container {container.short_id} using checkpoint {tag}')
+                                        if container.status == 'running':
+                                            container.stop()
+                                        container.remove()
+                                except Exception as e:
+                                    print(f'Warning: Failed to cleanup container {container.short_id}: {e}')
+
+                            # Now remove the image
+                            client.images.remove(tag, force=True)
+                            print(f'Cleaned up orphaned anonymous checkpoint: {tag}')
+                            cleaned_count += 1
+                        except Exception as e:
+                            print(f'Warning: Failed to clean up orphaned checkpoint {tag}: {e}')
+
+            if cleaned_count == 0:
+                print('No anonymous checkpoints found to clean up')
+            else:
+                print(f'Cleaned up {cleaned_count} anonymous checkpoints')
+
+        except Exception as e:
+            print(f'Error during anonymous checkpoint cleanup: {e}')
 
     def get_error(self) -> str:
         """Return the last recorded error message (empty if none)."""
