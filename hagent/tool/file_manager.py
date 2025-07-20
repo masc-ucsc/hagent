@@ -34,12 +34,7 @@ class File_manager:
     and exports/imports patches as unified diffs in YAML.
     """
 
-    # Class-level container cache for reuse
-    _container_cache: Dict[str, Any] = {}
-    # Track active instances to know when to cleanup cache
-    _active_instances: set = set()
-
-    def __init__(self, image: str, reuse_container: bool = False) -> None:
+    def __init__(self, image: str) -> None:
         """
         Create a new class with the docker image.
         Verify docker is available, and that the user has permission to run the docker.
@@ -49,7 +44,6 @@ class File_manager:
         The object destruction or termination should clear the docker.
         """
         self.image = image
-        self.reuse_container = reuse_container
         self.error_message = ''
         self._state = 'INITIALIZED'
         self._workdir = '/code/rundir'  # Default working directory inside the container
@@ -68,9 +62,6 @@ class File_manager:
         # Initialize Docker client with cross-platform support
         self._initialize_docker_client()
 
-        # Register this instance
-        File_manager._active_instances.add(id(self))
-
     def __enter__(self):
         """Context manager entry."""
         return self
@@ -83,25 +74,20 @@ class File_manager:
     def cleanup(self) -> None:
         """Explicitly clean up resources."""
         # Unregister this instance
-        File_manager._active_instances.discard(id(self))
 
-        if self.container and not self.reuse_container:
+        if self.container:
             try:
                 self.container.kill()
                 self.container.remove()
+                self.container = None
             except docker.errors.APIError:
                 pass
-        return
-
-        # Clean up reference container
-        self._cleanup_reference_container()
 
         # Clean up anonymous checkpoints
         self._cleanup_anonymous_checkpoints()
 
-        # If this is the last active instance, clean up the cache
-        if not File_manager._active_instances:
-            self._cleanup_cache_if_last_instance()
+        # Clean up reference container
+        self._cleanup_reference_container()
 
     @property
     def workdir(self) -> str:
@@ -318,19 +304,6 @@ class File_manager:
             # Ignore any errors during destruction cleanup
             pass
 
-    @classmethod
-    def cleanup_all_containers(cls) -> None:
-        """Cleanup all cached containers. Call this at the end of test sessions."""
-        for container_key, container_info in cls._container_cache.items():
-            try:
-                container = container_info['container']
-                container.stop()
-                container.remove()
-                print(f'Cleaned up cached container for {container_key}')
-            except Exception as e:
-                print(f'Error cleaning up container {container_key}: {e}')
-        cls._container_cache.clear()
-
     def _ensure_workdir_exists(self) -> bool:
         """Ensure the working directory exists in the container."""
         try:
@@ -351,28 +324,8 @@ class File_manager:
         # Generate cache key based on image and mounts
         cache_key = f'{self.image}:{hash(tuple(sorted(self._mounts, key=lambda x: x["target"])))}'
 
-        # Try to reuse cached container if enabled
-        if self.reuse_container and cache_key in self._container_cache:
-            cached_info = self._container_cache[cache_key]
-            try:
-                # Check if cached container is still running
-                cached_container = cached_info['container']
-                cached_container.reload()
-                if cached_container.status == 'running':
-                    self.container = cached_container
-                    self._state = 'CONFIGURED'
-                    print(f"Reusing cached container for '{self.image}'")
-                    return True
-                else:
-                    # Container stopped, remove from cache
-                    del self._container_cache[cache_key]
-            except Exception as e:
-                print(f'Cached container unusable, creating new one: {e}')
-                if cache_key in self._container_cache:
-                    del self._container_cache[cache_key]
-
         # Clean up existing container if not reusing
-        if self.container and not self.reuse_container:
+        if self.container:
             self.__del__()
 
         try:
@@ -433,14 +386,6 @@ class File_manager:
             else:
                 self._has_bash = False
                 print(f'Warning: Container image {self.image} does not have /bin/bash available, falling back to /bin/sh')
-
-            # Cache the container if reuse is enabled
-            if self.reuse_container:
-                self._container_cache[cache_key] = {
-                    'container': self.container,
-                    'image': self.image,
-                    'mounts': self._mounts.copy(),
-                }
 
             self._state = 'CONFIGURED'
             return True
@@ -583,7 +528,7 @@ class File_manager:
         """Clean up reference container."""
         if self._reference_container:
             try:
-                self._reference_container.stop()
+                self._reference_container.kill()
                 self._reference_container.remove()
                 self._reference_container = None
             except Exception as e:
@@ -1150,7 +1095,7 @@ class File_manager:
                         if container.image.id == image_id:
                             print(f'Stopping container {container.short_id} using checkpoint {checkpoint_name}')
                             if container.status == 'running':
-                                container.stop()
+                                container.kill()
                             container.remove()
                     except Exception as e:
                         print(f'Warning: Failed to cleanup container {container.short_id}: {e}')
@@ -1172,63 +1117,6 @@ class File_manager:
                 print(f'Warning: Failed to clean up checkpoint {checkpoint_name}: {e}')
 
         self._checkpoints.clear()
-
-    def _cleanup_cache_if_last_instance(self) -> None:
-        """Clean up container cache if this is the last active instance."""
-        try:
-            # Clean up cached containers
-            for container_key, container_info in File_manager._container_cache.items():
-                try:
-                    container = container_info['container']
-                    container.stop()
-                    container.remove()
-                except Exception as e:
-                    # Ignore cleanup errors - container might already be gone
-                    pass
-            File_manager._container_cache.clear()
-        except Exception:
-            # Ignore any errors during cleanup
-            pass
-
-    @classmethod
-    def cleanup_all_anonymous_checkpoints(cls) -> None:
-        """Cleanup all anonymous checkpoints created by any file_manager instance."""
-        try:
-            client = docker.from_env()
-            # Find all images with our anonymous checkpoint pattern
-            all_images = client.images.list()
-            cleaned_count = 0
-
-            for image in all_images:
-                for tag in image.tags:
-                    if '_checkpoint_anon_' in tag:
-                        try:
-                            # Stop and remove any containers using this checkpoint image
-                            containers = client.containers.list(all=True)
-                            for container in containers:
-                                try:
-                                    if container.image.id == image.id:
-                                        print(f'Stopping container {container.short_id} using checkpoint {tag}')
-                                        if container.status == 'running':
-                                            container.stop()
-                                        container.remove()
-                                except Exception as e:
-                                    print(f'Warning: Failed to cleanup container {container.short_id}: {e}')
-
-                            # Now remove the image
-                            client.images.remove(tag, force=True)
-                            print(f'Cleaned up orphaned anonymous checkpoint: {tag}')
-                            cleaned_count += 1
-                        except Exception as e:
-                            print(f'Warning: Failed to clean up orphaned checkpoint {tag}: {e}')
-
-            if cleaned_count == 0:
-                print('No anonymous checkpoints found to clean up')
-            else:
-                print(f'Cleaned up {cleaned_count} anonymous checkpoints')
-
-        except Exception as e:
-            print(f'Error during anonymous checkpoint cleanup: {e}')
 
     def get_error(self) -> str:
         """Return the last recorded error message (empty if none)."""
