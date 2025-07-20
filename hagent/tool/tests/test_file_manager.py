@@ -17,6 +17,13 @@ import pytest
 from hagent.tool.file_manager import File_manager
 
 
+def teardown_module():
+    """Clean up any remaining anonymous checkpoints after running all tests in this module."""
+    # The container cache should be auto-cleaned by the last instance destructor,
+    # but we still clean up any orphaned anonymous checkpoints as a safety measure
+    # File_manager.cleanup_all_anonymous_checkpoints()
+
+
 class TestFileManagerBasics:
     """Test suite for File_manager basic functionality."""
 
@@ -52,7 +59,12 @@ class TestFileManagerBasics:
         """Create and setup a File_manager instance."""
         fm = File_manager(image='alpine:latest')
         assert fm.setup(), f'Setup failed: {fm.get_error()}'
-        return fm
+        yield fm
+        # Cleanup: ensure the instance is properly destroyed
+        try:
+            del fm
+        except:
+            pass
 
     def test_file_copying_and_listing(self, file_manager, temp_files):
         """Test basic file copying and container operations."""
@@ -148,11 +160,17 @@ class TestFileManagerBasics:
         # Copy and modify file
         assert fm.copy_file(temp_files['greeting_host_path'], 'greeting.txt')
 
-        rc, _, _ = fm.run('echo "World" >> greeting.txt')
+        checkpoint = fm.image_checkpoint()
+        assert checkpoint
+
+        fm2 = File_manager(image=checkpoint)
+        assert fm2.setup(), f'Setup failed: {fm2.get_error()}'
+
+        rc, _, _ = fm2.run('echo "World" >> greeting.txt')
         assert rc == 0
 
         # Test diff generation
-        diff = fm.get_diff('greeting.txt')
+        diff = fm2.get_diff('greeting.txt') # Get diff does not need track_file
         assert diff, 'Diff should not be empty'
         assert '+World' in diff, 'Diff should show added line'
         assert 'greeting.txt' in diff, 'Diff should reference filename'
@@ -227,7 +245,7 @@ class TestFileManagerBasics:
         # Test diff for non-tracked file
         diff = fm.get_diff('nonexistent.txt')
         assert diff == '', 'Should return empty diff for non-tracked file'
-        assert 'not tracked' in fm.get_error().lower()
+        assert 'not found' in fm.get_error().lower()
 
         # Test failed command
         rc, out, err = fm.run('nonexistent-command-12345')
@@ -256,6 +274,7 @@ class TestFileManagerBasics:
     def test_complete_workflow(self, file_manager, temp_files):
         """Integration test covering the complete workflow with proper tracking."""
         fm = file_manager
+        fm.setup() # Cleanup previous container variable reuse
 
         # 1. Copy a file first (before any run commands)
         assert fm.copy_file(temp_files['temp_file_host_path'], 'copied_file.txt'), f'Failed to copy file: {fm.get_error()}'
@@ -264,10 +283,10 @@ class TestFileManagerBasics:
         # Check what files exist in alpine
         rc, out, _ = fm.run('ls /etc/')
         assert rc == 0
-        
+
         # Use /etc/hostname as it should exist and be simple
         original_hostname = fm.get_file_content('/etc/hostname')
-        
+
         # 3. Track the existing file (this is the key difference - track vs copy)
         assert fm.track_file('/etc/hostname'), f'Failed to track /etc/hostname: {fm.get_error()}'
 
@@ -298,12 +317,23 @@ class TestFileManagerBasics:
         assert '/etc/hostname' in diff
 
         # 9. Get patch dict to test tracked files
+        full_path_set = fm.get_current_tracked_files()
+        assert len(full_path_set) == 1
+
+        fm.track_dir('.', ext=".txt")
+        full_path_set = fm.get_current_tracked_files()
+        basenames = {os.path.basename(path) for path in full_path_set}
+        assert "copied_file.txt" in basenames
+        assert "greetings2.txt" in basenames
+        assert "hostname" in basenames
+        assert len(basenames) == 3
+
         patches = fm.get_patch_dict()
-        
+
         # Should have the modified tracked file and copied file in patches
         tracked_found = False
         copied_found = False
-        
+
         for patch in patches.get('patch', []) + patches.get('full', []):
             filename = patch['filename']
             if '/etc/hostname' in filename:
@@ -340,36 +370,36 @@ class TestFileManagerBasics:
         # Modify an existing .conf file
         rc, _, _ = fm.run('echo "# Modified by test" >> /etc/sysctl.conf')
         assert rc == 0
-        
-        # Create a new .conf file  
+
+        # Create a new .conf file
         rc, _, _ = fm.run('echo "# New config file" > /etc/test.conf')
         assert rc == 0
-        
+
         # Create a non-.conf file (should be ignored)
         rc, _, _ = fm.run('echo "This should be ignored" > /etc/ignore.txt')
         assert rc == 0
 
         # 4. Get patch dict and verify only .conf files are included
         patches = fm.get_patch_dict()
-        
+
         # Collect all filenames from patches
         all_filenames = []
         for patch in patches.get('patch', []) + patches.get('full', []):
             all_filenames.append(patch['filename'])
-        
+
         # Check that only .conf files are included
         conf_files_found = [f for f in all_filenames if f.endswith('.conf')]
         txt_files_found = [f for f in all_filenames if f.endswith('.txt')]
-        
+
         assert len(conf_files_found) >= 1, f'Expected at least 1 .conf file, found: {conf_files_found}'
         assert len(txt_files_found) == 0, f'Expected 0 .txt files, but found: {txt_files_found}'
-        
+
         # Verify that our modified sysctl.conf and new test.conf are present
         sysctl_found = any('sysctl.conf' in f for f in conf_files_found)
         test_conf_found = any('test.conf' in f for f in conf_files_found)
-        
+
         assert sysctl_found or test_conf_found, f'Expected to find sysctl.conf or test.conf in: {conf_files_found}'
-        
+
         # Verify content contains our modifications for any .conf files found
         for patch in patches.get('patch', []) + patches.get('full', []):
             if 'sysctl.conf' in patch['filename']:
@@ -405,7 +435,7 @@ def test_file_manager_integration():
         # Run the complete workflow with proper tracking
         # 1. Copy a file first (before any run commands)
         assert fm.copy_file(temp_file_host_path, temp_file_name)
-        
+
         # 2. Track an existing file from the container (/etc/hostname)
         assert fm.track_file('/etc/hostname')
 
