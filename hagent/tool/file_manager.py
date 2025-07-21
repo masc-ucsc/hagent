@@ -313,16 +313,55 @@ class File_manager:
             self.error_message = f'Failed to create working directory: {e}'
             return False
 
-    def setup(self) -> bool:
+    def _validate_workdir(self, workdir: str) -> bool:
+        """
+        Validate that the working directory exists in the container or can be created.
+
+        Args:
+            workdir: The working directory path to validate
+
+        Returns:
+            True if the directory exists or was successfully created, False otherwise
+        """
+        try:
+            # First, check if the directory already exists
+            result = self.container.exec_run(f'test -d "{workdir}"')
+            if result.exit_code == 0:
+                return True  # Directory already exists
+
+            # If it doesn't exist, try to create it
+            result = self.container.exec_run(f'mkdir -p "{workdir}"')
+            if result.exit_code == 0:
+                # Verify it was created successfully
+                result = self.container.exec_run(f'test -d "{workdir}"')
+                if result.exit_code == 0:
+                    return True
+                else:
+                    self.error_message = f'Working directory "{workdir}" was not created successfully'
+                    return False
+            else:
+                self.error_message = f'Failed to create working directory "{workdir}"'
+                return False
+
+        except Exception as e:
+            self.error_message = f'Failed to validate working directory "{workdir}": {e}'
+            return False
+
+    def setup(self, workdir: Optional[str] = None) -> bool:
         """
         If a docker container was already configured, this clears it and allows for a new setup.
         Downloads (docker pull equivalent) and creates, but does not start, a docker container.
+
+        Args:
+            workdir: Optional working directory path inside the container.
+                    If provided, must exist in the image or be creatable.
         """
         if self._state == 'ERROR':
             return False
 
-        # Generate cache key based on image and mounts
-        cache_key = f'{self.image}:{hash(tuple(sorted(self._mounts, key=lambda x: x["target"])))}'
+        # Set working directory if provided
+        if workdir:
+            self._workdir = workdir
 
         # Clean up existing container if not reusing
         if self.container:
@@ -377,6 +416,10 @@ class File_manager:
 
             # Ensure working directory exists (Alpine might not have /code/rundir by default)
             if not self._ensure_workdir_exists():
+                return False
+
+            # If workdir was provided, validate it exists or can be created
+            if workdir and not self._validate_workdir(workdir):
                 return False
 
             # Check if bash exists in the container
@@ -609,7 +652,7 @@ class File_manager:
                     'cmd': shell_command,
                     'workdir': workdir,
                     'stdout': True,
-                    'stderr': True
+                    'stderr': True,
                 }
                 if image_user:
                     exec_create_kwargs['user'] = image_user
@@ -632,7 +675,7 @@ class File_manager:
                             # Remove trailing newline to avoid double newlines
                             clean_chunk = chunk_str.rstrip('\n')
                             if clean_chunk:
-                                print(f"{self.image.split('/')[-1]}:run: {clean_chunk}")
+                                print(f'{self.image.split("/")[-1]}:run: {clean_chunk}')
 
                     if stderr_chunk:
                         chunk_str = stderr_chunk.decode('utf-8', 'replace')
@@ -642,7 +685,7 @@ class File_manager:
                             # Remove trailing newline to avoid double newlines
                             clean_chunk = chunk_str.rstrip('\n')
                             if clean_chunk:
-                                print(f"{self.image.split('/')[-1]}:run: {clean_chunk}")
+                                print(f'{self.image.split("/")[-1]}:run: {clean_chunk}')
 
                 # Get the exit code after streaming completes
                 exec_inspect = self.client.api.exec_inspect(exec_id)
@@ -1053,11 +1096,11 @@ class File_manager:
         try:
             # Generate checkpoint name
             if name:
-                checkpoint_name = f"{self.image}_checkpoint_{name}"
+                checkpoint_name = f'{self.image}_checkpoint_{name}'
             else:
                 # Anonymous checkpoint with timestamp
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # milliseconds
-                checkpoint_name = f"{self.image}_checkpoint_anon_{timestamp}"
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]  # milliseconds
+                checkpoint_name = f'{self.image}_checkpoint_anon_{timestamp}'
                 # Track for cleanup
                 self._checkpoints.append(checkpoint_name)
 
@@ -1066,10 +1109,10 @@ class File_manager:
             image = self.container.commit(
                 repository=checkpoint_name.split(':')[0] if ':' in checkpoint_name else checkpoint_name,
                 tag='latest' if ':' not in checkpoint_name else checkpoint_name.split(':', 1)[1],
-                message=f"Checkpoint created by file_manager at {datetime.now().isoformat()}"
+                message=f'Checkpoint created by file_manager at {datetime.now().isoformat()}',
             )
 
-            print(f"Checkpoint created successfully: {checkpoint_name}")
+            print(f'Checkpoint created successfully name:{checkpoint_name} id:{image.id}')
             return checkpoint_name
 
         except Exception as e:
