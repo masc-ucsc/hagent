@@ -1,0 +1,133 @@
+example_run:
+  metadata:
+    timestamp: '2025-07-25T00:39:44.057736'
+    image: mascucsc/hagent-xiangshan:2025.07
+  patches:
+    full: []
+    patch:
+    - filename: /code/XiangShan/build/rtl/NewIFU.sv
+      diff: |
+        --- a//code/XiangShan/build/rtl/NewIFU.sv
+        +++ b//code/XiangShan/build/rtl/NewIFU.sv
+        @@ -663,12 +663,15 @@
+         
+           wire              wb_redirect_probe;
+           wire              f3_wb_not_flush;
+        -  wire              mmio_redirect;
+        +  reg               mmio_redirect_REG;
+           wire [15:0]       io_toIbuffer_bits_enqEnable_0;
+           wire              io_toIbuffer_valid_0;
+           reg               f3_lastHalf_valid;
+           wire              io_iTLBInter_resp_ready_0;
+           wire              f3_ready;
+        +  reg               f3_mmio_use_seq_pc;
+        +  wire              _mmio_redirect_T;
+        +  wire              f3_req_is_mmio;
+           wire              icacheRespAllValid;
+           wire              f2_ready;
+           wire              f1_ready;
+        @@ -1142,7 +1145,8 @@
+           wire              f3_flush =
+             io_ftqInter_fromFtq_redirect_valid | wb_redirect_probe & ~f3_wb_not_flush;
+           wire              f2_flush =
+        -    io_ftqInter_fromFtq_redirect_valid | mmio_redirect | wb_redirect_probe;
+        +    io_ftqInter_fromFtq_redirect_valid & f3_req_is_mmio & _mmio_redirect_T
+        +    & mmio_redirect_REG & f3_mmio_use_seq_pc | wb_redirect_probe;
+           assign io_ftqInter_fromFtq_req_ready_0 = f1_ready & io_icacheInter_icacheReady;
+           wire              _GEN_13 =
+             ~io_ftqInter_fromFtq_req_valid & io_ftqInter_fromFtq_req_ready_0;
+        @@ -1639,11 +1643,11 @@
+           reg  [2:0]        io_mmioCommitRead_mmioFtqPtr_REG_value;
+           reg  [3:0]        mmio_state;
+           wire              _mmio_state_T_14 = f3_itlb_pbmt == 2'h1;
+        -  wire              f3_req_is_mmio =
+        +  assign f3_req_is_mmio =
+             f3_valid & (f3_pmp_mmio | _mmio_state_T_14 | f3_itlb_pbmt == 2'h2)
+             & ~((|f3_exception_0) | (|f3_exception_1));
+           wire              f3_mmio_req_commit = f3_req_is_mmio & mmio_state == 4'hA;
+        -  wire              _mmio_redirect_T = mmio_state == 4'h9;
+        +  assign _mmio_redirect_T = mmio_state == 4'h9;
+           wire              f3_mmio_to_commit = f3_req_is_mmio & _mmio_redirect_T;
+           reg               f3_mmio_to_commit_next;
+           reg               fromFtqRedirectReg_bits_r_ftqIdx_flag;
+        @@ -1658,7 +1662,6 @@
+             fromFtqRedirectReg_valid_REG
+             & (fromFtqRedirectReg_bits_r_ftqIdx_flag ^ f3_ftq_req_ftqIdx_flag
+                ^ fromFtqRedirectReg_bits_r_ftqIdx_value < f3_ftq_req_ftqIdx_value);
+        -  reg               f3_mmio_use_seq_pc;
+           reg               REG;
+           assign f3_ready =
+             io_toIbuffer_ready & (f3_mmio_req_commit | ~f3_req_is_mmio) | ~f3_valid;
+        @@ -1936,9 +1939,6 @@
+                        f3_instr_valid_2,
+                        f3_instr_valid_1,
+                        ~f3_lastHalf_valid};
+        -  reg               mmio_redirect_REG;
+        -  assign mmio_redirect =
+        -    f3_req_is_mmio & _mmio_redirect_T & mmio_redirect_REG & f3_mmio_use_seq_pc;
+           wire              _GEN_32 = io_toIbuffer_valid_0 & ~io_toIbuffer_ready;
+           reg               wb_enable_REG;
+           wire              wb_enable = wb_enable_REG & ~f3_req_is_mmio & ~f3_flush;
+    - filename: /code/XiangShan/build/rtl/CommitIDModule.sv
+      diff: |
+        --- a//code/XiangShan/build/rtl/CommitIDModule.sv
+        +++ b//code/XiangShan/build/rtl/CommitIDModule.sv
+        @@ -91,7 +91,7 @@
+           PrintCommitIDModule printCommitIDMod (
+             .hartID   (io_hartId),
+             .commitID (40'h6B597582A7),
+        -    .dirty    (1'h0)
+        +    .dirty    (1'h1)
+           );
+         endmodule
+         
+    - filename: /code/XiangShan/build/rtl/SimTop.sv
+      diff: |
+        --- a//code/XiangShan/build/rtl/SimTop.sv
+        +++ b//code/XiangShan/build/rtl/SimTop.sv
+        @@ -3,6 +3,19 @@
+         //Date:   Fri Jul 11 17:50:48 2025 +0800
+         //
+         //    fix(config): add missing IMSICParams in Poweroff (#4857)
+        +//diff --git a/src/main/scala/xiangshan/frontend/IFU.scala b/src/main/scala/xiangshan/frontend/IFU.scala
+        +//index 885e154ab..de9b53ec6 100644
+        +//--- a/src/main/scala/xiangshan/frontend/IFU.scala
+        +//+++ b/src/main/scala/xiangshan/frontend/IFU.scala
+        +//@@ -254,7 +254,7 @@ class NewIFU(implicit p: Parameters) extends XSModule
+        +// 
+        +//   backend_redirect := fromFtq.redirect.valid
+        +//   f3_flush         := backend_redirect || (wb_redirect && !f3_wb_not_flush)
+        +//-  f2_flush         := backend_redirect || mmio_redirect || wb_redirect
+        +//+  f2_flush         := backend_redirect && mmio_redirect || wb_redirect
+        +//   f1_flush         := f2_flush
+        +//   f0_flush         := f1_flush || f0_flush_from_bpu
+        +// 
+         // Generated by CIRCT firtool-1.62.1
+         // Standard header to adapt well known macros for register randomization.
+         `ifndef RANDOMIZE
+    - filename: /code/XiangShan/src/main/scala/xiangshan/frontend/IFU.scala
+      diff: |
+        --- a//code/XiangShan/src/main/scala/xiangshan/frontend/IFU.scala
+        +++ b//code/XiangShan/src/main/scala/xiangshan/frontend/IFU.scala
+        @@ -254,7 +254,7 @@
+         
+           backend_redirect := fromFtq.redirect.valid
+           f3_flush         := backend_redirect || (wb_redirect && !f3_wb_not_flush)
+        -  f2_flush         := backend_redirect || mmio_redirect || wb_redirect
+        +  f2_flush         := backend_redirect && mmio_redirect || wb_redirect
+           f1_flush         := f2_flush
+           f0_flush         := f1_flush || f0_flush_from_bpu
+         
+    - filename: /code/XiangShan/build/rtl/NewCSR.sv
+      diff: |
+        --- a//code/XiangShan/build/rtl/NewCSR.sv
+        +++ b//code/XiangShan/build/rtl/NewCSR.sv
+        @@ -2726,7 +2726,7 @@
+           wire         _mstatus_sstatus_SDT;
+           wire         _mstatus_sstatus_SD;
+           wire [63:0]  _mstatus_sstatusRdata;
+        -  wire         gitDirty = 1'h0;
+        +  wire         gitDirty = 1'h1;
+           wire [39:0]  gitCommitSHA = 40'h6B597582A7;
+           wire [63:0]  siregRData =
+             (_siselect_rdata == 64'h30 ? _siprio0_rdata : 64'h0)
