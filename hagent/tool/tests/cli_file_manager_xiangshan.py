@@ -7,9 +7,6 @@ Demonstrates track_file, track_dir, and patch generation.
 import sys
 import pytest
 
-# Add the hagent package to the path
-sys.path.insert(0, '/Users/renau/projs/hagent')
-
 from hagent.tool.file_manager import File_manager
 
 

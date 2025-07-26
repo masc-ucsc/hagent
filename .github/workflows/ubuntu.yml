@@ -60,8 +60,10 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run tests with coverage
+        run: poetry run pytest --cov --cov-branch --cov-report=xml
+      - name: List coverage files
+        if: always()
         run: |
-          uv run pytest --cov --cov-branch --cov-report=xml
           find . -name "coverage.xml" -type f
           ls -la coverage.xml || echo "coverage.xml not found in root"
       - name: Upload coverage reports to Codecov

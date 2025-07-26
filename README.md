@@ -46,7 +46,7 @@ cd hagent
 uv sync
 ```
 
-If you run test/developtment
+If you run test/developtment (E.g: ruff neeeds dev extra packages)
 ```
 uv sync --extra dev
 ```

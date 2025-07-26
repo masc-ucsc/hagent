@@ -17,9 +17,9 @@ import pytest
 from ruamel.yaml import YAML
 
 # Make sure we can import our modules
-sys.path.insert(0, '/Users/renau/projs/hagent')
-script_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, script_dir)
+#sys.path.insert(0, '/Users/renau/projs/hagent')
+#script_dir = os.path.dirname(os.path.abspath(__file__))
+#sys.path.insert(0, script_dir)
 
 from hagent.tool.file_manager import File_manager
 from hagent.tool.fuzzy_grep import Fuzzy_grep
@@ -66,12 +66,12 @@ def main():
     fm.track_file(ifu)
     fm.track_dir(rtl, ext='.sv')
     fm.apply_line_patch(
-        ifu, 257,
+        ifu,
+        257,
         '  f2_flush         := backend_redirect || mmio_redirect || wb_redirect',
-        '  f2_flush         := backend_redirect && mmio_redirect || wb_redirect'
+        '  f2_flush         := backend_redirect && mmio_redirect || wb_redirect',
     )
-    ec, _, _ = fm.run('make CONFIG=MinimalConfig EMU_THREADS=1 sim-verilog',
-                     container_path='/code/XiangShan')
+    ec, _, _ = fm.run('make CONFIG=MinimalConfig EMU_THREADS=1 sim-verilog', container_path='/code/XiangShan')
     if ec != 0:
         print(f'Make failed: {fm.get_error()} code:{ec}')
         sys.exit(7)
@@ -79,17 +79,14 @@ def main():
     patches = fm.get_patch_dict().get('patch', [])
     sv_patches = [p for p in patches if p['filename'].endswith('.sv')]
     save_yaml({'patch': sv_patches}, 'xiangshan_sv_patches.yaml')
-    print(f"Saved {len(sv_patches)} SV diffs")
+    print(f'Saved {len(sv_patches)} SV diffs')
 
     # 2) Prepare Fuzzy_grep
     fg = Fuzzy_grep()
     fg.setup(language='chisel')
 
     # 3) Get list of Scala files *inside* the container
-    ec, files_txt, _ = fm.run(
-        'find /code/XiangShan/src/main/scala/xiangshan -name "*.scala"',
-        container_path='/'
-    )
+    ec, files_txt, _ = fm.run('find /code/XiangShan/src/main/scala/xiangshan -name "*.scala"', container_path='/')
     scala_files = files_txt.splitlines()
 
     hints = []
@@ -105,10 +102,7 @@ def main():
                 continue
             matches = fg.find_matches_in_text(content, terms, threshold=60)
             if matches:
-                file_matches[path] = {
-                    'content': content.splitlines(),
-                    'matches': matches
-                }
+                file_matches[path] = {'content': content.splitlines(), 'matches': matches}
 
         # 5) Cluster matches into blocks and slice context
         blocks = []
@@ -118,23 +112,21 @@ def main():
             for start, end in cluster_line_numbers(nums):
                 ctx_start = max(0, start - 5)
                 ctx_end = min(len(lines), end + 6)
-                snippet = "\n".join(f"{i+1}: {lines[i]}" for i in range(ctx_start, ctx_end))
-                blocks.append({
-                    'scala_file': path,
-                    'lines': f"{ctx_start+1}-{ctx_end}",
-                    'context': snippet
-                })
+                snippet = '\n'.join(f'{i + 1}: {lines[i]}' for i in range(ctx_start, ctx_end))
+                blocks.append({'scala_file': path, 'lines': f'{ctx_start + 1}-{ctx_end}', 'context': snippet})
 
-        hints.append({
-            'sv_file': patch['filename'],
-            'diff_snippet': "\n".join(diff.splitlines()[:3]) + "...",
-            'search_terms': terms,
-            'chisel_hints': blocks
-        })
+        hints.append(
+            {
+                'sv_file': patch['filename'],
+                'diff_snippet': '\n'.join(diff.splitlines()[:3]) + '...',
+                'search_terms': terms,
+                'chisel_hints': blocks,
+            }
+        )
 
     # 6) Save hints for LLM
     save_yaml(hints, 'xiangshan_hints.yaml')
-    print(f"Generated {len(hints)} hint entries → xiangshan_hints.yaml")
+    print(f'Generated {len(hints)} hint entries → xiangshan_hints.yaml')
 
 
 if __name__ == '__main__':
