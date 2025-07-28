@@ -447,6 +447,8 @@ def test_file_manager_integration():
         rc, _, _ = fm.run('echo "I am new" > greetings2.txt')
         assert rc == 0
 
+        # fm.image_checkpoint("test")
+
         # 5. Modify the copied file
         rc, _, _ = fm.run(f'echo "destroyer" > {temp_file_name}')
         assert rc == 0

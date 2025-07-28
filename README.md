@@ -388,3 +388,31 @@ For docker/colima, you need to have enough memory. In OSX colima, the default is
 ```
  docker run --rm busybox cat /proc/meminfo | grep MemTotal
 ```
+
+#### Docker Image Checkpointing
+
+HAgent's `File_manager` class supports creating checkpoints of running Docker containers for debugging purposes. This feature allows you to save the current state of a container (including all files and modifications) as a new Docker image.
+
+**Creating a checkpoint:**
+```python
+# Create a named checkpoint
+fm.image_checkpoint("test")
+```
+
+This will create a new Docker image that preserves:
+- All file modifications made within the container
+- The current working directory state
+- Any installed packages or tools
+- The original container's interactive command behavior
+
+**Using the checkpoint:**
+- The checkpoint image can be listed with: `docker image list`
+- If the original image was `alpine:latest`, the checkpoint will be named `alpine:latest_checkpoint_test`
+- Run the checkpoint interactively: `docker run --rm -it alpine:latest_checkpoint_test`
+
+**Key benefits:**
+- **Debugging**: Inspect container state at specific points during execution
+- **Reproducibility**: Save intermediate states for later analysis
+- **Development**: Create snapshots before risky operations
+
+The checkpoint preserves the original image's command behavior, so interactive sessions will work properly (unlike the internal container which uses `tail -f /dev/null` to stay alive).

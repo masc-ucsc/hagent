@@ -139,6 +139,16 @@ class File_manager:
             self._image_user = ''  # Cache that we failed to get user info
             return None
 
+    def _get_image_config(self) -> Dict[str, Any]:
+        """Get the original image configuration including command and entrypoint."""
+        try:
+            if not self.client:
+                return {}
+            image_info = self.client.images.get(self.image)
+            return image_info.attrs.get('Config', {})
+        except Exception:
+            return {}
+
     def _initialize_docker_client(self) -> None:
         """
         Initialize Docker client with support for:
@@ -1171,12 +1181,40 @@ class File_manager:
                 # Track for cleanup
                 self._checkpoints.append(checkpoint_name)
 
-            # Create image from container
+            # Get original image configuration to restore command and entrypoint
+            original_config = self._get_image_config()
+
+            # Prepare changes to restore original behavior using Docker commit format
+            changes = []
+
+            # Restore original command if it exists, otherwise use sensible defaults
+            original_cmd = original_config.get('Cmd')
+            original_entrypoint = original_config.get('Entrypoint')
+
+            if original_cmd:
+                # Format as Docker expects: CMD ["executable", "param1", "param2"]
+                cmd_str = '["' + '", "'.join(original_cmd) + '"]'
+                changes.append(f'CMD {cmd_str}')
+            else:
+                # No original cmd, provide interactive shell fallback
+                if self._has_bash:
+                    changes.append('CMD ["/bin/bash"]')
+                else:
+                    changes.append('CMD ["/bin/sh"]')
+
+            # Restore original entrypoint if it exists
+            if original_entrypoint:
+                # Format as Docker expects: ENTRYPOINT ["executable", "param1", "param2"]
+                entrypoint_str = '["' + '", "'.join(original_entrypoint) + '"]'
+                changes.append(f'ENTRYPOINT {entrypoint_str}')
+
+            # Create image from container with restored configuration
             print(f"Creating checkpoint '{checkpoint_name}' from current container state...")
             image = self.container.commit(
                 repository=checkpoint_name.split(':')[0] if ':' in checkpoint_name else checkpoint_name,
                 tag='latest' if ':' not in checkpoint_name else checkpoint_name.split(':', 1)[1],
                 message=f'Checkpoint created by file_manager at {datetime.now().isoformat()}',
+                changes=changes,
             )
 
             print(f'Checkpoint created successfully name:{checkpoint_name} id:{image.id}')
