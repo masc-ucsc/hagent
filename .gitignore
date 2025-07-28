@@ -6,6 +6,7 @@ htmlcov
 __pycache__
 env/
 tmp*
+uv.lock
 logs
 dist
 poetry.lock
