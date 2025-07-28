@@ -300,7 +300,7 @@ class File_manager:
         """On destruction, ensures the created docker container is stopped and removed."""
         try:
             self.cleanup()
-        except:
+        except Exception:
             # Ignore any errors during destruction cleanup
             pass
 
@@ -527,6 +527,73 @@ class File_manager:
 
         except Exception as e:
             self.error_message = f"Failed to copy file '{host_path}': {e}"
+            return False
+
+    def install_executable(self, host_path: str, container_path: Optional[str] = '/usr/local/bin') -> bool:
+        """Install an executable file from the host into the container with execute permissions.
+
+        Similar to copy_file but sets 755 permissions and defaults to /usr/local/bin for PATH access.
+
+        Args:
+            host_path: Path to the executable file on the host
+            container_path: Destination directory in the container (default: /usr/local/bin)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if self._state not in ['CONFIGURED', 'EXECUTED']:
+            self.error_message = f'install_executable must be called after setup(). {self._state}'
+            return False
+
+        try:
+            # Read the file content from host
+            with open(host_path, 'rb') as f:
+                file_content = f.read()
+
+            filename = os.path.basename(host_path)
+
+            # Determine the destination path in container
+            if container_path == '/usr/local/bin' or container_path.endswith('/'):
+                # container_path is a directory
+                dest_path = container_path.rstrip('/')
+                final_container_path = os.path.join(dest_path, filename)
+            else:
+                # container_path includes filename
+                dest_path = os.path.dirname(container_path)
+                final_container_path = container_path
+                filename = os.path.basename(container_path)
+
+            # Create tar archive in memory
+            tar_stream = io.BytesIO()
+            tar = tarfile.open(fileobj=tar_stream, mode='w')
+
+            # Add file to tar with executable permissions (755)
+            tarinfo = tarfile.TarInfo(name=filename)
+            tarinfo.size = len(file_content)
+            tarinfo.mode = 0o755  # rwxr-xr-x permissions
+            tar.addfile(tarinfo, io.BytesIO(file_content))
+            tar.close()
+
+            # Reset stream position
+            tar_stream.seek(0)
+
+            # Ensure the destination directory exists
+            self._ensure_container_directory(dest_path)
+
+            # Copy to container using put_archive
+            success = self.container.put_archive(path=dest_path, data=tar_stream.getvalue())
+
+            if success:
+                print(
+                    f"Successfully installed executable '{host_path}' to container path '{final_container_path}' with 755 permissions"
+                )
+                return True
+            else:
+                self.error_message = f"Failed to install executable '{host_path}' to container"
+                return False
+
+        except Exception as e:
+            self.error_message = f"Failed to install executable '{host_path}': {e}"
             return False
 
     def _ensure_container_directory(self, dir_path: str) -> bool:
