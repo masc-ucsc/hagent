@@ -170,7 +170,7 @@ class TestFileManagerBasics:
         assert rc == 0
 
         # Test diff generation
-        diff = fm2.get_diff('greeting.txt') # Get diff does not need track_file
+        diff = fm2.get_diff('greeting.txt')  # Get diff does not need track_file
         assert diff, 'Diff should not be empty'
         assert '+World' in diff, 'Diff should show added line'
         assert 'greeting.txt' in diff, 'Diff should reference filename'
@@ -274,7 +274,7 @@ class TestFileManagerBasics:
     def test_complete_workflow(self, file_manager, temp_files):
         """Integration test covering the complete workflow with proper tracking."""
         fm = file_manager
-        fm.setup() # Cleanup previous container variable reuse
+        fm.setup()  # Cleanup previous container variable reuse
 
         # 1. Copy a file first (before any run commands)
         assert fm.copy_file(temp_files['temp_file_host_path'], 'copied_file.txt'), f'Failed to copy file: {fm.get_error()}'
@@ -320,12 +320,12 @@ class TestFileManagerBasics:
         full_path_set = fm.get_current_tracked_files()
         assert len(full_path_set) == 1
 
-        fm.track_dir('.', ext=".txt")
+        fm.track_dir('.', ext='.txt')
         full_path_set = fm.get_current_tracked_files()
         basenames = {os.path.basename(path) for path in full_path_set}
-        assert "copied_file.txt" in basenames
-        assert "greetings2.txt" in basenames
-        assert "hostname" in basenames
+        assert 'copied_file.txt' in basenames
+        assert 'greetings2.txt' in basenames
+        assert 'hostname' in basenames
         assert len(basenames) == 3
 
         patches = fm.get_patch_dict()
@@ -408,6 +408,37 @@ class TestFileManagerBasics:
             elif 'test.conf' in patch['filename']:
                 content = patch.get('contents', '') or patch.get('diff', '')
                 assert 'New config file' in content, 'test.conf should contain our content'
+
+    def test_install_executable_with_filename(self, file_manager, temp_files):
+        """Test installing executable with custom filename."""
+        fm = file_manager
+
+        # Create a simple executable script on host
+        script_content = '#!/bin/sh\necho "Renamed executable test"\n'
+        script_path = os.path.join(tempfile.gettempdir(), f'original_name_{uuid.uuid4().hex}.sh')
+
+        with open(script_path, 'w') as f:
+            f.write(script_content)
+
+        try:
+            # Install executable with custom name
+            custom_name = '/usr/local/bin/my_custom_tool'
+            assert fm.install_executable(script_path, custom_name), f'Failed to install with custom name: {fm.get_error()}'
+
+            # Verify executable exists with custom name
+            rc, out, err = fm.run(f'ls -la {custom_name}')
+            assert rc == 0, f'Executable not found with custom name: {err}'
+            assert 'rwxr-xr-x' in out or '-rwxr-xr-x' in out, f'Executable should have 755 permissions: {out}'
+
+            # Verify executable can be run with custom name
+            rc, out, err = fm.run('my_custom_tool')  # Should be in PATH
+            assert rc == 0, f'Failed to execute script with custom name: {err}'
+            assert 'Renamed executable test' in out, f'Script output incorrect: {out}'
+
+        finally:
+            # Cleanup host file
+            if os.path.exists(script_path):
+                os.remove(script_path)
 
 
 # Standalone test runner for compatibility
