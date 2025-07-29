@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Tuple, Any, Set
+from typing import Optional, Dict, Tuple, Any, Set, List
 
 from .docker_manager import DockerManager
 from .file_operations import FileOperations
@@ -24,6 +24,7 @@ class File_manager:
         self.error_message = ''
         self._state = 'INITIALIZED'
         self._workdir = '/code/rundir'  # Default working directory inside the container
+        self._config_sources: List[str] = []  # Store paths to configuration files to be sourced
 
         # Initialize component managers with shared state
         self._docker = DockerManager(self)
@@ -80,9 +81,31 @@ class File_manager:
         """Registers a directory to be mounted from the host. Must be called before setup()."""
         return self._docker.add_mount(host_path, container_path)
 
+    def add_config_source(self, config_path: str) -> Tuple[int, str, str]:
+        """
+        Add a configuration file path to be sourced before running commands.
+        The file will be sourced before any command executed by run().
+        
+        Args:
+            config_path: Path to the configuration file inside the container.
+                        This file should exist and be readable.
+        
+        Returns:
+            A tuple of (exit_code, stdout, stderr) indicating whether the file exists and is readable.
+        """
+        # First verify the file exists and is readable
+        exit_code, stdout, stderr = self._docker.run(f'test -r "{config_path}"', quiet=True)
+        
+        if exit_code == 0:
+            self._config_sources.append(config_path)
+        else:
+            self.error_message = f"Configuration file '{config_path}' does not exist or is not readable: {stderr}"
+            
+        return exit_code, stdout, stderr
+    
     def run(self, command: str, container_path: Optional[str] = '.', quiet: bool = False) -> Tuple[int, str, str]:
         """Execute command inside the container."""
-        return self._docker.run(command, container_path, quiet)
+        return self._docker.run(command, container_path, quiet, config_sources=self._config_sources)
 
     def image_checkpoint(self, name: Optional[str] = None) -> Optional[str]:
         """Create a checkpoint (Docker image) from the current container state.

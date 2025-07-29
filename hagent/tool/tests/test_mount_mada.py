@@ -26,7 +26,7 @@ class TestMountMada:
             return
 
         # Use a lightweight Alpine image for testing
-        with File_manager('alpine:latest') as fm:
+        with File_manager('mascucsc/hagent-builder:2025.07') as fm:
             # Test add_mount before setup
             assert fm.add_mount(host_path, container_path), 'add_mount should succeed'
 
@@ -41,6 +41,13 @@ class TestMountMada:
             # (assuming /mada/software has some content)
             exit_code, stdout, stderr = fm.run(f'test -d {container_path}', quiet=True)
             assert exit_code == 0, f'Mounted directory should exist: {stderr}'
+
+            exit_code, stdout, stderr = fm.add_config_source('/mada/software/setup.sh')
+            assert exit_code == 0, f'Unable to source setup: {stderr}'
+
+            exit_code, stdout, stderr = fm.run('jg -version -allow_unsupported_OS', quiet=True)
+            assert exit_code == 0, f'Unable to run jasper: {stderr}'
+            assert '64 bits' in stdout, f'Expected 64 bits in Jasper output, got: {stdout}'
 
             print(f'Successfully mounted {host_path} to {container_path}')
 
