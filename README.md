@@ -105,89 +105,21 @@ The `HAgent` script provides several commands to help you generate multiple Ninj
 
 ### Examples
 
-Regression test use FIREWORKS for unit testing. As such, you need to set:
-```
+For detailed examples and sample usage patterns, please see [AGENTS.md](AGENTS.md).
+
+Basic test commands:
+```bash
+# Set required API key for tests
 export FIREWORKS_AI_API_KEY=whatever_key_you_like_most
-```
 
-To run all the hagent tests:
-```
+# Run all tests
 uv run pytest
-```
 
-To avoid running all the test all the time, use the testmon:
-```
+# Run with testmon for faster iteration
 uv run pytest --testmon
 ```
 
-To verbose model:
-```
-uv run pytest -v
-```
-
-Samples with coverage information:
-```
-uv run pytest --cov=hagent
-uv run pytest --cov=hagent/tool --cov-report=html
-```
-
-Run a subset of tests with coverage:
-```
-uv run pytest hagent/tool/ --cov=hagent/tool --cov-report=html
-```
-
-To upload to codecov manually:
-```
-uv run pytest --cov --cov-branch --cov-report=xmlA
-curl -Os https://cli.codecov.io/latest/macos/codecov  # replace macos for linux if needed
-./codecov  --verbose upload-process -f ./coverage.xml
-```
-
 [![codecov](https://codecov.io/gh/masc-ucsc/hagent/graph/badge.svg?token=Hyj2VifE7j)](https://codecov.io/gh/masc-ucsc/hagent)
-
-Check issues and format with ruff:
-```
-uv run ruff check hagent
-uv run ruff format hagent
-```
-
-To generate the top level API specification:
-```
-uv run pydoc-markdown >spec.md
-uv run pydoc-markdown -p hagent/tool --render-toc  >spec_tool.md
-```
-
-#### Trivial
-
-Run the trivial test (hagent/step/tests/test_trivial.py)
-```
-uv run pytest -k "test_trivial"
-```
-
-Run a command line trivial.py pass with specific input:
-```
-mkdir tmp
-cd tmp
-uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -ofoo.yaml
-cat foo.yaml
-description: |
-  test1
-  2nd line
-```
-
-Gather coverage information about your step (htmlcov):
-```
-uv run pytest --cov=hagent/step/trivial
-uv run pytest --cov=hagent/step/trivial --cov-report=html
-```
-
-## Example of some command line test cases using HAgent
-
-Agent to iterate over buggy Verilog to fix it until it complies correctly with slang:
-```
-cd tmp
-uv run python3 ../hagent/tool/tests/test_react_compile_slang_simple.py ../hagent/tool/tests/buggy_verilog.v
-```
 
 
 ## Structure
