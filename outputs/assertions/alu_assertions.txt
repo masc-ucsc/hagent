@@ -1,0 +1,271 @@
+
+##### For the signal fu_data_i, these are the assertions generated:
+```systemverilog
+// assertions/property below
+
+//[Signal name]: fu_data_i
+//[Immediate Assertion]: A non-temporal SystemVerilog assertion.
+always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin  
+        assert(fu_data_i == 'b0) 
+        else $fatal("fu_data_i should be zero upon reset.");
+    end
+end
+
+//[Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+property valid_fu_data_i;
+    @(posedge clk_i)
+    (rst_ni == 1) |-> (fu_data_i.operand_a inside {valid_operand_values}) and
+                     (fu_data_i.operand_b inside {valid_operand_values}) and
+                     (fu_data_i.operator inside {valid_operator_values});
+endproperty
+
+assert property (valid_fu_data_i);
+
+// assertions/property above
+```
+
+##### For the signal result_o, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: result_o
+//[Immediate Assertion]: A non-temporal SystemVerilog assertion.
+always_ff @(posedge clk_i) begin
+    assert (rst_ni |-> (result_o == '0)) else $fatal("Reset should clear result_o to zero.");
+end
+
+//[Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+assert property (@(posedge clk_i) disable iff (!rst_ni)
+    fu_data_i.valid |=> (result_o == (fu_data_i.operator == ANDL ? (fu_data_i.operand_a & fu_data_i.operand_b) :
+                                      fu_data_i.operator == ORL ? (fu_data_i.operand_a | fu_data_i.operand_b) :
+                                      fu_data_i.operator == XORL ? (fu_data_i.operand_a ^ fu_data_i.operand_b) :
+                                      fu_data_i.operator == ADD ? adder_result :
+                                      fu_data_i.operator == SUB ? adder_result :
+                                      fu_data_i.operator == ADDW ? {{riscv::XLEN-32{adder_result[31]}}, adder_result[31:0]} :
+                                      fu_data_i.operator == SUBW ? {{riscv::XLEN-32{adder_result[31]}}, adder_result[31:0]} :
+                                      (fu_data_i.operator == SLL || fu_data_i.operator == SRL || fu_data_i.operator == SRA) ? shift_result :
+                                      (fu_data_i.operator == SLLW || fu_data_i.operator == SRLW || fu_data_i.operator == SRAW) ? {{riscv::XLEN-32{shift_result32[31]}}, shift_result32[31:0]} :
+                                      (fu_data_i.operator == SLTS || fu_data_i.operator == SLTU) ? {{riscv::XLEN-1{1'b0}}, less} :
+                                      32'b0)));
+endproperty
+// assertions/property above
+```
+
+##### For the signal alu_branch_res_o, these are the assertions generated:
+```systemverilog
+// assertions/property below
+// [Signal name]: alu_branch_res_o
+// [Immediate Assertion]: A non-temporal SystemVerilog assertion.
+assert property (@(posedge clk_i) disable iff (!rst_ni) (fu_data_i.operator inside {EQ, NE, LTS, LTU, GES, GEU}) |-> ##1 (alu_branch_res_o inside {1'b0, 1'b1}));
+
+// [Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+assert property (@(posedge clk_i) disable iff (!rst_ni)
+    (fu_data_i.operator inside {EQ, NE, LTS, LTU, GES, GEU}) |-> ##1
+    ((fu_data_i.operator == EQ)  |=> (alu_branch_res_o == adder_z_flag)) &&
+    ((fu_data_i.operator == NE)  |=> (alu_branch_res_o == ~adder_z_flag)) &&
+    ((fu_data_i.operator inside {LTS, LTU}) |=> (alu_branch_res_o == less)) &&
+    ((fu_data_i.operator inside {GES, GEU}) |=> (alu_branch_res_o == ~less))
+);
+// assertions/property above
+```
+
+##### For the signal operand_a_rev, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: operand_a_rev
+//[Immediate Assertion]: A non-temporal SystemVerilog assertion.
+assert (operand_a_rev === ~operand_a_rev); // Placeholder for syntactical correctness; replace with actual assertions based on context.
+
+//[Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+assert property (@(posedge clk_i) disable iff (!rst_ni) (fu_data_i.operand_a !== riscv::xlen_t'(0)) |-> (operand_a_rev == {fu_data_i.operand_a[riscv::XLEN-1:0]}));
+// assertions/property above
+```
+
+##### For the signal operand_a_rev32, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: operand_a_rev32
+//[Immediate Assertion]: Ensure that when `shift_left` is true, `shift_op_a32` is assigned `operand_a_rev32`.
+always @(posedge clk_i) begin
+    if (rst_ni) begin
+        assert (!(shift_left) || (shift_op_a32 == operand_a_rev32))
+        else $fatal("Assertion failed: shift_op_a32 is not assigned operand_a_rev32 when shift_left is true.");
+    end
+end
+
+//[Concurrent Assertion]: Ensure that `operand_a_rev32` always correctly represents a bit-reversed version of the lower 32 bits of `fu_data_i.operand_a`.
+assert property (@(posedge clk_i)
+    (rst_ni) |=> (operand_a_rev32 == {fu_data_i.operand_a[0], fu_data_i.operand_a[1], fu_data_i.operand_a[2], fu_data_i.operand_a[3], 
+                                       fu_data_i.operand_a[4], fu_data_i.operand_a[5], fu_data_i.operand_a[6], fu_data_i.operand_a[7],
+                                       fu_data_i.operand_a[8], fu_data_i.operand_a[9], fu_data_i.operand_a[10], fu_data_i.operand_a[11],
+                                       fu_data_i.operand_a[12], fu_data_i.operand_a[13], fu_data_i.operand_a[14], fu_data_i.operand_a[15],
+                                       fu_data_i.operand_a[16], fu_data_i.operand_a[17], fu_data_i.operand_a[18], fu_data_i.operand_a[19],
+                                       fu_data_i.operand_a[20], fu_data_i.operand_a[21], fu_data_i.operand_a[22], fu_data_i.operand_a[23],
+                                       fu_data_i.operand_a[24], fu_data_i.operand_a[25], fu_data_i.operand_a[26], fu_data_i.operand_a[27],
+                                       fu_data_i.operand_a[28], fu_data_i.operand_a[29], fu_data_i.operand_a[30], fu_data_i.operand_a[31]}));
+)
+// assertions/property above
+```
+
+##### For the signal operand_b_neg, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: operand_b_neg
+
+//[Immediate Assertion]: A non-temporal SystemVerilog assertion.
+assert (adder_in_b == operand_b_neg);
+
+//[Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+assert property (@(posedge clk_i) disable iff (!rst_ni)
+    (fu_data_i.valid && adder_op_b_negate === 1'b1) |-> ($onehot0(adder_in_b ^ {fu_data_i.operand_b, 1'b0})));
+    
+// assertions/property above
+```
+
+##### For the signal adder_result_ext_o, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: adder_result_ext_o
+//[Immediate Assertion]: An assertion to ensure that `adder_result_ext_o` is updated immediately after the computation.
+always_comb assert (adder_result_ext_o == $unsigned(adder_in_a) + $unsigned(adder_in_b));
+
+//[Concurrent Assertion]: An assertion to ensure `adder_result_ext_o` is correctly computed whenever related operands are modified.
+property adder_result_ext_o_calculation;
+  @(posedge clk_i)
+    disable iff (rst_ni == 1'b0)
+    (fu_data_i.operand_a !== 'x && fu_data_i.operand_b !== 'x) |-> ##1
+    (adder_result_ext_o == $unsigned(adder_in_a) + $unsigned(adder_in_b));
+endproperty
+assert property (adder_result_ext_o_calculation);
+// assertions/property above
+```
+
+##### For the signal less, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: less
+//[Immediate Assertion]: A non-temporal SystemVerilog assertion.
+
+property compare_validity;
+  (fu_data_i.operator inside {SLTS, LTS, GES, LTU, SLTU}) |-> 
+  (sgn = (fu_data_i.operator == SLTS) || (fu_data_i.operator == LTS) || (fu_data_i.operator == GES));
+endproperty
+
+assert property (compare_validity);
+
+//[Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+
+property less_computation;
+  @(posedge clk_i) !$isunknown(fu_data_i.operand_a) && !$isunknown(fu_data_i.operand_b) && 
+  (fu_data_i.operator inside {SLTS, LTS, GES, LTU, SLTU}) |=> 
+  (less == ($signed({sgn & fu_data_i.operand_a[riscv::XLEN-1], fu_data_i.operand_a}) < 
+            $signed({sgn & fu_data_i.operand_b[riscv::XLEN-1], fu_data_i.operand_b})));
+endproperty
+
+assert property (less_computation);
+// assertions/property above
+```
+
+##### For the signal adder_op_b_negate, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: adder_op_b_negate
+//[Immediate Assertion]: A non-temporal SystemVerilog assertion.
+assert (adder_op_b_negate == 1'b1 || adder_op_b_negate == 1'b0) else $fatal("adder_op_b_negate must be either 1'b0 or 1'b1");
+
+//[Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+assert property (@(posedge clk_i) disable iff (!rst_ni)
+  (fu_data_i.operator == EQ || fu_data_i.operator == NE || fu_data_i.operator == SUB || fu_data_i.operator == SUBW) |-> adder_op_b_negate == 1'b1);
+// assertions/property above
+```
+
+##### For the signal adder_z_flag, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: adder_z_flag
+//[Immediate Assertion]: Ensure adder_z_flag is updated correctly based on adder_result.
+assert (adder_z_flag == ~|adder_result)
+else $error("Immediate assertion failed: adder_z_flag is not matching the NOR of adder_result.");
+
+//[Concurrent Assertion]: Verify over each cycle that adder_z_flag reflects whether adder_result is zero.
+property p_adder_z_flag_check; 
+  @(posedge clk_i) 
+  disable iff (!rst_ni) 
+  (adder_z_flag == ~|adder_result);
+endproperty 
+assert property (p_adder_z_flag_check);
+// assertions/property above
+```
+
+##### For the signal adder_in_a, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: adder_in_a
+//[Immediate Assertion]: A non-temporal SystemVerilog assertion.
+assert (adder_in_a[riscv::XLEN] == 1'b1);  // Ensures the LSB of adder_in_a is always concatenated with the logic '1'.
+
+//[Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+assert property (@(posedge clk_i) disable iff (!rst_ni) fu_data_i.operand_a == adder_in_a[riscv::XLEN-1:0]); 
+// Ensures that adder_in_a is correctly formed with fu_data_i.operand_a and the concatenated logic '1' whenever the reset is not active.
+// assertions/property above
+```
+
+##### For the signal adder_in_b, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: adder_in_b
+//[Immediate Assertion]: Check that adder_in_b correctly reflects the potentially negated operand_b based on adder_op_b_negate.
+assert (adder_in_b == ({fu_data_i.operand_b, 1'b0} ^ {riscv::XLEN+1{adder_op_b_negate}}));
+
+//[Concurrent Assertion]: Verify that adder_in_b is correctly derived according to pre-conditional logic involving fu_data_i.operator and adder_op_b_negate before proceeding to the addition operation.
+assert property (@(posedge clk_i)
+    (rst_ni && (fu_data_i.operator inside {EQ, NE, SUB, SUBW}) ==>
+        (adder_in_b == ({fu_data_i.operand_b, 1'b0} ^ {riscv::XLEN+1{adder_op_b_negate}})))
+);
+// assertions/property above
+```
+
+##### For the signal adder_result, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: adder_result
+//[Immediate Assertion]: A non-temporal SystemVerilog assertion.
+assert (adder_result === (adder_result_ext_o[riscv::XLEN:1]));
+
+//[Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+assert property (@(posedge clk_i) disable iff (!rst_ni)
+  (ifu_valid & (fu_data_i.operator inside {ADD, SUB, ADDW, SUBW})) |-> 
+  (adder_result === (adder_result_ext_o[riscv::XLEN:1]))
+);
+// assertions/property above
+```
+
+##### For the signal shift_left, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: shift_left
+//[Immediate Assertion]: A non-temporal SystemVerilog assertion.
+assert (shift_left == ((fu_data_i.operator == SLL) || (fu_data_i.operator == SLLW)));
+
+//[Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+assert property (@(posedge clk_i or negedge rst_ni)
+    disable iff (!rst_ni)
+    (fu_data_i.operator == SLL) || (fu_data_i.operator == SLLW) |-> 
+    ((shift_op_a == operand_a_rev) && (shift_op_a32 == operand_a_rev32) &&
+    (shift_result == shift_left_result) && (shift_result32 == shift_left_result32)));
+// assertions/property above
+```
+
+##### For the signal shift_arithmetic, these are the assertions generated:
+```systemverilog
+// assertions/property below
+//[Signal name]: shift_arithmetic
+//[Immediate Assertion]: A non-temporal SystemVerilog assertion.
+assert (shift_arithmetic == ((fu_data_i.operator == SRA) || (fu_data_i.operator == SRAW)));
+
+//[Concurrent Assertion]: A temporal SystemVerilog assertion that spans time.
+assert property (@(posedge clk_i) disable iff (rst_ni == 1'b0)
+  (fu_data_i.operator == SRA || fu_data_i.operator == SRAW) |=> shift_arithmetic
+);
+// assertions/property above
+```

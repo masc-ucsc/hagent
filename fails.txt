@@ -1,0 +1,146 @@
+=========================================================================== FAILURES ============================================================================
+___________________________________________________________ TestGeneratePerfetto.test_generate_simple ___________________________________________________________
+
+self = <test_tracer.TestGeneratePerfetto object at 0x107c507d0>, test_dir = '/Users/renau/projs/hagent/hagent/core/tests/test_data', clean_tracer = None
+
+    def test_generate_simple(self, test_dir, clean_tracer):
+        simple_dir = os.path.join(test_dir, 'simple')
+        yaml_files = tracer.scan_for_yamls(simple_dir)
+        initial, inputs, outputs = tracer.parse_yaml_files(yaml_files)
+
+>       tracer.Tracer.save_perfetto_trace(dependencies=(initial, inputs, outputs), filename='simple_perfetto.json')
+
+hagent/core/tests/test_tracer.py:216:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+hagent/core/tracer.py:551: in save_perfetto_trace
+    cls.add_flow_events(dependencies)
+hagent/core/tracer.py:341: in add_flow_events
+    start_step = cls.get_step_from_yaml(sg, start)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'hagent.core.tracer.Tracer'>, g = <networkx.classes.digraph.DiGraph object at 0x12e481e50>, yaml = 'tmp.yaml'
+
+    @classmethod
+    def get_step_from_yaml(cls, g: nx.DiGraph, yaml: str):
+>       step_id = g.nodes[yaml]['id']
+                  ^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'id'
+
+hagent/core/tracer.py:315: KeyError
+________________________________________________________ TestGeneratePerfetto.test_generate_multi_input _________________________________________________________
+
+self = <test_tracer.TestGeneratePerfetto object at 0x107c50910>, test_dir = '/Users/renau/projs/hagent/hagent/core/tests/test_data', clean_tracer = None
+
+    def test_generate_multi_input(self, test_dir, clean_tracer):
+        multi_input_dir = os.path.join(test_dir, 'multi_input')
+        yaml_files = tracer.scan_for_yamls(multi_input_dir)
+        initial, inputs, outputs = tracer.parse_yaml_files(yaml_files)
+
+>       tracer.Tracer.save_perfetto_trace(
+            dependencies=(initial, inputs, outputs), filename='multi_perfetto.json', asynchronous=True, step_offset=300
+        )
+
+hagent/core/tests/test_tracer.py:231:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+hagent/core/tracer.py:547: in save_perfetto_trace
+    cls.create_asynchronous_trace(dependencies, step_offset)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'hagent.core.tracer.Tracer'>
+dependencies = ({'input.yaml'}, {'final.yaml', 'intermediate.yaml', 'intermediate2.yaml', 'intermediate3.yaml', 'tmp.yaml', 'tmp2.yaml'}, {'final.yaml', 'finalfinal.yaml', 'intermediate.yaml', 'intermediate2.yaml', 'intermediate3.yaml'})
+step_offset = 300
+
+    @classmethod
+    def create_asynchronous_trace(cls, dependencies: Tuple[set, set, set], step_offset: int):
+        """
+        Creates an asynchronous trace from the recorded events.
+
+        This performs the following algorithm to re-order all events.
+        1. Set every Step with no dependence on another Step to timestamp (ts) 0.
+            1a. Also set every Step to a new TID to display it on a separate
+                track.
+        2. Use BFS to move through the dependency tree layer by layer.
+            2a. For each layer, set each Step's ts to the latest (ts + dur)
+                of its parents.
+            2b. For each moved Step, move each non-Step event with the same
+                Step ID to match its new ts.
+
+        Args:
+            dependencies: Three sets of YAML files
+            - initial YAML files (no dependencies)
+            - input YAML files (input(s) to a Step),
+            - output files (output of a Step).
+            step_offset: How far apart to place each layer of Steps from each other in ms.
+                         0 indicates that all Steps should be touching if displayed on a single track.
+
+        """
+        g = cls.get_tree_repr(dependencies)
+
+        visited = set()
+        for potential_root in g.nodes:
+            # Look for nodes that have no dependencies.
+            if len(list(g.predecessors(potential_root))) != 0:
+                continue
+
+            # Iterate through Steps via BFS, layer by layer.
+            tree_iter = nx.bfs_tree(g, potential_root)
+            for layer_idx, layer in enumerate(tree_iter):
+                # Ensure the layer is an iterable when 1 element.
+                if isinstance(layer, str):
+                    layer = [layer]
+                for yaml_file in layer:
+>                   step_id = g.nodes[yaml_file]['id']
+                              ^^^^^^^^^^^^^^^^^^^^^^^^
+E                   KeyError: 'id'
+
+hagent/core/tracer.py:497: KeyError
+_____________________________________________________________ test_cli_generates_equivalent_chisel ______________________________________________________________
+
+tmp_path = PosixPath('/private/var/folders/sd/xqrxsqv50bbc1dj4jm_57jq80000gn/T/pytest-of-renau/pytest-4/test_cli_generates_equivalent_0')
+pass1_yaml = PosixPath('/private/var/folders/sd/xqrxsqv50bbc1dj4jm_57jq80000gn/T/pytest-of-renau/pytest-4/test_cli_generates_equivalent_0/in.yaml')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x12e6c60b0>
+
+    def test_cli_generates_equivalent_chisel(tmp_path, pass1_yaml, monkeypatch):
+        out_yaml = tmp_path / "out.yaml"
+
+        # Use the dummy LLM wrapper to avoid optional dependencies like diskcache.
+        monkeypatch.setattr(v2_mod, "LLM_wrap", DummyWrap)
+
+        # stub out _check_equivalence to always pass immediately
+        monkeypatch.setattr(
+            V2chisel_fix,
+            "_check_equivalence",
+            lambda self, gold, cand: (True, None)
+        )
+
+        # Simulate CLI invocation: set sys.argv and then call parse_arguments()
+        monkeypatch.setattr(sys, "argv", ["v2chisel_fix", str(pass1_yaml), "-o", str(out_yaml)])
+
+        step = V2chisel_fix()
+        step.parse_arguments()  # now reads from sys.argv
+        step.setup()
+        result_dict = step.step()
+
+        # Ensure the file was written
+        assert out_yaml.exists()
+
+        # Load and compare
+        on_disk = yaml.safe_load(out_yaml.read_text())
+>       assert result_dict == on_disk
+E       AssertionError: assert {'chisel_fixe...'lec': 1, ...} == {'chisel_fixe...'lec': 1, ...}
+E
+E         Omitting 7 identical items, use -vv to show
+E         Differing items:
+E         {'tracing': {'elapsed': 95.84426879882812, 'history': [], 'input': ['/private/var/folders/sd/xqrxsqv50bbc1dj4jm_57jq80...r/folders/sd/xqrxsqv50bbc1dj4jm_57jq80000gn/T/pytest-of-renau/pytest-4/test_cli_generates_equivalent_0/out.yaml', ...}} ...
+E
+E         ...Full output truncated (2 lines hidden), use '-vv' to show
+
+hagent/step/v2chisel_fix/tests/test_v2chisel_fix_cli.py:75: AssertionError
+--------------------------------------------------------------------- Captured stdout call ----------------------------------------------------------------------
+[INFO] Starting initial LEC check. was_valid=False
+[INFO] Designs are already equivalent; no refinement needed.
+==================================================================== short test summary info ====================================================================
+FAILED hagent/core/tests/test_tracer.py::TestGeneratePerfetto::test_generate_simple - KeyError: 'id'
+FAILED hagent/core/tests/test_tracer.py::TestGeneratePerfetto::test_generate_multi_input - KeyError: 'id'
+FAILED hagent/step/v2chisel_fix/tests/test_v2chisel_fix_cli.py::test_cli_generates_equivalent_chisel - AssertionError: assert {'chisel_fixe...'lec': 1, ...} == {'chisel_fixe...'lec': 1, ...}

@@ -1,0 +1,3 @@
+error: "../hagent/step/v2chisel_pass1/v2chisel_pass1.py 2025-03-08T09:46:00.971873
+  - unable to write yaml: Error: Environment variable 'OPENAI_API_KEY' is not set
+  for model 'openai/o3-mini-2025-01-31'."

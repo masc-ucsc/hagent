@@ -1,0 +1,104 @@
+input_file: as/as_03.yaml
+************************** Generated Verilog Diff **************************
+--- verilog_original.v
++++ verilog_fixed.v
+@@ -56,7 +56,7 @@
+   assign io_aluop = _GEN_1 | ~_GEN_0 & (_signals_T_53 | _signals_T_132);	// src/main/scala/Top.scala:1156:7, src/main/scala/chisel3/util/Lookup.scala:31:38, :34:39
+   assign io_src1 =
+     ~(_signals_T_1 | _signals_T_3 | _signals_T_110 | _signals_T_7 | _GEN_2)
+-    & (_signals_T_13 | _signals_T_15 | _signals_T_44);	// src/main/scala/Top.scala:1156:7, src/main/scala/chisel3/util/Lookup.scala:31:38, :34:39
++    & ~(_signals_T_13 | _signals_T_15 | _signals_T_44);	// src/main/scala/Top.scala:1156:7, src/main/scala/chisel3/util/Lookup.scala:31:38, :34:39
+   assign io_src2 =
+     _signals_T_1
+       ? 2'h0
+********************************************************
+------------------------------------------------
+Extracted keywords from verilog diff:
+['_signals_T_44', '_signals_T_13', '_signals_T_15']
+------------------------------------------------
+Using fuzzy grep threshold: 80
+Using fuzzy grep context: 1
+------------------------------------------------
+Extracted hint lines from fuzzy grep:
+   387:   when (io.imem.request.valid) {
+-> 388:     // Put the Request into the instruction pipe and signal that instruction memory is busy
+   389:     val inRequest = io.imem.request.bits
+   415:   when (io.dmem.request.valid) {
+-> 416:     // Put the Request into the data pipe and signal that data memory is busy
+   417:     val inRequest = io.dmem.request.bits
+   462:   // Non-combinational memory can technically always accept requests since they are delayed through a pipe.
+-> 463:   // But we want to be able to signal that the memory is holding a request, so a register is used to store
+   464:   // whether a request passed through this memory port
+   638: class ICombinMemPort extends BaseIMemPort {
+-> 639:   // When the pipeline is supplying a high valid signal
+   640:   when (io.pipeline.valid) {
+  1171: 
+->1172:   val signals =
+  1173:     ListLookup(io.opcode,
+  1200: 
+->1201:   io.itype        := signals(0)
+->1202:   io.aluop        := signals(1)
+->1203:   io.src1         := signals(2)
+->1204:   io.src2         := signals(3)
+->1205:   io.branch       := signals(4)
+->1206:   io.jumptype     := signals(5)
+->1207:   io.resultselect := signals(6)
+->1208:   io.memop        := signals(7)
+->1209:   io.toreg        := signals(8)
+->1210:   io.regwrite     := signals(9)
+->1211:   io.validinst    := signals(10)
+->1212:   io.wordinst     := signals(11)
+  1213: }
+  1466:   when (io.imem.request.valid) {
+->1467:     // Put the Request into the instruction pipe and signal that instruction memory is busy
+  1468:     val request = io.imem.request.bits
+------------------------------------------------
+------------------------------------------------
+Extracted hint lines from filter_lines:
+      * Base CPU module which all CPU models implement
+->    31:   */
+    abstract class BaseCPU extends Module {
+      val io = IO(new Bundle {
+->    1156:     val opcode = Input(UInt(7.W))
+    
+------------------------------------------------
+------------------------------------------------
+Final union of hint lines:
+->     31: */
+      387: when (io.imem.request.valid) {
+->    388: // Put the Request into the instruction pipe and signal that instruction memory is busy
+      389: val inRequest = io.imem.request.bits
+      415: when (io.dmem.request.valid) {
+->    416: // Put the Request into the data pipe and signal that data memory is busy
+      417: val inRequest = io.dmem.request.bits
+      462: // Non-combinational memory can technically always accept requests since they are delayed through a pipe.
+->    463: // But we want to be able to signal that the memory is holding a request, so a register is used to store
+      464: // whether a request passed through this memory port
+      638: class ICombinMemPort extends BaseIMemPort {
+->    639: // When the pipeline is supplying a high valid signal
+      640: when (io.pipeline.valid) {
+->   1156: val opcode = Input(UInt(7.W))
+     1171: 
+->   1172: val signals =
+     1173: ListLookup(io.opcode,
+     1200: 
+->   1201: io.itype        := signals(0)
+->   1202: io.aluop        := signals(1)
+->   1203: io.src1         := signals(2)
+->   1204: io.src2         := signals(3)
+->   1205: io.branch       := signals(4)
+->   1206: io.jumptype     := signals(5)
+->   1207: io.resultselect := signals(6)
+->   1208: io.memop        := signals(7)
+->   1209: io.toreg        := signals(8)
+->   1210: io.regwrite     := signals(9)
+->   1211: io.validinst    := signals(10)
+->   1212: io.wordinst     := signals(11)
+     1213: }
+     1466: when (io.imem.request.valid) {
+->   1467: // Put the Request into the instruction pipe and signal that instruction memory is busy
+     1468: val request = io.imem.request.bits
+------------------------------------------------
+DEBUG: Loaded prompt template for attempt 1:
+<hagent.core.llm_template.LLM_template object at 0x7ffff5161a90>
+ERROR: unable to write yaml: Error: Environment variable 'OPENAI_API_KEY' is not set for model 'openai/o3-mini-2025-01-31'.

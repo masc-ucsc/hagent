@@ -1,0 +1,266 @@
+input_file: mo/mo_16.yaml
+************************** Generated Verilog Diff **************************
+--- verilog_original.v
++++ verilog_fixed.v
+@@ -32,7 +32,7 @@
+   output       io_toreg,	// src/main/scala/Top.scala:1157:14
+                io_regwrite,	// src/main/scala/Top.scala:1157:14
+                io_wordinst	// src/main/scala/Top.scala:1157:14
+-);
++
+ 
+   wire _signals_T_1 = io_opcode == 7'h33;	// src/main/scala/chisel3/util/Lookup.scala:31:38
+   wire _signals_T_3 = io_opcode == 7'h13;	// src/main/scala/chisel3/util/Lookup.scala:31:38
+@@ -82,7 +82,6 @@
+ endmodule
+ 
+ module RegisterFile(	// src/main/scala/Top.scala:896:7
+-  input         clock,	// src/main/scala/Top.scala:896:7
+   input  [4:0]  io_readreg1,	// src/main/scala/Top.scala:897:14
+                 io_readreg2,	// src/main/scala/Top.scala:897:14
+                 io_writereg,	// src/main/scala/Top.scala:897:14
+********************************************************
+------------------------------------------------
+Extracted keywords from verilog diff:
+['input', 'clock']
+------------------------------------------------
+Using fuzzy grep threshold: 80
+Using fuzzy grep context: 1
+------------------------------------------------
+Extracted hint lines from fuzzy grep:
+   505: 
+-> 506:     // On either a read or write we must read a whole block from memory. Store the necessary
+   507:     // information to redirect the memory's response back into itself through a write
+-> 508:     // operation and get the right subset of the block on a read.
+   509:     outstandingReq.bits.address   := io.pipeline.address
+   844: class Response extends Bundle {
+-> 845:   // The 8-byte-wide block of data being returned by memory
+   846:   val data         = UInt(64.W)
+   933: /**
+-> 934:  * A simple adder which takes two inputs and returns the sum
+   935:  *
+-> 936:  * Input:  inputx the first input operand
+-> 937:  * Input:  inputy the second input operand
+   938:  * Output: result first + second
+   941:   val io = IO(new Bundle{
+-> 942:     val inputx    = Input(UInt(64.W))
+-> 943:     val inputy    = Input(UInt(64.W))
+   944: 
+   947: 
+-> 948:   io.result := io.inputx + io.inputy
+   949: }
+  1074:   nextpc.io.jumptype := control.io.jumptype
+->1075:   nextpc.io.inputx := registers.io.readdata1
+->1076:   nextpc.io.inputy := alu.io.inputy
+  1077:   nextpc.io.funct3 := funct3
+  1087:   alu.io.operation := aluControl.io.operation
+->1088:   alu.io.inputx := Mux(control.io.src1, pc, registers.io.readdata1)
+->1089:   alu.io.inputy := MuxCase(0.U, Seq((control.io.src2 === 0.U) -> registers.io.readdata2,
+  1090:                                       (control.io.src2 === 1.U) -> immGen.io.sextImm,
+  1139:  * Output: src1          Source for the first ALU/nextpc input (0 if source is readdata1, 1 if source is pc)
+->1140:  * Output: src2          Source for the second ALU/nextpc input (00 if source is readdata2, 01 if source is immediate, 10 if source is a hardwired value 4 (i.e., alu's inputy = 4))
+  1141:  * Output: branch        True if branch, False otherwise
+  1218:  * Input:  operation, specifies which operation the ALU should perform
+->1219:  * Input:  inputx, the first input (e.g., reg1)
+->1220:  * Input:  inputy, the second input (e.g., reg2)
+  1221:  * Output: the result of the computation
+  1225:     val operation = Input(UInt(5.W))
+->1226:     val inputx    = Input(UInt(64.W))
+->1227:     val inputy    = Input(UInt(64.W))
+  1228: 
+  1236:   val signExtend32To64 = (input: UInt) => Cat(Fill(32, input(31)), input(31, 0))
+->1237:   val operand1_32 = io.inputx(31, 0)
+->1238:   val operand2_32 = io.inputy(31, 0)
+  1239: 
+  1240:   when (aluop === "b0110".U) { // and
+->1241:     io.result := io.inputx & io.inputy
+  1242:   }
+  1243:   .elsewhen (aluop === "b0101".U) { // or
+->1244:     io.result := io.inputx | io.inputy
+  1245:   }
+  1249:     } .otherwise {
+->1250:       io.result := io.inputx + io.inputy
+  1251:     }
+  1256:     } .otherwise {
+->1257:       io.result := io.inputx - io.inputy
+  1258:     }
+  1264:     } .otherwise { // sra
+->1265:       io.result := (io.inputx.asSInt >> io.inputy(5, 0)).asUInt // sra takes 6 bits of op2
+  1266:     }
+  1268:   .elsewhen (aluop === "b0001".U) { // sltu
+->1269:     io.result := (io.inputx < io.inputy)
+  1270:   }
+  1271:   .elsewhen (aluop === "b0000".U) { // xor
+->1272:     io.result := io.inputx ^ io.inputy
+  1273:   }
+  1277:     } .otherwise {
+->1278:       io.result := io.inputx >> io.inputy(5, 0) // srl takes 6 bits of op2
+  1279:     }
+  1281:   .elsewhen (aluop === "b1001".U) { // slt
+->1282:     io.result := (io.inputx.asSInt < io.inputy.asSInt).asUInt // signed
+  1283:   }
+  1287:     } .otherwise {
+->1288:       io.result := io.inputx << io.inputy(5, 0) // sll takes 6 bits of op2
+  1289:     }
+  1291:   .elsewhen (aluop === "b1010".U) { // nor
+->1292:     io.result := ~(io.inputx | io.inputy)
+  1293:   }
+  1294:   .elsewhen (aluop === "b1011".U) { // sge (set greater than or equal)
+->1295:     io.result := (io.inputx.asSInt >= io.inputy.asSInt).asUInt
+  1296:   }
+  1297:   .elsewhen (aluop === "b1100".U) { // sgeu (set greater than or equal unsigned)
+->1298:     io.result := (io.inputx >= io.inputy)
+  1299:   }
+  1300:   .elsewhen (aluop === "b1101".U) { // seq (set equal)
+->1301:     io.result := io.inputx === io.inputy
+  1302:   }
+  1303:   .elsewhen (aluop === "b1110".U) { // sne (set not equal)
+->1304:     io.result := io.inputx =/= io.inputy
+  1305:   }
+  1393: /**
+->1394:  * Next PC unit. This takes various inputs and outputs the next address of the next instruction.
+  1395:  *
+  1397:  * Input: jumptype       00 if not a jump inst, 10 if inst is a jal, 11 if inst is a jalr
+->1398:  * Input: inputx         First input
+->1399:  * Input: inputy         Second input
+  1400:  * Input: funct3         The funct3 from the instruction
+  1411:     val jumptype = Input(UInt(2.W))
+->1412:     val inputx   = Input(UInt(64.W))
+->1413:     val inputy   = Input(UInt(64.W))
+  1414:     val funct3   = Input(UInt(3.W))
+  1422:   when (io.branch) {
+->1423:     when ( (io.funct3 === "b000".U & io.inputx === io.inputy)
+->1424:          | (io.funct3 === "b001".U & io.inputx =/= io.inputy)
+->1425:          | (io.funct3 === "b100".U & io.inputx.asSInt < io.inputy.asSInt)
+->1426:          | (io.funct3 === "b101".U & io.inputx.asSInt >= io.inputy.asSInt)
+->1427:          | (io.funct3 === "b110".U & io.inputx < io.inputy)
+->1428:          | (io.funct3 === "b111".U & io.inputx >= io.inputy)) {
+  1429:       io.nextpc := io.pc + io.imm
+  1436:   } .elsewhen (io.jumptype =/= 0.U) {
+->1437:     io.nextpc := Mux(io.jumptype(0), io.inputx + io.imm, // jalr
+  1438:                                      io.pc + io.imm)     // jal
+------------------------------------------------
+------------------------------------------------
+Extracted hint lines from filter_lines:
+      val io = IO(new Bundle {
+->    896:     val readreg1  = Input(UInt(5.W))
+        val readreg2  = Input(UInt(5.W))
+------------------------------------------------
+------------------------------------------------
+Final union of hint lines:
+      505: 
+->    506: // On either a read or write we must read a whole block from memory. Store the necessary
+      507: // information to redirect the memory's response back into itself through a write
+->    508: // operation and get the right subset of the block on a read.
+      509: outstandingReq.bits.address   := io.pipeline.address
+      844: class Response extends Bundle {
+->    845: // The 8-byte-wide block of data being returned by memory
+      846: val data         = UInt(64.W)
+->    896: val readreg1  = Input(UInt(5.W))
+      933: /**
+->    934: * A simple adder which takes two inputs and returns the sum
+      935: *
+->    936: * Input:  inputx the first input operand
+->    937: * Input:  inputy the second input operand
+      938: * Output: result first + second
+      941: val io = IO(new Bundle{
+->    942: val inputx    = Input(UInt(64.W))
+->    943: val inputy    = Input(UInt(64.W))
+      944: 
+      947: 
+->    948: io.result := io.inputx + io.inputy
+      949: }
+     1074: nextpc.io.jumptype := control.io.jumptype
+->   1075: nextpc.io.inputx := registers.io.readdata1
+->   1076: nextpc.io.inputy := alu.io.inputy
+     1077: nextpc.io.funct3 := funct3
+     1087: alu.io.operation := aluControl.io.operation
+->   1088: alu.io.inputx := Mux(control.io.src1, pc, registers.io.readdata1)
+->   1089: alu.io.inputy := MuxCase(0.U, Seq((control.io.src2 === 0.U) -> registers.io.readdata2,
+     1090: (control.io.src2 === 1.U) -> immGen.io.sextImm,
+     1139: * Output: src1          Source for the first ALU/nextpc input (0 if source is readdata1, 1 if source is pc)
+->   1140: * Output: src2          Source for the second ALU/nextpc input (00 if source is readdata2, 01 if source is immediate, 10 if source is a hardwired value 4 (i.e., alu's inputy = 4))
+     1141: * Output: branch        True if branch, False otherwise
+     1218: * Input:  operation, specifies which operation the ALU should perform
+->   1219: * Input:  inputx, the first input (e.g., reg1)
+->   1220: * Input:  inputy, the second input (e.g., reg2)
+     1221: * Output: the result of the computation
+     1225: val operation = Input(UInt(5.W))
+->   1226: val inputx    = Input(UInt(64.W))
+->   1227: val inputy    = Input(UInt(64.W))
+     1228: 
+     1236: val signExtend32To64 = (input: UInt) => Cat(Fill(32, input(31)), input(31, 0))
+->   1237: val operand1_32 = io.inputx(31, 0)
+->   1238: val operand2_32 = io.inputy(31, 0)
+     1239: 
+     1240: when (aluop === "b0110".U) { // and
+->   1241: io.result := io.inputx & io.inputy
+     1242: }
+     1243: .elsewhen (aluop === "b0101".U) { // or
+->   1244: io.result := io.inputx | io.inputy
+     1245: }
+     1249: } .otherwise {
+->   1250: io.result := io.inputx + io.inputy
+     1251: }
+     1256: } .otherwise {
+->   1257: io.result := io.inputx - io.inputy
+     1258: }
+     1264: } .otherwise { // sra
+->   1265: io.result := (io.inputx.asSInt >> io.inputy(5, 0)).asUInt // sra takes 6 bits of op2
+     1266: }
+     1268: .elsewhen (aluop === "b0001".U) { // sltu
+->   1269: io.result := (io.inputx < io.inputy)
+     1270: }
+     1271: .elsewhen (aluop === "b0000".U) { // xor
+->   1272: io.result := io.inputx ^ io.inputy
+     1273: }
+     1277: } .otherwise {
+->   1278: io.result := io.inputx >> io.inputy(5, 0) // srl takes 6 bits of op2
+     1279: }
+     1281: .elsewhen (aluop === "b1001".U) { // slt
+->   1282: io.result := (io.inputx.asSInt < io.inputy.asSInt).asUInt // signed
+     1283: }
+     1287: } .otherwise {
+->   1288: io.result := io.inputx << io.inputy(5, 0) // sll takes 6 bits of op2
+     1289: }
+     1291: .elsewhen (aluop === "b1010".U) { // nor
+->   1292: io.result := ~(io.inputx | io.inputy)
+     1293: }
+     1294: .elsewhen (aluop === "b1011".U) { // sge (set greater than or equal)
+->   1295: io.result := (io.inputx.asSInt >= io.inputy.asSInt).asUInt
+     1296: }
+     1297: .elsewhen (aluop === "b1100".U) { // sgeu (set greater than or equal unsigned)
+->   1298: io.result := (io.inputx >= io.inputy)
+     1299: }
+     1300: .elsewhen (aluop === "b1101".U) { // seq (set equal)
+->   1301: io.result := io.inputx === io.inputy
+     1302: }
+     1303: .elsewhen (aluop === "b1110".U) { // sne (set not equal)
+->   1304: io.result := io.inputx =/= io.inputy
+     1305: }
+     1393: /**
+->   1394: * Next PC unit. This takes various inputs and outputs the next address of the next instruction.
+     1395: *
+     1397: * Input: jumptype       00 if not a jump inst, 10 if inst is a jal, 11 if inst is a jalr
+->   1398: * Input: inputx         First input
+->   1399: * Input: inputy         Second input
+     1400: * Input: funct3         The funct3 from the instruction
+     1411: val jumptype = Input(UInt(2.W))
+->   1412: val inputx   = Input(UInt(64.W))
+->   1413: val inputy   = Input(UInt(64.W))
+     1414: val funct3   = Input(UInt(3.W))
+     1422: when (io.branch) {
+->   1423: when ( (io.funct3 === "b000".U & io.inputx === io.inputy)
+->   1424: | (io.funct3 === "b001".U & io.inputx =/= io.inputy)
+->   1425: | (io.funct3 === "b100".U & io.inputx.asSInt < io.inputy.asSInt)
+->   1426: | (io.funct3 === "b101".U & io.inputx.asSInt >= io.inputy.asSInt)
+->   1427: | (io.funct3 === "b110".U & io.inputx < io.inputy)
+->   1428: | (io.funct3 === "b111".U & io.inputx >= io.inputy)) {
+     1429: io.nextpc := io.pc + io.imm
+     1436: } .elsewhen (io.jumptype =/= 0.U) {
+->   1437: io.nextpc := Mux(io.jumptype(0), io.inputx + io.imm, // jalr
+     1438: io.pc + io.imm)     // jal
+------------------------------------------------
+DEBUG: Loaded prompt template for attempt 1:
+<hagent.core.llm_template.LLM_template object at 0x7ffff1287790>
+ERROR: unable to write yaml: Error: Environment variable 'OPENAI_API_KEY' is not set for model 'openai/o3-mini-2025-01-31'.
