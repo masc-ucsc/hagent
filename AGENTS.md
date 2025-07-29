@@ -37,11 +37,22 @@ uv run pytest -m ""
 # Run tests with coverage
 uv run pytest --cov=hagent --cov-report=html
 
+# Run subset of tests with coverage
+uv run pytest hagent/tool/ --cov=hagent/tool --cov-report=html
+
+# Upload coverage to codecov manually
+uv run pytest --cov --cov-branch --cov-report=xml
+curl -Os https://cli.codecov.io/latest/macos/codecov  # replace macos for linux if needed
+./codecov --verbose upload-process -f ./coverage.xml
+
 # Run incremental tests (faster for development)
 uv run pytest --testmon
 
 # Run specific test directory
 uv run pytest hagent/step/trivial/tests/
+
+# Run specific test pattern
+uv run pytest -k "test_trivial"
 
 # Verbose test output
 uv run pytest -v
