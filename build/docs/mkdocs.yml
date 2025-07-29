@@ -1,0 +1,4 @@
+docs_dir: content
+nav:
+- API Documentation: index.md
+site_name: My Project

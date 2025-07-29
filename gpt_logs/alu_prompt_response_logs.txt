@@ -1,0 +1,297 @@
+[Signal name]: fu_data_i  
+[Definition]: input  
+[Functionality]: `fu_data_i` serves as the input that provides the function unit (FU) data necessary for the ALU to execute the specified instruction. The data includes two operands (`operand_a` and `operand_b`) and an operator that determines the operation performed by the ALU.  
+[Interconnection]: Used throughout the ALU for various operations including addition, subtraction, shifts, and logical operations.   
+[Additional information]: The signal comes from the `ISSUE_STAGE`, and its type is defined as `fu_data_t`. It is essential for determining the operation performed by the ALU, as it includes the ALU's operands and operator.  
+[Related Signals]: `operand_a`, `operand_b`, `operator`, `operand_a_rev`, `operand_a_rev32`, `adder_in_a`, `operand_b_neg`, `shift_amt`, `shift_left`, `shift_arithmetic`, `shift_op_a`, `shift_op_a32`, `shift_op_a_64`, `shift_op_a_32`.  
+[pre-condition]: 
+- Signal `fu_data_i` must provide valid `operand_a`, `operand_b`, and `operator` values for the ALU operation.
+- The clock signal `clk_i` should be stable.
+- The asynchronous reset `rst_ni` must be de-asserted (logical high) for normal operation.
+
+[post-condition]:
+- Result outputs `result_o` and `alu_branch_res_o` are computed based on the ALU operation specified by `fu_data_i.operator`.
+- The ALU operation completes within a single clock cycle.[Signal name]: result_o  
+[Definition]: output  
+[Functionality]: The `result_o` signal represents the result of the arithmetic, logic, shift, or comparison operation performed by the ALU based on the operator provided. The signal holds the 32 or 64-bit result as computed from the input operands.  
+[Interconnection]: `fu_data_i.operand_a`, `fu_data_i.operand_b`, `adder_result`, `less`, `shift_result`, `shift_result32`  
+[Additional information]: The result is calculated in a single cycle and there are no stateful elements within the ALU module.  
+[Related Signals]: `fu_data_i`, `adder_result`, `shift_result`, `less`, `shift_result32`  
+  
+[pre-condition]:  
+1. Valid clock (`clk_i`) and reset signals (`rst_ni`) are applied, ensuring module operation.  
+2. `fu_data_i` contains valid operands and a valid operator.  
+  
+[post-condition]:  
+1. `result_o` represents the computed result based on the current operation specified by `fu_data_i.operator`.  
+2. The computation is completed in one cycle, and hence, the `result_o` will be updated in the same cycle based on the operation type:
+   - For logical operations (`ANDL`, `ORL`, `XORL`): it results in logical AND, OR, and XOR respectively of operands.
+   - For adder operations (i.e., `ADD`, `SUB`): it uses `adder_result` for output.
+   - For widened results (`ADDW`, `SUBW`): the result is sign-extended to 64-bit.
+   - For shift operations: the result is derived from shift operations.
+   - For comparison operations (`SLTS`, `SLTU`): uses the `less` signal to infer the result.
+   3. For operations that don't match these cases, `result_o` remains zero ('0').[Signal name]: alu_branch_res_o  
+[Definition]: output logic  
+[Functionality]: Provides the result of a branch comparison operation, producing a boolean flag indicating whether a specified condition (e.g., equality, inequality, less than, or greater than) is satisfied based on the two operands provided to the ALU.  
+[Interconnection]: Interacts with signals `adder_z_flag`, `less`, and `fu_data_i.operator`.  
+[Additional information]:  
+- The `alu_branch_res_o` signal depends on the comparison operator specified in `fu_data_i.operator`.  
+- If a specific branch condition is met, such as EQ (equal), NE (not equal), LTS (less than, signed), LTU (less than, unsigned), GES (greater than or equal, signed), or GEU (greater than or equal, unsigned), the corresponding logic operation determines the flag value based on prior computed results like `adder_z_flag` or `less`.  
+- Default has it set to `1'b1` if none of the above operators match.  
+
+[Related Signals]: `adder_z_flag`, `less`, `fu_data_i.operator`  
+[pre-condition]:  
+- The `fu_data_i.operator` signal must hold a valid operation code for `alu_branch_res_o` to be evaluated correctly.  
+- The signals `adder_z_flag` and `less` must be computed before evaluating `alu_branch_res_o`. These are recomputed based on `fu_data_i.operand_a` and `fu_data_i.operand_b` inputs.  
+
+[post-condition]:  
+- After execution, `alu_branch_res_o` should accurately reflect the branch condition's truth value (true or false) as determined by the operation codes EQ, NE, LTS, LTU, GES, or GEU.  
+- The output is valid because the ALU completes its operation in a single cycle. Hence, the computed result of `alu_branch_res_o` can be used immediately within the subsequent stage or module it is connected to, such as the branch unit.  Here is the extracted information for the signal `operand_a_rev` in a format suitable for SystemVerilog Assertions (SVAs) generation:
+
+[Signal name]: operand_a_rev  
+[Definition]: wire, assigned via generate statement  
+[Functionality]: Represents the bit-reversed version of `fu_data_i.operand_a`. It's used mainly for left shifts and bit counting operations within the ALU.  
+[Interconnection]: Interacts with signals `fu_data_i.operand_a`, `shift_left`, and `shift_op_a`.  
+[Additional information]: The bit reversal is performed inside a generate block over the range of `riscv::XLEN`, making it dependent on the configured bit-width of the architecture.  
+[Related Signals]: `fu_data_i.operand_a`, `shift_op_a`, `shift_left`, `operand_a_rev32` (for 32-bit operations)  
+[pre-condition]: The module should be configured with a valid `riscv::XLEN` width, and `fu_data_i.operand_a` must be available for bit reversal.  
+[post-condition]: The signal `operand_a_rev` should hold the bit-reversed representation of `fu_data_i.operand_a`, which is then potentially used as `shift_op_a` for left shifts if `shift_left` is asserted.  
+
+This provides a comprehensive context for understanding and verifying the functionality and dependencies related to the `operand_a_rev` signal within the ALU module.[Signal name]: operand_a_rev32  
+[Definition]: wire  
+[Functionality]: The signal `operand_a_rev32` is a bit-reversed version of the lower 32 bits of `fu_data_i.operand_a`. It is used for operations such as left shifting where the order of bits needs to be reversed.  
+[Interconnection]:  
+- `fu_data_i.operand_a`  
+- `shift_left`  
+- `shift_op_a32`  
+
+[Additional information]: The signal `operand_a_rev32` is generated using a generate block in the RTL code, reversing the order of bits for the lower 32 bits of `operand_a` based on the index. The operation is specific to the scenario where left shift logic (`shift_left`) needs bit-reversed input.  
+[Related Signals]:  
+- `fu_data_i`
+- `fu_data_i.operand_a`
+- `shift_op_a32`
+- `shift_left`  
+
+[pre-condition]:  
+- `fu_data_i.operand_a` must be valid and updated with the appropriate operand data for the ALU operations.  
+- The module must be in an operational state with the `rst_ni` inactive (high).  
+- `shift_left` logic should be determined as per the operation being performed (SLL or SLLW) for `operand_a_rev32` to be selected for shift operation.  
+
+[post-condition]:   
+- When `shift_left` is true (i.e., left shift operation), `shift_op_a32` will be assigned the `operand_a_rev32` signal.  
+- The bit-reversed order allows the shifting operation to behave correctly regarding expected outputs from left shift operations.
+- `operand_a_rev32` will correctly represent the reversed bit-order of the lower 32-bits of `fu_data_i.operand_a` for its intended purpose (related to shift operations).[Signal name]: operand_b_neg  
+[Definition]: inferred from code (e.g., logic)  
+[Functionality]: This signal represents the possibly negated version of the input operand `fu_data_i.operand_b`, extended with a zero in its least significant bit. It is used as an input to the adder logic.  
+[Interconnection]:  
+- `fu_data_i.operand_b`
+- `adder_op_b_negate`
+- `adder_in_b`  
+
+[Additional information]:  
+- `operand_b_neg` is computed by concatenating a '0' to `fu_data_i.operand_b` and XORing with `adder_op_b_negate` to potentially negate the whole value.  
+- The bit-width is extended by one bit compared to its source operand to accommodate arithmetic operations.  
+
+[Related Signals]:  
+- `fu_data_i.operand_b`
+- `adder_op_b_negate`
+- `adder_in_b`  
+
+[pre-condition]:  
+- `fu_data_i` must be valid and provide operand_b.
+- `adder_op_b_negate` should be determined based on the operation code from `fu_data_i`.
+
+[post-condition]:  
+- `operand_b_neg` must correctly represent the extended (and possibly negated) operand B for the operations within the adder logic.
+- `operand_b_neg` should successfully be assigned to `adder_in_b`.[Signal name]: adder_result_ext_o  
+[Definition]: logic [riscv::XLEN+1:0]  
+[Functionality]: The signal `adder_result_ext_o` is used to store the intermediate result of adding two operands, `adder_in_a` and `adder_in_b`, in the ALU. The inputs are signed and extended for computation, producing a result that aligns with ALU operations, specifically addition and subtraction.  
+[Interconnection]: 
+- `adder_in_a`
+- `adder_in_b`
+- `adder_result`
+- `adder_z_flag`
+- `alu_branch_res_o`
+  
+[Additional information]: 
+- The signal is computed as the sum of `adder_in_a` and `adder_in_b` while being extended to accommodate overflow during addition.
+- Directly implicated in computations for addition and subtraction logic of the ALU.
+- Related to determining zero flag (`adder_z_flag`) for branch comparisons.
+  
+[Related Signals]: 
+- `adder_in_a`
+- `adder_in_b`
+- `adder_result`
+- `adder_z_flag`
+- `alu_branch_res_o`
+  
+[pre-condition]: 
+- The input operands `fu_data_i.operand_a` and `fu_data_i.operand_b` must be available and valid.
+- `adder_op_b_negate` is determined as necessary by the operation type (EQ, NE, SUB, SUBW).
+  
+[post-condition]: 
+- The computation extending `adder_result_ext_o` is completed by adding `adder_in_a` and `adder_in_b`.
+- The signal `adder_result` is derived by taking bits [riscv::XLEN:1] from `adder_result_ext_o`.
+- The zero flag `adder_z_flag` is evaluated as the NOR of `adder_result`.
+- The output `alu_branch_res_o` is set based on `adder_z_flag` or other conditions related to comparison operations.**Signal Name**: `less`
+
+**Definition**: inferred from code: `logic`
+
+**Functionality**: The `less` signal is used to determine if the signed or unsigned comparison of two operands (`operand_a` and `operand_b`) results in a "less than" condition. It is evaluated by considering the sign bit of operands for specific operations like SLTS, LTS, and GES. The comparison operation utilizes a sign-extension logic to compare the most significant bits correctly.
+
+**Interconnection**: This signal interacts with other signals such as `fu_data_i.operand_a`, `fu_data_i.operand_b`, and is used in the context of conditional operations like `alu_branch_res_o`. It influences the output result based on the comparison operation selected by the `fu_data_i.operator`.
+
+**Additional Information**: The computation of `less` involves a signed comparison using the sign bit, which is conditionally appended based on whether it's a signed operation.
+
+**Related Signals**: `alu_branch_res_o`, `fu_data_i.operand_a`, `fu_data_i.operand_b`, `fu_data_i.operator`
+
+**Pre-condition**:
+- The `fu_data_i.operator` should specify an operation that requires a comparison (`SLTS`, `LTS`, `GES`) for `less` to be valid.
+- The operands `fu_data_i.operand_a` and `fu_data_i.operand_b` must be valid inputs for the ALU.
+
+**Post-condition**:
+- The result `less` represents a Boolean condition where `1'b1` indicates `operand_a` is less than `operand_b` under the specified operator’s rules, and `1'b0` otherwise.
+- Depending on the outcome of `less`, `alu_branch_res_o` and optionally, part of `result_o` will be influenced, particularly in branch-related operations.[Signal name]: adder_op_b_negate  
+[Definition]: logic (internal signal)  
+[Functionality]:  
+- Indicates whether operand B should be negated for the adder operations.  
+- It is used to determine that during subtraction operations, operand B needs to be complemented.  
+
+[Interconnection]:  
+- fu_data_i.operator  
+- operand_b_neg  
+- adder_in_b  
+
+[Additional information]:  
+- Takes value `1'b1` for certain arithmetic operations (SUB, SUBW, EQ, NE) to complement operand B, preparing it for subtraction.  
+- Default state is `1'b0` indicating no negation.  
+
+[Related Signals]:  
+- `operand_b_neg`  
+- `adder_in_b`  
+
+[pre-condition]:  
+- The ALU is provided with an operator via `fu_data_i.operator`.  
+- The specific operations `EQ`, `NE`, `SUB`, or `SUBW` are required for setting `adder_op_b_negate` to `1'b1`.  
+
+[post-condition]:  
+- `operand_b_neg` is calculated as a bitwise XOR of `fu_data_i.operand_b` with a mask determined by `adder_op_b_negate`.  
+- Calculation alters `operand_b_neg` for these specific operations, preparing it as the correct operand for the adder.[Signal name]: adder_z_flag  
+[Definition]: logic (inferred from code as it is the output of a combinational assignment).  
+[Functionality]: `adder_z_flag` indicates whether the result of the addition/subtraction operation in the adder is zero. It is primarily used for branch comparison decisions, specifically for equality (EQ) and inequality (NE) comparisons.  
+[Interconnection]: Interacts with `adder_result` and `alu_branch_res_o`. It affects the `alu_branch_res_o` when the operation is EQ or NE.  
+[Additional information]: 
+- Utilizes a bitwise NOR operation to determine if `adder_result` is zero.
+- The calculation is a part of the combinational logic within the ALU module.  
+[Related Signals]: `adder_result`, `alu_branch_res_o`.  
+[pre-condition]: The ALU operation specified by `fu_data_i.operator` should be one of the operations that modifies `adder_op_b_negate` to enable subtraction (e.g., SUB, SUBW). These operations will ensure that meaningful addition/subtraction comparisons occur.  
+[post-condition]: `adder_z_flag` will correctly reflect the status of the zero condition on `adder_result`, influencing the setting of `alu_branch_res_o` for branch EQ (equal) or NE (not equal) conditions. If `adder_result` is all zeroes, `adder_z_flag` will be '1', otherwise '0'. This result will be used to set or clear `alu_branch_res_o` depending on the condition.[Signal name]: adder_in_a  
+[Definition]: wire (inferred from code due to the assign statement)  
+[Functionality]: adder_in_a is used as one of the operands in an addition operation for the ALU. It takes the operand from fu_data_i and appends a logic '1' to the least significant bit position, which essentially extends the operand's bit width by 1.  
+[Interconnection]: Interacts with fu_data_i.operand_a, adder_in_b, adder_result_ext_o  
+[Additional information]: This signal involves a concatenation operation with an operand from the input signal fu_data_i.operand_a and a constant 1'b1 at the least significant bit. The operation implies that adder_in_a is always in a form that allows it to be readily used for addition operations.  
+[Related Signals]: adder_in_b, adder_result_ext_o  
+[pre-condition]: The input operand fu_data_i.operand_a must be valid and stable for the logic '1' concatenation to take place correctly.  
+[post-condition]: Results in the generation of adder_in_a ready to be used in arithmetic operations, specifically by the adder which computes adder_result_ext_o as the addition with another operand adder_in_b.Here is the analysis for the signal `adder_in_b`:
+
+[Signal name]: adder_in_b  
+[Definition]: logic  
+[Functionality]: `adder_in_b` serves as one of the inputs to the ALU's adder logic. It represents the value of `operand_b` possibly negated, used in arithmetic operations that involve addition or subtraction.  
+[Interconnection]: Interacts with `operand_b_neg`, `adder_result_ext_o`, `fu_data_i.operand_b`, and `adder_op_b_negate`.  
+[Additional information]: The value of `adder_in_b` is derived by negating `operand_b` when required, based on the `adder_op_b_negate` signal.  
+[Related Signals]: `operand_b_neg`, `fu_data_i.operand_b`, `adder_op_b_negate`, `adder_result_ext_o`.  
+[pre-condition]: 
+1. The `fu_data_i.operator` must be determined prior to setting `adder_in_b`.  
+2. The `adder_op_b_negate` value is established based on specific operators (e.g., EQ, NE, SUB, SUBW) which require subtraction.  
+3. The value of `fu_data_i.operand_b` should be available.  
+[post-condition]: 
+1. `adder_in_b` will hold the correctly negated or unaltered value of the operand suitable for the adder operation.  
+2. It contributes to computing `adder_result_ext_o` by participating in the addition operation with `adder_in_a`.  
+3. The result of this addition will propagate to affect the `adder_result` and the relevant outputs of the ALU based on the operation.  [Signal name]: adder_result  
+[Definition]: inferred from code (e.g., logic)  
+[Functionality]: Represents the result of the adder operation in the ALU, performing addition or subtraction as specified by the input operator.  
+[Interconnection]:  
+- `adder_result_ext_o` (from which bits [riscv::XLEN:1] are extracted)  
+- `fu_data_i.operator` (determines behavior in ALU operations and comparisons)  
+- `adder_z_flag` (zero-flag computed from adder_result)  
+- `alu_branch_res_o` (uses adder_result to determine branch outcomes for EQ/NE operations)  
+- `result_o` (uses adder_result for ADD, SUB, ADDW, and SUBW outputs)  
+
+[Additional information]:  
+- `adder_op_b_negate` determines if subtraction is performed. If the operator input is EQ, NE, SUB, or SUBW, the subtraction operation is implied by setting 'adder_op_b_negate' to '1'.  
+- Extension of operand A by appending '1' (`adder_in_a = {fu_data_i.operand_a, 1'b1}`) and B by XOR operation if negation is selected (`operand_b_neg`).  
+
+[Related Signals]: adder_result_ext_o, adder_in_a, adder_in_b, adder_op_b_negate, fu_data_i.operator, result_o, alu_branch_res_o
+
+[Pre-condition]:  
+- `adder_op_b_negate` should be set correctly based on the `fu_data_i.operator` for addition or subtraction logic.  
+- `adder_in_a` and `adder_in_b` must be precomputed properly before the `adder_result` is assigned.  
+- Bits of `adder_result_ext_o` should be available with correct 0-extension or sign-extension based on operation.  
+
+[Post-condition]:  
+- `adder_result` should correctly reflect the expected result of the addition or subtraction of the operand inputs for the given ALU operation.  
+- `adder_z_flag` is updated to reflect zero status of `adder_result`.  
+- `alu_branch_res_o` is set based on `adder_z_flag` for EQ/NE conditions.  
+- `result_o` holds either `adder_result` or an extended version (`{{riscv::XLEN-32{adder_result[31]}}, adder_result[31:0]}` for ADDW, SUBW).[Signal name]: shift_left  
+[Definition]: inferred from code, logic
+
+[Functionality]:  
+- The `shift_left` signal determines whether the ALU will perform a left shift operation on the input operand. Specifically, it is asserted when the operator provided is either SLL (Shift Left Logical) or SLLW (Shift Left Logical Word).
+
+[Interconnection]:  
+- fu_data_i.operator  
+- shift_op_a  
+- operand_a_rev  
+- operand_a_rev32  
+- shift_result  
+- shift_left_result  
+- shift_result32  
+- shift_left_result32  
+
+[Additional information]:  
+- The control flow indicates that the shift direction (left or right) is contingent upon the operation code specified by the incoming operator. If the operator is SLL or SLLW, the shift_left signal is asserted, indicating a left shift should be performed.  
+- shift_left is involved in choosing between bit-reversed and normal input for shift operand a. The bit-reversal is used specifically for left shifts.
+
+[Related Signals]:  
+- shift_op_a  
+- shift_op_a32  
+- shift_op_a_64  
+- shift_op_a_32  
+- shift_result  
+- shift_left_result  
+- shift_result32  
+- shift_left_result32  
+- fu_data_i.operator  
+
+[pre-condition]:  
+- `fu_data_i.operator` is either SLL or SLLW for shift_left to be asserted.
+
+[post-condition]:  
+- When `shift_left` is asserted:
+  - `shift_op_a` should use `operand_a_rev` for its input.
+  - `shift_op_a32` should use `operand_a_rev32` for its input.
+  - The result of any ALU shift operation should be the `shift_left_result` or `shift_left_result32` for the 32-bit operation.
+- Ensures the functional correctness of the shift operation being set to perform a logical left shift.[Signal name]: shift_arithmetic  
+[Definition]: inferred from code - `logic` signal  
+[Functionality]:  
+- Determines whether the operation in progress is an arithmetic right shift (as opposed to a logical shift).  
+- When asserted (`1`), the signal indicates that the operation is of shift types `SRA` or `SRAW`, both arithmetic right shifts.
+
+[Interconnection]:  
+- Interacts with `fu_data_i.operator`, `shift_op_a`, `shift_op_a_64`, and `shift_op_a_32`.  
+- Influences the behavior of `shift_op_a` and subsequently the result in `shift_right_result32`.
+
+[Additional information]:  
+- `shift_arithmetic` is used to extend the sign bit during shifts, ensuring arithmetic shifts maintain the sign.  
+- It forms the most significant bit extension during shifts, influencing how the bits of `shift_op_a` or `shift_op_a32` are manipulated.  
+
+[Related Signals]:  
+- `fu_data_i.operator`, `shift_op_a`, `shift_op_a64`, `shift_op_a32`, `shift_right_result32`.
+
+[pre-condition]:  
+- `fu_data_i.operator` should be set to either `SRA` or `SRAW` for `shift_arithmetic` to be asserted.  
+- The module should be configured to perform a shift operation where checking for arithmetic behavior is necessary.
+
+[post-condition]:  
+- If `shift_arithmetic` is asserted, `shift_op_a_64` and `shift_op_a_32` will have their most significant bit extended from `shift_op_a` according to its sign bit, ensuring the correct behavior for arithmetic shifts.  
+- Results of `shift_right_result32` will reflect an arithmetic right shift, appropriately preserving the sign bit across shifts for the specified word length.

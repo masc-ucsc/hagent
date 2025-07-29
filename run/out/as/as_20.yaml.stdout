@@ -1,0 +1,1147 @@
+input_file: as/as_20.yaml
+************************** Generated Verilog Diff **************************
+--- verilog_original.v
++++ verilog_fixed.v
+@@ -263,7 +263,7 @@
+     endcase	// src/main/scala/Top.scala:921:16
+   end // always_comb
+   always @(posedge clock) begin	// src/main/scala/Top.scala:896:7
+-    if (io_wen & io_writereg == 5'h0)	// src/main/scala/Top.scala:912:17, :915:17, :916:23
++    if (io_wen | io_writereg == 5'h0)	// src/main/scala/Top.scala:912:17, :915:17, :916:23
+       regs_0 <= io_writedata;	// src/main/scala/Top.scala:912:17
+     if (io_wen & io_writereg == 5'h1)	// src/main/scala/Top.scala:912:17, :915:17, :916:23
+       regs_1 <= io_writedata;	// src/main/scala/Top.scala:912:17
+********************************************************
+------------------------------------------------
+Extracted keywords from verilog diff:
+['h0', 'io_wen', '5', 'if', 'io_writereg']
+------------------------------------------------
+Using fuzzy grep threshold: 80
+Using fuzzy grep context: 1
+------------------------------------------------
+Extracted hint lines from fuzzy grep:
+     3: 
+->   4: import chisel3._
+->   5: import chisel3.util._
+     6: import _root_.circt.stage.ChiselStage
+    51: class BranchPredIO extends Bundle {
+->  52:   val pc         = Input(UInt(64.W))
+    53:   val update     = Input(Bool())
+    66:   // Default value is weakly taken for each branch
+->  67:   val defaultSaturatingCounter = (1 << c.saturatingCounterBits - 1)
+    68:   // Create a register file with c.branchPredTableEntries
+    73:   def incrCounter(counter: UInt): Unit = {
+->  74:     val max = (1 << c.saturatingCounterBits) - 1
+    75:     when (counter =/= max.U) {
+->  76:       counter := counter + 1.U
+    77:     }
+    81:   def decrCounter(counter: UInt): Unit = {
+->  82:     when (counter =/= 0.U) {
+->  83:       counter := counter - 1.U
+    84:     }
+   122:   // The first bit for the table access is based on the number of entries.
+-> 123:   // +2 since we ignore the bottom two bits
+-> 124:   val tableIndex = io.pc(log2Floor(conf.branchPredTableEntries) + 2, 2)
+   125: 
+   126:   // Return the high-order bit
+-> 127:   io.prediction := predictionTable(tableIndex)(conf.saturatingCounterBits - 1)
+   128: 
+   140:   // Need one extra bit for the "last" history
+-> 141:   val history = RegInit(0.U((historyBits+1).W))
+   142: 
+-> 143:   val curhist = history(historyBits,0)
+   144:   when(io.update) {
+   155: 
+-> 156:   io.prediction := predictionTable(curhist)(conf.saturatingCounterBits - 1)
+   157: }
+   174:   /** Number of bits for the saturating counters */
+-> 175:   var saturatingCounterBits = 2
+   176:   /** Number of entries in the branch predictor table */
+-> 177:   var branchPredTableEntries = 32
+   178: 
+   181:   /** The noncombinational memory latency */
+-> 182:   var memLatency = 5
+   183:   /** The port types **/
+   205:       case "single-cycle" => new SingleCycleCPU
+-> 206:       case _ => throw new IllegalArgumentException("Must specify known CPU model")
+   207:     }
+   216:       case "global"           => new GlobalHistoryPredictor
+-> 217:       case _ => throw new IllegalArgumentException("Must specify known branch predictor")
+   218:     }
+   227:     */
+-> 228:   def getNewMem(minSize: Int = 1 << 16): BaseDualPortedMemory = {
+   229:     val f = new File(memFile)
+-> 230:     if (f.length == 0) {
+   231:       println("WARNING: No file will be loaded for data memory")
+   236:       case "non-combinational" => new DualPortedNonCombinMemory (minSize, memFile, memLatency)
+-> 237:       case _ => throw new IllegalArgumentException("Must specify known backing memory type")
+   238:     }
+   247:     val f = new File(memFile)
+-> 248:     if (f.length == 0) {
+   249:       println("WARNING: No file will be loaded for data memory")
+   255:       // case "non-combinational-cache" => new ICache
+-> 256:       case _ => throw new IllegalArgumentException("Must specify known instruction memory port type")
+   257:     }
+   266:     val f = new File(memFile)
+-> 267:     if (f.length == 0) {
+   268:       println("WARNING: No file will be loaded for data memory")
+   274:       // case "non-combinational-cache" => new DCache
+-> 275:       case _ => throw new IllegalArgumentException("Must specify known data memory port type")
+   276:     }
+   306:   io.dmem.request <> DontCare
+-> 307:   // Zero out response ports to 0, so that the pipeline does not receive any
+   308:   // 'DontCare' values from the memory ports
+-> 309:   io.imem.response <> 0.U.asTypeOf(Valid (new Response))
+-> 310:   io.dmem.response <> 0.U.asTypeOf(Valid (new Response))
+   311: 
+-> 312:   val memory = Mem(math.ceil(size.toDouble/4).toInt, UInt(32.W))
+   313:   val memFileObj = new java.io.File(memfile)
+-> 314:   if (memFileObj.exists() && memFileObj.length() > 0) {
+   315:     loadMemoryFromFile(memory, memfile)
+   330: 
+-> 331:   io.pipeline <> 0.U.asTypeOf (new IMemPortIO)
+   332:   // Intentional DontCare:
+   347: 
+-> 348:   io.pipeline <> 0.U.asTypeOf (new DMemPortIO)
+   349:   // Intentional DontCare:
+   379:   }
+-> 380:   assert(latency > 0) // Check for attempt to make combinational memory
+   381: 
+   402:     io.imem.response.valid        := true.B
+-> 403:     io.imem.response.bits.data := Cat(Fill(32, 0.U(1.W)), memory(outRequest.address >> 2)(31, 0))
+   404:   } .otherwise {
+   427:     val outRequest = dmemPipe.io.deq.bits
+-> 428:     val address = outRequest.address >> 2
+   429:     // Check that address is pointing to a valid location in memory
+   433:       io.dmem.response.valid        := true.B
+-> 434:       io.dmem.response.bits.data    := Cat(memory(address + 1.U), memory(address))
+   435:     } .elsewhen (outRequest.operation === MemoryOperation.Write) {
+   436:       io.dmem.response.valid        := false.B
+-> 437:       memory(address) := outRequest.writedata(31, 0)
+-> 438:       memory(address + 1.U) := outRequest.writedata(63, 32)
+   439:     }
+   447: class OutstandingReq extends Bundle {
+-> 448:   val address   = UInt(64.W)
+-> 449:   val writedata = UInt(64.W)
+-> 450:   val maskmode  = UInt(2.W)
+   451:   val operation = MemoryOperation()
+   522:     io.bus.request.bits.address   := io.pipeline.address
+-> 523:     io.bus.request.bits.writedata := 0.U
+   524:     io.bus.request.bits.operation := MemoryOperation.Read
+   538:     when (outstandingReq.bits.operation === MemoryOperation.Write) {
+-> 539:       val writedata = Wire(UInt(64.W))
+   540: 
+   541:       // When not writing a whole double-word
+-> 542:       when (outstandingReq.bits.maskmode =/= 3.U) {
+   543:         // Read in the existing piece of data at the address, so we "overwrite" only part of it
+-> 544:         val offset = outstandingReq.bits.address(1, 0)
+-> 545:         val readdata = Wire(UInt(64.W))
+-> 546:         val writedata_mask = Wire(UInt(64.W))
+-> 547:         val writedata_mask_shifted = Wire(UInt(64.W))
+-> 548:         val writedata_shifted = Wire(UInt(64.W))
+-> 549:         val readdata_mask = Wire(UInt(64.W)) // readdata doesn't need to be shifted
+   550: 
+   552: 
+-> 553:         when (io.pipeline.maskmode === 0.U) { // Byte
+-> 554:           writedata_mask := Cat(Fill(56, 0.U(1.W)), Fill(8, 1.U(1.W)))
+-> 555:         } .elsewhen (io.pipeline.maskmode === 1.U) { // Half-word
+-> 556:           writedata_mask := Cat(Fill(48, 0.U(1.W)), Fill(16, 1.U(1.W)))
+-> 557:         } .elsewhen (io.pipeline.maskmode === 2.U) { // Word
+-> 558:           writedata_mask := Cat(Fill(32, 0.U(1.W)), Fill(32, 1.U(1.W)))
+   559:         } .otherwise { // Double-word
+-> 560:           writedata_mask := Fill(64, 1.U(1.W))
+   561:         }
+   562: 
+-> 563:         writedata_mask_shifted := writedata_mask << (offset * 8.U)
+-> 564:         writedata_shifted := outstandingReq.bits.writedata << (offset * 8.U)
+   565: 
+   584:       // Perform masking and sign extension on read data when memory is outputting it
+-> 585:       val readdata_mask      = Wire(UInt(64.W))
+-> 586:       val readdata_mask_sext = Wire(UInt(64.W))
+   587: 
+-> 588:       val offset = outstandingReq.bits.address(1, 0)
+-> 589:       when (outstandingReq.bits.maskmode === 0.U) {
+   590:         // Byte
+-> 591:         readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xff.U
+-> 592:       } .elsewhen (outstandingReq.bits.maskmode === 1.U) {
+   593:         // Half-word
+-> 594:         readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xffff.U
+-> 595:       } .elsewhen (outstandingReq.bits.maskmode === 2.U) {
+   596:         // Word
+-> 597:         readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xffffffffL.U
+   598:       } .otherwise {
+   603:       when (outstandingReq.bits.sext) {
+-> 604:         when (outstandingReq.bits.maskmode === 0.U) {
+   605:           // Byte sign extension
+-> 606:           readdata_mask_sext := Cat(Fill(56, readdata_mask(7)),  readdata_mask(7, 0))
+-> 607:         } .elsewhen (outstandingReq.bits.maskmode === 1.U) {
+   608:           // Half-word sign extension
+-> 609:           readdata_mask_sext := Cat(Fill(48, readdata_mask(15)), readdata_mask(15, 0))
+-> 610:         } .elsewhen (outstandingReq.bits.maskmode === 2.U) {
+   611:           // Word sign extension
+-> 612:           readdata_mask_sext := Cat(Fill(32, readdata_mask(31)), readdata_mask(31, 0))
+   613:         } .otherwise {
+   643:     request.operation := MemoryOperation.Read
+-> 644:     request.writedata := 0.U
+   645: 
+   697:       // Perform writedata modification and send it down io.request.writedata.
+-> 698:       val writedata = Wire (UInt (64.W))
+   699: 
+   700:       // When not writing a whole doubleword
+-> 701:       when (io.pipeline.maskmode =/= 3.U) {
+   702:         // Read in the existing piece of data at the address, so we "overwrite" only part of it
+-> 703:         val offset = io.pipeline.address(1, 0)
+-> 704:         val readdata = Wire(UInt(64.W))
+-> 705:         val writedata_mask = Wire(UInt(64.W))
+-> 706:         val writedata_mask_shifted = Wire(UInt(64.W))
+-> 707:         val writedata_shifted = Wire(UInt(64.W))
+-> 708:         val readdata_mask = Wire(UInt(64.W)) // readdata doesn't need to be shifted
+   709: 
+   711: 
+-> 712:         when (io.pipeline.maskmode === 0.U) { // Byte
+-> 713:           writedata_mask := Cat(Fill(56, 0.U(1.W)), Fill(8, 1.U(1.W)))
+-> 714:         } .elsewhen (io.pipeline.maskmode === 1.U) { // Half-word
+-> 715:           writedata_mask := Cat(Fill(48, 0.U(1.W)), Fill(16, 1.U(1.W)))
+-> 716:         } .elsewhen (io.pipeline.maskmode === 2.U) { // Word
+-> 717:           writedata_mask := Cat(Fill(32, 0.U(1.W)), Fill(32, 1.U(1.W)))
+   718:         } .otherwise { // Double-word
+-> 719:           writedata_mask := Fill(64, 1.U(1.W))
+   720:         }
+   721: 
+-> 722:         writedata_mask_shifted := writedata_mask << (offset * 8.U)
+-> 723:         writedata_shifted := io.pipeline.writedata << (offset * 8.U)
+   724: 
+   735:       // Perform normal masking and sign extension on the read data
+-> 736:       val readdata_mask      = Wire(UInt(64.W))
+-> 737:       val readdata_mask_sext = Wire(UInt(64.W))
+   738: 
+-> 739:       val offset = io.pipeline.address(1, 0)
+-> 740:       when (io.pipeline.maskmode === 0.U) {
+   741:         // Byte
+-> 742:         readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xff.U
+-> 743:       } .elsewhen (io.pipeline.maskmode === 1.U) {
+   744:         // Half-word
+-> 745:         readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xffff.U
+-> 746:       } .elsewhen (io.pipeline.maskmode === 2.U) {
+   747:         // Word
+-> 748:         readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xffffffffL.U
+   749:       } .otherwise {
+   754:       when (io.pipeline.sext) {
+-> 755:         when (io.pipeline.maskmode === 0.U) {
+   756:           // Byte sign extension
+-> 757:           readdata_mask_sext := Cat(Fill(56, readdata_mask(7)),  readdata_mask(7, 0))
+-> 758:         } .elsewhen (io.pipeline.maskmode === 1.U) {
+   759:           // Half-word sign extension
+-> 760:           readdata_mask_sext := Cat(Fill(48, readdata_mask(15)), readdata_mask(15, 0))
+-> 761:         } .elsewhen (io.pipeline.maskmode === 2.U) {
+   762:           // Word sign extension
+-> 763:           readdata_mask_sext := Cat(Fill(32, readdata_mask(31)), readdata_mask(31, 0))
+   764:         } .otherwise {
+   789:   // Pipeline <=> Port
+-> 790:   val address  = Input(UInt(64.W))
+   791:   val valid    = Input(Bool())
+   805: class IMemPortIO extends MemPortIO {
+-> 806:   val instruction = Output(UInt(64.W))
+   807:   val ready       = Output(Bool())
+   818:  *   Input:  memwrite, true if we are writing to memory
+-> 819:  *   Input:  maskmode, mode to mask the result. 0 means byte, 1 means halfword, 2 means word, 3 means doubleword
+   820:  *   Input:  sext, true if we should sign extend the result
+   825:   // Pipeline <=> Port
+-> 826:   val writedata = Input(UInt(64.W))
+   827:   val memread   = Input(Bool())
+   828:   val memwrite  = Input(Bool())
+-> 829:   val maskmode  = Input(UInt(2.W))
+   830:   val sext      = Input(Bool())
+   831: 
+-> 832:   val readdata  = Output(UInt(64.W))
+   833: }
+   836: class Request extends Bundle {
+-> 837:   val address      = UInt(64.W)
+-> 838:   val writedata    = UInt(64.W)
+   839:   val operation    = MemoryOperation()
+   844: class Response extends Bundle {
+-> 845:   // The 8-byte-wide block of data being returned by memory
+-> 846:   val data         = UInt(64.W)
+   847: }
+   865: /**
+-> 866:  * A 32 entry two read port one write port register file.
+   867:  *
+-> 868:  * Note: this register file *has* an entry for register 0, and it's possible to
+-> 869:  * overwrite the default 0 value. Thus, you need to add extra logic to the
+-> 870:  * DINO CPU control or data path to make sure you always get 0 from register 0.
+   871:  *
+   880:  *   readdata2 = R[readreg2]
+-> 881:  *   if (wen) R[writereg] = writedata
+   882:  *
+   884:  * Input:  readreg2, the number of the register to read
+-> 885:  * Input:  writereg, the number of the register to write
+-> 886:  * Input:  writedata, the data to write into R[writereg]
+-> 887:  * Input:  wen, write enable. If true, write the writereg register
+   888:  *
+   891:  *
+-> 892:  * For more information, see section 4.3 of Patterson and Hennessy
+   893:  */
+   895:   val io = IO(new Bundle {
+-> 896:     val readreg1  = Input(UInt(5.W))
+-> 897:     val readreg2  = Input(UInt(5.W))
+-> 898:     val writereg  = Input(UInt(5.W))
+-> 899:     val writedata = Input(UInt(64.W))
+   900:     val wen       = Input(Bool())
+   901: 
+-> 902:     val readdata1 = Output(UInt(64.W))
+-> 903:     val readdata2 = Output(UInt(64.W))
+   904:   })
+   909: 
+-> 910:   val regs = Reg(Vec(32, UInt(64.W)))
+   911: 
+   913:   when (io.wen) {
+-> 914:     regs(io.writereg) := io.writedata
+   915:   }
+   923:     // For the five-cycle and pipelined CPU forward the data through the register file
+-> 924:     when (io.readreg1 === io.writereg && io.wen) {
+   925:       io.readdata1 := io.writedata
+   926:     }
+-> 927:     when (io.readreg2 === io.writereg && io.wen) {
+   928:       io.readdata2 := io.writedata
+   941:   val io = IO(new Bundle{
+-> 942:     val inputx    = Input(UInt(64.W))
+-> 943:     val inputy    = Input(UInt(64.W))
+   944: 
+-> 945:     val result    = Output(UInt(64.W))
+   946:   })
+   961:   val io = IO(new Bundle{
+-> 962:     val instruction = Input(UInt(64.W))
+   963: 
+-> 964:     val sextImm     = Output(UInt(64.W))
+   965:   })
+   966: 
+-> 967:   io.sextImm := 0.U
+   968: 
+-> 969:   val opcode = io.instruction(6,0)
+   970: 
+   973:       // RV64I lui
+-> 974:       // imm = cat(sign_extended_bits, imm[31:12], padding 0s)
+-> 975:       //           (32 bits)           (20 bits)   (12 bits)
+-> 976:       val imm = io.instruction(31, 12)
+-> 977:       io.sextImm := Cat(Fill(32, imm(19)), imm, Fill(12, 0.U))
+   978:     }
+   980:       // RV64I auipc
+-> 981:       // imm = cat(sign_extended_bits, imm[31:12], padding 0s)
+-> 982:       //           (32 bits)           (20 bits)   (12 bits)
+-> 983:       val imm = io.instruction(31, 12)
+-> 984:       io.sextImm := Cat(Fill(32, imm(19)), imm, Fill(12, 0.U))
+   985:     }
+   986:     is("b1101111".U) { // J-type (jal)
+-> 987:       // riscv-spec: JAL encodes the offset as a multiple of 2 bytes
+-> 988:       // imm = sign_extends(2 * offset)
+-> 989:       val imm = Cat(io.instruction(31), io.instruction(19,12),
+-> 990:                     io.instruction(20), io.instruction(30,21))
+-> 991:       io.sextImm := Cat(Fill(43, imm(19)), imm, 0.U)
+   992:     }
+   993:     is("b1100111".U) { // I-type (jalr)
+-> 994:       val imm = io.instruction(31, 20)
+-> 995:       io.sextImm := Cat(Fill(52,imm(11)), imm)
+   996:     }
+   997:     is("b1100011".U) { // B-type
+-> 998:       val imm = Cat(io.instruction(31), io.instruction(7),
+-> 999:                     io.instruction(30,25), io.instruction(11,8))
+->1000:       io.sextImm := Cat(Fill(51, imm(11)), imm, 0.U)
+  1001:     }
+  1002:     is("b0000011".U) { // I-type (ld)
+->1003:       val imm = io.instruction(31, 20)
+->1004:       io.sextImm := Cat(Fill(52, imm(11)), imm)
+  1005:     }
+  1006:     is("b0100011".U) { // S-type (st)
+->1007:       val imm = Cat(io.instruction(31, 25), io.instruction(11,7))
+->1008:       io.sextImm := Cat(Fill(52, imm(11)), imm)
+  1009:     }
+->1010:     is("b0010011".U) { // I-type (immediate arith.) 32-bit
+->1011:       val imm = io.instruction(31, 20)
+->1012:       io.sextImm := Cat(Fill(52,imm(11)), imm) // for instructions using shift amount, this imm is also valid as only the lower 5 bits (24, 20) are used
+  1013:     }
+  1014:     is("b0011011".U) { // I-type (immediate arith.)
+->1015:       val imm = io.instruction(31, 20)
+->1016:       io.sextImm := Cat(Fill(52,imm(11)), imm) // for instructions using shift amount, this imm is also valid as only the lower 6 bits (25, 20) are used
+  1017:     }
+  1018:     is("b1110011".U) { // zimm for csri
+->1019:       io.sextImm := Cat(Fill(59,0.U), io.instruction(19,15))
+  1020:     }
+  1032:  *
+->1033:  * For more information, see section 4.4 of Patterson and Hennessy
+->1034:  * This follows figure 4.21
+  1035:  */
+  1037:   // All of the structures required
+->1038:   val pc         = dontTouch(RegInit(0.U(64.W)))
+  1039:   val control    = Module(new Control())
+  1044:   val nextpc     = Module(new NextPC())
+->1045:   val (cycleCount, _) = Counter(true.B, 1 << 30)
+  1046: 
+  1050: 
+->1051:   val instruction = Wire(UInt(32.W))
+->1052:   when ((pc % 8.U) === 4.U) {
+->1053:     instruction := io.imem.instruction(63, 32)
+  1054:   } .otherwise {
+->1055:     instruction := io.imem.instruction(31, 0)
+  1056:   }
+->1057:   val funct3 = instruction(14, 12)
+  1058: 
+->1059:   control.io.opcode := instruction(6, 0)
+  1060: 
+->1061:   registers.io.readreg1 := instruction(19, 15)
+->1062:   registers.io.readreg2 := instruction(24, 20)
+->1063:   registers.io.writereg := instruction(11, 7)
+  1064:   registers.io.writedata := Mux(control.io.toreg, io.dmem.readdata, Mux(control.io.resultselect, immGen.io.sextImm, alu.io.result))
+->1065:   when (registers.io.writereg =/= 0.U && control.io.regwrite) {
+  1066:     registers.io.wen := true.B
+  1082:   aluControl.io.itype := control.io.itype
+->1083:   aluControl.io.funct7 := instruction(31, 25)
+->1084:   aluControl.io.funct3 := instruction(14, 12)
+  1085:   aluControl.io.wordinst := control.io.wordinst
+  1088:   alu.io.inputx := Mux(control.io.src1, pc, registers.io.readdata1)
+->1089:   alu.io.inputy := MuxCase(0.U, Seq((control.io.src2 === 0.U) -> registers.io.readdata2,
+->1090:                                       (control.io.src2 === 1.U) -> immGen.io.sextImm,
+->1091:                                       (control.io.src2 === 2.U) -> 4.U))
+  1092: 
+  1093:   io.dmem.address := alu.io.result
+->1094:   io.dmem.memread := ~control.io.memop(0)
+->1095:   io.dmem.memwrite := control.io.memop(0)
+->1096:   io.dmem.valid := control.io.memop(1)
+->1097:   io.dmem.maskmode := funct3(1, 0)
+->1098:   io.dmem.sext := ~funct3(2)
+  1099:   io.dmem.writedata := registers.io.readdata2
+  1138:  * Output: aluop         True if inst is of R-type or I-type, False otherwise
+->1139:  * Output: src1          Source for the first ALU/nextpc input (0 if source is readdata1, 1 if source is pc)
+->1140:  * Output: src2          Source for the second ALU/nextpc input (00 if source is readdata2, 01 if source is immediate, 10 if source is a hardwired value 4 (i.e., alu's inputy = 4))
+  1141:  * Output: branch        True if branch, False otherwise
+->1142:  * Output: jumptype      00 if not a jump inst, 10 if inst is jal, 11 is inst is jalr
+->1143:  * Output: resultselect  0 for result from alu, 1 for immediate
+->1144:  * Output: memop         00 if not using memory, 10 if reading, and 11 if writing
+->1145:  * Output: toreg         0 for result from execute, 1 for data from memory
+  1146:  * Output: regwrite      True if writing to the register file, False otherwise
+  1147:  * Output: validinst     True if the instruction we're decoding is valid, False otherwise
+->1148:  * Output: wordinst      True if the instruction *only* operates on 32-bit operands, False otherwise
+  1149:  *
+->1150:  * For more information, see section 4.4 of Patterson and Hennessy.
+->1151:  * This follows figure 4.22.
+  1152:  */
+  1155:   val io = IO(new Bundle {
+->1156:     val opcode = Input(UInt(7.W))
+  1157: 
+  1160:     val src1         = Output(Bool())
+->1161:     val src2         = Output(UInt(2.W))
+  1162:     val branch       = Output(Bool())
+->1163:     val jumptype     = Output(UInt(2.W))
+  1164:     val resultselect = Output(Bool())
+->1165:     val memop        = Output(UInt(2.W))
+  1166:     val toreg        = Output(Bool())
+  1173:     ListLookup(io.opcode,
+->1174:       /*default*/           List(false.B, false.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,  false.B,   false.B,  false.B),
+  1175:       Array(              /*       itype,   aluop,    src1, src2,   branch,  jumptype, resultselect, memop,   toreg, regwrite, validinst, wordinst */
+  1176:       // R-format
+->1177:       BitPat("b0110011") -> List(false.B,  true.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,  false.B),
+  1178:       // I-format
+->1179:       BitPat("b0010011") -> List( true.B,  true.B, false.B,  1.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,  false.B),
+  1180:       // load
+->1181:       BitPat("b0000011") -> List(false.B, false.B, false.B,  1.U,  false.B,       0.U,      false.B,   2.U,  true.B,   true.B,    true.B,  false.B),
+  1182:       // store
+->1183:       BitPat("b0100011") -> List(false.B, false.B, false.B,  1.U,  false.B,       0.U,      false.B,   3.U, false.B,  false.B,    true.B,  false.B),
+  1184:       // branch
+->1185:       BitPat("b1100011") -> List(false.B, false.B, false.B,  0.U,   true.B,       0.U,      false.B,   0.U, false.B,  false.B,    true.B,  false.B),
+  1186:       // lui
+->1187:       BitPat("b0110111") -> List(false.B, false.B, false.B,  0.U,  false.B,       0.U,       true.B,   0.U, false.B,   true.B,    true.B,  false.B),
+  1188:       // auipc
+->1189:       BitPat("b0010111") -> List(false.B, false.B,  true.B,  1.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,  false.B),
+  1190:       // jal
+->1191:       BitPat("b1101111") -> List(false.B, false.B,  true.B,  2.U,  false.B,       2.U,      false.B,   0.U, false.B,   true.B,    true.B,  false.B),
+  1192:       // jalr
+->1193:       BitPat("b1100111") -> List(false.B, false.B,  true.B,  2.U,  false.B,       3.U,      false.B,   0.U, false.B,   true.B,    true.B,  false.B),
+->1194:       // I-format 32-bit operands
+->1195:       BitPat("b0011011") -> List( true.B,  true.B, false.B,  1.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),
+->1196:       // R-format 32-bit operands
+->1197:       BitPat("b0111011") -> List(false.B,  true.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),
+  1198:       ) // Array
+  1200: 
+->1201:   io.itype        := signals(0)
+->1202:   io.aluop        := signals(1)
+->1203:   io.src1         := signals(2)
+->1204:   io.src2         := signals(3)
+->1205:   io.branch       := signals(4)
+->1206:   io.jumptype     := signals(5)
+->1207:   io.resultselect := signals(6)
+->1208:   io.memop        := signals(7)
+->1209:   io.toreg        := signals(8)
+->1210:   io.regwrite     := signals(9)
+->1211:   io.validinst    := signals(10)
+->1212:   io.wordinst     := signals(11)
+  1213: }
+  1224:   val io = IO(new Bundle {
+->1225:     val operation = Input(UInt(5.W))
+->1226:     val inputx    = Input(UInt(64.W))
+->1227:     val inputy    = Input(UInt(64.W))
+  1228: 
+->1229:     val result    = Output(UInt(64.W))
+  1230:   })
+  1231: 
+->1232:   val wordinst = Mux(io.operation(4) === 1.U, true.B, false.B)
+->1233:   val aluop = io.operation(3, 0)
+  1234: 
+->1235:   // this function casts the input to 32-bit UInt, then sign extends it
+->1236:   val signExtend32To64 = (input: UInt) => Cat(Fill(32, input(31)), input(31, 0))
+->1237:   val operand1_32 = io.inputx(31, 0)
+->1238:   val operand2_32 = io.inputy(31, 0)
+  1239: 
+  1261:     when (wordinst === true.B) { // sraw
+->1262:       io.result := signExtend32To64((operand1_32.asSInt >> operand2_32(4, 0)).asUInt) // arithmetic (signed)
+->1263:                                                                                       // sraw takes 5 bits of op2
+  1264:     } .otherwise { // sra
+->1265:       io.result := (io.inputx.asSInt >> io.inputy(5, 0)).asUInt // sra takes 6 bits of op2
+  1266:     }
+  1275:     when (wordinst === true.B) { // srlw
+->1276:       io.result := signExtend32To64(operand1_32 >> operand2_32(4, 0)) // srlw takes 5 bits of op2
+  1277:     } .otherwise {
+->1278:       io.result := io.inputx >> io.inputy(5, 0) // srl takes 6 bits of op2
+  1279:     }
+  1285:     when (wordinst === true.B) { // sllw
+->1286:       io.result := signExtend32To64(operand1_32 << operand2_32(4, 0)) // sllw takes 5 bits of op2
+  1287:     } .otherwise {
+->1288:       io.result := io.inputx << io.inputy(5, 0) // sll takes 6 bits of op2
+  1289:     }
+  1306:   .otherwise {
+->1307:     io.result := 0.U // should be invalid
+  1308:   }
+  1314:  *
+->1315:  * Input:  aluop        0 for ld/st, 1 for R-type
+  1316:  * Input:  itype        True if I-type
+  1317:  * Input:  funct7       The most significant bits of the instruction
+->1318:  * Input:  funct3       The middle three bits of the instruction (12-14)
+->1319:  * Input:  wordinst     True if the instruction *only* operates on 32-bit operands, False otherwise
+  1320:  * Output: operation    What we want the ALU to do.
+  1321:  *
+->1322:  * For more information, see Section 4.4 and A.5 of Patterson and Hennessy.
+->1323:  * This is loosely based on figure 4.12
+  1324:  */
+  1328:     val itype     = Input(Bool())
+->1329:     val funct7    = Input(UInt(7.W))
+->1330:     val funct3    = Input(UInt(3.W))
+  1331:     val wordinst  = Input(Bool())
+  1332: 
+->1333:     val operation = Output(UInt(5.W))
+  1334:   })
+  1335: 
+->1336:   when (io.aluop === 0.U) {
+  1337:     io.operation := "b00111".U // add
+  1367:     } .elsewhen (io.funct3 === "b101".U) {
+->1368:       when (io.funct7(6,1) === "b000000".U) {
+  1369:         when (io.wordinst) {
+  1373:         }
+->1374:       } .elsewhen (io.funct7(6,1) === "b010000".U) {
+  1375:         when (io.wordinst) {
+  1396:  * Input: branch         True if executing a branch instruction, False otherwise
+->1397:  * Input: jumptype       00 if not a jump inst, 10 if inst is a jal, 11 if inst is a jalr
+  1398:  * Input: inputx         First input
+  1404:  * Output: nextpc        The address of the next instruction
+->1405:  * Output: taken         True if the next pc is not pc+4
+  1406:  *
+  1410:     val branch   = Input(Bool())
+->1411:     val jumptype = Input(UInt(2.W))
+->1412:     val inputx   = Input(UInt(64.W))
+->1413:     val inputy   = Input(UInt(64.W))
+->1414:     val funct3   = Input(UInt(3.W))
+->1415:     val pc       = Input(UInt(64.W))
+->1416:     val imm      = Input(UInt(64.W))
+  1417: 
+->1418:     val nextpc   = Output(UInt(64.W))
+  1419:     val taken    = Output(Bool())
+  1432:     .otherwise {
+->1433:       io.nextpc := io.pc + 4.U
+  1434:       io.taken := false.B
+  1435:     }
+->1436:   } .elsewhen (io.jumptype =/= 0.U) {
+->1437:     io.nextpc := Mux(io.jumptype(0), io.inputx + io.imm, // jalr
+  1438:                                      io.pc + io.imm)     // jal
+  1440:   } .otherwise {
+->1441:     io.nextpc := io.pc + 4.U
+  1442:     io.taken := false.B
+  1477:       io.imem.response.valid := true.B
+->1478:       val baseAddress = (request.address >> 3.U) << 1.U
+->1479:       io.imem.response.bits.data := Cat(memory(baseAddress + 1.U), memory(baseAddress))
+  1480:     } .otherwise {
+  1502:     // Read path
+->1503:     val baseAddress = memAddress >> 2.U
+->1504:     io.dmem.response.bits.data := Cat(memory(baseAddress + 1.U), memory(baseAddress))
+  1505:     io.dmem.response.valid := true.B
+  1508:     when (request.operation === MemoryOperation.ReadWrite) {
+->1509:       memory(memAddress >> 2) := memWriteData(31, 0)
+->1510:       memory((memAddress >> 2) + 1.U) := memWriteData(63, 32)
+  1511:     }
+------------------------------------------------
+------------------------------------------------
+Extracted hint lines from filter_lines:
+    
+      when (io.wen) {
+->    924:     when (io.readreg1 === io.writereg && io.wen) {
+          io.readdata1 := io.writedata
+        }
+->    927:     when (io.readreg2 === io.writereg && io.wen) {
+          io.readdata2 := io.writedata
+------------------------------------------------
+------------------------------------------------
+Final union of hint lines:
+        3: 
+->      4: import chisel3._
+->      5: import chisel3.util._
+        6: import _root_.circt.stage.ChiselStage
+       51: class BranchPredIO extends Bundle {
+->     52: val pc         = Input(UInt(64.W))
+       53: val update     = Input(Bool())
+       66: // Default value is weakly taken for each branch
+->     67: val defaultSaturatingCounter = (1 << c.saturatingCounterBits - 1)
+       68: // Create a register file with c.branchPredTableEntries
+       73: def incrCounter(counter: UInt): Unit = {
+->     74: val max = (1 << c.saturatingCounterBits) - 1
+       75: when (counter =/= max.U) {
+->     76: counter := counter + 1.U
+       77: }
+       81: def decrCounter(counter: UInt): Unit = {
+->     82: when (counter =/= 0.U) {
+->     83: counter := counter - 1.U
+       84: }
+      122: // The first bit for the table access is based on the number of entries.
+->    123: // +2 since we ignore the bottom two bits
+->    124: val tableIndex = io.pc(log2Floor(conf.branchPredTableEntries) + 2, 2)
+      125: 
+      126: // Return the high-order bit
+->    127: io.prediction := predictionTable(tableIndex)(conf.saturatingCounterBits - 1)
+      128: 
+      140: // Need one extra bit for the "last" history
+->    141: val history = RegInit(0.U((historyBits+1).W))
+      142: 
+->    143: val curhist = history(historyBits,0)
+      144: when(io.update) {
+      155: 
+->    156: io.prediction := predictionTable(curhist)(conf.saturatingCounterBits - 1)
+      157: }
+      174: /** Number of bits for the saturating counters */
+->    175: var saturatingCounterBits = 2
+      176: /** Number of entries in the branch predictor table */
+->    177: var branchPredTableEntries = 32
+      178: 
+      181: /** The noncombinational memory latency */
+->    182: var memLatency = 5
+      183: /** The port types **/
+      205: case "single-cycle" => new SingleCycleCPU
+->    206: case _ => throw new IllegalArgumentException("Must specify known CPU model")
+      207: }
+      216: case "global"           => new GlobalHistoryPredictor
+->    217: case _ => throw new IllegalArgumentException("Must specify known branch predictor")
+      218: }
+      227: */
+->    228: def getNewMem(minSize: Int = 1 << 16): BaseDualPortedMemory = {
+      229: val f = new File(memFile)
+->    230: if (f.length == 0) {
+      231: println("WARNING: No file will be loaded for data memory")
+      236: case "non-combinational" => new DualPortedNonCombinMemory (minSize, memFile, memLatency)
+->    237: case _ => throw new IllegalArgumentException("Must specify known backing memory type")
+      238: }
+      247: val f = new File(memFile)
+->    248: if (f.length == 0) {
+      249: println("WARNING: No file will be loaded for data memory")
+      255: // case "non-combinational-cache" => new ICache
+->    256: case _ => throw new IllegalArgumentException("Must specify known instruction memory port type")
+      257: }
+      266: val f = new File(memFile)
+->    267: if (f.length == 0) {
+      268: println("WARNING: No file will be loaded for data memory")
+      274: // case "non-combinational-cache" => new DCache
+->    275: case _ => throw new IllegalArgumentException("Must specify known data memory port type")
+      276: }
+      306: io.dmem.request <> DontCare
+->    307: // Zero out response ports to 0, so that the pipeline does not receive any
+      308: // 'DontCare' values from the memory ports
+->    309: io.imem.response <> 0.U.asTypeOf(Valid (new Response))
+->    310: io.dmem.response <> 0.U.asTypeOf(Valid (new Response))
+      311: 
+->    312: val memory = Mem(math.ceil(size.toDouble/4).toInt, UInt(32.W))
+      313: val memFileObj = new java.io.File(memfile)
+->    314: if (memFileObj.exists() && memFileObj.length() > 0) {
+      315: loadMemoryFromFile(memory, memfile)
+      330: 
+->    331: io.pipeline <> 0.U.asTypeOf (new IMemPortIO)
+      332: // Intentional DontCare:
+      347: 
+->    348: io.pipeline <> 0.U.asTypeOf (new DMemPortIO)
+      349: // Intentional DontCare:
+      379: }
+->    380: assert(latency > 0) // Check for attempt to make combinational memory
+      381: 
+      402: io.imem.response.valid        := true.B
+->    403: io.imem.response.bits.data := Cat(Fill(32, 0.U(1.W)), memory(outRequest.address >> 2)(31, 0))
+      404: } .otherwise {
+      427: val outRequest = dmemPipe.io.deq.bits
+->    428: val address = outRequest.address >> 2
+      429: // Check that address is pointing to a valid location in memory
+      433: io.dmem.response.valid        := true.B
+->    434: io.dmem.response.bits.data    := Cat(memory(address + 1.U), memory(address))
+      435: } .elsewhen (outRequest.operation === MemoryOperation.Write) {
+      436: io.dmem.response.valid        := false.B
+->    437: memory(address) := outRequest.writedata(31, 0)
+->    438: memory(address + 1.U) := outRequest.writedata(63, 32)
+      439: }
+      447: class OutstandingReq extends Bundle {
+->    448: val address   = UInt(64.W)
+->    449: val writedata = UInt(64.W)
+->    450: val maskmode  = UInt(2.W)
+      451: val operation = MemoryOperation()
+      522: io.bus.request.bits.address   := io.pipeline.address
+->    523: io.bus.request.bits.writedata := 0.U
+      524: io.bus.request.bits.operation := MemoryOperation.Read
+      538: when (outstandingReq.bits.operation === MemoryOperation.Write) {
+->    539: val writedata = Wire(UInt(64.W))
+      540: 
+      541: // When not writing a whole double-word
+->    542: when (outstandingReq.bits.maskmode =/= 3.U) {
+      543: // Read in the existing piece of data at the address, so we "overwrite" only part of it
+->    544: val offset = outstandingReq.bits.address(1, 0)
+->    545: val readdata = Wire(UInt(64.W))
+->    546: val writedata_mask = Wire(UInt(64.W))
+->    547: val writedata_mask_shifted = Wire(UInt(64.W))
+->    548: val writedata_shifted = Wire(UInt(64.W))
+->    549: val readdata_mask = Wire(UInt(64.W)) // readdata doesn't need to be shifted
+      550: 
+      552: 
+->    553: when (io.pipeline.maskmode === 0.U) { // Byte
+->    554: writedata_mask := Cat(Fill(56, 0.U(1.W)), Fill(8, 1.U(1.W)))
+->    555: } .elsewhen (io.pipeline.maskmode === 1.U) { // Half-word
+->    556: writedata_mask := Cat(Fill(48, 0.U(1.W)), Fill(16, 1.U(1.W)))
+->    557: } .elsewhen (io.pipeline.maskmode === 2.U) { // Word
+->    558: writedata_mask := Cat(Fill(32, 0.U(1.W)), Fill(32, 1.U(1.W)))
+      559: } .otherwise { // Double-word
+->    560: writedata_mask := Fill(64, 1.U(1.W))
+      561: }
+      562: 
+->    563: writedata_mask_shifted := writedata_mask << (offset * 8.U)
+->    564: writedata_shifted := outstandingReq.bits.writedata << (offset * 8.U)
+      565: 
+      584: // Perform masking and sign extension on read data when memory is outputting it
+->    585: val readdata_mask      = Wire(UInt(64.W))
+->    586: val readdata_mask_sext = Wire(UInt(64.W))
+      587: 
+->    588: val offset = outstandingReq.bits.address(1, 0)
+->    589: when (outstandingReq.bits.maskmode === 0.U) {
+      590: // Byte
+->    591: readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xff.U
+->    592: } .elsewhen (outstandingReq.bits.maskmode === 1.U) {
+      593: // Half-word
+->    594: readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xffff.U
+->    595: } .elsewhen (outstandingReq.bits.maskmode === 2.U) {
+      596: // Word
+->    597: readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xffffffffL.U
+      598: } .otherwise {
+      603: when (outstandingReq.bits.sext) {
+->    604: when (outstandingReq.bits.maskmode === 0.U) {
+      605: // Byte sign extension
+->    606: readdata_mask_sext := Cat(Fill(56, readdata_mask(7)),  readdata_mask(7, 0))
+->    607: } .elsewhen (outstandingReq.bits.maskmode === 1.U) {
+      608: // Half-word sign extension
+->    609: readdata_mask_sext := Cat(Fill(48, readdata_mask(15)), readdata_mask(15, 0))
+->    610: } .elsewhen (outstandingReq.bits.maskmode === 2.U) {
+      611: // Word sign extension
+->    612: readdata_mask_sext := Cat(Fill(32, readdata_mask(31)), readdata_mask(31, 0))
+      613: } .otherwise {
+      643: request.operation := MemoryOperation.Read
+->    644: request.writedata := 0.U
+      645: 
+      697: // Perform writedata modification and send it down io.request.writedata.
+->    698: val writedata = Wire (UInt (64.W))
+      699: 
+      700: // When not writing a whole doubleword
+->    701: when (io.pipeline.maskmode =/= 3.U) {
+      702: // Read in the existing piece of data at the address, so we "overwrite" only part of it
+->    703: val offset = io.pipeline.address(1, 0)
+->    704: val readdata = Wire(UInt(64.W))
+->    705: val writedata_mask = Wire(UInt(64.W))
+->    706: val writedata_mask_shifted = Wire(UInt(64.W))
+->    707: val writedata_shifted = Wire(UInt(64.W))
+->    708: val readdata_mask = Wire(UInt(64.W)) // readdata doesn't need to be shifted
+      709: 
+      711: 
+->    712: when (io.pipeline.maskmode === 0.U) { // Byte
+->    713: writedata_mask := Cat(Fill(56, 0.U(1.W)), Fill(8, 1.U(1.W)))
+->    714: } .elsewhen (io.pipeline.maskmode === 1.U) { // Half-word
+->    715: writedata_mask := Cat(Fill(48, 0.U(1.W)), Fill(16, 1.U(1.W)))
+->    716: } .elsewhen (io.pipeline.maskmode === 2.U) { // Word
+->    717: writedata_mask := Cat(Fill(32, 0.U(1.W)), Fill(32, 1.U(1.W)))
+      718: } .otherwise { // Double-word
+->    719: writedata_mask := Fill(64, 1.U(1.W))
+      720: }
+      721: 
+->    722: writedata_mask_shifted := writedata_mask << (offset * 8.U)
+->    723: writedata_shifted := io.pipeline.writedata << (offset * 8.U)
+      724: 
+      735: // Perform normal masking and sign extension on the read data
+->    736: val readdata_mask      = Wire(UInt(64.W))
+->    737: val readdata_mask_sext = Wire(UInt(64.W))
+      738: 
+->    739: val offset = io.pipeline.address(1, 0)
+->    740: when (io.pipeline.maskmode === 0.U) {
+      741: // Byte
+->    742: readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xff.U
+->    743: } .elsewhen (io.pipeline.maskmode === 1.U) {
+      744: // Half-word
+->    745: readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xffff.U
+->    746: } .elsewhen (io.pipeline.maskmode === 2.U) {
+      747: // Word
+->    748: readdata_mask := (io.bus.response.bits.data >> (offset * 8.U)) & 0xffffffffL.U
+      749: } .otherwise {
+      754: when (io.pipeline.sext) {
+->    755: when (io.pipeline.maskmode === 0.U) {
+      756: // Byte sign extension
+->    757: readdata_mask_sext := Cat(Fill(56, readdata_mask(7)),  readdata_mask(7, 0))
+->    758: } .elsewhen (io.pipeline.maskmode === 1.U) {
+      759: // Half-word sign extension
+->    760: readdata_mask_sext := Cat(Fill(48, readdata_mask(15)), readdata_mask(15, 0))
+->    761: } .elsewhen (io.pipeline.maskmode === 2.U) {
+      762: // Word sign extension
+->    763: readdata_mask_sext := Cat(Fill(32, readdata_mask(31)), readdata_mask(31, 0))
+      764: } .otherwise {
+      789: // Pipeline <=> Port
+->    790: val address  = Input(UInt(64.W))
+      791: val valid    = Input(Bool())
+      805: class IMemPortIO extends MemPortIO {
+->    806: val instruction = Output(UInt(64.W))
+      807: val ready       = Output(Bool())
+      818: *   Input:  memwrite, true if we are writing to memory
+->    819: *   Input:  maskmode, mode to mask the result. 0 means byte, 1 means halfword, 2 means word, 3 means doubleword
+      820: *   Input:  sext, true if we should sign extend the result
+      825: // Pipeline <=> Port
+->    826: val writedata = Input(UInt(64.W))
+      827: val memread   = Input(Bool())
+      828: val memwrite  = Input(Bool())
+->    829: val maskmode  = Input(UInt(2.W))
+      830: val sext      = Input(Bool())
+      831: 
+->    832: val readdata  = Output(UInt(64.W))
+      833: }
+      836: class Request extends Bundle {
+->    837: val address      = UInt(64.W)
+->    838: val writedata    = UInt(64.W)
+      839: val operation    = MemoryOperation()
+      844: class Response extends Bundle {
+->    845: // The 8-byte-wide block of data being returned by memory
+->    846: val data         = UInt(64.W)
+      847: }
+      865: /**
+->    866: * A 32 entry two read port one write port register file.
+      867: *
+->    868: * Note: this register file *has* an entry for register 0, and it's possible to
+->    869: * overwrite the default 0 value. Thus, you need to add extra logic to the
+->    870: * DINO CPU control or data path to make sure you always get 0 from register 0.
+      871: *
+      880: *   readdata2 = R[readreg2]
+->    881: *   if (wen) R[writereg] = writedata
+      882: *
+      884: * Input:  readreg2, the number of the register to read
+->    885: * Input:  writereg, the number of the register to write
+->    886: * Input:  writedata, the data to write into R[writereg]
+->    887: * Input:  wen, write enable. If true, write the writereg register
+      888: *
+      891: *
+->    892: * For more information, see section 4.3 of Patterson and Hennessy
+      893: */
+      895: val io = IO(new Bundle {
+->    896: val readreg1  = Input(UInt(5.W))
+->    897: val readreg2  = Input(UInt(5.W))
+->    898: val writereg  = Input(UInt(5.W))
+->    899: val writedata = Input(UInt(64.W))
+      900: val wen       = Input(Bool())
+      901: 
+->    902: val readdata1 = Output(UInt(64.W))
+->    903: val readdata2 = Output(UInt(64.W))
+      904: })
+      909: 
+->    910: val regs = Reg(Vec(32, UInt(64.W)))
+      911: 
+      913: when (io.wen) {
+->    914: regs(io.writereg) := io.writedata
+      915: }
+      923: // For the five-cycle and pipelined CPU forward the data through the register file
+->    924: when (io.readreg1 === io.writereg && io.wen) {
+      925: io.readdata1 := io.writedata
+      926: }
+->    927: when (io.readreg2 === io.writereg && io.wen) {
+      928: io.readdata2 := io.writedata
+      941: val io = IO(new Bundle{
+->    942: val inputx    = Input(UInt(64.W))
+->    943: val inputy    = Input(UInt(64.W))
+      944: 
+->    945: val result    = Output(UInt(64.W))
+      946: })
+      961: val io = IO(new Bundle{
+->    962: val instruction = Input(UInt(64.W))
+      963: 
+->    964: val sextImm     = Output(UInt(64.W))
+      965: })
+      966: 
+->    967: io.sextImm := 0.U
+      968: 
+->    969: val opcode = io.instruction(6,0)
+      970: 
+      973: // RV64I lui
+->    974: // imm = cat(sign_extended_bits, imm[31:12], padding 0s)
+->    975: //           (32 bits)           (20 bits)   (12 bits)
+->    976: val imm = io.instruction(31, 12)
+->    977: io.sextImm := Cat(Fill(32, imm(19)), imm, Fill(12, 0.U))
+      978: }
+      980: // RV64I auipc
+->    981: // imm = cat(sign_extended_bits, imm[31:12], padding 0s)
+->    982: //           (32 bits)           (20 bits)   (12 bits)
+->    983: val imm = io.instruction(31, 12)
+->    984: io.sextImm := Cat(Fill(32, imm(19)), imm, Fill(12, 0.U))
+      985: }
+      986: is("b1101111".U) { // J-type (jal)
+->    987: // riscv-spec: JAL encodes the offset as a multiple of 2 bytes
+->    988: // imm = sign_extends(2 * offset)
+->    989: val imm = Cat(io.instruction(31), io.instruction(19,12),
+->    990: io.instruction(20), io.instruction(30,21))
+->    991: io.sextImm := Cat(Fill(43, imm(19)), imm, 0.U)
+      992: }
+      993: is("b1100111".U) { // I-type (jalr)
+->    994: val imm = io.instruction(31, 20)
+->    995: io.sextImm := Cat(Fill(52,imm(11)), imm)
+      996: }
+      997: is("b1100011".U) { // B-type
+->    998: val imm = Cat(io.instruction(31), io.instruction(7),
+->    999: io.instruction(30,25), io.instruction(11,8))
+->   1000: io.sextImm := Cat(Fill(51, imm(11)), imm, 0.U)
+     1001: }
+     1002: is("b0000011".U) { // I-type (ld)
+->   1003: val imm = io.instruction(31, 20)
+->   1004: io.sextImm := Cat(Fill(52, imm(11)), imm)
+     1005: }
+     1006: is("b0100011".U) { // S-type (st)
+->   1007: val imm = Cat(io.instruction(31, 25), io.instruction(11,7))
+->   1008: io.sextImm := Cat(Fill(52, imm(11)), imm)
+     1009: }
+->   1010: is("b0010011".U) { // I-type (immediate arith.) 32-bit
+->   1011: val imm = io.instruction(31, 20)
+->   1012: io.sextImm := Cat(Fill(52,imm(11)), imm) // for instructions using shift amount, this imm is also valid as only the lower 5 bits (24, 20) are used
+     1013: }
+     1014: is("b0011011".U) { // I-type (immediate arith.)
+->   1015: val imm = io.instruction(31, 20)
+->   1016: io.sextImm := Cat(Fill(52,imm(11)), imm) // for instructions using shift amount, this imm is also valid as only the lower 6 bits (25, 20) are used
+     1017: }
+     1018: is("b1110011".U) { // zimm for csri
+->   1019: io.sextImm := Cat(Fill(59,0.U), io.instruction(19,15))
+     1020: }
+     1032: *
+->   1033: * For more information, see section 4.4 of Patterson and Hennessy
+->   1034: * This follows figure 4.21
+     1035: */
+     1037: // All of the structures required
+->   1038: val pc         = dontTouch(RegInit(0.U(64.W)))
+     1039: val control    = Module(new Control())
+     1044: val nextpc     = Module(new NextPC())
+->   1045: val (cycleCount, _) = Counter(true.B, 1 << 30)
+     1046: 
+     1050: 
+->   1051: val instruction = Wire(UInt(32.W))
+->   1052: when ((pc % 8.U) === 4.U) {
+->   1053: instruction := io.imem.instruction(63, 32)
+     1054: } .otherwise {
+->   1055: instruction := io.imem.instruction(31, 0)
+     1056: }
+->   1057: val funct3 = instruction(14, 12)
+     1058: 
+->   1059: control.io.opcode := instruction(6, 0)
+     1060: 
+->   1061: registers.io.readreg1 := instruction(19, 15)
+->   1062: registers.io.readreg2 := instruction(24, 20)
+->   1063: registers.io.writereg := instruction(11, 7)
+     1064: registers.io.writedata := Mux(control.io.toreg, io.dmem.readdata, Mux(control.io.resultselect, immGen.io.sextImm, alu.io.result))
+->   1065: when (registers.io.writereg =/= 0.U && control.io.regwrite) {
+     1066: registers.io.wen := true.B
+     1082: aluControl.io.itype := control.io.itype
+->   1083: aluControl.io.funct7 := instruction(31, 25)
+->   1084: aluControl.io.funct3 := instruction(14, 12)
+     1085: aluControl.io.wordinst := control.io.wordinst
+     1088: alu.io.inputx := Mux(control.io.src1, pc, registers.io.readdata1)
+->   1089: alu.io.inputy := MuxCase(0.U, Seq((control.io.src2 === 0.U) -> registers.io.readdata2,
+->   1090: (control.io.src2 === 1.U) -> immGen.io.sextImm,
+->   1091: (control.io.src2 === 2.U) -> 4.U))
+     1092: 
+     1093: io.dmem.address := alu.io.result
+->   1094: io.dmem.memread := ~control.io.memop(0)
+->   1095: io.dmem.memwrite := control.io.memop(0)
+->   1096: io.dmem.valid := control.io.memop(1)
+->   1097: io.dmem.maskmode := funct3(1, 0)
+->   1098: io.dmem.sext := ~funct3(2)
+     1099: io.dmem.writedata := registers.io.readdata2
+     1138: * Output: aluop         True if inst is of R-type or I-type, False otherwise
+->   1139: * Output: src1          Source for the first ALU/nextpc input (0 if source is readdata1, 1 if source is pc)
+->   1140: * Output: src2          Source for the second ALU/nextpc input (00 if source is readdata2, 01 if source is immediate, 10 if source is a hardwired value 4 (i.e., alu's inputy = 4))
+     1141: * Output: branch        True if branch, False otherwise
+->   1142: * Output: jumptype      00 if not a jump inst, 10 if inst is jal, 11 is inst is jalr
+->   1143: * Output: resultselect  0 for result from alu, 1 for immediate
+->   1144: * Output: memop         00 if not using memory, 10 if reading, and 11 if writing
+->   1145: * Output: toreg         0 for result from execute, 1 for data from memory
+     1146: * Output: regwrite      True if writing to the register file, False otherwise
+     1147: * Output: validinst     True if the instruction we're decoding is valid, False otherwise
+->   1148: * Output: wordinst      True if the instruction *only* operates on 32-bit operands, False otherwise
+     1149: *
+->   1150: * For more information, see section 4.4 of Patterson and Hennessy.
+->   1151: * This follows figure 4.22.
+     1152: */
+     1155: val io = IO(new Bundle {
+->   1156: val opcode = Input(UInt(7.W))
+     1157: 
+     1160: val src1         = Output(Bool())
+->   1161: val src2         = Output(UInt(2.W))
+     1162: val branch       = Output(Bool())
+->   1163: val jumptype     = Output(UInt(2.W))
+     1164: val resultselect = Output(Bool())
+->   1165: val memop        = Output(UInt(2.W))
+     1166: val toreg        = Output(Bool())
+     1173: ListLookup(io.opcode,
+->   1174: /*default*/           List(false.B, false.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,  false.B,   false.B,  false.B),
+     1175: Array(              /*       itype,   aluop,    src1, src2,   branch,  jumptype, resultselect, memop,   toreg, regwrite, validinst, wordinst */
+     1176: // R-format
+->   1177: BitPat("b0110011") -> List(false.B,  true.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,  false.B),
+     1178: // I-format
+->   1179: BitPat("b0010011") -> List( true.B,  true.B, false.B,  1.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,  false.B),
+     1180: // load
+->   1181: BitPat("b0000011") -> List(false.B, false.B, false.B,  1.U,  false.B,       0.U,      false.B,   2.U,  true.B,   true.B,    true.B,  false.B),
+     1182: // store
+->   1183: BitPat("b0100011") -> List(false.B, false.B, false.B,  1.U,  false.B,       0.U,      false.B,   3.U, false.B,  false.B,    true.B,  false.B),
+     1184: // branch
+->   1185: BitPat("b1100011") -> List(false.B, false.B, false.B,  0.U,   true.B,       0.U,      false.B,   0.U, false.B,  false.B,    true.B,  false.B),
+     1186: // lui
+->   1187: BitPat("b0110111") -> List(false.B, false.B, false.B,  0.U,  false.B,       0.U,       true.B,   0.U, false.B,   true.B,    true.B,  false.B),
+     1188: // auipc
+->   1189: BitPat("b0010111") -> List(false.B, false.B,  true.B,  1.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,  false.B),
+     1190: // jal
+->   1191: BitPat("b1101111") -> List(false.B, false.B,  true.B,  2.U,  false.B,       2.U,      false.B,   0.U, false.B,   true.B,    true.B,  false.B),
+     1192: // jalr
+->   1193: BitPat("b1100111") -> List(false.B, false.B,  true.B,  2.U,  false.B,       3.U,      false.B,   0.U, false.B,   true.B,    true.B,  false.B),
+->   1194: // I-format 32-bit operands
+->   1195: BitPat("b0011011") -> List( true.B,  true.B, false.B,  1.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),
+->   1196: // R-format 32-bit operands
+->   1197: BitPat("b0111011") -> List(false.B,  true.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),
+     1198: ) // Array
+     1200: 
+->   1201: io.itype        := signals(0)
+->   1202: io.aluop        := signals(1)
+->   1203: io.src1         := signals(2)
+->   1204: io.src2         := signals(3)
+->   1205: io.branch       := signals(4)
+->   1206: io.jumptype     := signals(5)
+->   1207: io.resultselect := signals(6)
+->   1208: io.memop        := signals(7)
+->   1209: io.toreg        := signals(8)
+->   1210: io.regwrite     := signals(9)
+->   1211: io.validinst    := signals(10)
+->   1212: io.wordinst     := signals(11)
+     1213: }
+     1224: val io = IO(new Bundle {
+->   1225: val operation = Input(UInt(5.W))
+->   1226: val inputx    = Input(UInt(64.W))
+->   1227: val inputy    = Input(UInt(64.W))
+     1228: 
+->   1229: val result    = Output(UInt(64.W))
+     1230: })
+     1231: 
+->   1232: val wordinst = Mux(io.operation(4) === 1.U, true.B, false.B)
+->   1233: val aluop = io.operation(3, 0)
+     1234: 
+->   1235: // this function casts the input to 32-bit UInt, then sign extends it
+->   1236: val signExtend32To64 = (input: UInt) => Cat(Fill(32, input(31)), input(31, 0))
+->   1237: val operand1_32 = io.inputx(31, 0)
+->   1238: val operand2_32 = io.inputy(31, 0)
+     1239: 
+     1261: when (wordinst === true.B) { // sraw
+->   1262: io.result := signExtend32To64((operand1_32.asSInt >> operand2_32(4, 0)).asUInt) // arithmetic (signed)
+->   1263: // sraw takes 5 bits of op2
+     1264: } .otherwise { // sra
+->   1265: io.result := (io.inputx.asSInt >> io.inputy(5, 0)).asUInt // sra takes 6 bits of op2
+     1266: }
+     1275: when (wordinst === true.B) { // srlw
+->   1276: io.result := signExtend32To64(operand1_32 >> operand2_32(4, 0)) // srlw takes 5 bits of op2
+     1277: } .otherwise {
+->   1278: io.result := io.inputx >> io.inputy(5, 0) // srl takes 6 bits of op2
+     1279: }
+     1285: when (wordinst === true.B) { // sllw
+->   1286: io.result := signExtend32To64(operand1_32 << operand2_32(4, 0)) // sllw takes 5 bits of op2
+     1287: } .otherwise {
+->   1288: io.result := io.inputx << io.inputy(5, 0) // sll takes 6 bits of op2
+     1289: }
+     1306: .otherwise {
+->   1307: io.result := 0.U // should be invalid
+     1308: }
+     1314: *
+->   1315: * Input:  aluop        0 for ld/st, 1 for R-type
+     1316: * Input:  itype        True if I-type
+     1317: * Input:  funct7       The most significant bits of the instruction
+->   1318: * Input:  funct3       The middle three bits of the instruction (12-14)
+->   1319: * Input:  wordinst     True if the instruction *only* operates on 32-bit operands, False otherwise
+     1320: * Output: operation    What we want the ALU to do.
+     1321: *
+->   1322: * For more information, see Section 4.4 and A.5 of Patterson and Hennessy.
+->   1323: * This is loosely based on figure 4.12
+     1324: */
+     1328: val itype     = Input(Bool())
+->   1329: val funct7    = Input(UInt(7.W))
+->   1330: val funct3    = Input(UInt(3.W))
+     1331: val wordinst  = Input(Bool())
+     1332: 
+->   1333: val operation = Output(UInt(5.W))
+     1334: })
+     1335: 
+->   1336: when (io.aluop === 0.U) {
+     1337: io.operation := "b00111".U // add
+     1367: } .elsewhen (io.funct3 === "b101".U) {
+->   1368: when (io.funct7(6,1) === "b000000".U) {
+     1369: when (io.wordinst) {
+     1373: }
+->   1374: } .elsewhen (io.funct7(6,1) === "b010000".U) {
+     1375: when (io.wordinst) {
+     1396: * Input: branch         True if executing a branch instruction, False otherwise
+->   1397: * Input: jumptype       00 if not a jump inst, 10 if inst is a jal, 11 if inst is a jalr
+     1398: * Input: inputx         First input
+     1404: * Output: nextpc        The address of the next instruction
+->   1405: * Output: taken         True if the next pc is not pc+4
+     1406: *
+     1410: val branch   = Input(Bool())
+->   1411: val jumptype = Input(UInt(2.W))
+->   1412: val inputx   = Input(UInt(64.W))
+->   1413: val inputy   = Input(UInt(64.W))
+->   1414: val funct3   = Input(UInt(3.W))
+->   1415: val pc       = Input(UInt(64.W))
+->   1416: val imm      = Input(UInt(64.W))
+     1417: 
+->   1418: val nextpc   = Output(UInt(64.W))
+     1419: val taken    = Output(Bool())
+     1432: .otherwise {
+->   1433: io.nextpc := io.pc + 4.U
+     1434: io.taken := false.B
+     1435: }
+->   1436: } .elsewhen (io.jumptype =/= 0.U) {
+->   1437: io.nextpc := Mux(io.jumptype(0), io.inputx + io.imm, // jalr
+     1438: io.pc + io.imm)     // jal
+     1440: } .otherwise {
+->   1441: io.nextpc := io.pc + 4.U
+     1442: io.taken := false.B
+     1477: io.imem.response.valid := true.B
+->   1478: val baseAddress = (request.address >> 3.U) << 1.U
+->   1479: io.imem.response.bits.data := Cat(memory(baseAddress + 1.U), memory(baseAddress))
+     1480: } .otherwise {
+     1502: // Read path
+->   1503: val baseAddress = memAddress >> 2.U
+->   1504: io.dmem.response.bits.data := Cat(memory(baseAddress + 1.U), memory(baseAddress))
+     1505: io.dmem.response.valid := true.B
+     1508: when (request.operation === MemoryOperation.ReadWrite) {
+->   1509: memory(memAddress >> 2) := memWriteData(31, 0)
+->   1510: memory((memAddress >> 2) + 1.U) := memWriteData(63, 32)
+     1511: }
+------------------------------------------------
+DEBUG: Loaded prompt template for attempt 1:
+<hagent.core.llm_template.LLM_template object at 0x7ffff13aaf10>
+ERROR: unable to write yaml: Error: Environment variable 'OPENAI_API_KEY' is not set for model 'openai/o3-mini-2025-01-31'.
