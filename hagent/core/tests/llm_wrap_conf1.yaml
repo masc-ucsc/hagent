@@ -1,8 +1,9 @@
 test_caching:
   llm:
-    model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct" # Cheap fireworks model
-    temperature: 0.7
-    top_p: 0.9
+    model: "bedrock/us.meta.llama3-2-1b-instruct-v1:0" # Cheap bedrock model with inference profile
+    temperature: 0.1
+    top_p: 0.3
+    aws_region_name: "us-east-1"
 
   not_used_field: "xxx"
 

@@ -78,6 +78,8 @@ class LLM_wrap:
         elif model.startswith('ollama'):
             # Ollama access is achieved through a URL such as 'http://localhost:11434'
             required_key = 'OLLAMA_API_BASE'
+        elif model.startswith('bedrock'):
+            required_key = 'AWS_BEARER_TOKEN_BEDROCK'
         # Add more providers as needed...
         else:
             # No specific key required for this model type (or you can raise an error if unknown)
@@ -104,8 +106,9 @@ class LLM_wrap:
         self.total_tokens = 0
         self.total_time_ms = 0.0
 
-        # Initialize litellm cache
-        litellm.cache = litellm.Cache(type='disk')
+        # Initialize litellm cache (only if not already set)
+        if not hasattr(litellm, 'cache') or litellm.cache is None:
+            litellm.cache = litellm.Cache(type='disk')
 
         self.config = {}
 
@@ -240,7 +243,53 @@ class LLM_wrap:
         # Call litellm
         try:
             start = time.time()
-            r = litellm.completion(**llm_call_args)
+            
+            # For better diversity when n > 1, make separate calls with varied parameters
+            # This works for all models and ensures more diverse responses
+            if n > 1:
+                # Remove 'n' parameter and make multiple calls with varied parameters for diversity
+                varied_args = llm_call_args.copy()
+                varied_args.pop('n', None)
+                
+                responses = []
+                base_temperature = varied_args.get('temperature', 0.7)
+                base_top_p = varied_args.get('top_p', 0.9)
+                
+                for i in range(n):
+                    # Vary temperature and top_p more significantly for each call to increase diversity
+                    call_args = varied_args.copy()
+                    call_args['temperature'] = min(1.0, base_temperature + (i * 0.3))
+                    call_args['top_p'] = max(0.1, min(1.0, base_top_p + ((i % 3) * 0.2 - 0.1)))
+                    
+                    # Add slight variation to messages to avoid caching when seeking diversity
+                    if 'messages' in call_args:
+                        messages_copy = []
+                        for msg in call_args['messages']:
+                            if msg.get('role') == 'user' and i > 0:
+                                # Add a subtle variation to user messages for diversity
+                                content = msg['content'] + f" (variant {i})"
+                                messages_copy.append({**msg, 'content': content})
+                            else:
+                                messages_copy.append(msg.copy())
+                        call_args['messages'] = messages_copy
+                    
+                    r = litellm.completion(**call_args)
+                    responses.append(r)
+                
+                # Combine responses
+                combined_choices = []
+                for resp in responses:
+                    combined_choices.extend(resp['choices'])
+                
+                # Use the first response as template and replace choices
+                r = responses[0]
+                # Convert to dict first since ModelResponse doesn't support item assignment
+                r_dict = r.to_dict()
+                r_dict['choices'] = combined_choices
+                # Convert back to ModelResponse-like object for consistency
+                r = litellm.ModelResponse(**r_dict)
+            else:
+                r = litellm.completion(**llm_call_args)
 
             end = time.time()
             # Augment the litellm.ModelResponse with duration.

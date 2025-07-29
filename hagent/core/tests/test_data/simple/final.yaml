@@ -6,7 +6,7 @@ code_content: |
   endmodule
 top_name: and_gate_behavioral
 llm:
-  model: fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct
+  model: bedrock/meta.llama3-2-3b-instruct-v1:0
 added_field_trivial: sample
 step: Trivial
 tracing:
@@ -55,7 +55,7 @@ tracing:
       func_kwargs: {}
       func_result: "{'code_content': 'module and_gate_behavioral(output reg Y, input
         A, input B);\\n    always @(A or B) begin\\n        Y = A & B;\\n    end\\\
-        nendmodule\\n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'},
+        nendmodule\\n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'},
         'added_field_trivial': 'sample', 'step': 'Trivial', 'tracing': {'start': 1751271097385577.8,
         'elapsed': 60.79673767089844, 'input': ['input.yaml'], 'output': 'intermediate.yaml',
         'trace_events': [{'name': 'Trivial::__init__', 'cat': 'hagent', 'ph': 'X',
@@ -71,7 +71,7 @@ tracing:
         0x7c460a418440>'], 'func_kwargs': {}, 'func_result': \"{'code_content': 'module
         and_gate_behavioral(output reg Y, input A, input B);\\\\n    always @(A or
         B) begin\\\\n        Y = A & B;\\\\n    end\\\\nendmodule\\\\n', 'top_name':
-        'and_gate_behavioral', 'llm': {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'}}\"\
+        'and_gate_behavioral', 'llm': {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'}}\"\
         }, 'dur': 661.3731384277344}, {'name': 'Trivial::setup', 'cat': 'hagent',
         'ph': 'X', 'ts': 1751271097384884.5, 'pid': 0, 'tid': 136640280827712, 'args':
         {'func': 'setup', 'func_args': ['<__main__.Trivial object at 0x7c460a418440>'],
@@ -88,11 +88,11 @@ tracing:
         'args': {'func': 'run', 'func_args': ['<__main__.Trivial object at 0x7c460a418440>',
         \"{'code_content': 'module and_gate_behavioral(output reg Y, input A, input
         B);\\\\n    always @(A or B) begin\\\\n        Y = A & B;\\\\n    end\\\\\
-        nendmodule\\\\n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'}}\"\
+        nendmodule\\\\n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'}}\"\
         ], 'func_kwargs': {}, 'func_result': \"{'code_content': 'module and_gate_behavioral(output
         reg Y, input A, input B);\\\\n    always @(A or B) begin\\\\n        Y = A
         & B;\\\\n    end\\\\nendmodule\\\\n', 'top_name': 'and_gate_behavioral', 'llm':
-        {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'},
+        {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'},
         'added_field_trivial': 'sample'}\"}, 'dur': 0.95367431640625}], 'history':
         []}}"
     dur: 4232.883453369141
@@ -148,7 +148,7 @@ tracing:
       - <__main__.Trivial object at 0x7126172530e0>
       - "{'code_content': 'module and_gate_behavioral(output reg Y, input A, input
         B);\\n    always @(A or B) begin\\n        Y = A & B;\\n    end\\nendmodule\\\
-        n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'},
+        n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'},
         'added_field_trivial': 'sample', 'step': 'Trivial', 'tracing': {'start': 1751271097385577.8,
         'elapsed': 60.79673767089844, 'input': ['input.yaml'], 'output': 'intermediate.yaml',
         'trace_events': [{'name': 'Trivial::__init__', 'cat': 'hagent', 'ph': 'X',
@@ -164,7 +164,7 @@ tracing:
         0x7c460a418440>'], 'func_kwargs': {}, 'func_result': \"{'code_content': 'module
         and_gate_behavioral(output reg Y, input A, input B);\\\\n    always @(A or
         B) begin\\\\n        Y = A & B;\\\\n    end\\\\nendmodule\\\\n', 'top_name':
-        'and_gate_behavioral', 'llm': {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'}}\"\
+        'and_gate_behavioral', 'llm': {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'}}\"\
         }, 'dur': 661.3731384277344}, {'name': 'Trivial::setup', 'cat': 'hagent',
         'ph': 'X', 'ts': 1751271097384884.5, 'pid': 0, 'tid': 136640280827712, 'args':
         {'func': 'setup', 'func_args': ['<__main__.Trivial object at 0x7c460a418440>'],
@@ -181,17 +181,17 @@ tracing:
         'args': {'func': 'run', 'func_args': ['<__main__.Trivial object at 0x7c460a418440>',
         \"{'code_content': 'module and_gate_behavioral(output reg Y, input A, input
         B);\\\\n    always @(A or B) begin\\\\n        Y = A & B;\\\\n    end\\\\\
-        nendmodule\\\\n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'}}\"\
+        nendmodule\\\\n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'}}\"\
         ], 'func_kwargs': {}, 'func_result': \"{'code_content': 'module and_gate_behavioral(output
         reg Y, input A, input B);\\\\n    always @(A or B) begin\\\\n        Y = A
         & B;\\\\n    end\\\\nendmodule\\\\n', 'top_name': 'and_gate_behavioral', 'llm':
-        {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'},
+        {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'},
         'added_field_trivial': 'sample'}\"}, 'dur': 0.95367431640625}], 'history':
         []}}"
       func_kwargs: {}
       func_result: "{'code_content': 'module and_gate_behavioral(output reg Y, input
         A, input B);\\n    always @(A or B) begin\\n        Y = A & B;\\n    end\\\
-        nendmodule\\n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'},
+        nendmodule\\n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'},
         'added_field_trivial': 'sample', 'step': 'Trivial', 'tracing': {'start': 1751271097385577.8,
         'elapsed': 60.79673767089844, 'input': ['input.yaml'], 'output': 'intermediate.yaml',
         'trace_events': [{'name': 'Trivial::__init__', 'cat': 'hagent', 'ph': 'X',
@@ -207,7 +207,7 @@ tracing:
         0x7c460a418440>'], 'func_kwargs': {}, 'func_result': \"{'code_content': 'module
         and_gate_behavioral(output reg Y, input A, input B);\\\\n    always @(A or
         B) begin\\\\n        Y = A & B;\\\\n    end\\\\nendmodule\\\\n', 'top_name':
-        'and_gate_behavioral', 'llm': {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'}}\"\
+        'and_gate_behavioral', 'llm': {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'}}\"\
         }, 'dur': 661.3731384277344}, {'name': 'Trivial::setup', 'cat': 'hagent',
         'ph': 'X', 'ts': 1751271097384884.5, 'pid': 0, 'tid': 136640280827712, 'args':
         {'func': 'setup', 'func_args': ['<__main__.Trivial object at 0x7c460a418440>'],
@@ -224,11 +224,11 @@ tracing:
         'args': {'func': 'run', 'func_args': ['<__main__.Trivial object at 0x7c460a418440>',
         \"{'code_content': 'module and_gate_behavioral(output reg Y, input A, input
         B);\\\\n    always @(A or B) begin\\\\n        Y = A & B;\\\\n    end\\\\\
-        nendmodule\\\\n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'}}\"\
+        nendmodule\\\\n', 'top_name': 'and_gate_behavioral', 'llm': {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'}}\"\
         ], 'func_kwargs': {}, 'func_result': \"{'code_content': 'module and_gate_behavioral(output
         reg Y, input A, input B);\\\\n    always @(A or B) begin\\\\n        Y = A
         & B;\\\\n    end\\\\nendmodule\\\\n', 'top_name': 'and_gate_behavioral', 'llm':
-        {'model': 'fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct'},
+        {'model': 'bedrock/meta.llama3-2-3b-instruct-v1:0'},
         'added_field_trivial': 'sample'}\"}, 'dur': 0.95367431640625}], 'history':
         []}}"
     dur: 1.1920928955078125

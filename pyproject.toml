@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11,<4.0"
 dependencies = [
     "pyyaml>=6.0.2",
-    "litellm>=1.59.10",
+    "litellm>=1.60.0",
     "diskcache>=5.6.3",
     "legacy-cgi>=2.6.2", # needed for litlellm with python 3.13 (soon to be fixed, I hope)
     "pyslang>=8.0.0",
@@ -28,6 +28,7 @@ dependencies = [
     "sentence-transformers>=4.1.0",
     "pytest-codecov>=0.7.0",
     "jinja2>=3.1.6",
+    "boto3>=1.35.0",
 ]
 
 [project.optional-dependencies]
