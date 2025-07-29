@@ -19,3 +19,5 @@ gpt_logs
 target
 run
 outputs
+.coverage.*
+.testmondata*
