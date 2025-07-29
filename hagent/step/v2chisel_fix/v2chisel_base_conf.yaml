@@ -1,6 +1,6 @@
 v2chisel_fix:
   llm:
-    model: "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct"
+    model: "bedrock/meta.llama3-2-3b-instruct-v1:0"
 
   threshold: 40
   context: 1

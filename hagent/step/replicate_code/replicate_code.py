@@ -55,7 +55,7 @@ class Replicate_code(Step):
                 lec_result = checker.check_equivalence(original_code, optimized_code, top_name)
             except Exception as e:
                 print(f'Error: equivalence failed. {e}')
-                sys.exit(1)
+                lec_result = False  # Continue with other codes instead of exiting
             # Interpret the result and decide lec value
             if lec_result is True:
                 print('~~~~LEC passed.~~~~')

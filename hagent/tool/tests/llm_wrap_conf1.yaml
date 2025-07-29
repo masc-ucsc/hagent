@@ -1,9 +1,9 @@
 test_react_compile_slang_simple:
-  model2: "openai/o3-mini-2025-01-31"
-  model3: "fireworks_ai/accounts/fireworks/models/deepseek-r1"
-  model1: "fireworks_ai/accounts/fireworks/models/llama-v3p3-70b-instruct"
+  model2: "bedrock/meta.llama3-2-3b-instruct-v1:0"
+  model3: "bedrock/meta.llama4-scout-17b-instruct-v1:0"
+  model1: "bedrock/meta.llama3-3-70b-instruct-v1:0"
   llm:
-    model: "openai/gpt-4.1-mini"
+    model: "bedrock/meta.llama4-scout-17b-instruct-v1:0"
     # model: "openrouter/deepseek/deepseek-r1-distill-llama-8b"
 
   direct_prompt:

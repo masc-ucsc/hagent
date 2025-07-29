@@ -8,4 +8,4 @@ code_content: |
 top_name: "and_gate_behavioral"
 
 llm:
-  model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct"
+  model: "bedrock/meta.llama3-2-3b-instruct-v1:0"
