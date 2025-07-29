@@ -3,7 +3,9 @@ test_react_compile_slang_simple:
   model3: "bedrock/meta.llama4-scout-17b-instruct-v1:0"
   model1: "bedrock/meta.llama3-3-70b-instruct-v1:0"
   llm:
-    model: "bedrock/meta.llama4-scout-17b-instruct-v1:0"
+    model: "bedrock/us.deepseek.r1-v1:0"
+    aws_region_name: "us-east-1"
+    # model: "bedrock/meta.llama4-scout-17b-instruct-v1:0"
     # model: "openrouter/deepseek/deepseek-r1-distill-llama-8b"
 
   direct_prompt:
