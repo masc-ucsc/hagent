@@ -173,3 +173,74 @@ uv run ./scripts/build_perfetto_trace.py -i .
 - Each component has its own `tests/` subdirectory
 - Configuration files use modern Python tooling (pyproject.toml with UV/Ruff)
 - Documentation focuses on hardware design workflows and AI integration
+
+## Output File Management
+
+When developing HAgent components that create output files (reports, logs, generated code, trace files, etc.), **always use the output directory utilities** to maintain clean project organization:
+
+### For Python Components
+
+Import and use the output manager utilities:
+
+```python
+from hagent.core.output_manager import get_output_dir, get_output_path
+
+# For creating files in the output directory
+output_file = get_output_path('my_report.txt')
+with open(output_file, 'w') as f:
+    f.write('Generated content')
+
+# For creating subdirectories in the output directory
+import tempfile
+work_dir = tempfile.mkdtemp(dir=get_output_dir(), prefix='my_component_')
+```
+
+### Key Guidelines
+
+- **DO**: Use `get_output_path()` when creating any output files
+- **DO**: Use `get_output_dir()` when creating temporary directories
+- **DO**: Pass only relative paths (filenames or relative paths) to `get_output_path()`
+- **DON'T**: Write files directly to the current working directory
+- **DON'T**: Hard-code paths like `./output/` in your code
+- **DON'T**: Pass absolute paths to `get_output_path()` (will cause program to exit with error)
+
+### Examples from Codebase
+
+```python
+# Equivalence checking (equiv_check.py)
+work_dir = tempfile.mkdtemp(dir=get_output_dir(), prefix='equiv_check_')
+
+# Trace generation (tracer.py)
+filename = get_output_path('trace.json')
+
+# Test output files (test_replicate_code.py)
+out_file = get_output_path('test_results.yaml')
+```
+
+### API Validation
+
+`get_output_path()` validates its input and will exit with an error if called with absolute paths:
+
+```python
+# ✅ CORRECT usage
+get_output_path('report.txt')           # filename only
+get_output_path('logs/debug.log')       # relative path
+get_output_path('../shared/data.json')  # relative path with parent dir
+
+# ❌ INCORRECT usage (will exit with detailed error message)
+get_output_path('/tmp/report.txt')      # absolute path
+get_output_path('/Users/name/file.txt') # absolute path  
+get_output_path('~/report.txt')         # home directory
+get_output_path('C:\\Windows\\file.txt') # Windows absolute path
+```
+
+This validation prevents accidental misuse and ensures consistent output file organization.
+
+### Environment Variable Support
+
+The output directory respects the `HAGENT_OUTPUT` environment variable:
+- Default: `./output/`
+- Custom: Set `HAGENT_OUTPUT=/path/to/custom/dir`
+- Auto-created: Directory is created automatically if it doesn't exist
+
+This pattern keeps the project directory clean and gives users control over where generated files are stored.

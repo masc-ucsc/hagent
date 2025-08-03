@@ -4,6 +4,7 @@ import os
 import pytest
 
 import hagent.core.tracer as tracer
+from hagent.core.output_manager import get_output_path
 
 
 @pytest.fixture
@@ -215,7 +216,7 @@ class TestGeneratePerfetto:
 
         tracer.Tracer.save_perfetto_trace(dependencies=(initial, inputs, outputs), filename='simple_perfetto.json')
 
-        generated_trace = os.path.join(os.getcwd(), 'simple_perfetto.json')
+        generated_trace = get_output_path('simple_perfetto.json')
 
         assert os.path.exists(generated_trace) is True
         with open(generated_trace, 'r', encoding='utf-8') as f:
@@ -232,7 +233,7 @@ class TestGeneratePerfetto:
             dependencies=(initial, inputs, outputs), filename='multi_perfetto.json', asynchronous=True
         )
 
-        generated_trace = os.path.join(os.getcwd(), 'multi_perfetto.json')
+        generated_trace = get_output_path('multi_perfetto.json')
 
         assert os.path.exists(generated_trace) is True
         with open(generated_trace, 'r', encoding='utf-8') as f:

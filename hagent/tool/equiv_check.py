@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import sys
 from typing import Optional, Tuple, List
+from hagent.core.output_manager import get_output_dir
 
 
 class Equiv_check:
@@ -100,7 +101,7 @@ class Equiv_check:
         # 2) Write each design to a temp file
         #
         # Create a subdirectory for working files
-        work_dir = tempfile.mkdtemp(dir=os.getcwd(), prefix='equiv_check_')
+        work_dir = tempfile.mkdtemp(dir=get_output_dir(), prefix='equiv_check_')
         gold_v_filename = self._write_temp_verilog(work_dir, gold_code, 'gold')
         gate_v_filename = self._write_temp_verilog(work_dir, gate_code, 'gate')
 
