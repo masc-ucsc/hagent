@@ -33,7 +33,42 @@ def dict_deep_merge(dict1: Dict, dict2: Dict) -> Dict:
 
 
 class LLM_wrap:
+    """Wrapper for Large Language Model (LLM) interactions in HAgent.
+    
+    This class provides a standardized interface for LLM operations across HAgent,
+    handling configuration, API calls, logging, cost tracking, and error management.
+    Supports multiple LLM providers through the litellm library.
+    
+    Key features:
+    - Configuration management through YAML files  
+    - Cost and token tracking across multiple calls
+    - Comprehensive logging of all LLM interactions
+    - Template-based prompt formatting
+    - Environment variable validation for API keys
+    - Disk-based caching for improved performance
+    
+    Attributes:
+        name (str): Name/identifier for this LLM wrapper instance
+        conf_file (str): Path to YAML configuration file
+        log_file (str): Path to interaction log file
+        last_error (str): Most recent error message
+        chat_history (list): Message history for conversation-style interactions
+        responses (list): Complete litellm response objects for tracing
+        total_cost (float): Cumulative cost across all API calls
+        total_tokens (int): Cumulative token usage
+        total_time_ms (float): Cumulative time in milliseconds
+        config (dict): Loaded configuration from YAML file
+        llm_args (dict): LLM-specific arguments from config
+    """
+    
     def load_config(self) -> Dict:
+        """Load configuration from YAML file for this LLM wrapper instance.
+        
+        Performs case-insensitive lookup of configuration section by name.
+        
+        Returns:
+            dict: Configuration dictionary for this LLM instance, empty dict on error
+        """
         if not os.path.exists(self.conf_file):
             self._set_error(f'unable to read conf_file: {self.conf_file}')
             return {}
@@ -61,6 +96,17 @@ class LLM_wrap:
         return {}
 
     def check_env_keys(self, model: str) -> bool:
+        """Validate that required environment variables are set for the given model.
+        
+        Args:
+            model: The model name/identifier (e.g., 'openai/gpt-4', 'anthropic/claude-3')
+            
+        Returns:
+            bool: True if required environment variable is set
+            
+        Raises:
+            ValueError: If required environment variable is missing
+        """
         if model.startswith('fireworks'):
             required_key = 'FIREWORKS_AI_API_KEY'
         elif model.startswith('openai'):
@@ -95,6 +141,14 @@ class LLM_wrap:
         return True
 
     def __init__(self, name: str, conf_file: str, log_file: str, overwrite_conf: Dict = {}):
+        """Initialize LLM wrapper instance.
+        
+        Args:
+            name: Identifier for this LLM wrapper instance (used for config lookup)
+            conf_file: Path to YAML configuration file containing LLM settings
+            log_file: Path to file for logging all LLM interactions
+            overwrite_conf: Optional configuration overrides
+        """
         self.name = name
         self.conf_file = conf_file
         self.log_file = log_file
@@ -142,6 +196,10 @@ class LLM_wrap:
         print(msg, file=sys.stderr)
 
     def clear_history(self):
+        """Clear the conversation history for this LLM wrapper instance.
+        
+        Logs the history clearing event for tracing purposes.
+        """
         self.chat_history.clear()
         data = {}
         data.update({'clear_history': True})
@@ -354,5 +412,16 @@ class LLM_wrap:
         return answers
 
     def inference(self, prompt_dict: Dict, prompt_index: str, n: int = 1, max_history: int = 0) -> List[str]:
+        """Perform LLM inference with the given prompt and parameters.
+        
+        Args:
+            prompt_dict: Dictionary containing variables for prompt template substitution
+            prompt_index: Name of the prompt template in the configuration file
+            n: Number of completions to generate (default: 1)
+            max_history: Maximum number of previous messages to include (default: 0)
+            
+        Returns:
+            list: List of string responses from the LLM
+        """
         answers = self._call_llm(prompt_dict, prompt_index, n=n, max_history=max_history)
         return answers

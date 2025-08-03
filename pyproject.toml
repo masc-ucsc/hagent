@@ -29,6 +29,7 @@ dependencies = [
     "pytest-codecov>=0.7.0",
     "jinja2>=3.1.6",
     "boto3>=1.35.0",
+    "pydoc-markdown>=4.8.2",
 ]
 
 [project.optional-dependencies]
@@ -74,3 +75,14 @@ omit = [
     "hagent/step/**/tests/*",
     "hagent/tool/**/tests/*",
 ]
+
+[tool.pydoc-markdown]
+loaders = [
+    { type = "python", search_path = ["."], packages = ["hagent"] }
+]
+processors = [
+    { type = "filter", expression = "obj.name.startswith('hagent.') and not 'test' in obj.name" },
+    { type = "smart" },
+    { type = "crossref" }
+]
+renderer = { type = "markdown", filename = "spec.md" }

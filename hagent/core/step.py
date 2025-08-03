@@ -16,7 +16,14 @@ from hagent.core.tracer import Tracer, TracerMetaClass, s_to_us
 
 
 def wrap_literals(obj):
-    # Recursively wrap multiline strings as LiteralScalarString for nicer YAML output.
+    """Recursively wrap multiline strings as LiteralScalarString for nicer YAML output.
+    
+    Args:
+        obj: The object to process - can be dict, list, string, or other types.
+        
+    Returns:
+        The processed object with multiline strings wrapped as LiteralScalarString.
+    """
     if isinstance(obj, dict):
         return {k: wrap_literals(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -28,7 +35,28 @@ def wrap_literals(obj):
 
 
 class Step(metaclass=TracerMetaClass):
+    """Base class for all HAgent hermetic steps.
+    
+    Steps are the core building blocks of HAgent pipelines. Each step reads YAML input,
+    performs a specific operation, and writes YAML output. Steps are designed to be
+    hermetic (isolated) and can be run independently or chained together in pipelines.
+    
+    Key design principles:
+    - YAML-centric: All input/output is in YAML format for debugging simplicity
+    - Hermetic: Each step is isolated and can run independently
+    - Traceable: Includes built-in tracing and performance monitoring
+    - AI-integrated: Designed to work with LLM-based operations
+    
+    Attributes:
+        input_file (str): Path to the input YAML file
+        output_file (str): Path to the output YAML file  
+        overwrite_conf (dict): Configuration overrides
+        setup_called (bool): Whether setup() has been called
+        input_data (dict): Loaded input data from YAML file
+    """
+    
     def __init__(self):
+        """Initialize a new Step with default values."""
         self.input_file = None
         self.output_file = None
         self.overwrite_conf = {}
@@ -36,11 +64,25 @@ class Step(metaclass=TracerMetaClass):
         self.input_data = None
 
     def set_io(self, inp_file: str, out_file: str, overwrite_conf: dict = {}):
+        """Set input/output files and configuration overrides.
+        
+        Args:
+            inp_file: Path to the input YAML file
+            out_file: Path to the output YAML file
+            overwrite_conf: Dictionary of configuration values to override
+        """
         self.input_file = inp_file
         self.output_file = out_file
         self.overwrite_conf = overwrite_conf
 
     def parse_arguments(self):
+        """Parse command line arguments to set input and output files.
+        
+        Expected format: program.py -o output.yaml input.yaml
+        
+        Raises:
+            SystemExit: If required arguments are missing or invalid
+        """
         self.input_file = None
         self.output_file = None
 
@@ -67,7 +109,11 @@ class Step(metaclass=TracerMetaClass):
             sys.exit(1)
 
     def read_input(self):
-        # Read input using ruamel.yaml for improved formatting.
+        """Read and parse the input YAML file.
+        
+        Returns:
+            dict: The parsed YAML data, or a dict with 'error' key if reading fails
+        """
         if self.input_file is None:
             return {'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} - unset input_file (missing setup?):'}
         try:
@@ -80,7 +126,11 @@ class Step(metaclass=TracerMetaClass):
         return data
 
     def write_output(self, data):
-        # Write output using ruamel.yaml with wrapped literals.
+        """Write data to the output YAML file.
+        
+        Args:
+            data: Dictionary to write as YAML output
+        """
         yaml_obj = YAML()
         yaml_obj.default_flow_style = False
         processed_data = wrap_literals(data)
@@ -113,6 +163,14 @@ class Step(metaclass=TracerMetaClass):
                     os.environ[key] = original_env[key]  # Restore original value
 
     def setup(self):
+        """Set up the step by loading input data and validating configuration.
+        
+        Must be called after parse_arguments() or set_io() and before run().
+        Loads input YAML, validates environment variables, and applies overrides.
+        
+        Raises:
+            SystemExit: If input contains errors or setup validation fails
+        """
         self.setup_called = True
         if self.output_file is None:
             self.error('must call parse_arguments or set_io before setup')
@@ -135,7 +193,20 @@ class Step(metaclass=TracerMetaClass):
             self.input_data = self.overwrite_conf
 
     def run(self, data):
-        # To be implemented in the subclass.
+        """Execute the step's main logic.
+        
+        This is the core method that subclasses must implement to define
+        their specific behavior. Takes input data and returns output data.
+        
+        Args:
+            data: Input data dictionary loaded from YAML
+            
+        Returns:
+            dict: Output data to be written to YAML
+            
+        Raises:
+            NotImplementedError: Must be implemented by subclasses
+        """
         raise NotImplementedError('Subclasses should implement this!')
 
     def test(self, exp_file):
@@ -157,7 +228,14 @@ class Step(metaclass=TracerMetaClass):
         assert result_data == expected_output
 
     def error(self, msg: str):
-        # Write error details to output and raise an exception.
+        """Handle step errors by logging and writing error output.
+        
+        Args:
+            msg: Error message to log and write
+            
+        Raises:
+            ValueError: Always raises with the error message
+        """
         output_data = self.input_data.copy() if self.input_data else {}
         output_data.update({'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} {msg}'})
         print(f'ERROR: {sys.argv[0]} : {msg}')
@@ -180,6 +258,21 @@ class Step(metaclass=TracerMetaClass):
         output_data['tracing']['history'] = history
 
     def step(self):
+        """Execute the complete step workflow with tracing and error handling.
+        
+        This is the main entry point that orchestrates the step execution:
+        1. Validates setup has been called
+        2. Executes run() with temporary environment variables
+        3. Collects LLM costs and tokens from any attached LLM_wrap instances
+        4. Adds tracing information
+        5. Writes output YAML file
+        
+        Returns:
+            dict: The complete output data written to YAML file
+            
+        Raises:
+            NotImplementedError: If setup() has not been called first
+        """
         if not self.setup_called:
             raise NotImplementedError('must call setup before step')
         start = time.time()
