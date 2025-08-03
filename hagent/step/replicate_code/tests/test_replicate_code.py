@@ -4,6 +4,7 @@ import os
 import pytest
 
 from hagent.step.replicate_code.replicate_code import Replicate_code
+from hagent.core.output_manager import get_output_path
 
 
 def test_replicate_missing_llm():
@@ -12,7 +13,7 @@ def test_replicate_missing_llm():
     inp_file = os.path.join(test_dir, 'bad_input.yaml')
 
     trivial_step = Replicate_code()
-    trivial_step.set_io(inp_file=inp_file, out_file='test_replicate_code_output.yaml')
+    trivial_step.set_io(inp_file=inp_file, out_file=get_output_path('test_replicate_code_output.yaml'))
 
     with pytest.raises(ValueError):
         trivial_step.setup()
@@ -25,7 +26,7 @@ def test_replicate_code():
     inp_file = os.path.join(test_dir, 'input1.yaml')
 
     trivial_step = Replicate_code()
-    trivial_step.set_io(inp_file=inp_file, out_file=os.path.join(os.getcwd(), 'test_replicate_code_output.yaml'))
+    trivial_step.set_io(inp_file=inp_file, out_file=get_output_path('test_replicate_code_output.yaml'))
 
     trivial_step.setup()
 

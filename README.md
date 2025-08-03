@@ -112,12 +112,36 @@ Basic test commands:
 # Set required API key for tests
 export FIREWORKS_AI_API_KEY=whatever_key_you_like_most
 
+# Optional: Set custom output directory for generated files
+# (defaults to 'output' if not set)
+export HAGENT_OUTPUT=./my_output_dir
+
 # Run all tests
 uv run pytest
 
 # Run with testmon for faster iteration
 uv run pytest --testmon
 ```
+
+#### Output Directory Management
+
+HAgent generates various output files during testing and operation (equivalence check directories, Verilog files, JSON traces, etc.). By default, these files are organized in an `output/` directory in your project root.
+
+You can customize the output location using the `HAGENT_OUTPUT` environment variable:
+
+```bash
+# Use a custom output directory
+export HAGENT_OUTPUT=/path/to/my/output
+uv run pytest
+
+# Use a temporary directory
+export HAGENT_OUTPUT=/tmp/hagent_run
+python -m hagent.step.some_step
+
+# Files will be created in the specified directory instead of ./output/
+```
+
+This helps keep your project directory clean and allows you to easily manage generated files.
 
 [![codecov](https://codecov.io/gh/masc-ucsc/hagent/graph/badge.svg?token=Hyj2VifE7j)](https://codecov.io/gh/masc-ucsc/hagent)
 

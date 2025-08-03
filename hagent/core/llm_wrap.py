@@ -9,6 +9,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from hagent.core.llm_template import LLM_template
+from hagent.core.output_manager import get_output_path
 
 
 def dict_deep_merge(dict1: Dict, dict2: Dict) -> Dict:
@@ -151,7 +152,7 @@ class LLM_wrap:
         """
         self.name = name
         self.conf_file = conf_file
-        self.log_file = log_file
+        self.log_file = get_output_path(log_file)
 
         self.last_error = ''
         self.chat_history = []  # Stores messages as [{"role": "...", "content": "..."}]
