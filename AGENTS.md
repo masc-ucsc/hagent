@@ -1,6 +1,6 @@
-# CLAUDE.md
+# Intro
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI Agents like Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Overview
 
@@ -69,11 +69,14 @@ uv run ruff format hagent
 
 ### API Documentation
 ```bash
-# Generate top-level API spec
-uv run pydoc-markdown >spec.md
+# Generate comprehensive API documentation (configured in pyproject.toml)
+uv run pydoc-markdown
 
-# Generate tool-specific documentation
-uv run pydoc-markdown -p hagent/tool --render-toc >spec_tool.md
+# The above command generates spec.md with module-level documentation
+# For detailed class and method documentation, use Python's built-in help:
+uv run python -c "from hagent.core.step import Step; help(Step)"
+uv run python -c "from hagent.core.llm_wrap import LLM_wrap; help(LLM_wrap)"
+uv run python -c "from hagent.tool.tool import Tool; help(Tool)"
 ```
 
 ## Architecture
