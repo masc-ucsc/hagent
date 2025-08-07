@@ -39,5 +39,5 @@ def test_replicate_code():
 
 
 if __name__ == '__main__':  # pragma: no cover
-    test_replicate_missing_llm()
+    #test_replicate_missing_llm()
     test_replicate_code()

@@ -31,6 +31,7 @@ def test_llm_wrap_n_diff():
 
     res = lw.inference({}, 'use_prompt_random', n=3)
     assert len(res) == 3
+    print(res)
     assert res[0] != res[1]
     assert res[0] != res[2]
 
