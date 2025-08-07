@@ -79,8 +79,10 @@ class Replicate_code(Step):
         # print('-----------------code_content:------------------')
 
         # print(f'code:{original_code}')
-
-        res = self.lw.inference({'code_content': original_code}, 'replicate_code_prompt1', n=5)  # n=2 means it will give me 2 answers
+        try:
+            res = self.lw.inference({'code_content': original_code}, 'replicate_code_prompt1', n=5)
+        except Exception as e:
+            res = []
         # print("--------res:-----\n")
         # print(res)
         # print('\n\n\n')
