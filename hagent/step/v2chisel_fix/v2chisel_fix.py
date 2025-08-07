@@ -446,9 +446,9 @@ class V2chisel_fix(Step):
         print('=====================================================================')
 
         for txt in answers:
-            diff = self.chisel_extractor.parse(txt)
-            if diff:
-                return diff
+            diffs = self.chisel_extractor.parse(txt)
+            if diffs and diffs[0]:
+                return diffs[0]
         return ""
 
     def check_callback(self, code: str):
@@ -516,8 +516,9 @@ class V2chisel_fix(Step):
             print(answers[0])
             print('======================================================================')
             for txt in answers:
-                diff_code_text = self.chisel_extractor.parse(txt)
-                if diff_code_text:
+                diff_codes = self.chisel_extractor.parse(txt)
+                if diff_codes and diff_codes[0]:
+                    diff_code_text = diff_codes[0]
                     new_code = self._apply_diff(current_code, diff_code_text)
                     is_valid, verilog_candidate, error_msg = self._run_chisel2v(new_code)
                     if is_valid:
@@ -600,9 +601,9 @@ class V2chisel_fix(Step):
         print('======================================================================')
 
         for txt in answers:
-            diff_candidate = self.chisel_extractor.parse(txt)
-            if diff_candidate:
-                return diff_candidate
+            diff_candidates = self.chisel_extractor.parse(txt)
+            if diff_candidates and diff_candidates[0]:
+                return diff_candidates[0]
 
         # 3) fallback to the original diff if LLM gives nothing usable
         return old_diff
@@ -683,9 +684,9 @@ class V2chisel_fix(Step):
         print('==========================================================')
 
         for txt in answers:
-            code = self.chisel_extractor.parse(txt)
-            if code:
-                return code
+            codes = self.chisel_extractor.parse(txt)
+            if codes and codes[0]:
+                return codes[0]
 
         return ""
 
@@ -762,9 +763,10 @@ class V2chisel_fix(Step):
         # If multiple candidates were requested (attempt > 2), evaluate each candidate:
         if attempt > 2 and isinstance(answers, list) and len(answers) > 1:
             for txt in answers:
-                candidate_diff = self.chisel_extractor.parse(txt)
-                if not candidate_diff:
+                candidate_diffs = self.chisel_extractor.parse(txt)
+                if not candidate_diffs or not candidate_diffs[0]:
                     continue
+                candidate_diff = candidate_diffs[0]
                 print("[INFO] Evaluating candidate diff:")
                 print(candidate_diff)
                 test_code = self._apply_diff(self.chisel_original, candidate_diff)
@@ -781,9 +783,9 @@ class V2chisel_fix(Step):
             return ""
         else:
             for txt in answers:
-                candidate_diff = self.chisel_extractor.parse(txt)
-                if candidate_diff:
-                    return candidate_diff
+                candidate_diffs = self.chisel_extractor.parse(txt)
+                if candidate_diffs and candidate_diffs[0]:
+                    return candidate_diffs[0]
             return ""
 
     def _run_chisel2v(self, chisel_code: str):

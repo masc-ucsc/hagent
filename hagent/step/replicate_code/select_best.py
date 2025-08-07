@@ -139,7 +139,10 @@ class Select_best(Step):
         result = {'best_version': None}
 
         for code in codes:
-            code = self.verilog_extractor.parse(code)
+            parsed_codes = self.verilog_extractor.parse(code)
+            if not parsed_codes or not parsed_codes[0]:
+                continue
+            code = parsed_codes[0]
             netlist_file = self.synthesize_module(code, mod_name, work_dir, "sky130_fd_sc_hd__ff_100C_1v95.lib")
             if netlist_file:
                 arrival_time = self.analyze_timing(netlist_file, mod_name, work_dir, "sky130_fd_sc_hd__ff_100C_1v95.lib")
