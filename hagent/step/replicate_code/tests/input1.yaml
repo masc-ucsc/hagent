@@ -14,7 +14,7 @@ top_name: "and_gate_behavioral"
 threshold: 50
 
 llm:
-  model: "bedrock/us.meta.llama3-2-1b-instruct-v1:0" # Cheap bedrock model
+  model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0" # Cheap bedrock model
   aws_region_name: "us-east-1"
 
 # Fictious initial cost/tokens

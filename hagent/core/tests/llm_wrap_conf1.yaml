@@ -1,6 +1,6 @@
 test_caching:
   llm:
-    model: "bedrock/us.meta.llama3-2-1b-instruct-v1:0" # Cheap bedrock model with inference profile
+    model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
     temperature: 0.1
     top_p: 0.3
     aws_region_name: "us-east-1"

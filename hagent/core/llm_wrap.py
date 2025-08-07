@@ -35,19 +35,19 @@ def dict_deep_merge(dict1: Dict, dict2: Dict) -> Dict:
 
 class LLM_wrap:
     """Wrapper for Large Language Model (LLM) interactions in HAgent.
-    
+
     This class provides a standardized interface for LLM operations across HAgent,
     handling configuration, API calls, logging, cost tracking, and error management.
     Supports multiple LLM providers through the litellm library.
-    
+
     Key features:
-    - Configuration management through YAML files  
+    - Configuration management through YAML files
     - Cost and token tracking across multiple calls
     - Comprehensive logging of all LLM interactions
     - Template-based prompt formatting
     - Environment variable validation for API keys
     - Disk-based caching for improved performance
-    
+
     Attributes:
         name (str): Name/identifier for this LLM wrapper instance
         conf_file (str): Path to YAML configuration file
@@ -61,12 +61,12 @@ class LLM_wrap:
         config (dict): Loaded configuration from YAML file
         llm_args (dict): LLM-specific arguments from config
     """
-    
+
     def load_config(self) -> Dict:
         """Load configuration from YAML file for this LLM wrapper instance.
-        
+
         Performs case-insensitive lookup of configuration section by name.
-        
+
         Returns:
             dict: Configuration dictionary for this LLM instance, empty dict on error
         """
@@ -98,13 +98,13 @@ class LLM_wrap:
 
     def check_env_keys(self, model: str) -> bool:
         """Validate that required environment variables are set for the given model.
-        
+
         Args:
             model: The model name/identifier (e.g., 'openai/gpt-4', 'anthropic/claude-3')
-            
+
         Returns:
             bool: True if required environment variable is set
-            
+
         Raises:
             ValueError: If required environment variable is missing
         """
@@ -143,7 +143,7 @@ class LLM_wrap:
 
     def __init__(self, name: str, conf_file: str, log_file: str, overwrite_conf: Dict = {}):
         """Initialize LLM wrapper instance.
-        
+
         Args:
             name: Identifier for this LLM wrapper instance (used for config lookup)
             conf_file: Path to YAML configuration file containing LLM settings
@@ -198,7 +198,7 @@ class LLM_wrap:
 
     def clear_history(self):
         """Clear the conversation history for this LLM wrapper instance.
-        
+
         Logs the history clearing event for tracing purposes.
         """
         self.chat_history.clear()
@@ -302,44 +302,71 @@ class LLM_wrap:
         # Call litellm
         try:
             start = time.time()
-            
+
             # For better diversity when n > 1, make separate calls with varied parameters
             # This works for all models and ensures more diverse responses
             if n > 1:
                 # Remove 'n' parameter and make multiple calls with varied parameters for diversity
                 varied_args = llm_call_args.copy()
                 varied_args.pop('n', None)
-                
+
                 responses = []
                 base_temperature = varied_args.get('temperature', 0.7)
                 base_top_p = varied_args.get('top_p', 0.9)
-                
+                last_response = None  # Track only the last response for variation
+
                 for i in range(n):
-                    # Vary temperature and top_p more significantly for each call to increase diversity
                     call_args = varied_args.copy()
-                    call_args['temperature'] = min(1.0, base_temperature + (i * 0.3))
-                    call_args['top_p'] = max(0.1, min(1.0, base_top_p + ((i % 3) * 0.2 - 0.1)))
-                    
-                    # Add slight variation to messages to avoid caching when seeking diversity
-                    if 'messages' in call_args:
-                        messages_copy = []
-                        for msg in call_args['messages']:
-                            if msg.get('role') == 'user' and i > 0:
-                                # Add a subtle variation to user messages for diversity
-                                content = msg['content'] + f" (variant {i})"
-                                messages_copy.append({**msg, 'content': content})
-                            else:
-                                messages_copy.append(msg.copy())
-                        call_args['messages'] = messages_copy
-                    
+
+                    # Scale temperature from 0 to 1 based on n, with one sample having default temperature
+                    if n == 2:
+                        # For n=2: use default temp and either 0 or 1
+                        call_args['temperature'] = base_temperature if i == 0 else (0.0 if base_temperature > 0.5 else 1.0)
+                    else:
+                        # For n>2: distribute from 0 to 1, ensuring one sample has default temperature
+                        mid_index = n // 2
+                        if i == mid_index:
+                            call_args['temperature'] = base_temperature  # Keep default for one sample
+                        else:
+                            # Scale others from 0 to 1
+                            call_args['temperature'] = i / (n - 1)
+
+                    # Scale top_p intelligently: vary around default with more diversity
+                    if n == 2:
+                        call_args['top_p'] = base_top_p if i == 0 else max(0.1, min(1.0, 1.0 - base_top_p + 0.1))
+                    else:
+                        # For n>2: alternate between higher and lower values around default
+                        if i == n // 2:
+                            call_args['top_p'] = base_top_p  # Keep default for one sample
+                        elif i % 2 == 0:
+                            call_args['top_p'] = max(0.1, base_top_p - (i * 0.15))
+                        else:
+                            call_args['top_p'] = min(1.0, base_top_p + ((i - 1) * 0.15))
+
+                    # Copy messages and add variation to avoid caching when seeking diversity
+                    call_args['messages'] = [msg.copy() for msg in call_args['messages']]
+
+                    if i > 0 and last_response and call_args['messages']:
+                        last_msg = call_args['messages'][-1]
+                        if last_msg.get('role') == 'user':
+                            # Truncate last response to 2KB if needed
+                            prev_response = last_response
+                            if len(prev_response) > 2048:
+                                prev_response = prev_response[:2048] + "..."
+                            last_msg['content'] += f'\n\nThe last response answer was: """{prev_response}""" please try something different.'
+
                     r = litellm.completion(**call_args)
                     responses.append(r)
-                
+
+                    # Store only the last response for next iteration's variation
+                    if r and 'choices' in r and r['choices']:
+                        last_response = r['choices'][0]['message']['content']
+
                 # Combine responses
                 combined_choices = []
                 for resp in responses:
                     combined_choices.extend(resp['choices'])
-                
+
                 # Use the first response as template and replace choices
                 r = responses[0]
                 # Convert to dict first since ModelResponse doesn't support item assignment
@@ -414,13 +441,13 @@ class LLM_wrap:
 
     def inference(self, prompt_dict: Dict, prompt_index: str, n: int = 1, max_history: int = 0) -> List[str]:
         """Perform LLM inference with the given prompt and parameters.
-        
+
         Args:
             prompt_dict: Dictionary containing variables for prompt template substitution
             prompt_index: Name of the prompt template in the configuration file
             n: Number of completions to generate (default: 1)
             max_history: Maximum number of previous messages to include (default: 0)
-            
+
         Returns:
             list: List of string responses from the LLM
         """
