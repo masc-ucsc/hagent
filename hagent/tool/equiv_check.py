@@ -90,7 +90,7 @@ class Equiv_check:
 
         # 1) Validate each snippet has exactly one module
         #desired_top = self._extract_single_module_name(gate_code)
-         
+
         gold_top = self._extract_module_name(gold_code, top_module=desired_top)
         gate_top = self._extract_module_name(gate_code, top_module=desired_top)
         if gold_top == gate_top:
@@ -132,7 +132,7 @@ class Equiv_check:
     def get_counterexample(self) -> Optional[str]:
         """Returns the stored counterexample info if available."""
         return self.counterexample_info
-    
+
     def parse_equiv_failures(self, out: str, err: str) -> List[Tuple[str, str]]:
         """
         Scan Yosys stdout/stderr for lines indicating an unproven $equiv. Return
