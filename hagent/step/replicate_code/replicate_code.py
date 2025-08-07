@@ -75,12 +75,12 @@ class Replicate_code(Step):
         return result
 
     def run(self, data):
-        code = data['code_content']
+        original_code = data['code_content']
         # print('-----------------code_content:------------------')
 
-        # print(f'code:{code}')
+        # print(f'code:{original_code}')
 
-        res = self.lw.inference({'code_content': code}, 'replicate_code_prompt1', n=5)  # n=2 means it will give me 2 answers
+        res = self.lw.inference({'code_content': original_code}, 'replicate_code_prompt1', n=5)  # n=2 means it will give me 2 answers
         # print("--------res:-----\n")
         # print(res)
         # print('\n\n\n')
@@ -89,9 +89,14 @@ class Replicate_code(Step):
 
         result['optimized'] = []  # Store all markdowns in a list
         for markdown in res:
-            code = self.verilog_extractor.parse(markdown)
-            if code:
-                result['optimized'].append(code)
+            codes = self.verilog_extractor.parse(markdown)
+            for new_code in codes:
+                if new_code:
+                    # Normalize whitespace for comparison to avoid including identical code with different spacing
+                    normalized_new = ' '.join(new_code.split())
+                    normalized_original = ' '.join(original_code.split())
+                    if normalized_new != normalized_original:
+                        result['optimized'].append(new_code)
 
         # print(f'\n\n\n result => \n\n {data} \n\n')
         codes_passing_lec = self.check_lec(result)
@@ -101,14 +106,15 @@ class Replicate_code(Step):
         # get the optimized code from result and save it in output directory
         output_dir = get_output_dir()
         for markdown in codes_passing_lec:
-            optimized_ver = self.verilog_extractor.parse(markdown)
-            if optimized_ver:
-                # filename = os.path.join(output_dir , f'{data['top_name']}_optimized_{x}.v')
-                filename = os.path.join(output_dir, f'option_{x}.v')
-                x += 1
-                os.makedirs(os.path.dirname(filename), exist_ok=True)
-                with open(filename, 'w') as f:
-                    f.write(optimized_ver)
+            optimized_vers = self.verilog_extractor.parse(markdown)
+            for optimized_ver in optimized_vers:
+                if optimized_ver:
+                    # filename = os.path.join(output_dir , f'{data['top_name']}_optimized_{x}.v')
+                    filename = os.path.join(output_dir, f'option_{x}.v')
+                    x += 1
+                    os.makedirs(os.path.dirname(filename), exist_ok=True)
+                    with open(filename, 'w') as f:
+                        f.write(optimized_ver)
 
         return result
 

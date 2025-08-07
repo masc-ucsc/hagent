@@ -22,27 +22,27 @@ from hagent.tool.extract_code import (
 
 class TestExtractCode(unittest.TestCase):
     """Test class for Extract_code classes."""
-    
+
     def test_abstract_base_class(self):
         """Test the abstract base class."""
         # Create a concrete implementation of the abstract class for testing
         class ConcreteExtractCode(Extract_code):
-            def parse(self, prompt: str, verilog_path: str = None) -> str:
-                return "Concrete implementation"
-        
+            def parse(self, prompt: str, verilog_path: str = None) -> list[str]:
+                return ["Concrete implementation"]
+
         # Test that we can instantiate a concrete implementation
         extractor = ConcreteExtractCode()
-        self.assertEqual(extractor.parse("test", "test.v"), "Concrete implementation")
-        
+        self.assertEqual(extractor.parse("test", "test.v"), ["Concrete implementation"])
+
         # Test that the abstract class has an abstract method 'parse'
         self.assertTrue(inspect.isabstract(Extract_code))
         self.assertTrue('parse' in Extract_code.__abstractmethods__)
-        
+
         # Directly test the signature of the parse method without instantiating
         parse_method = Extract_code.parse
         signature = inspect.signature(parse_method)
-        self.assertEqual(str(signature), "(self, prompt: str, verilog_path: str) -> str")
-        
+        self.assertEqual(str(signature), "(self, prompt: str, verilog_path: str) -> list[str]")
+
         try:
             # Create a temporary instance with __abstractmethods__ cleared
             temp_class = type('TempExtractCode', (Extract_code,), {})
@@ -53,45 +53,45 @@ class TestExtractCode(unittest.TestCase):
 
         except Exception as e:
             pass
-    
+
     def test_extract_codeblock(self):
         """Test the extract_codeblock method."""
         extractor = Extract_code_default()
-        
+
         # Test with code block with language
         text = "Some text\n```python\ndef hello():\n    print('Hello')\n```\nMore text"
         result = extractor.extract_codeblock(text)
         self.assertEqual(result, "def hello():\n    print('Hello')")
-        
+
         # Test with code block without language
         text = "Some text\n```\ndef hello():\n    print('Hello')\n```\nMore text"
         result = extractor.extract_codeblock(text)
         self.assertEqual(result, "def hello():\n    print('Hello')")
-        
+
         # Test with multiple code blocks
         text = "```python\ndef hello():\n    print('Hello')\n```\n```javascript\nconsole.log('Hello');\n```"
         result = extractor.extract_codeblock(text)
         self.assertEqual(result, "def hello():\n    print('Hello')\n\nconsole.log('Hello');")
-        
+
         # Test with no code blocks
         text = "Just plain text without code blocks"
         result = extractor.extract_codeblock(text)
         self.assertEqual(result, "Just plain text without code blocks")
-        
+
         # Test with backticks in text
         text = "Text with `inline code` and ```block code```"
         result = extractor.extract_codeblock(text)
         # The actual behavior is that it extracts just "code" from the block code part
         self.assertEqual(result, "code")
-        
+
         # Test with None input
         result = extractor.extract_codeblock(None)
         self.assertEqual(result, "")
-    
+
     def test_extract_code_verilog(self):
         """Test the Extract_code_verilog class."""
         extractor = Extract_code_verilog()
-        
+
         # Test with Verilog module
         text = """
 Some text before
@@ -112,16 +112,16 @@ endmodule
 Some text after
 """
         result = extractor.parse(text)
-        # The actual behavior is that it only includes module content and not the include directives
-        # when they appear before the first module
-        self.assertIn("module test(input clk, output reg out);", result)
-        self.assertIn("always @(posedge clk) begin", result)
-        self.assertIn("out <= ~out;", result)
-        self.assertIn("endmodule", result)
-        self.assertIn("module unused(input a, output b);", result)
-        self.assertNotIn("Some text before", result)
-        self.assertNotIn("Some text after", result)
-        
+        # Should return a list with two modules
+        self.assertEqual(len(result), 2)
+        self.assertIn("module test(input clk, output reg out);", result[0])
+        self.assertIn("always @(posedge clk) begin", result[0])
+        self.assertIn("out <= ~out;", result[0])
+        self.assertIn("endmodule", result[0])
+        self.assertIn("module unused(input a, output b);", result[1])
+        self.assertNotIn("Some text before", str(result))
+        self.assertNotIn("Some text after", str(result))
+
         # Test with preprocessor directives only - note that backticks are removed by extract_codeblock
         # and the implementation doesn't capture preprocessor directives without a module
         text = """
@@ -133,9 +133,9 @@ Some text after
 ```
 """
         result = extractor.parse(text)
-        # The actual behavior is that it returns an empty string when there's no module
-        self.assertEqual(result, "")
-        
+        # The actual behavior is that it returns an empty list when there's no module
+        self.assertEqual(result, [])
+
         # Test with preprocessor directives and a module
         text = """
 ```verilog
@@ -147,28 +147,30 @@ endmodule
 ```
 """
         result = extractor.parse(text)
-        # The actual behavior is that it includes the module but not the preprocessor directives
-        self.assertIn("module test();", result)
-        self.assertIn("endmodule", result)
-        self.assertNotIn("include", result)
-        self.assertNotIn("define", result)
-        
+        # Should return a list with one module
+        self.assertEqual(len(result), 1)
+        self.assertIn("module test();", result[0])
+        self.assertIn("endmodule", result[0])
+        self.assertNotIn("include", result[0])
+        self.assertNotIn("define", result[0])
+
         # Create a custom subclass that overrides extract_codeblock to return preprocessor directives
         class TestExtractCodeVerilogPreprocessor(Extract_code_verilog):
             def extract_codeblock(self, text):
                 # Return a string with preprocessor directives only (no module)
                 return "`include \"test.v\"\n`define TEST 1"
-        
+
         # Create an instance of our test class
         test_extractor = TestExtractCodeVerilogPreprocessor()
-        
+
         # Call parse with any text, the extract_codeblock method will return our test string
         result = test_extractor.parse("dummy text")
-        
+
         # Verify the result - the parse method should include the preprocessor directives
-        self.assertIn("`include \"test.v\"", result)
-        self.assertIn("`define TEST 1", result)
-        
+        self.assertEqual(len(result), 1)
+        self.assertIn("`include \"test.v\"", result[0])
+        self.assertIn("`define TEST 1", result[0])
+
         # Test with escaped backslashes
         text = """
 ```verilog
@@ -180,12 +182,13 @@ endmodule
 ```
 """
         result = extractor.parse(text)
-        self.assertIn("out <= ~out;", result)  # Backslashes should be removed
-    
+        self.assertEqual(len(result), 1)
+        self.assertIn("out <= ~out;", result[0])  # Backslashes should be removed
+
     def test_extract_code_chisel(self):
         """Test the Extract_code_chisel class."""
         extractor = Extract_code_chisel()
-        
+
         # Test with Chisel code
         text = """
 Some text before
@@ -200,20 +203,21 @@ class MyModule extends Module {
     val in = Input(UInt(8.W))
     val out = Output(UInt(8.W))
   })
-  
+
   io.out := io.in + 1.U
 }
 ```
 Some text after
 """
         result = extractor.parse(text)
-        self.assertIn("import chisel3._", result)
-        self.assertIn("import chisel3.util._", result)
-        self.assertIn("class MyModule extends Module {", result)
-        self.assertIn("io.out := io.in + 1.U", result)
-        self.assertNotIn("Some text before", result)
-        self.assertNotIn("Some text after", result)
-        
+        self.assertEqual(len(result), 1)
+        self.assertIn("import chisel3._", result[0])
+        self.assertIn("import chisel3.util._", result[0])
+        self.assertIn("class MyModule extends Module {", result[0])
+        self.assertIn("io.out := io.in + 1.U", result[0])
+        self.assertNotIn("Some text before", result[0])
+        self.assertNotIn("Some text after", result[0])
+
         # Test with non-Chisel code
         text = """
 ```scala
@@ -225,8 +229,9 @@ class MyClass {
 ```
 """
         result = extractor.parse(text)
-        self.assertEqual(result, text.replace("```scala", "").replace("```", "").strip())
-        
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], text.replace("```scala", "").replace("```", "").strip())
+
         # Test with escaped backslashes
         text = """
 ```scala
@@ -240,8 +245,9 @@ class MyModule extends Module {
 ```
 """
         result = extractor.parse(text)
-        self.assertIn("val in = Input(UInt(8.W))", result)  # Backslashes should be removed
-        
+        self.assertEqual(len(result), 1)
+        self.assertIn("val in = Input(UInt(8.W))", result[0])  # Backslashes should be removed
+
         # Test with non-Chisel code that doesn't have 'import chisel' (to cover line 114)
         text = """
 ```scala
@@ -253,12 +259,13 @@ class MyClass {
 ```
 """
         result = extractor.parse(text)
-        self.assertEqual(result, text.replace("```scala", "").replace("```", "").strip())
-    
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], text.replace("```scala", "").replace("```", "").strip())
+
     def test_extract_code_pyrtl(self):
         """Test the Extract_code_pyrtl class."""
         extractor = Extract_code_pyrtl()
-        
+
         # Test with PyRTL code
         text = """
 Some text before
@@ -280,13 +287,14 @@ with open('output.v', 'w') as f:
 Some text after
 """
         result = extractor.parse(text, "new_output.v")
-        self.assertIn("import pyrtl", result)
-        self.assertIn("in1 = pyrtl.Input(8, 'in1')", result)
-        self.assertIn("out <<= in1 + in2", result)
-        self.assertIn("with open('new_output.v', 'w') as f:", result)  # Path should be replaced
-        self.assertNotIn("Some text before", result)
-        self.assertNotIn("Some text after", result)
-        
+        self.assertEqual(len(result), 1)
+        self.assertIn("import pyrtl", result[0])
+        self.assertIn("in1 = pyrtl.Input(8, 'in1')", result[0])
+        self.assertIn("out <<= in1 + in2", result[0])
+        self.assertIn("with open('new_output.v', 'w') as f:", result[0])  # Path should be replaced
+        self.assertNotIn("Some text before", result[0])
+        self.assertNotIn("Some text after", result[0])
+
         # Test with non-PyRTL code
         text = """
 ```python
@@ -295,8 +303,9 @@ def hello():
 ```
 """
         result = extractor.parse(text, "output.v")
-        self.assertEqual(result, text.replace("```python", "").replace("```", "").strip())
-        
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], text.replace("```python", "").replace("```", "").strip())
+
         # Test with escaped backslashes
         text = """
 ```python
@@ -307,8 +316,9 @@ in1 = pyrtl.Input(8, 'in1\\')
 ```
 """
         result = extractor.parse(text, "output.v")
-        self.assertIn("in1 = pyrtl.Input(8, 'in1')", result)  # Backslashes should be removed
-        
+        self.assertEqual(len(result), 1)
+        self.assertIn("in1 = pyrtl.Input(8, 'in1')", result[0])  # Backslashes should be removed
+
         # Test with non-PyRTL code that doesn't have 'import pyrtl' (to cover line 114)
         text = """
 ```python
@@ -317,12 +327,13 @@ def hello():
 ```
 """
         result = extractor.parse(text, "output.v")
-        self.assertEqual(result, text.replace("```python", "").replace("```", "").strip())
-    
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], text.replace("```python", "").replace("```", "").strip())
+
     def test_extract_code_dslx(self):
         """Test the Extract_code_dslx class."""
         extractor = Extract_code_dslx()
-        
+
         # Test with DSLX code
         text = """
 Some text before
@@ -342,13 +353,14 @@ fn add_points(p1: Point, p2: Point) -> Point {
 Some text after
 """
         result = extractor.parse(text)
-        self.assertIn("struct Point {", result)
-        self.assertIn("x: u32,", result)
-        self.assertIn("fn add_points(p1: Point, p2: Point) -> Point {", result)
-        self.assertIn("x: p1.x + p2.x,", result)
-        self.assertNotIn("Some text before", result)
-        self.assertNotIn("Some text after", result)
-        
+        self.assertEqual(len(result), 1)
+        self.assertIn("struct Point {", result[0])
+        self.assertIn("x: u32,", result[0])
+        self.assertIn("fn add_points(p1: Point, p2: Point) -> Point {", result[0])
+        self.assertIn("x: p1.x + p2.x,", result[0])
+        self.assertNotIn("Some text before", result[0])
+        self.assertNotIn("Some text after", result[0])
+
         # Test with non-DSLX code
         text = """
 ```rust
@@ -359,8 +371,9 @@ fn main() {
 """
         result = extractor.parse(text)
         # The actual behavior is that it returns the full text with a newline at the end
-        self.assertEqual(result, "fn main() {\n    println!(\"Hello\");\n}\n")
-        
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], "fn main() {\n    println!(\"Hello\");\n}\n")
+
         # Test with escaped backslashes
         text = """
 ```dslx
@@ -371,8 +384,9 @@ struct Point {
 ```
 """
         result = extractor.parse(text)
-        self.assertIn("x: u32,", result)  # Backslashes should be removed
-        
+        self.assertEqual(len(result), 1)
+        self.assertIn("x: u32,", result[0])  # Backslashes should be removed
+
         # Test with non-DSLX code that doesn't have 'struct' or 'fn' (to cover line 114)
         text = """
 ```dslx
@@ -381,18 +395,20 @@ struct Point {
 """
         result = extractor.parse(text)
         # The actual behavior is that it returns the comment without a trailing newline
-        self.assertEqual(result, "// Just a comment")
-        
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], "// Just a comment")
+
         # Create a custom mock that returns a string with backticks
         mock_extract = MagicMock(return_value="struct Point {\n  x: u32,\n  ```\n  y: u32,\n}")
         with patch.object(Extract_code_dslx, 'extract_codeblock', mock_extract):
             result = extractor.parse("dummy text")
-            self.assertEqual(result, "struct Point {\n  x: u32,\n")
-    
+            self.assertEqual(len(result), 1)
+            self.assertEqual(result[0], "struct Point {\n  x: u32,\n")
+
     def test_extract_code_default(self):
         """Test the Extract_code_default class."""
         extractor = Extract_code_default()
-        
+
         # Test with code block
         text = """
 Some text before
@@ -403,8 +419,9 @@ def hello():
 Some text after
 """
         result = extractor.parse(text)
-        self.assertEqual(result, "def hello():\n    print(\"Hello\")")
-        
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], "def hello():\n    print(\"Hello\")")
+
         # Test with escaped backslashes
         text = """
 ```
@@ -412,20 +429,21 @@ Line with \\ backslash
 ```
 """
         result = extractor.parse(text)
-        self.assertEqual(result, "Line with  backslash")  # Backslashes should be removed
-    
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], "Line with  backslash")  # Backslashes should be removed
+
     def test_get_extract_code(self):
         """Test the get_extract_code function."""
         # Test with valid language types
         self.assertIsInstance(get_extract_code("verilog"), Extract_code_verilog)
         self.assertIsInstance(get_extract_code("Verilog"), Extract_code_verilog)  # Case insensitive
         self.assertIsInstance(get_extract_code("VERILOG"), Extract_code_verilog)  # Case insensitive
-        
+
         self.assertIsInstance(get_extract_code("chisel"), Extract_code_chisel)
         self.assertIsInstance(get_extract_code("pyrtl"), Extract_code_pyrtl)
         self.assertIsInstance(get_extract_code("dslx"), Extract_code_dslx)
         self.assertIsInstance(get_extract_code("default"), Extract_code_default)
-        
+
         # Test with invalid language type
         with self.assertRaises(ValueError):
             get_extract_code("invalid_language")
