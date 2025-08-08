@@ -60,6 +60,8 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run tests with coverage
+        env:
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
         run: uv run pytest --cov --cov-branch --cov-report=xml
       - name: List coverage files
         if: always()
