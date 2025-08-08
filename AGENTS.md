@@ -23,11 +23,8 @@ HAgent is an AI hardware agent engine for chip design tasks including code gener
 
 ### Setup and Installation
 ```bash
-# Install dependencies (dev tools + testmon)
-uv sync --extra dev -g dev
-
 # Update dependencies after pulling changes
-uv lock && uv sync --extra dev -g dev
+uv lock && uv sync --extra dev
 
 # Verify installation
 uv run python -c "import hagent; print('HAgent installed successfully')"
