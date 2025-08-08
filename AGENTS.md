@@ -10,11 +10,11 @@ HAgent is an AI hardware agent engine for chip design tasks including code gener
 
 ### Setup and Installation
 ```bash
-# Install dependencies (use for most development)
-uv sync --extra dev
+# Install dependencies (dev tools + testmon)
+uv sync --extra dev -g dev
 
 # Update dependencies after pulling changes
-uv lock && uv sync
+uv lock && uv sync --extra dev -g dev
 
 # Verify installation
 uv run python -c "import hagent; print('HAgent installed successfully')"
@@ -22,7 +22,7 @@ uv run python -c "import hagent; print('HAgent installed successfully')"
 
 ### Testing
 ```bash
-# Run all tests (excludes slow tests by default)
+# Run all tests
 uv run pytest
 
 # Run fast tests only (explicit)
@@ -30,9 +30,6 @@ uv run pytest -m "not slow"
 
 # Run slow tests only (for regression testing)
 uv run pytest -m slow
-
-# Run all tests including slow ones
-uv run pytest -m ""
 
 # Run tests with coverage
 uv run pytest --cov=hagent --cov-report=html
@@ -86,7 +83,7 @@ uv run python -c "from hagent.tool.tool import Tool; help(Tool)"
 1. **Steps** (`hagent/step/`): Hermetic operations that read/write YAML files
    - Each step has a standalone Python executable matching the directory name
    - Inherit from core `Step` class
-   - Examples: `trivial`, `get_spec_io`
+   - Examples: `trivial`, `generate_diff`
 
 2. **Tools** (`hagent/tool/`): External tool integrations
    - Each tool requires different Python libraries
@@ -109,13 +106,14 @@ uv run python -c "from hagent.tool.tool import Tool; help(Tool)"
 ## Required Environment Variables
 
 ```bash
-# Required for most pipelines
-export OPENAI_API_KEY=your_openai_key_here
+# Set the API key for your chosen provider (LLM_wrap validates based on model prefix)
+# Examples:
+export OPENAI_API_KEY=your_openai_key_here           # for models starting with openai/*
+export ANTHROPIC_API_KEY=your_anthropic_key_here     # for models starting with anthropic/*
+export FIREWORKS_AI_API_KEY=your_fireworks_key_here  # for models starting with fireworks*
 
-# Optional depending on LLM usage
+# Optional: other providers depending on usage
 export SAMBANOVA_API_KEY=your_sambanova_key_here
-export ANTHROPIC_API_KEY=your_anthropic_key_here
-export FIREWORKS_AI_API_KEY=your_fireworks_key_here
 
 # For testing (can use dummy values)
 export FIREWORKS_AI_API_KEY=dummy_key_for_testing
@@ -199,10 +197,11 @@ work_dir = tempfile.mkdtemp(dir=get_output_dir(), prefix='my_component_')
 
 - **DO**: Use `get_output_path()` when creating any output files
 - **DO**: Use `get_output_dir()` when creating temporary directories
-- **DO**: Pass only relative paths (filenames or relative paths) to `get_output_path()`
+- **DO**: Pass only paths under the output directory (filenames or subpaths like `logs/file.log`) to `get_output_path()`
 - **DON'T**: Write files directly to the current working directory
 - **DON'T**: Hard-code paths like `./output/` in your code
 - **DON'T**: Pass absolute paths to `get_output_path()` (will cause program to exit with error)
+- **DON'T**: Use parent directory traversal like `../...` (keeps outputs contained)
 
 ### Examples from Codebase
 
@@ -219,19 +218,20 @@ out_file = get_output_path('test_results.yaml')
 
 ### API Validation
 
-`get_output_path()` validates its input and will exit with an error if called with absolute paths:
+`get_output_path()` validates its input and will exit with an error if called with absolute paths. Avoid parent-directory traversal paths to ensure outputs stay contained:
 
 ```python
 # ✅ CORRECT usage
 get_output_path('report.txt')           # filename only
 get_output_path('logs/debug.log')       # relative path
-get_output_path('../shared/data.json')  # relative path with parent dir
 
 # ❌ INCORRECT usage (will exit with detailed error message)
 get_output_path('/tmp/report.txt')      # absolute path
 get_output_path('/Users/name/file.txt') # absolute path  
 get_output_path('~/report.txt')         # home directory
 get_output_path('C:\\Windows\\file.txt') # Windows absolute path
+# ❌ INCORRECT usage (path traversal; not allowed)
+get_output_path('../shared/data.json')  # parent directory traversal
 ```
 
 This validation prevents accidental misuse and ensures consistent output file organization.
@@ -239,8 +239,9 @@ This validation prevents accidental misuse and ensures consistent output file or
 ### Environment Variable Support
 
 The output directory respects the `HAGENT_OUTPUT` environment variable:
-- Default: `./output/`
+- Default: `output/`
 - Custom: Set `HAGENT_OUTPUT=/path/to/custom/dir`
 - Auto-created: Directory is created automatically if it doesn't exist
 
 This pattern keeps the project directory clean and gives users control over where generated files are stored.
+
