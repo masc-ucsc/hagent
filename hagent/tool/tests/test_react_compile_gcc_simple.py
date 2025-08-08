@@ -204,12 +204,12 @@ int main() {
 
 if __name__ == '__main__':
     # Run the tests
-    test_react_with_memory()
-    test_react_without_memory()
+    # test_react_with_memory()
+    # test_react_without_memory()
 
     # Original example code
     react_tool = React()
-    setup_success = react_tool.setup(db_path='foo.yaml', learn=True, max_iterations=3)
+    setup_success = react_tool.setup(db_path='output/react_db', learn=True, max_iterations=3)
     if not setup_success:
         print(f'React setup failed: {react_tool.error_message}')
         exit(1)
