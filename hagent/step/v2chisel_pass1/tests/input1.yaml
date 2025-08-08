@@ -1,7 +1,7 @@
 # hagent/step/v2chisel_pass1/tests/input1.yaml
 
 llm:
-  model: "bedrock/meta.llama3-3-70b-instruct-v1:0"
+  model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
 
 verilog_original: |
   module Foo(
