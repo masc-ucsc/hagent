@@ -8,5 +8,5 @@ code_content: |
 top_name: "and_gate_behavioral"
 
 llm:
-  model: "bedrock/meta.llama3-3-70b-instruct-v1:0" # Cheap bedrock model
+  model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0" # Cheap bedrock model
 
