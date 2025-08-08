@@ -23,6 +23,12 @@ HAgent is an AI hardware agent engine for chip design tasks including code gener
 
 ### Setup and Installation
 ```bash
+# Install dependencies (dev tools + testmon)
+uv sync --extra dev -g dev
+
+# Alternative: simpler setup for basic development
+uv sync --extra dev
+
 # Update dependencies after pulling changes
 uv lock && uv sync --extra dev
 
@@ -41,6 +47,9 @@ uv run pytest -m "not slow"
 # Run slow tests only (for regression testing)
 # NOTE: Regression tests currently require AWS Bedrock access via AWS_BEARER_TOKEN_BEDROCK
 uv run pytest -m slow
+
+# Run all tests including slow ones
+uv run pytest -m ""
 
 # Run tests with coverage
 uv run pytest --cov=hagent --cov-report=html
@@ -117,13 +126,12 @@ uv run python -c "from hagent.tool.tool import Tool; help(Tool)"
 ## Required Environment Variables
 
 ```bash
-# Set the API key for your chosen provider (LLM_wrap validates based on model prefix)
-# Examples:
+# Required for most pipelines (LLM_wrap validates based on model prefix)
 export OPENAI_API_KEY=your_openai_key_here           # for models starting with openai/*
-export ANTHROPIC_API_KEY=your_anthropic_key_here     # for models starting with anthropic/*
-export FIREWORKS_AI_API_KEY=your_fireworks_key_here  # for models starting with fireworks*
 
 # Optional: other providers depending on usage
+export ANTHROPIC_API_KEY=your_anthropic_key_here     # for models starting with anthropic/*
+export FIREWORKS_AI_API_KEY=your_fireworks_key_here  # for models starting with fireworks*
 export SAMBANOVA_API_KEY=your_sambanova_key_here
 export AWS_BEARER_TOKEN_BEDROCK=your_aws_bedrock_token_here  # for models starting with bedrock/*
 
