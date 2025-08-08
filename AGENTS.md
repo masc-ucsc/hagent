@@ -2,6 +2,19 @@
 
 This file provides guidance to AI Agents like Claude Code (claude.ai/code) when working with code in this repository.
 
+## AI Agent Guidelines
+
+When working with this repository, please follow these important conventions:
+
+### Testing Commands
+- **ALWAYS** use `uv run pytest` for running tests, never `python -m pytest`
+- This ensures proper dependency management and virtual environment isolation
+
+### File Naming Conventions
+- `test_*.py` files: Unit tests for testing individual components and functions
+- `cli_*.py` files: Examples demonstrating API usage and command-line interfaces
+- Both types of files may be executable, but serve different purposes in the codebase
+
 ## Overview
 
 HAgent is an AI hardware agent engine for chip design tasks including code generation, verification, debugging, and tapeout. It's built as a modular pipeline system using Python with YAML-based inputs/outputs for hermetic steps.
@@ -29,6 +42,7 @@ uv run pytest
 uv run pytest -m "not slow"
 
 # Run slow tests only (for regression testing)
+# NOTE: Regression tests currently require AWS Bedrock access via AWS_BEARER_TOKEN_BEDROCK
 uv run pytest -m slow
 
 # Run tests with coverage
@@ -114,6 +128,7 @@ export FIREWORKS_AI_API_KEY=your_fireworks_key_here  # for models starting with 
 
 # Optional: other providers depending on usage
 export SAMBANOVA_API_KEY=your_sambanova_key_here
+export AWS_BEARER_TOKEN_BEDROCK=your_aws_bedrock_token_here  # for models starting with bedrock/*
 
 # For testing (can use dummy values)
 export FIREWORKS_AI_API_KEY=dummy_key_for_testing
@@ -132,7 +147,7 @@ uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yam
 ```bash
 # React agent for fixing buggy Verilog
 cd tmp
-uv run python3 ../hagent/tool/tests/test_react_compile_slang_simple.py ../hagent/tool/tests/buggy_verilog.v
+uv run python ../hagent/tool/tests/test_react_compile_slang_simple.py ../hagent/tool/tests/buggy_verilog.v
 ```
 
 ## Special Features
