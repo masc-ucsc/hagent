@@ -5,6 +5,7 @@ from hagent.tool.fuzzy_grep import Fuzzy_grep
 from hagent.tool.code_scope import Code_scope
 from typing import Optional
 
+
 class Extract_hints(Step):
     """
     Step to extract Chisel hint snippets using metadata comments or fuzzy-grep.
@@ -21,20 +22,16 @@ class Extract_hints(Step):
         super().__init__()
         # optional override from agent
         self._meta = metadata_context
+
     def setup(self):
         super().setup()
         # Initialize metadata mapper with original/fixed Verilog
         self.metadata_mapper = MetadataMapper(
-            self.input_data.get('verilog_original',''),
-            self.input_data.get('verilog_fixed','')
+            self.input_data.get('verilog_original', ''), self.input_data.get('verilog_fixed', '')
         )
         # Default fuzzy-grep threshold
         self.threshold = self.input_data.get('threshold', 80)
-        self.metadata_context = (
-            self._meta
-            if self._meta is not None
-            else self.input_data.get('metadata_context', 10)
-        )
+        self.metadata_context = self._meta if self._meta is not None else self.input_data.get('metadata_context', 10)
         self.setup_called = True
 
     def run(self, data):
@@ -48,11 +45,9 @@ class Extract_hints(Step):
             before = 5
             # after  = data.get('metadata_context', 10)
             after = self.metadata_context
-            snippet = self.metadata_mapper.slice_chisel_by_pointers(
-                chisel_original, pointers, before=before, after=after
-            )
+            snippet = self.metadata_mapper.slice_chisel_by_pointers(chisel_original, pointers, before=before, after=after)
             # if metadata snippet actually has “→” lines, use it:
-            if any(l.startswith('->') and l.split(':',1)[1].strip() for l in snippet.splitlines()):
+            if any(line.startswith('->') and line.split(':', 1)[1].strip() for line in snippet.splitlines()):
                 hints = snippet
             else:
                 # fallback to fuzzy
@@ -69,9 +64,9 @@ class Extract_hints(Step):
                 cs = Code_scope(chisel_original)
                 scopes = cs.find_nearest_upper_scopes(lines)
                 for start, end in scopes:
-                    hints += f"Code snippet from {start} to {end}:\n"
-                    hints += cs.get_code((start,end), lines, '->')
-                    hints += "\n\n"
+                    hints += f'Code snippet from {start} to {end}:\n'
+                    hints += cs.get_code((start, end), lines, '->')
+                    hints += '\n\n'
 
         data['hints'] = hints
         return data

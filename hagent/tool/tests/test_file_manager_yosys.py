@@ -262,7 +262,7 @@ endmodule
         verilog_file = 'inverter.v'
         assert fm.copy_file(verilog_files[verilog_file], verilog_file)
 
-        fm.track_dir(".")
+        fm.track_dir('.')
 
         # Run synthesis to create output files
         log_file = 'synthesis.log'
@@ -278,8 +278,8 @@ endmodule
 
         # New files should appear in 'full' section
         full_files = [item['filename'] for item in patches['full']]
-        assert any(f.endswith(log_file) for f in full_files), f"Log file should be tracked in patches ({full_files})"
-        assert any(f.endswith(json_file) for f in full_files), f"json file should be tracked in patches ({full_files})"
+        assert any(f.endswith(log_file) for f in full_files), f'Log file should be tracked in patches ({full_files})'
+        assert any(f.endswith(json_file) for f in full_files), f'json file should be tracked in patches ({full_files})'
 
         print('✓ Synthesis outputs properly tracked in patches')
 
@@ -324,7 +324,7 @@ write_json counter_output.json
         # Add extension tracking for Verilog files
         # Track working directory for different file types separately
         # Since track_dir only accepts one extension, we'll need to track all files
-        fm.track_dir(".")
+        fm.track_dir('.')
 
         # Copy original Verilog file
         verilog_file = 'and_gate.v'
@@ -398,7 +398,7 @@ endmodule
         assert fm.setup(), f'Setup failed: {fm.get_error()}'
         print(f"✓ Successfully set up environment with image '{fm.image}'")
 
-        fm.track_dir(".")
+        fm.track_dir('.')
 
         # Copy Verilog file
         assert fm.copy_file(host_path=verilog_host_path, container_path=verilog_filename), fm.get_error()
@@ -424,7 +424,7 @@ endmodule
 
         # Verify patch tracking
         patches = fm.get_patch_dict()
-        
+
         # Look for the synthesis.log file in patches (it might have full path)
         found_log_in_patch = any(output_log in item['filename'] for item in patches.get('full', []) + patches.get('patch', []))
         assert found_log_in_patch

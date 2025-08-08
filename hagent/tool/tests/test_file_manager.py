@@ -63,7 +63,7 @@ class TestFileManagerBasics:
         # Cleanup: ensure the instance is properly destroyed
         try:
             del fm
-        except:
+        except Exception:
             pass
 
     def test_file_copying_and_listing(self, file_manager, temp_files):
@@ -285,7 +285,7 @@ class TestFileManagerBasics:
         assert rc == 0
 
         # Use /etc/hostname as it should exist and be simple
-        original_hostname = fm.get_file_content('/etc/hostname')
+        fm.get_file_content('/etc/hostname')
 
         # 3. Track the existing file (this is the key difference - track vs copy)
         assert fm.track_file('/etc/hostname'), f'Failed to track /etc/hostname: {fm.get_error()}'

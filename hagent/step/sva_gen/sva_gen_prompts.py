@@ -1,4 +1,3 @@
-
 mmu_specification = """
 The Memory Management Unit (MMU) module is a crucial component in the RISC-V-based processor, serving as the backbone for virtual memory management and address translation.
 At its core, the MMU plays a pivotal role in translating virtual addresses into their corresponding physical counterparts. This translation process is paramount for providing memory protection, isolation, and efficient memory management in modern computer systems. Importantly, it handles both instruction and data accesses, ensuring a seamless interaction between the processor and virtual memory. Within the MMU, several major blocks play pivotal roles in this address translation process. These includes:
@@ -21806,7 +21805,7 @@ module mux2to1 (
 endmodule
 """
 
-xyz_mux_parse_tree = '''
+xyz_mux_parse_tree = """
 (source_file [0, 0] - [20, 0]
   (module_declaration [0, 0] - [19, 9]
     (module_header [0, 0] - [0, 14]
@@ -21993,7 +21992,7 @@ xyz_mux_parse_tree = '''
                 (expression [17, 25] - [17, 26]
                   (primary [17, 25] - [17, 26]
                     (simple_identifier [17, 25] - [17, 26])))))))))))
-'''
+"""
 
 assertion_prompt_rules = "Please analyze the specification, RTL code, pre-conditions and post-conditions to\
             generate  SystemVerilog assertions (SVA) except for reset behavior and clock signal. . Wrap up the assertions with property so that I can run it in the formal verification tool. \
@@ -22035,10 +22034,11 @@ Remember to use assert property, not assert only in the assertions.\
 For all the assertions, add this line '@(posedge clk_i) disable iff (!rst_ni)' except for the simple block like bitcnt.\
 For the state machine signal or struct signal, use dot reference in the property, like cache_ctrl.state_d or cache_ctrl.state_q, cache_ctrl.mem_req_d, cache_ctrl.mem_req_q for the cache_ctrl module."
 
-signal_dependency_assertion_prompt_without_spec = "Below is the parameter configurations of the MMU module:" +\
-          f"""
+signal_dependency_assertion_prompt_without_spec = (
+    'Below is the parameter configurations of the MMU module:'
+    + f"""
 | {'Parameter':^10} | {'Description':^10} | {'Type':^10} | {'Possible values':^10} | {'User config':^10} |
-|{'-'*12}|{'-'*12}|{'-'*12}| {'-'*12} | {'-'*12}|
+|{'-' * 12}|{'-' * 12}|{'-' * 12}| {'-' * 12} | {'-' * 12}|
 | {'InstrTlbEntries':^10} | {'Number of entries in Instruction TLB':^10} | {'Natural':^10} | {'>0 and multiple of 2':^10} | {'Yes':^10} |
 | {'DataTlbEntries':^10} | {'Number of entries in Data TLB':^10} | {'Natural':^10} | {'>0 and multiple of 2':^10} | {'Yes':^10} |
 | {'SharedTlbDepth':^10} | {'Size of shared TLB':^10} | {'Natural':^10} | {'>0 and multiple of 2':^10} | {'Yes':^10} |
@@ -22052,10 +22052,12 @@ signal_dependency_assertion_prompt_without_spec = "Below is the parameter config
 | {'SVX':^10} | {'Indicates the width of the extended Virtual Address Space when Hypervisor is used':^10} | {'Natural':^10} | {'>0':^10} | {'No':^10} |
 | {'VpnLen':^10} | {'Length of Virtual Page Number (VPN)':^10} | {'Natural':^10} | {'>0':^10} | {'No':^10} |
 | {'PtLevels':^10} | {'Number of page table levels':^10} | {'Natural':^10} | {'log2(CVA6Cfg.XLEN)':^10} | {'No':^10} |
-""" + " Please find out dependencies for this signal and generate SystemVerilog assertions to verify the signal is within valid input range."
+"""
+    + ' Please find out dependencies for this signal and generate SystemVerilog assertions to verify the signal is within valid input range.'
+)
 
 
-req_port_o_slices = '''
+req_port_o_slices = """
         req_port_o.data_gnt    = 1'b0;
         req_port_o.data_rvalid = 1'b0;
 IDLE: begin
@@ -22121,12 +22123,12 @@ WAIT_REFILL_VALID: begin
 if (req_port_i.kill_req) begin
             req_port_o.data_rvalid = 1'b1;
             end
-            '''
+            """
 
-systemInput_precondition_judge = '''
+systemInput_precondition_judge = """
 You are a chip design judge agent. Your task is to evaluate if the pre-conditions and post-conditions match the specification.\
     If they match, return the original text, including all the nested if conditions. If there is missing precondition, return the all the precondition including the missing ones. \
       If there are any extra preconditions, delete the extra preconditions, return the accurtae version. 
-'''
+"""
 
-precondition_evaluation_Input = "The following is the specification of the module" 
+precondition_evaluation_Input = 'The following is the specification of the module'

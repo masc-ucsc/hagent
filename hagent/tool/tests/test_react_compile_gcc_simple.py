@@ -9,11 +9,11 @@ import os
 import re
 import subprocess
 import tempfile
-from typing import List, Dict
+from typing import List
 
 from hagent.tool.react import React, Memory_shot
 from hagent.tool.compile import Diagnostic
-from hagent.core.llm_wrap import LLM_template, LLM_wrap
+from hagent.core.llm_wrap import LLM_wrap
 
 
 def extract_errors(gcc_output: str) -> list:
@@ -57,13 +57,13 @@ def check_callback_cpp(code: str) -> List[Diagnostic]:
         # Run g++ in syntax-check mode (-fsyntax-only) without linking.
         result = subprocess.run(['g++', '-std=c++17', '-fsyntax-only', tmp_name], capture_output=True, text=True)
         if result.returncode != 0:
-            print("GCC ERROR OUTPUT:")
+            print('GCC ERROR OUTPUT:')
             print(result.stderr)
             diags = []
             for msg in extract_errors(result.stderr):
                 # Create a Diagnostic with the error message.
                 diag = Diagnostic(msg)
-                print(f"DIAGNOSTIC: file={diag.file}, loc={diag.loc}, msg={diag.msg}, error={diag.error}")
+                print(f'DIAGNOSTIC: file={diag.file}, loc={diag.loc}, msg={diag.msg}, error={diag.error}')
                 diags.append(diag)
             return diags
         return []
@@ -81,12 +81,12 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: Memory_sh
     - Re-check each candidate with g++ and pick a compiling one, otherwise best-progressing one
     Fallback: if LLM unavailable, attempt a deterministic semicolon fix around the reported area.
     """
-    print(f"FIXING ERROR: {diag.msg}, location: {diag.loc}")
-    print(f"Current iteration: {iteration_count}, delta mode: {delta}")
+    print(f'FIXING ERROR: {diag.msg}, location: {diag.loc}')
+    print(f'Current iteration: {iteration_count}, delta mode: {delta}')
 
     # Show delta for debugging
     if delta:
-        print("DELTA CODE TO FIX:\n")
+        print('DELTA CODE TO FIX:\n')
         print(current_code)
 
     # Try LLM-based fixing first
@@ -167,7 +167,7 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: Memory_sh
             return best_code
 
     except Exception as e:
-        print(f"LLM-based fixing path failed or unavailable: {e}")
+        print(f'LLM-based fixing path failed or unavailable: {e}')
 
     # Fallback deterministic fix for common GCC error: missing semicolon before return
     try:
@@ -185,7 +185,7 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: Memory_sh
                 j -= 1
             if j >= 0 and not lines[j].rstrip().endswith(';'):
                 lines[j] = lines[j] + ';'
-                return "\n".join(lines)
+                return '\n'.join(lines)
     except Exception:
         pass
 
@@ -197,7 +197,7 @@ def test_react_with_memory():
 
     react_tool = React()
     setup_success = react_tool.setup(db_path=tempfile.mkdtemp(), learn=True, max_iterations=3)
-    assert setup_success, f"React setup failed: {react_tool.error_message}"
+    assert setup_success, f'React setup failed: {react_tool.error_message}'
 
     # A C++ snippet with a missing semicolon
     faulty_code = r"""
@@ -213,22 +213,22 @@ return 0;
     fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
 
     # Check results
-    assert fixed_code, "Failed to fix the code"
-    assert ";" in fixed_code, "Semicolon not added to the fixed code"
+    assert fixed_code, 'Failed to fix the code'
+    assert ';' in fixed_code, 'Semicolon not added to the fixed code'
 
     # Check the log
     log = react_tool.get_log()
-    assert len(log) > 0, "Log should contain entries"
+    assert len(log) > 0, 'Log should contain entries'
 
-    print("Test with DB passed!")
+    print('Test with DB passed!')
 
 
 def test_react_without_memory():
     """Test React without a database file."""
     # Initialize React without a DB file
     react_tool = React()
-    setup_success = react_tool.setup(learn=False, max_iterations=3, comment_prefix="//")
-    assert setup_success, f"React setup failed: {react_tool.error_message}"
+    setup_success = react_tool.setup(learn=False, max_iterations=3, comment_prefix='//')
+    assert setup_success, f'React setup failed: {react_tool.error_message}'
 
     # A C++ snippet with a missing semicolon
     faulty_code = r"""
@@ -244,10 +244,10 @@ int main() {
     fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
 
     # Check results
-    assert fixed_code, "Failed to fix the code"
-    assert ";" in fixed_code, "Semicolon not added to the fixed code"
+    assert fixed_code, 'Failed to fix the code'
+    assert ';' in fixed_code, 'Semicolon not added to the fixed code'
 
-    print("Test without DB passed!")
+    print('Test without DB passed!')
 
 
 if __name__ == '__main__':

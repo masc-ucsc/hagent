@@ -11,11 +11,9 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import json
 
 # Import MCP SDK components
 from mcp.server.fastmcp import FastMCP
-from mcp.types import TextContent, Tool
 
 # Initialize FastMCP server
 mcp = FastMCP('slang-syntax-checker')
@@ -358,7 +356,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='Slang MCP Server for SystemVerilog syntax checking')
     parser.add_argument('--version', action='version', version='slang-mcp-server 1.0.0')
-    args = parser.parse_args()
+    parser.parse_args()
 
     # Check if slang is available on startup
     slang_path = find_slang_executable()

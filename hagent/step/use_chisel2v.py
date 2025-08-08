@@ -20,6 +20,7 @@ def extract_module_name(chisel_code: str) -> str:
     else:
         raise ValueError('Unable to find module name in Chisel code.')
 
+
 def main():
     # Set up argument parsing
     parser = argparse.ArgumentParser(description='Convert Chisel code in a YAML file to Verilog using Chisel2v tool.')
@@ -53,7 +54,7 @@ def main():
     # Extract the module name from the Chisel code
     try:
         module_name = extract_module_name(chisel_code)
-        module_name = "Top"
+        module_name = 'Top'
         print(f'Extracted module name: {module_name}')
     except ValueError as ve:
         print(f'Error: {ve}', file=sys.stderr)
@@ -70,7 +71,7 @@ def main():
     try:
         verilog_output = chisel2v_tool.generate_verilog(chisel_code, module_name)
         print('Verilog generation successful.')
-        print("Generated Verilog code:\n")
+        print('Generated Verilog code:\n')
         print(verilog_output)
     except RuntimeError as re:
         print(f'Error during Verilog generation: {re}', file=sys.stderr)
@@ -83,15 +84,15 @@ def main():
     try:
         with open(output_yaml_path, 'w', encoding='utf-8') as f:
             # Manually write the YAML file to ensure proper formatting
-            f.write("llm:\n")
-            f.write(f"  model: {yaml_data['llm']['model']}\n")
-            f.write("verilog_original: |\n")
+            f.write('llm:\n')
+            f.write(f'  model: {yaml_data["llm"]["model"]}\n')
+            f.write('verilog_original: |\n')
             for line in verilog_output.splitlines():
-                f.write(f"    {line}\n")
-            f.write("chisel_original: |\n")
+                f.write(f'    {line}\n')
+            f.write('chisel_original: |\n')
             for line in yaml_data['chisel_original'].splitlines():
-                f.write(f"    {line}\n")
-            f.write(f"name: {yaml_data['name']}\n")
+                f.write(f'    {line}\n')
+            f.write(f'name: {yaml_data["name"]}\n')
         print(f"Updated YAML written to '{output_yaml_path}'.")
     except Exception as e:
         print(f"Error writing to YAML file '{output_yaml_path}': {e}", file=sys.stderr)

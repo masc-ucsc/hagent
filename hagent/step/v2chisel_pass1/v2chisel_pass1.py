@@ -2,9 +2,7 @@
 # See LICENSE for details
 
 import os
-import sys
 import re
-import difflib
 import argparse
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
@@ -13,8 +11,8 @@ from hagent.core.step import Step
 from hagent.core.llm_template import LLM_template
 from hagent.core.llm_wrap import LLM_wrap
 
-from hagent.tool.chisel2v import Chisel2v
 from hagent.tool.code_scope import Code_scope
+
 # from hagent.step.apply_diff.apply_diff import Apply_diff
 from hagent.tool.chisel_diff_applier import ChiselDiffApplier
 
@@ -22,8 +20,6 @@ from hagent.tool.extract_verilog_diff_keywords import Extract_verilog_diff_keywo
 from hagent.tool.fuzzy_grep import Fuzzy_grep
 from hagent.tool.extract_code import Extract_code_verilog, Extract_code_chisel
 from hagent.tool.metadata_mapper import MetadataMapper
-from hagent.step.extract_hints.extract_hints import Extract_hints
-from hagent.step.generate_diff.generate_diff import Generate_diff
 from hagent.step.verify_candidate.verify_candidate import Verify_candidate
 from hagent.step.unified_diff.unified_diff import Unified_diff
 
@@ -75,8 +71,7 @@ class V2Chisel_pass1(Step):
         self.chisel_extractor = Extract_code_chisel()
 
         self.metadata_mapper = MetadataMapper(
-            self.input_data.get('verilog_original', ''),
-            self.input_data.get('verilog_fixed', '')
+            self.input_data.get('verilog_original', ''), self.input_data.get('verilog_fixed', '')
         )
 
         # Load the single prompt configuration file.
@@ -111,11 +106,11 @@ class V2Chisel_pass1(Step):
         """
         # Check if fuzzy is forced via CLI (-fz)
         force_fuzzy = getattr(self, 'force_fuzzy', False)
-        print("force_fuzzy:", force_fuzzy)
+        print('force_fuzzy:', force_fuzzy)
 
         # --- Metadata-driven hints ---
         metadata_pointers = self.metadata_mapper.pointers_for_diff(verilog_diff)
-        
+
         # Only use metadata if pointers exist and fuzzy is NOT forced
         if metadata_pointers and not force_fuzzy:
             print('------------------------------------------------')
@@ -167,9 +162,9 @@ class V2Chisel_pass1(Step):
             cs = Code_scope(chisel_code)
             scopes = cs.find_nearest_upper_scopes(hint_list)
             for scope_pair in scopes:
-                chisel_hints += f"Code snippet from {scope_pair[0]} to {scope_pair[1]}:\n"
+                chisel_hints += f'Code snippet from {scope_pair[0]} to {scope_pair[1]}:\n'
                 chisel_hints += cs.get_code(scope_pair, hint_list, '->')
-                chisel_hints += "\n\n"
+                chisel_hints += '\n\n'
 
         print('------------------------------------------------')
         print('Chisel hints from Code_scope:')
@@ -195,7 +190,7 @@ class V2Chisel_pass1(Step):
         diff_step.set_io(self.input_file, self.output_file)
         diff_step.input_data = {
             'verilog_original': verilog_original,
-            'verilog_fixed':    verilog_fixed,
+            'verilog_fixed': verilog_fixed,
         }
         diff_step.setup()
         data = diff_step.run(data)
@@ -207,12 +202,10 @@ class V2Chisel_pass1(Step):
         # --- EXTRACT HINTS STEP ---
         default_threshold = self.template_config.template_dict.get('v2chisel_pass1', {}).get('threshold', 80)
         # seed the step’s inputs
-        data['verilog_diff']    = verilog_diff_text
+        data['verilog_diff'] = verilog_diff_text
         data['chisel_original'] = chisel_original
 
-        chisel_subset = self._extract_chisel_subset(
-                chisel_original, verilog_diff_text
-            )
+        chisel_subset = self._extract_chisel_subset(chisel_original, verilog_diff_text)
 
         if not chisel_subset.strip():
             self.error('No hint lines extracted from the Chisel code. Aborting LLM call.')
@@ -223,47 +216,43 @@ class V2Chisel_pass1(Step):
         # === GENERATE DIFF STEP ===
         print('>>> STEP 2: LLM-based Generate_diff')
 
-
         was_valid = False
         chisel_updated_final = None
         verilog_candidate_final = None
         last_error_msg = ''
         generated_diff = ''
-        prompt_success      = dict.fromkeys(
-        ['prompt0','prompt1','prompt2','prompt3','prompt4'], 0
-        )
+        prompt_success = dict.fromkeys(['prompt0', 'prompt1', 'prompt2', 'prompt3', 'prompt4'], 0)
 
         # For a single prompt file, extract the desired section from the loaded config.
         # We assume self.template_config.config is a dictionary with keys like "prompt1", "prompt2", etc.
-        full_config = self.template_config.template_dict\
-        .get(self.lw.name.lower(), {}) or self.template_config.template_dict
+        full_config = self.template_config.template_dict.get(self.lw.name.lower(), {}) or self.template_config.template_dict
 
         if not full_config:
             full_config = self.template_config.template_dict
 
         for attempt in range(1, 6):
-            print(f"\n=== V2Chisel_pass1: Starting attempt {attempt} ===")
+            print(f'\n=== V2Chisel_pass1: Starting attempt {attempt} ===')
             prompt_index = f'prompt{attempt}'
             if prompt_index not in full_config:
                 continue
             if attempt == 1:
                 prompt_index = 'prompt0'
                 prompt_section = full_config[prompt_index]
-                print("\n prompt0")
+                print('\n prompt0')
 
             elif attempt == 2:
                 prompt_index = 'prompt1'
                 prompt_section = full_config[prompt_index]
-                print("\n prompt1")
+                print('\n prompt1')
             elif attempt == 3:
                 prompt_index = 'prompt2'
                 prompt_section = full_config[prompt_index]
-                print("\n prompt2")
+                print('\n prompt2')
 
             elif attempt == 4:
                 prompt_index = 'prompt3'
                 prompt_section = full_config[prompt_index]
-                print("\n prompt3")
+                print('\n prompt3')
 
                 increased_threshold = default_threshold + 10
                 chisel_subset = self._extract_chisel_subset(
@@ -275,7 +264,7 @@ class V2Chisel_pass1(Step):
                 if 'prompt4' in full_config:
                     prompt_section = full_config['prompt4']
                     prompt_index = 'prompt4'
-                    print("\n prompt4")
+                    print('\n prompt4')
 
                 decreased_threshold = default_threshold - 10
                 chisel_subset = self._extract_chisel_subset(
@@ -325,11 +314,10 @@ class V2Chisel_pass1(Step):
                 chisel_updated = applier.apply_diff(generated_diff, chisel_original)
                 data['chisel_candidate'] = chisel_updated
             except Exception as ex:
-                print("Applier has some errors.")
+                print('Applier has some errors.')
                 err = str(ex)
                 # also treat “removal lines not found” as a verification failure
-                if 'apply_diff verification failed' in err \
-                   or 'these removal lines not found' in err:
+                if 'apply_diff verification failed' in err or 'these removal lines not found' in err:
                     cu, new_diff, apply_ok = self._handle_diff_not_found(
                         data, generated_diff, err, verilog_diff_text, chisel_original
                     )
@@ -344,18 +332,17 @@ class V2Chisel_pass1(Step):
                     # any other exception we don’t know how to recover from
                     raise
 
-
             # delegate compilation & basic validity check to our new Verify_candidate step
-            print("DEBUG: about to run Verify_candidate")
+            print('DEBUG: about to run Verify_candidate')
             verify = Verify_candidate()
             verify.set_io(self.input_file, self.output_file)
             verify.input_data = {'chisel_candidate': chisel_updated}
             verify.setup()
             verify_result = verify.run({'chisel_candidate': chisel_updated})
-            is_valid       = verify_result.get('was_valid', False)
-            print(f"DEBUG: Verify_candidate returned was_valid={is_valid}, error_msg={verify_result.get('error_msg')}")
+            is_valid = verify_result.get('was_valid', False)
+            print(f'DEBUG: Verify_candidate returned was_valid={is_valid}, error_msg={verify_result.get("error_msg")}')
             verilog_candidate = verify_result.get('verilog_candidate', None)
-            error_msg      = verify_result.get('error_msg', '')
+            error_msg = verify_result.get('error_msg', '')
             if is_valid:
                 prompt_success[prompt_index] = 1
                 chisel_updated_final = chisel_updated
@@ -363,10 +350,10 @@ class V2Chisel_pass1(Step):
                 was_valid = True
                 break
             else:
-                print(f"DEBUG: Attempt {attempt} failed with error_msg: {error_msg}")
+                print(f'DEBUG: Attempt {attempt} failed with error_msg: {error_msg}')
                 last_error_msg = error_msg or 'Unknown chisel2v error'
 
-        #End of the loop
+        # End of the loop
         if not was_valid and chisel_updated_final is None:
             chisel_updated_final = 'No valid snippet generated.'
 
@@ -413,18 +400,15 @@ class V2Chisel_pass1(Step):
             # extract hints with larger context
             chisel_original = data.get('chisel_original', '')
             new_hints = self._extract_chisel_subset(chisel_original, verilog_diff_text)
-            
 
             payload = {
                 'generate_diff': generated_diff,
                 'applier_error': last_error_msg,
-                'new_hints':     new_hints,
+                'new_hints': new_hints,
                 'verilog_diff': verilog_diff_text,
             }
-            resp = self.lw.inference(payload,
-                                     prompt_index='prompt_diff_not_found',
-                                     n=5)
-            prompt_str = self.lw.chat_template.format(payload)
+            resp = self.lw.inference(payload, prompt_index='prompt_diff_not_found', n=5)
+            self.lw.chat_template.format(payload)
             print('\n**** Buggy diff (prompt diff not found) ****')
             print(generated_diff)
             print('----------------------------------------------')
@@ -432,7 +416,7 @@ class V2Chisel_pass1(Step):
             print(resp[0])
             print('==============================================')
             if not resp:
-                print(f"[diff_not_found] empty response, continuing retry loop")
+                print('[diff_not_found] empty response, continuing retry loop')
                 continue
 
             # strip fences
@@ -441,21 +425,21 @@ class V2Chisel_pass1(Step):
             # try apply again
             # apply with ChiselDiffApplier
             applier = ChiselDiffApplier()
-            
+
             try:
                 chisel_updated = applier.apply_diff(new_generated_diff, chisel_original)
                 print('Applied the diff via ChiselDiffApplier.')
                 data['chisel_candidate'] = chisel_updated
             except Exception as e:
                 last_error_msg = str(e)
-                print(f"[diff_not_found] apply_diff failed: {last_error_msg}")
+                print(f'[diff_not_found] apply_diff failed: {last_error_msg}')
                 continue
-            
+
             return chisel_updated, new_generated_diff, True
 
         # all retries failed to apply
         self.input_data['metadata_context'] = base_ctx
-        print("After 5 iterations over Prompt_diff_not_found llm could not generate correct code!")
+        print('After 5 iterations over Prompt_diff_not_found llm could not generate correct code!')
         return None, new_generated_diff, False
 
 

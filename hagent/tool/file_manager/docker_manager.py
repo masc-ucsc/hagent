@@ -5,7 +5,7 @@ import threading
 import sys
 import time
 from datetime import datetime
-from typing import Optional, List, Dict, Tuple, Any, Union
+from typing import Optional, List, Dict, Tuple, Any
 
 
 class DockerManager:
@@ -358,7 +358,9 @@ class DockerManager:
             self.fm._state = 'ERROR'
             return False
 
-    def run(self, command: str, container_path: Optional[str] = '.', quiet: bool = False, config_sources: Optional[List[str]] = None) -> Tuple[int, str, str]:
+    def run(
+        self, command: str, container_path: Optional[str] = '.', quiet: bool = False, config_sources: Optional[List[str]] = None
+    ) -> Tuple[int, str, str]:
         """Execute command inside the container."""
         # Allow running in both CONFIGURED and EXECUTED states
         if self.fm._state not in ['CONFIGURED', 'EXECUTED']:
@@ -382,13 +384,13 @@ class DockerManager:
         try:
             # Build the command with sourcing configuration files if provided
             wrapped_command = command
-            
+
             # Add configuration sources if provided
             if config_sources:
                 source_commands = [f"source '{source}' 2>/dev/null || true" for source in config_sources]
                 config_prefix = '; '.join(source_commands)
-                wrapped_command = f"{config_prefix}; {wrapped_command}"
-            
+                wrapped_command = f'{config_prefix}; {wrapped_command}'
+
             # Use bash with login shell if available, otherwise fall back to sh
             if self._has_bash:
                 # When using bash, make it non-login if we have config sources to avoid double sourcing

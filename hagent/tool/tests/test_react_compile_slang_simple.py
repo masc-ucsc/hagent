@@ -8,9 +8,7 @@ using React, Compile_slang, and LLM_wrap. The tool uses diagnostic messages
 import sys
 import os
 import argparse
-import tempfile
-from typing import List, Dict
-import uuid
+from typing import List
 from hagent.tool.memory import Memory_shot
 
 from hagent.tool.react import React
@@ -81,7 +79,6 @@ class React_compile_slang:
 
 
 def main():
-    
     parser = argparse.ArgumentParser(description='Iteratively fix Verilog code using React, Compile_slang, and LLM_wrap.')
     parser.add_argument('verilog_file', help='Path to the Verilog source file')
     args = parser.parse_args()

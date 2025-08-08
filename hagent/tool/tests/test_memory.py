@@ -15,13 +15,20 @@ class TestFewShotMemory(unittest.TestCase):
         # Add related Verilog snippets
         self.memory.add(
             error_type='syntax_error',
-            fix=Memory_shot(question='always @(posedge clk) begin if (rst) q <= 0; else q <= d; end', answer='Flip1-flop with async reset')
+            fix=Memory_shot(
+                question='always @(posedge clk) begin if (rst) q <= 0; else q <= d; end', answer='Flip1-flop with async reset'
+            ),
         )
         self.memory.add(
             error_type='syntax_error2',
-            fix=Memory_shot(question='always @(posedge clk) begin if (!rst_n) q <= 0; else q <= d; end', answer='Flip2-flop with active-low reset')
+            fix=Memory_shot(
+                question='always @(posedge clk) begin if (!rst_n) q <= 0; else q <= d; end',
+                answer='Flip2-flop with active-low reset',
+            ),
         )
-        self.memory.add(error_type='syntax_error', fix=Memory_shot(question='assign q = d;', answer='Simple combinational assignment'))
+        self.memory.add(
+            error_type='syntax_error', fix=Memory_shot(question='assign q = d;', answer='Simple combinational assignment')
+        )
         self.memory.add(error_type='syntax_error3', fix=Memory_shot(question='potato;', answer='Anything match'))
 
     def tearDown(self):

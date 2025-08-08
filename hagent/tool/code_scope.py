@@ -319,4 +319,3 @@ class Code_scope:
 
         # Join all formatted lines with newlines
         return '\n'.join(result)
-
