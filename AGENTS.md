@@ -182,8 +182,22 @@ uv run ./scripts/build_perfetto_trace.py -i .
 
 1. Make changes to relevant step/tool/pipe
 2. Run tests: `uv run pytest --testmon`
-3. Check code quality: `uv run ruff check hagent && uv run ruff format hagent`
+3. **ALWAYS run code quality checks after making changes**: `uv run ruff check hagent && uv run ruff format hagent`
 4. Run coverage if needed: `uv run pytest --cov=hagent --cov-report=html`
+
+### Code Quality Requirements
+
+**IMPORTANT**: After modifying any code in this repository, you **must** run both ruff commands:
+
+```bash
+# Check for code issues and violations
+uv run ruff check hagent
+
+# Auto-format code to maintain consistent style
+uv run ruff format hagent
+```
+
+These commands ensure code quality, consistency, and compliance with the project's style guidelines. Make this a standard part of your development process - **never commit code changes without running ruff check and format first**.
 
 ## File Organization Notes
 

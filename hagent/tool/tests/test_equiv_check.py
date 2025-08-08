@@ -64,7 +64,12 @@ def test_setup_version_parsing_failure(prepare_checker, monkeypatch):
 
         return MockCompleted()
 
+    # Mock Docker fallback to fail
+    def mock_docker_fallback(self):
+        return False
+
     monkeypatch.setattr('subprocess.run', mock_run)
+    monkeypatch.setattr('hagent.tool.equiv_check.Equiv_check._setup_docker_fallback', mock_docker_fallback)
 
     checker = prepare_checker
     result = checker.setup()
@@ -86,7 +91,12 @@ def test_setup_version_too_old(prepare_checker, monkeypatch):
 
         return MockCompleted()
 
+    # Mock Docker fallback to fail
+    def mock_docker_fallback(self):
+        return False
+
     monkeypatch.setattr('subprocess.run', mock_run)
+    monkeypatch.setattr('hagent.tool.equiv_check.Equiv_check._setup_docker_fallback', mock_docker_fallback)
 
     checker = prepare_checker
     result = checker.setup()
