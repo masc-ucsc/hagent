@@ -4,10 +4,13 @@ from typing import Optional, Callable, List, Dict, Tuple
 import os
 from ruamel.yaml.scalarstring import LiteralScalarString
 from pathlib import Path
+import time
+import json
 
 import random
 from hagent.tool.compile import Diagnostic
 from hagent.tool.memory import FewShotMemory, Memory_shot
+from hagent.core.output_manager import get_output_path
 
 
 def process_multiline_strings(obj):
@@ -144,20 +147,6 @@ class React:
         check_callback: Callable[[str], List[Diagnostic]],
         fix_callback: Callable[[str, Diagnostic, Dict[str, str], bool, int], str],
     ) -> str:
-        """
-        Orchestrates the Re-Act loop:
-          1. Calls check_callback on the current code.
-          2. If no errors, returns the code immediately.
-          3. If errors are found, extracts the error type and retrieves a sample fix (if any).
-          4. Inserts a multi-line comment (with all diagnostic details) into the code.
-          5. On the first iteration, passes only a delta (a few lines around the error)
-             to fix_callback. If that fix does not work, applies the returned patch to the
-             full code. Subsequent iterations pass the full code.
-          6. Calls fix_callback to obtain a proposed fix.
-          7. Checks if progress is made or if iteration limit is reached.
-          8. Optionally learns new error examples if learning is enabled.
-          9. Returns the text that is error–free or an empty string if unable to fix.
-        """
         if not self._is_ready:
             self.error_message = 'React tool is not ready. Please run setup first.'
             return ''
@@ -165,77 +154,78 @@ class React:
         current_text = initial_text
         self.last_code = initial_text
 
-        for iteration in range(1, self._max_iterations + 1):
-            iteration_log: Dict = {'iteration': iteration, 'check': None, 'fix': None}
-            diagnostics = check_callback(current_text)
-            # Log all diagnostic details.
-            iteration_log['check'] = [{'msg': d.msg, 'loc': d.loc, 'hint': getattr(d, 'hint', '')} for d in diagnostics]
+        try:
+            for iteration in range(1, self._max_iterations + 1):
+                iteration_log: Dict = {'iteration': iteration, 'check': None, 'fix': None}
+                diagnostics = check_callback(current_text)
+                iteration_log['check'] = [{'msg': d.msg, 'loc': d.loc, 'hint': getattr(d, 'hint', '')} for d in diagnostics]
 
-            if not diagnostics:
+                if not diagnostics:
+                    self._log.append(iteration_log)
+                    self.last_code = current_text
+                    return current_text
+
+                error_type = diagnostics[0].msg
+
+                fix_example = Memory_shot(question='', answer='')
+                if self._memory:
+                    similar_examples = self._memory.find(error_type=error_type, fix_question=current_text)
+                    if similar_examples:
+                        if iteration <= 2:
+                            fix_example = similar_examples[0]
+                        else:
+                            fix_example = random.choice(similar_examples)
+
+                if iteration == 1:
+                    delta, start_line, end_line = self._get_delta(current_text, diagnostics[0].loc)
+                    try:
+                        annotated = diagnostics[0].insert_comment(delta, self._lang_prefix)
+                    except Exception as e:
+                        self.error_message = f'Failed to insert diagnostic comment in delta: {e}'
+                        self._log.append(iteration_log)
+                        return ''
+                    fixed_delta = fix_callback(annotated, diagnostics[0], fix_example, True, iteration)
+                    fix = Memory_shot(question=annotated, answer=fixed_delta)
+                    new_text = self._apply_patch(current_text, fixed_delta, start_line, end_line)
+                else:
+                    try:
+                        annotated = diagnostics[0].insert_comment(current_text, self._lang_prefix)
+                    except Exception as e:
+                        self.error_message = f'Failed to insert diagnostic comment: {e}'
+                        self._log.append(iteration_log)
+                        return ''
+                    new_text = fix_callback(annotated, diagnostics[0], fix_example, False, iteration)
+                    fix = Memory_shot(question=annotated, answer=new_text)
+
+                iteration_log['fix'] = new_text
+
+                new_diagnostics = check_callback(new_text)
+                iteration_log['post_check'] = [{'msg': d.msg, 'loc': d.loc, 'hint': getattr(d, 'hint', '')} for d in new_diagnostics]
                 self._log.append(iteration_log)
-                self.last_code = current_text
-                return current_text
 
-            error_type = diagnostics[0].msg
+                if not new_diagnostics:
+                    if self._learn_mode:
+                        memory_id = self._memory.add(error_type=diagnostics[0].msg, fix=fix)
+                        print(f'Added fix to memory with ID: {memory_id}')
+                    self.last_code = new_text
+                    return new_text
+                else:
+                    new_error_type = new_diagnostics[0].msg
+                    if new_error_type != error_type and self._learn_mode:
+                        memory_id = self._memory.add(error_type=diagnostics[0].msg, fix=fix)
+                        print(f'Added partial fix to memory with ID: {memory_id}')
+                    current_text = new_text
 
-            # Find similar examples from memory
-            fix_example = Memory_shot(question='', answer='')  #
-            if self._memory:
-                similar_examples = self._memory.find(error_type=error_type, fix_question=current_text)
-                if similar_examples:
-                    if iteration <= 2:
-                        fix_example = similar_examples[0]  # Best example
-                    else:
-                        fix_example = random.choice(similar_examples)
-
-            if iteration == 1:
-                # Use a delta: only a few lines around the first error.
-                delta, start_line, end_line = self._get_delta(current_text, diagnostics[0].loc)
-                try:
-                    annotated = diagnostics[0].insert_comment(delta, self._lang_prefix)
-                except Exception as e:
-                    self.error_message = f'Failed to insert diagnostic comment in delta: {e}'
-                    self._log.append(iteration_log)
-                    return ''
-                fixed_delta = fix_callback(annotated, diagnostics[0], fix_example, True, iteration)
-                fix = Memory_shot(question=annotated, answer=fixed_delta)
-                # Apply the returned patch to the full code.
-                new_text = self._apply_patch(current_text, fixed_delta, start_line, end_line)
-            else:
-                # Use the full code in subsequent iterations.
-                try:
-                    annotated = diagnostics[0].insert_comment(current_text, self._lang_prefix)
-                except Exception as e:
-                    self.error_message = f'Failed to insert diagnostic comment: {e}'
-                    self._log.append(iteration_log)
-                    return ''
-                new_text = fix_callback(annotated, diagnostics[0], fix_example, False, iteration)
-                fix = Memory_shot(question=annotated, answer=new_text)
-
-            iteration_log['fix'] = new_text
-
-            new_diagnostics = check_callback(new_text)
-            iteration_log['post_check'] = [{'msg': d.msg, 'loc': d.loc, 'hint': getattr(d, 'hint', '')} for d in new_diagnostics]
-            self._log.append(iteration_log)
-
-            if not new_diagnostics:
-                if self._learn_mode:
-                    memory_id = self._memory.add(error_type=diagnostics[0].msg, fix=fix)
-                    print(f'Added fix to memory with ID: {memory_id}')
-                self.last_code = new_text
-                return new_text
-            else:
-                new_error_type = new_diagnostics[0].msg
-                if new_error_type != error_type and self._learn_mode:
-                    memory_id = self._memory.add(error_type=diagnostics[0].msg, fix=fix)
-                    print(f'Added partial fix to memory with ID: {memory_id}')
-                current_text = new_text
-
-        self.last_code = current_text
-        return ''
+            self.last_code = current_text
+            return ''
+        finally:
+            try:
+                fname = f"react_{os.getpid()}_{int(time.time())}.json"
+                path = get_output_path(fname)
+                with open(path, 'w') as f:
+                    json.dump({'log': self._log, 'last_code': self.last_code}, f, indent=2)
+            except Exception:
+                pass
 
     def get_log(self) -> List[Dict]:
-        """
-        Returns the log of the iterations.
-        """
         return self._log
