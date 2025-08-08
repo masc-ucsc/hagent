@@ -170,7 +170,7 @@ class FilterLines:
             if stripped_line.startswith('//') or stripped_line.startswith('import '):
                 continue
             if line_no in candidate_line_nums:
-                output_lines.append(f"->    {line_no}: {line}")
+                output_lines.append(f'->    {line_no}: {line}')
             else:
                 output_lines.append(f'    {line}')
 

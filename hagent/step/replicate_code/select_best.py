@@ -3,17 +3,16 @@
 
 import os
 import sys
-import time
 import subprocess
 from hagent.core.step import Step
 from hagent.tool.equiv_check import Equiv_check
 from hagent.tool.extract_code import Extract_code_verilog
 
-class Select_best(Step):
 
+class Select_best(Step):
     def setup(self):
         super().setup()  # superclass
-        print(f"input_file:{self.input_file}")
+        print(f'input_file:{self.input_file}')
 
         self.verilog_extractor = Extract_code_verilog()
 
@@ -24,7 +23,6 @@ class Select_best(Step):
             err = eq_checker.get_error() or 'Yosys not found'
             print(f'[ERROR] Equiv_check setup failed: {err}')
             sys.exit(1)
-        
 
     def synthesize_module(self, code, mod_name, work_dir, liberty_file):
         """
@@ -32,12 +30,12 @@ class Select_best(Step):
         Returns the netlist file path.
         """
         # Create intermediate Verilog file
-        verilog_file = os.path.join(work_dir, f"{mod_name}_temp.v")
+        verilog_file = os.path.join(work_dir, f'{mod_name}_temp.v')
         with open(verilog_file, 'w') as f:
             f.write(code)
 
         # Synthesize using Yosys to generate the netlist with liberty file
-        netlist_file = os.path.join(work_dir, f"{mod_name}_netlist_temp.v")
+        netlist_file = os.path.join(work_dir, f'{mod_name}_netlist_temp.v')
         yosys_script = f"""
         read_verilog -sv -defer {verilog_file}
         hierarchy -top {mod_name};
@@ -50,16 +48,15 @@ class Select_best(Step):
         abc -liberty {liberty_file} -dff -keepff -g aig;
         write_verilog {netlist_file}
         """
-        yosys_cmd = ["yosys", "-p", yosys_script]
+        yosys_cmd = ['yosys', '-p', yosys_script]
 
         try:
             subprocess.run(yosys_cmd, check=True)
         except subprocess.CalledProcessError:
-            print(f"Error synthesizing {mod_name} with Yosys")
+            print(f'Error synthesizing {mod_name} with Yosys')
             return None
 
         return netlist_file
-
 
     def update_best_version(self, best_time, current_time, result, code):
         """Update the best version if the current arrival time is smaller."""
@@ -68,14 +65,13 @@ class Select_best(Step):
             return current_time
         return best_time
 
-
     def analyze_timing(self, netlist_file, mod_name, work_dir, liberty_file):
         """
         Analyze timing using OpenSTA and generate a timing report.
         Returns the arrival time extracted from the report.
         """
-        timing_report = os.path.join(work_dir, f"{mod_name}_timing.rpt")
-        sta_tcl = os.path.join(work_dir, f"{mod_name}_sta.tcl")
+        timing_report = os.path.join(work_dir, f'{mod_name}_timing.rpt')
+        sta_tcl = os.path.join(work_dir, f'{mod_name}_sta.tcl')
 
         # Generate OpenSTA TCL script
         with open(sta_tcl, 'w') as f:
@@ -92,36 +88,34 @@ class Select_best(Step):
             """)
 
         # Run OpenSTA with the generated TCL script
-        opensta_cmd = [os.path.expanduser("~/opensta/OpenSTA/app/sta"), sta_tcl]
+        opensta_cmd = [os.path.expanduser('~/opensta/OpenSTA/app/sta'), sta_tcl]
 
         try:
             subprocess.run(opensta_cmd, check=True)
         except subprocess.CalledProcessError:
-            print(f"Error analyzing timing for {mod_name} with OpenSTA")
+            print(f'Error analyzing timing for {mod_name} with OpenSTA')
             return float('inf')
-    
+
         return self.extract_arrival_time(timing_report)
-    
+
     def extract_arrival_time(self, report_path):
         """Extract the smallest arrival time from the timing report."""
         try:
             with open(report_path, 'r') as file:
                 for line in file:
-                    if "data arrival time" in line.lower():
+                    if 'data arrival time' in line.lower():
                         # Extract the first number (arrival time) from the line
                         parts = line.split()
                         for part in parts:
                             try:
                                 arrival_time = float(part)
-                                print(f"----\n ARRIVAL TIME: {arrival_time}  \n -----")
+                                print(f'----\n ARRIVAL TIME: {arrival_time}  \n -----')
                                 return arrival_time
                             except ValueError:
                                 continue
         except Exception as e:
-            print(f"Error reading timing report: {e}")
+            print(f'Error reading timing report: {e}')
         return float('inf')  # Return a large delay if parsing fails
-
-
 
     def run(self, data):
         """
@@ -130,7 +124,7 @@ class Select_best(Step):
         3. The definition with best or max freq is to be selected and stored in the same directory.
         4. output file should be named as: best_version_<mod_name>.v
         """
-        mod_name = os.path.splitext(os.path.basename(self.input_file))[0] #get module name from yaml file name
+        mod_name = os.path.splitext(os.path.basename(self.input_file))[0]  # get module name from yaml file name
         codes = data['optimized_equivalent']
         print(f'----mod_name:{mod_name}-----has {len(codes)} equivalent codes -----')
         work_dir = os.path.dirname(self.input_file)  # Use the directory of the input YAML file for intermediate files
@@ -143,12 +137,12 @@ class Select_best(Step):
             if not parsed_codes or not parsed_codes[0]:
                 continue
             code = parsed_codes[0]
-            netlist_file = self.synthesize_module(code, mod_name, work_dir, "sky130_fd_sc_hd__ff_100C_1v95.lib")
+            netlist_file = self.synthesize_module(code, mod_name, work_dir, 'sky130_fd_sc_hd__ff_100C_1v95.lib')
             if netlist_file:
-                arrival_time = self.analyze_timing(netlist_file, mod_name, work_dir, "sky130_fd_sc_hd__ff_100C_1v95.lib")
+                arrival_time = self.analyze_timing(netlist_file, mod_name, work_dir, 'sky130_fd_sc_hd__ff_100C_1v95.lib')
                 best_time = self.update_best_version(best_time, arrival_time, result, code)
 
-        print(f"Best version found with arrival time: {best_time:.2f}")
+        print(f'Best version found with arrival time: {best_time:.2f}')
 
         ##         os.makedirs(os.path.dirname(filename), exist_ok=True)
         ##         with open(filename, 'w') as f:
@@ -158,13 +152,7 @@ class Select_best(Step):
 
 
 if __name__ == '__main__':  # pragma: no cover
-
     sel_step = Select_best()
     sel_step.parse_arguments()
     sel_step.setup()
     sel_step.step()
-
-
-
-
-

@@ -49,7 +49,8 @@ def cluster_line_numbers(line_nums, max_gap=5):
 def main():
     fm = File_manager('mascucsc/hagent-xiangshan:2025.07')
     if not fm.setup():
-        print(f"Setup failed: {fm.get_error()}"); sys.exit(1)
+        print(f'Setup failed: {fm.get_error()}')
+        sys.exit(1)
 
     # track & patch as before...
     ifu = '/code/XiangShan/src/main/scala/xiangshan/frontend/IFU.scala'
@@ -57,25 +58,23 @@ def main():
     fm.track_file(ifu)
     fm.track_dir(rtl, ext='.sv')
     fm.apply_line_patch(
-        ifu, 257,
+        ifu,
+        257,
         '  f2_flush         := backend_redirect || mmio_redirect || wb_redirect',
-        '  f2_flush         := backend_redirect && mmio_redirect || wb_redirect'
+        '  f2_flush         := backend_redirect && mmio_redirect || wb_redirect',
     )
-    ec, _, _ = fm.run('make CONFIG=MinimalConfig EMU_THREADS=1 sim-verilog',
-                     container_path='/code/XiangShan')
+    ec, _, _ = fm.run('make CONFIG=MinimalConfig EMU_THREADS=1 sim-verilog', container_path='/code/XiangShan')
     if ec != 0:
-        print(f"Make failed: {fm.get_error()} code:{ec}"); sys.exit(7)
+        print(f'Make failed: {fm.get_error()} code:{ec}')
+        sys.exit(7)
 
     patches = fm.get_patch_dict().get('patch', [])
     sv_patches = [p for p in patches if p['filename'].endswith('.sv')]
     save_yaml({'patch': sv_patches}, 'xiangshan_sv_patches.yaml')
-    print(f"Saved {len(sv_patches)} SV diffs → xiangshan_sv_patches.yaml")
+    print(f'Saved {len(sv_patches)} SV diffs → xiangshan_sv_patches.yaml')
 
     # list all Scala files once (inside container)
-    ec, files_txt, _ = fm.run(
-        'find /code/XiangShan/src/main/scala/xiangshan -name "*.scala"',
-        container_path='/'
-    )
+    ec, files_txt, _ = fm.run('find /code/XiangShan/src/main/scala/xiangshan -name "*.scala"', container_path='/')
     scala_files = files_txt.splitlines()
 
     fg = Fuzzy_grep()
@@ -105,10 +104,7 @@ def main():
                 continue
             matches = fg.find_matches_in_text(content, terms, threshold=60)
             if matches:
-                file_hits[path] = {
-                    'lines': [ln for ln, _ in matches],
-                    'content': content.splitlines()
-                }
+                file_hits[path] = {'lines': [ln for ln, _ in matches], 'content': content.splitlines()}
 
         # cluster & slice
         blocks = []
@@ -117,25 +113,20 @@ def main():
             for start, end in clusters:
                 ctx_start = max(0, start - 5)
                 ctx_end = min(len(info['content']), end + 6)
-                snippet = "\n".join(
-                    f"{i+1}: {info['content'][i]}"
-                    for i in range(ctx_start, ctx_end)
-                )
-                blocks.append({
-                    'scala_file': path,
-                    'lines': f"{ctx_start+1}-{ctx_end}",
-                    'context': snippet
-                })
+                snippet = '\n'.join(f'{i + 1}: {info["content"][i]}' for i in range(ctx_start, ctx_end))
+                blocks.append({'scala_file': path, 'lines': f'{ctx_start + 1}-{ctx_end}', 'context': snippet})
 
-        hints.append({
-            'sv_file': patch['filename'],
-            'diff_snippet': "\n".join(diff.splitlines()[:3]) + "...",
-            'search_terms': terms,
-            'chisel_hints': blocks
-        })
+        hints.append(
+            {
+                'sv_file': patch['filename'],
+                'diff_snippet': '\n'.join(diff.splitlines()[:3]) + '...',
+                'search_terms': terms,
+                'chisel_hints': blocks,
+            }
+        )
 
     save_yaml(hints, 'xiangshan_hints.yaml')
-    print(f"Generated {len(hints)} hint entries → xiangshan_hints.yaml")
+    print(f'Generated {len(hints)} hint entries → xiangshan_hints.yaml')
 
 
 if __name__ == '__main__':

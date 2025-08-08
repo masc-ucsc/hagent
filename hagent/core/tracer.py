@@ -26,6 +26,7 @@ COST_PID = 2
 
 logger = logging.getLogger(__name__)
 
+
 def s_to_us(s: float) -> float:
     """
     Convert seconds to microseconds.
@@ -58,7 +59,7 @@ def read_yaml(input_file: Path) -> dict:
 
     try:
         yaml_obj = YAML(typ='safe')
-        with open(input_file, 'r', encoding="utf-8") as f:
+        with open(input_file, 'r', encoding='utf-8') as f:
             data = yaml_obj.load(f)
     except Exception as e:
         data = {'error': e}
@@ -145,6 +146,7 @@ def scan_for_yamls(run_dir: str) -> List[Path]:
     p = Path(run_dir).resolve()
     return list([yaml_f.resolve() for yaml_f in p.glob('*.yaml')])
 
+
 def check_initial(yaml_f: Path) -> bool:
     """
     Checks if a YAML file has no inputs/a start node.
@@ -163,10 +165,11 @@ def check_initial(yaml_f: Path) -> bool:
     """
     input_data = read_yaml(yaml_f)
     is_initial = False
-    if input_data.get("tracing", None) is None or len(input_data["tracing"]["input"]) == 0:
+    if input_data.get('tracing', None) is None or len(input_data['tracing']['input']) == 0:
         is_initial = True
-    logger.debug("%s: is_initial(%s)", yaml_f, is_initial)
+    logger.debug('%s: is_initial(%s)', yaml_f, is_initial)
     return is_initial
+
 
 def parse_yaml_files(discovery_dir: Path, yaml_files: List[Path]) -> Tuple[set, set, set]:
     """
@@ -348,11 +351,11 @@ class Tracer:
             for input in step.args['data']['tracing']['input']:
                 input_path = Path(input)
                 if input_path in initial:
-                    logger.debug("Graph construction -> %s ignored (initial file)", input_path)
+                    logger.debug('Graph construction -> %s ignored (initial file)', input_path)
                     continue
                 g.add_edge(input_path, output_path)
 
-        logger.debug("Generated Dependency Graph:")
+        logger.debug('Generated Dependency Graph:')
         for line in nx.generate_network_text(g):
             logger.debug(line)
 
@@ -389,7 +392,7 @@ class Tracer:
                 start, end = edge
                 start_step = cls.get_step_from_yaml(sg, start)
                 end_step = cls.get_step_from_yaml(sg, end)
-                logger.debug("Marking Flow from %s -> %s", start_step.name, end_step.name)
+                logger.debug('Marking Flow from %s -> %s', start_step.name, end_step.name)
                 Tracer.log(
                     TraceEvent(
                         name=flow_name,

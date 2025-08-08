@@ -71,7 +71,7 @@ class Equiv_check:
             self.error_message = f'Yosys not found or not accessible: {e}'
             return False
 
-    def check_equivalence(self, gold_code: str, gate_code: str, desired_top: str = "SingleCycleCPU") -> Optional[bool]:
+    def check_equivalence(self, gold_code: str, gate_code: str, desired_top: str = 'SingleCycleCPU') -> Optional[bool]:
         """
         Checks the equivalence of two Verilog designs:
           - gold_code: The 'gold' version to match
@@ -89,14 +89,14 @@ class Equiv_check:
             raise RuntimeError('Yosys not installed or setup() not called.')
 
         # 1) Validate each snippet has exactly one module
-        #desired_top = self._extract_single_module_name(gate_code)
+        # desired_top = self._extract_single_module_name(gate_code)
 
         gold_top = self._extract_module_name(gold_code, top_module=desired_top)
         gate_top = self._extract_module_name(gate_code, top_module=desired_top)
         if gold_top == gate_top:
-            print(f"gold_top provided = gate_top provided = {gate_top}")
+            print(f'gold_top provided = gate_top provided = {gate_top}')
         else:
-            raise ValueError(f"Error: gold_top ({gold_top}) and gate_top ({gate_top}) do not match!")
+            raise ValueError(f'Error: gold_top ({gold_top}) and gate_top ({gate_top}) do not match!')
 
         # 2) Write each design to a temp file
         #
@@ -106,9 +106,7 @@ class Equiv_check:
         gate_v_filename = self._write_temp_verilog(work_dir, gate_code, 'gate')
 
         # 3) Run standard 'equiv -assert' approach
-        code_equiv, out_equiv, err_equiv = self._run_equiv_method(
-            work_dir, gold_v_filename, gate_v_filename, gold_top, gate_top
-        )
+        code_equiv, out_equiv, err_equiv = self._run_equiv_method(work_dir, gold_v_filename, gate_v_filename, gold_top, gate_top)
         method1_result = self._analyze_yosys_result(code_equiv, out_equiv, err_equiv, method='equiv')
         if method1_result is not None:
             self.equivalence_check_result = method1_result
@@ -143,19 +141,13 @@ class Equiv_check:
         failures: List[Tuple[str, str]] = []
 
         # Pattern 1: “Trying to prove $equiv for \MODULE.IO: failed.”
-        pat1 = re.compile(
-            r"""Trying to prove \$equiv for \\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+):\s*failed"""
-        )
+        pat1 = re.compile(r"""Trying to prove \$equiv for \\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+):\s*failed""")
 
         # Pattern 2: “Unproven $equiv ...: \MODULE.IO_NAME_gold \MODULE.IO_NAME_gate”
-        pat2 = re.compile(
-            r"""Unproven \$equiv [^:]*:\s*\\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)_(?:gold|gate)"""
-        )
+        pat2 = re.compile(r"""Unproven \$equiv [^:]*:\s*\\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)_(?:gold|gate)""")
 
         # Pattern 3: summary "ERROR: Found N unproven $equiv cells in 'equiv_status ...'."
-        pat3 = re.compile(
-            r"""ERROR:\s*Found\s+(\d+)\s+unproven\s+\$equiv\s+cells""", flags=re.IGNORECASE
-        )
+        pat3 = re.compile(r"""ERROR:\s*Found\s+(\d+)\s+unproven\s+\$equiv\s+cells""", flags=re.IGNORECASE)
 
         for line in out.splitlines() + err.splitlines():
             # Check for "Trying to prove $equiv for \Module.IO: failed"
@@ -177,11 +169,10 @@ class Equiv_check:
             if m3:
                 count = m3.group(1)
                 # We don't know module/IO here, just store a summary
-                failures.append(("<summary>", f"{count} unproven $equiv cells"))
+                failures.append(('<summary>', f'{count} unproven $equiv cells'))
                 continue
 
         return failures
-
 
     # ------------------- Internal Helpers -------------------
 
@@ -314,7 +305,7 @@ class Equiv_check:
 
     def _analyze_yosys_result(self, code: int, out: str, err: str, method: str) -> Optional[bool]:
         if 'ERROR' in err:
-            print("WARNING: YOSYS failed to check with this message (likely a Verilog Syntax Error)", file=sys.stderr)
+            print('WARNING: YOSYS failed to check with this message (likely a Verilog Syntax Error)', file=sys.stderr)
             print(err, file=sys.stderr)
             return False
 

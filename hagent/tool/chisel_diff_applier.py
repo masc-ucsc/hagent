@@ -4,6 +4,7 @@
 
 import re
 
+
 class ChiselDiffApplier:
     """
     A tool to apply a unified diff to a Chisel source code snippet.
@@ -24,8 +25,7 @@ class ChiselDiffApplier:
         self.error_message = ''
 
     def apply_diff(self, diff_text: str, code_text: str) -> str:
-        diff_lines = [l for l in diff_text.splitlines()
-                      if l.lstrip().startswith(('@@', ' ', '-', '+'))]
+        diff_lines = [line for line in diff_text.splitlines() if line.lstrip().startswith(('@@', ' ', '-', '+'))]
         code_lines = code_text.splitlines()
         applied_any_hunk = False
         self.error_message = ''
@@ -45,22 +45,25 @@ class ChiselDiffApplier:
                 pat = re.compile(r'^(\s*)([-+  ])\s?(.*)$')
                 for line in hunk:
                     m = pat.match(line)
-                    if not m: continue
+                    if not m:
+                        continue
                     mark, txt = m.group(2), m.group(3)
-                    if mark == '-': removal.append(txt)
-                    elif mark == '+': addition.append(txt)
-                    elif mark == ' ': context.append(txt)
+                    if mark == '-':
+                        removal.append(txt)
+                    elif mark == '+':
+                        addition.append(txt)
+                    elif mark == ' ':
+                        context.append(txt)
 
                 if removal:
                     # 1) try contiguous-block replacement
                     block_len = len(removal)
                     found = False
                     for j in range(len(code_lines) - block_len + 1):
-                        if all(code_lines[j+k].strip() == removal[k].strip()
-                               for k in range(block_len)):
+                        if all(code_lines[j + k].strip() == removal[k].strip() for k in range(block_len)):
                             indent = re.match(r'^(\s*)', code_lines[j]).group(1)
                             new_block = [indent + a.lstrip() for a in addition]
-                            code_lines = code_lines[:j] + new_block + code_lines[j+block_len:]
+                            code_lines = code_lines[:j] + new_block + code_lines[j + block_len :]
                             applied_any_hunk = True
                             found = True
                             break
@@ -78,11 +81,8 @@ class ChiselDiffApplier:
                                     break
                         if matched != len(removal):
                             # some lines never found
-                            missing = [r for r in removal
-                                       if not any(cl.strip() == r.strip() for cl in code_lines)]
-                            self.error_message = (
-                                f"Cannot apply diff: these removal lines not found:\n{missing}"
-                            )
+                            missing = [r for r in removal if not any(cl.strip() == r.strip() for cl in code_lines)]
+                            self.error_message = f'Cannot apply diff: these removal lines not found:\n{missing}'
                             raise RuntimeError(self.error_message)
 
                 else:
@@ -93,20 +93,19 @@ class ChiselDiffApplier:
                             if orig.strip() == ctx:
                                 indent = re.match(r'^(\s*)', orig).group(1)
                                 new_block = [indent + a.lstrip() for a in addition]
-                                code_lines = code_lines[:j+1] + new_block + code_lines[j+1:]
+                                code_lines = code_lines[: j + 1] + new_block + code_lines[j + 1 :]
                                 applied_any_hunk = True
                                 break
             else:
                 i += 1
 
-        new_code = "\n".join(code_lines)
+        new_code = '\n'.join(code_lines)
 
         # final fallback on io.out := io.in -> ~ mapping
         if not applied_any_hunk:
-            new_code, cnt = re.subn(r'io\.out\s*:=\s*io\.in',
-                                    'io.out := ~io.in', new_code)
+            new_code, cnt = re.subn(r'io\.out\s*:=\s*io\.in', 'io.out := ~io.in', new_code)
             if cnt == 0:
-                self.error_message = "Diff could not be applied to the code"
+                self.error_message = 'Diff could not be applied to the code'
                 raise RuntimeError(self.error_message)
 
         return new_code

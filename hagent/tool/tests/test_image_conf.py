@@ -26,7 +26,7 @@ class TestImageConf:
         # Cleanup: ensure the instance is properly destroyed
         try:
             del fm
-        except:
+        except Exception:
             pass
 
     @pytest.fixture

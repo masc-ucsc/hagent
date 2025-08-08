@@ -88,7 +88,7 @@ class Chisel2v:
         # If not, append the top-level snippet at the end
         if not object_exists:
             # Adding yosys options to avoid some popular systemVerilog
-            print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@classname:", classname)
+            print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@classname:', classname)
             snippet = (
                 f'\nobject Top extends App {{\n'
                 f'  ChiselStage.emitSystemVerilogFile(\n'

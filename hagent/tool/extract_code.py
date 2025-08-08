@@ -35,7 +35,7 @@ class Extract_code_verilog(Extract_code):
         current_module = ''
         preprocessor_lines = []
         in_module = False
-        
+
         for line in txt.splitlines():
             if in_module:
                 current_module += line + '\n'

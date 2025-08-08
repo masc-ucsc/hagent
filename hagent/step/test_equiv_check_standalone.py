@@ -12,13 +12,13 @@ Usage:
 
 import sys
 from ruamel.yaml import YAML
-from ruamel.yaml.scalarstring import LiteralScalarString
 from hagent.tool.equiv_check import Equiv_check
 from typing import List, Tuple
 
+
 def main():
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} input.yaml")
+        print(f'Usage: {sys.argv[0]} input.yaml')
         sys.exit(1)
 
     input_file = sys.argv[1]
@@ -34,15 +34,15 @@ def main():
         sys.exit(1)
 
     # Get gold_code from either the top-level key or from nested chisel_pass1
-    if "verilog_candidate" in data:
-        gate_code = data["verilog_candidate"]
-    elif "chisel_pass1" in data and "verilog_candidate" in data["chisel_pass1"]:
-        gate_code = data["chisel_pass1"]["verilog_candidate"]
+    if 'verilog_candidate' in data:
+        gate_code = data['verilog_candidate']
+    elif 'chisel_pass1' in data and 'verilog_candidate' in data['chisel_pass1']:
+        gate_code = data['chisel_pass1']['verilog_candidate']
     else:
-        gate_code = ""
+        gate_code = ''
 
     # Use 'verilog_fixed' as ref_code.
-    gold_code = data.get("verilog_fixed", "")
+    gold_code = data.get('verilog_fixed', '')
 
     if not gate_code or not gold_code:
         print("Input YAML must contain keys 'verilog_candidate' and 'verilog_fixed'.")
@@ -84,7 +84,7 @@ def main():
         lec_val = 0
 
     # Add new field "lec" to the YAML data without modifying other fields
-    data["lec"] = lec_val
+    data['lec'] = lec_val
 
     # Write the updated YAML back to the same file
     try:
@@ -93,6 +93,7 @@ def main():
     except Exception as e:
         print(f"Error writing YAML file '{input_file}': {e}")
         sys.exit(1)
+
 
 if __name__ == '__main__':
     main()

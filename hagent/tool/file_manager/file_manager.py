@@ -85,24 +85,24 @@ class File_manager:
         """
         Add a configuration file path to be sourced before running commands.
         The file will be sourced before any command executed by run().
-        
+
         Args:
             config_path: Path to the configuration file inside the container.
                         This file should exist and be readable.
-        
+
         Returns:
             A tuple of (exit_code, stdout, stderr) indicating whether the file exists and is readable.
         """
         # First verify the file exists and is readable
         exit_code, stdout, stderr = self._docker.run(f'test -r "{config_path}"', quiet=True)
-        
+
         if exit_code == 0:
             self._config_sources.append(config_path)
         else:
             self.error_message = f"Configuration file '{config_path}' does not exist or is not readable: {stderr}"
-            
+
         return exit_code, stdout, stderr
-    
+
     def run(self, command: str, container_path: Optional[str] = '.', quiet: bool = False) -> Tuple[int, str, str]:
         """Execute command inside the container."""
         return self._docker.run(command, container_path, quiet, config_sources=self._config_sources)

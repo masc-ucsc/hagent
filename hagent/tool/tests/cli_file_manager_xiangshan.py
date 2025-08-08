@@ -4,7 +4,6 @@ Simple test example for File_manager tracking functionality.
 Demonstrates track_file, track_dir, and patch generation.
 """
 
-import sys
 import pytest
 
 from hagent.tool.file_manager import File_manager

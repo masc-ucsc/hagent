@@ -4,7 +4,6 @@ Test file specifically designed to increase coverage of the React class.
 This file targets uncovered lines in react.py.
 """
 
-import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -59,7 +58,7 @@ class TestReactCoverage(unittest.TestCase):
         """Set up for tests."""
         self.react = React()
         # Create a temporary DB file for testing
-        self.temp_db = tempfile.mkdtemp() # NamedTemporaryFile(delete=False, suffix='.yaml')
+        self.temp_db = tempfile.mkdtemp()  # NamedTemporaryFile(delete=False, suffix='.yaml')
 
     def tearDown(self):
         """Clean up after tests."""

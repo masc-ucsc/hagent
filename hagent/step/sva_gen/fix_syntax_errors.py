@@ -12,16 +12,15 @@
 
 import re
 import os
-import argparse
 
 import subprocess
-#from cva6_main_formal import sva
-from parse_jg_sva_log import jg_post_process
+
+# from cva6_main_formal import sva
 import yaml
 
-from hagent.core.llm_wrap import LLM_wrap
 
-#llm = LLM_wrap(name="default", conf_file=args.llm_conf, log_file=io_config["llm_log_file"])
+# llm = LLM_wrap(name="default", conf_file=args.llm_conf, log_file=io_config["llm_log_file"])
+
 
 # replace ' assert (' with ' assert property (' in the assertion file and replace 'MODULE' with the module name for initial debugging
 def replace_assertions(file_path, module_name):
@@ -34,12 +33,13 @@ def replace_assertions(file_path, module_name):
             line = line.replace('MODULE', module_name)
             file.write(line)
 
+
 # extract errors from the log file, and assertions from the assertion file
 def extract_errors(log_file_path, compiler_flag):
-    Jasper_error_pattern = r"^\[ERROR.*?\]\s.*?\((\d+)\):\s(.+)$"
-    #Slang_error_pattern = '^(.+\.sv):(\d+):(\d+): error: (.+)$'
+    Jasper_error_pattern = r'^\[ERROR.*?\]\s.*?\((\d+)\):\s(.+)$'
+    # Slang_error_pattern = '^(.+\.sv):(\d+):(\d+): error: (.+)$'
     Slang_error_pattern = r'^(.+\.sv):(\d+):(\d+): error: (.+)$'
-    #always_comb_regex = r'always_comb\s+begin(?:\s+:\s*\w+)?\s*((?:[^e]|e(?!nd\b))*?)\s*end\b'
+    # always_comb_regex = r'always_comb\s+begin(?:\s+:\s*\w+)?\s*((?:[^e]|e(?!nd\b))*?)\s*end\b'
 
     errors = []
 
@@ -60,22 +60,22 @@ def extract_errors(log_file_path, compiler_flag):
                 match = re.match(Slang_error_pattern, line)
                 if match:
                     line_number = match.group(2)
-                    #error_message = match.group(2)
+                    # error_message = match.group(2)
                     errors.append((line_number, line))
         print(errors)
 
     return errors
 
+
 # get the assertion from the assertion file with the given line number
 def extract_connected_assertions(file_path, line_number):
-
     file = open(file_path, 'r')
     lines = file.readlines()
     # Split the text into lines
-    #lines = text.splitlines()
+    # lines = text.splitlines()
 
     # Check if the given line number is within the bounds
-    #if line_number < 0 or line_number >= len(lines):
+    # if line_number < 0 or line_number >= len(lines):
     #    raise ValueError("Line number is out of range.")
 
     # Find connected lines before the given line number
@@ -89,8 +89,7 @@ def extract_connected_assertions(file_path, line_number):
         end += 1
 
     # Return the connected lines around the given line number
-    return str(lines[start:end + 1])
-
+    return str(lines[start : end + 1])
 
 
 def extract_property_blocks(file_path):
@@ -111,7 +110,7 @@ def extract_property_blocks(file_path):
             # Stop collecting when '// assertions/property above' is encountered
             if stripped_line.startswith('// assertions/property above') and collect_lines:
                 current_block.append(line.strip())  # Add the last line to the block
-                result.append("\n".join(current_block))  # Save the block
+                result.append('\n'.join(current_block))  # Save the block
                 collect_lines = False
                 continue
 
@@ -120,6 +119,7 @@ def extract_property_blocks(file_path):
                 current_block.append(line.strip())
 
     return result
+
 
 # write the fixed assertions without plain text explanation back to the assertion file
 def write_back_fixed_sva(assertion_fix_temp_file, fixed_assertion_file):
@@ -132,9 +132,10 @@ def write_back_fixed_sva(assertion_fix_temp_file, fixed_assertion_file):
             line = line.replace('// assertions/property below', '')
         sva_block.append(line)
 
-    #print(sva_block)
-    with open(fixed_assertion_file, "a") as file:
+    # print(sva_block)
+    with open(fixed_assertion_file, 'a') as file:
         file.writelines(sva_block)
+
 
 # delete the error assertions from the assertion file given the line number
 def delete_error_sva(file_path, line_number):
@@ -156,31 +157,31 @@ def delete_error_sva(file_path, line_number):
     # Find the start index (empty line above the line_number)
     start_index = line_number
     while start_index > 0:
-        if start_index < len(lines) and lines[start_index - 1].strip() == "":
+        if start_index < len(lines) and lines[start_index - 1].strip() == '':
             break
         start_index -= 1
 
     # Find the end index (empty line below the line_number)
     end_index = line_number
     while end_index < len(lines) - 1:
-        if lines[end_index + 1].strip() == "":
+        if lines[end_index + 1].strip() == '':
             break
         end_index += 1
 
     # Delete lines from start_index to end_index (inclusive)
-    del lines[start_index:end_index + 1]
+    del lines[start_index : end_index + 1]
 
     # Write the modified lines back to the file
     with open(file_path, 'w') as file:
         file.writelines(lines)
 
-    print("Error assertions deleted successfully.")
+    print('Error assertions deleted successfully.')
+
 
 # send request to OpenAI API to fix the syntax error, and delete the sva from the sva object
-#modified version
-#def request_fix(error_message, sva_object, prop_index):
+# modified version
+# def request_fix(error_message, sva_object, prop_index):
 def request_fix(error_message, sva_object, prop_index, llm):
-
     if not error_message:
         print('---------Error message is empty-----------\n')
         return
@@ -189,8 +190,10 @@ def request_fix(error_message, sva_object, prop_index, llm):
         prop_content = file.read()
 
     messages = [
-        {"role": "system", "content": "You are an expert in fixing SystemVerilog code."},
-        {"role": "user", "content": f"""The following is a property file for formal verification:
+        {'role': 'system', 'content': 'You are an expert in fixing SystemVerilog code.'},
+        {
+            'role': 'user',
+            'content': f"""The following is a property file for formal verification:
 
 '{prop_content}'
 
@@ -198,21 +201,19 @@ It has the following error message from JasperGold with the line number and the 
 '{error_message}'.
 
 Can you fix it? Only return the module that contains the fixed assertion, do not return plain text.
-Do not use backticks to wrap the code. Do not modify the module port declaration. Do not modify the packages."""}
+Do not use backticks to wrap the code. Do not modify the module port declaration. Do not modify the packages.""",
+        },
     ]
 
-    prompt_dict = {
-        "system": messages[0]["content"],
-        "user": messages[1]["content"]
-    }
+    prompt_dict = {'system': messages[0]['content'], 'user': messages[1]['content']}
     print('Sending to LLM...')
     print(prompt_dict)
 
     write_prompt_log(messages)
-    response = llm.inference(prompt_dict, prompt_index="fix")
+    response = llm.inference(prompt_dict, prompt_index='fix')
 
     if not response:
-        print("No response received from LLM.")
+        print('No response received from LLM.')
         return
 
     fixed_code = response[0]
@@ -230,24 +231,34 @@ def write_prompt_log(message):
         file.write(str(message))
         file.close()
 
+
 # need to make sure Slang has needed packages in case of errors like below
 # slang: /mada/software/cadence/JASPER24/Linux64/lib/libstdc++.so.6: version GLIBCXX_3.4.32' not found (required by slang)
 # slang: /mada/software/cadence/JASPER24/Linux64/lib/libstdc++.so.6: version CXXABI_1.3.15' not found (required by slang)
 # for the above mistake, run 'export LD_LIBRARY_PATH=/usr/lib64:$LD_LIBRARY_PATH'
 def check_syntax_error_with_slang(sva_object):
     print('-------------------Checking syntax error with Slang---------------------\n')
-    os.environ["LD_LIBRARY_PATH"] = "/usr/lib64:" + os.environ.get("LD_LIBRARY_PATH", "")
+    os.environ['LD_LIBRARY_PATH'] = '/usr/lib64:' + os.environ.get('LD_LIBRARY_PATH', '')
     slang_err_msg_file = 'syntax_error_slang.txt'
     if not os.path.exists(slang_err_msg_file):
         slang_err_msg_file = os.path.join(os.getcwd(), slang_err_msg_file)
     with open(slang_err_msg_file, 'w') as f:
-        slang_proc = subprocess.Popen(f'slang ariane/src/include/riscv.sv ariane/include/ariane_pkg.sv ' + sva_object.prop_location + ' > syntax_error_slang.txt', stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid, shell=True, text=True )
-        #print('Slang stdout and stderr below\n')
+        slang_proc = subprocess.Popen(
+            'slang ariane/src/include/riscv.sv ariane/include/ariane_pkg.sv '
+            + sva_object.prop_location
+            + ' > syntax_error_slang.txt',
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid,
+            shell=True,
+            text=True,
+        )
+        # print('Slang stdout and stderr below\n')
         stdout, stderr = slang_proc.communicate()
         print(stdout)
         print(stderr)
         for line in stderr.splitlines():
-            if ('error: unknown class or package' not in line):
+            if 'error: unknown class or package' not in line:
                 f.write(line + '\n')
     if stderr and 'error' in stderr:
         if 'error: unknown class or package' not in stderr:
@@ -256,6 +267,7 @@ def check_syntax_error_with_slang(sva_object):
     else:
         print('Errors not found with Slang\n')
         return None
+
 
 def delete_syntax_errors(error_output, sva_object):
     with open(sva_object.prop_location, 'r') as f:
@@ -284,26 +296,29 @@ def delete_syntax_errors(error_output, sva_object):
     print('-----------Deleted lines around with errors from property module---------------\n')
 
 
-
 # add syntax error free sva by Jasper to collection, feed to Jasper to run
 def add_err_free_sva_collection(sva_object, err_free_sva_collection_path):
     with open(err_free_sva_collection_path, 'a+') as file:
         file.write(sva_object.sva)
+
 
 # add the sva which passes Jasper to the collection
 def add_useful_sva_collection(sva_object, useful_sva_collection_path):
     with open(useful_sva_collection_path, 'a+') as file:
         file.write(sva_object.sva)
 
+
 # add the erroneous sva detected by Slang to the collection
 def add_defect_sva_collection(sva_object, defect_sva_collection_path):
     with open(defect_sva_collection_path, 'a+') as file:
         file.write(sva_object.sva)
 
+
 # add failed sva by Jasper to collection
 def add_failed_sva_collection(sva_object, failed_sva_collection_path):
     with open(failed_sva_collection_path, 'a+') as file:
         file.write(sva_object.sva)
+
 
 # Extract signal names from a YAML file.
 """def extract_signals_from_yaml(yaml_file):
@@ -318,37 +333,39 @@ def add_failed_sva_collection(sva_object, failed_sva_collection_path):
     return signal_list
     #return [entry["Signal name"] for entry in data  if "Signal name" in entry]"""
 
+
 def extract_signals_from_yaml(yaml_file):
     signal_list = []
-    with open(yaml_file, "r") as file:
+    with open(yaml_file, 'r') as file:
         data = yaml.safe_load(file)
         for category in data.values():
             for entry in category:
-                if "Signal name" in entry and "`" not in entry["Signal name"]:
-                    signal_list.append(entry["Signal name"])
+                if 'Signal name' in entry and '`' not in entry['Signal name']:
+                    signal_list.append(entry['Signal name'])
     return signal_list
+
 
 # Generates a formal verification module declaration based on a SystemVerilog file and its signals.
 def generate_Jaspergold_property_module(sva_obj, signal_list, module_property_file, index):
     import re
 
     original_module_name = sva_obj.module
-    prop_module_name = f"{original_module_name}_prop"
+    prop_module_name = f'{original_module_name}_prop'
 
     # Extract the module's ports
     port_section_match = re.search(r'\bmodule\s+\w+\s*\((.*?)\);', sva_obj.rtl_design, re.S)
-    ports = port_section_match.group(1).strip() if port_section_match else ""
+    port_section_match.group(1).strip() if port_section_match else ''
 
     # Extract import statements and parameters
-    imports = re.findall(r'\bimport\s+[^;]+;', sva_obj.rtl_design)
-    parameters = re.findall(r"parameter.*=.*", sva_obj.rtl_design)
+    re.findall(r'\bimport\s+[^;]+;', sva_obj.rtl_design)
+    parameters = re.findall(r'parameter.*=.*', sva_obj.rtl_design)
 
     # Extract relevant signal declarations
     signal_definitions = []
     for signal in signal_list[:]:
         for line in sva_obj.rtl_design.split('\n'):
             if signal in line and '=' not in line:
-                signal_declaration_regex = rf"^(?=.*\b(?:input|output|inout|logic|reg|wire|int|bit|::)\b).*\s*\w*\s*\b{signal}\b"
+                signal_declaration_regex = rf'^(?=.*\b(?:input|output|inout|logic|reg|wire|int|bit|::)\b).*\s*\w*\s*\b{signal}\b'
                 signal_match = re.search(signal_declaration_regex, line)
                 if signal_match:
                     line = line.split('//')[0].strip()
@@ -361,7 +378,11 @@ def generate_Jaspergold_property_module(sva_obj, signal_list, module_property_fi
                         line = line.replace('automatic', ' ')
                     if 'output' in line:
                         line = line.replace('output', 'input')
-                    if not (line.lstrip().startswith("input") or line.lstrip().startswith("output") or line.lstrip().startswith("inout")):
+                    if not (
+                        line.lstrip().startswith('input')
+                        or line.lstrip().startswith('output')
+                        or line.lstrip().startswith('inout')
+                    ):
                         line = 'input        ' + line.lstrip()
                     if line not in signal_definitions:
                         signal_definitions.append(line)
@@ -375,36 +396,36 @@ def generate_Jaspergold_property_module(sva_obj, signal_list, module_property_fi
     generated_module = []
 
     # Header comment
-    generated_module.append("// Auto-generated SystemVerilog Assertions (SVA)\n\n")
+    generated_module.append('// Auto-generated SystemVerilog Assertions (SVA)\n\n')
 
     # Imports (use your default or RTL-specific)
-    generated_module.append("// Imported packages\n")
-    generated_module.append("import ariane_pkg::*;\n")
-    generated_module.append("import riscv::*;\n")
-    generated_module.append("import std_cache_pkg::*;\n\n")
+    generated_module.append('// Imported packages\n')
+    generated_module.append('import ariane_pkg::*;\n')
+    generated_module.append('import riscv::*;\n')
+    generated_module.append('import std_cache_pkg::*;\n\n')
 
     # Module declaration
-    generated_module.append(f"module {prop_module_name}\n")
+    generated_module.append(f'module {prop_module_name}\n')
 
     if parameters:
-        generated_module.append("#(\n")
-        generated_module.extend(f"    {param}\n" for param in parameters)
-        generated_module.append(")\n")
+        generated_module.append('#(\n')
+        generated_module.extend(f'    {param}\n' for param in parameters)
+        generated_module.append(')\n')
 
-    generated_module.append("(\n")
+    generated_module.append('(\n')
     for line in signal_definitions:
-        generated_module.append(f"    {line}\n")
-    generated_module.append(");\n\n")
+        generated_module.append(f'    {line}\n')
+    generated_module.append(');\n\n')
 
     # Append the selected assertion
     generated_module.append(sva_obj.sva_list[index])
-    generated_module.append("\n\nendmodule\n")
+    generated_module.append('\n\nendmodule\n')
 
     # Write the final module
-    with open(module_property_file, "w") as f:
+    with open(module_property_file, 'w') as f:
         f.writelines(generated_module)
 
-    print(f"✅ Generated module written to {module_property_file}.")
+    print(f'✅ Generated module written to {module_property_file}.')
 
 
 def create_files_for_jg(base_path, module_name, rtl_src_path, index):
@@ -430,8 +451,8 @@ ${{PROP_PATH}}/{module_name}_bind.sv
 ${{DUT_ROOT}}/src/{rtl_src_path}
 ${{INC_PATH}}/std_cache_pkg.sv
 """
-    files_vc_file = os.path.join(base_path, "files_" + str(index) + ".vc")
-    with open(files_vc_file, "w") as vc_file:
+    files_vc_file = os.path.join(base_path, 'files_' + str(index) + '.vc')
+    with open(files_vc_file, 'w') as vc_file:
         vc_file.write(files_vc_content)
     print(f"Files.vc for sva id '{index}' created successfully at '{base_path}'!")
 
@@ -445,19 +466,23 @@ def create_jaspergold_structure(base_path, module_name, signal_list, rtl_src_pat
     """
     if not os.path.exists(base_path):
         os.makedirs(base_path, exist_ok=True)
-    fpv_module_file = os.path.join(base_path, f"fpv_{module_name}.tcl")
-    manual_sub_file = os.path.join(base_path, "manual_sub.vc")
-    binding_file= os.path.join(base_path, f"{module_name}_bind.sv")
+    fpv_module_file = os.path.join(base_path, f'fpv_{module_name}.tcl')
+    manual_sub_file = os.path.join(base_path, 'manual_sub.vc')
+    binding_file = os.path.join(base_path, f'{module_name}_bind.sv')
 
     # test few signals
-    #signal_list = extract_signals_from_yaml('signals/multiplier_signal_extractioncopy.yaml')
+    # signal_list = extract_signals_from_yaml('signals/multiplier_signal_extractioncopy.yaml')
     # bind.sv content
     bind_module_connections = []
     for signal in signal_list:
-        bind_module_connections.append(f"   .{signal}({module_name}.{signal})")
-    connection_list =  ",\n".join(bind_module_connections)
-    bind_content = f"""bind {module_name} {module_name}_prop
-  #() u_{module_name}_sva(""" + connection_list + """);"""
+        bind_module_connections.append(f'   .{signal}({module_name}.{signal})')
+    connection_list = ',\n'.join(bind_module_connections)
+    bind_content = (
+        f"""bind {module_name} {module_name}_prop
+  #() u_{module_name}_sva("""
+        + connection_list
+        + """);"""
+    )
 
     # fpv_module.tcl content
     fpv_module_content = f"""
@@ -516,11 +541,11 @@ ${INC_PATH}/std_cache_pkg.sv
 """
 
     # Write the content to the respective files
-    with open(fpv_module_file, "w") as fpv_file:
+    with open(fpv_module_file, 'w') as fpv_file:
         fpv_file.write(fpv_module_content)
         print('----Created fpv .tcl file----', fpv_module_file)
 
-    with open(manual_sub_file, "w") as manual_file:
+    with open(manual_sub_file, 'w') as manual_file:
         manual_file.write(manual_sub_content)
 
     with open(binding_file, 'w') as file:

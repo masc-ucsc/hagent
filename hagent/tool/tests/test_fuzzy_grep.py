@@ -5,7 +5,7 @@ Unit tests for the Fuzzy_grep tool.
 
 import os
 import unittest
-from unittest.mock import patch, mock_open
+from unittest.mock import patch
 from hagent.tool.fuzzy_grep import Fuzzy_grep
 
 
@@ -40,10 +40,7 @@ class TestFuzzGrep(unittest.TestCase):
             ]
         )
         results = self.tool.find_matches_in_text(text, ['Example', 'test'], threshold=70)
-        expected = [
-            (1, 'This line has Example_string and test_value.'),
-            (3, 'Yet another line with example and test3.')
-        ]
+        expected = [(1, 'This line has Example_string and test_value.'), (3, 'Yet another line with example and test3.')]
         self.assertEqual(results, expected)
 
     def test_search_text_input(self):
@@ -164,13 +161,12 @@ class TestFuzzGrep(unittest.TestCase):
         self.tool.setup('verilog')
 
         # Line with only reserved keywords
-        line = "module test endmodule"
+        line = 'module test endmodule'
         self.assertFalse(self.tool.line_matches(line, ['module'], threshold=70))
 
         # Line with both reserved and non-reserved words
-        line = "module custom_module endmodule"
+        line = 'module custom_module endmodule'
         self.assertTrue(self.tool.line_matches(line, ['custommodule'], threshold=70))
-
 
 
 if __name__ == '__main__':

@@ -4,7 +4,6 @@
 import os
 import tempfile
 import pytest
-from unittest.mock import patch
 
 from hagent.core.llm_wrap import LLM_wrap
 
@@ -47,6 +46,7 @@ def test_bad_config_file_nonexistent():
     assert 'unable to read conf_file' in lw.last_error
     assert result == []
 
+
 def test_bad_prompt():
     # Test with a non-existent configuration file.
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
@@ -57,6 +57,7 @@ def test_bad_prompt():
 
     assert 'unable to find' in lw.last_error
     assert result == []
+
 
 def test_bad_config_file_bad_yaml():
     # Create a temporary file with invalid YAML content.
@@ -75,10 +76,9 @@ def test_bad_config_file_bad_yaml():
 
 
 def test_missing_env_var(monkeypatch):
-
     # Remove the environment variable
-    if "AWS_BEARER_TOKEN_BEDROCK" in os.environ:
-        monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
+    if 'AWS_BEARER_TOKEN_BEDROCK' in os.environ:
+        monkeypatch.delenv('AWS_BEARER_TOKEN_BEDROCK', raising=False)
 
         # Use existing configuration file for caching test.
         conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
@@ -86,11 +86,11 @@ def test_missing_env_var(monkeypatch):
         lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
         with pytest.raises(ValueError):
-            jokes = lw.inference({}, 'use_prompt1', n=1)
+            lw.inference({}, 'use_prompt1', n=1)
 
-        assert "Environment" in lw.last_error
+        assert 'Environment' in lw.last_error
     else:
-        assert False, "Must set AWS_BEARER_TOKEN_BEDROCK for unit test"
+        assert False, 'Must set AWS_BEARER_TOKEN_BEDROCK for unit test'
 
 
 if __name__ == '__main__':  # pragma: no cover
@@ -100,4 +100,3 @@ if __name__ == '__main__':  # pragma: no cover
     test_bad_config_file_bad_yaml()
     # test_missing_env_var()
     test_bad_prompt()
-

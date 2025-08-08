@@ -5,6 +5,7 @@ import sys
 from hagent.core.step import Step
 from hagent.tool.chisel2v import Chisel2v
 
+
 class Verify_candidate(Step):
     """
     Compiles a Chisel snippet to Verilog and verifies it contains a module.
@@ -15,6 +16,7 @@ class Verify_candidate(Step):
       - verilog_candidate: str or None
       - error_msg: str
     """
+
     def setup(self):
         super().setup()
         self.setup_called = True
@@ -49,8 +51,8 @@ class Verify_candidate(Step):
                 data['error_msg'] = ''
         except Exception as e:
             err = str(e)
-            if "error during sbt launcher" in err:
-                print("sbt run does not seem to work")
+            if 'error during sbt launcher' in err:
+                print('sbt run does not seem to work')
                 print(err)
                 sys.exit(3)
             data['was_valid'] = False

@@ -200,7 +200,9 @@ class React:
                 iteration_log['fix'] = new_text
 
                 new_diagnostics = check_callback(new_text)
-                iteration_log['post_check'] = [{'msg': d.msg, 'loc': d.loc, 'hint': getattr(d, 'hint', '')} for d in new_diagnostics]
+                iteration_log['post_check'] = [
+                    {'msg': d.msg, 'loc': d.loc, 'hint': getattr(d, 'hint', '')} for d in new_diagnostics
+                ]
                 self._log.append(iteration_log)
 
                 if not new_diagnostics:
@@ -220,7 +222,7 @@ class React:
             return ''
         finally:
             try:
-                fname = f"react_{os.getpid()}_{int(time.time())}.json"
+                fname = f'react_{os.getpid()}_{int(time.time())}.json'
                 path = get_output_path(fname)
                 with open(path, 'w') as f:
                     json.dump({'log': self._log, 'last_code': self.last_code}, f, indent=2)

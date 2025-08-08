@@ -1,5 +1,6 @@
 import re
 
+
 class MetadataMapper:
     """
     Parses metadata comments in Verilog code and maps them to Scala (Chisel) source lines.
@@ -10,6 +11,7 @@ class MetadataMapper:
         if pointers:
             snippet = mapper.slice_chisel_by_pointers(chisel_code_str, pointers, before=5, after=20)
     """
+
     METADATA_REGEX = re.compile(r'//\s*(?P<path>[\w/\.\-]+):(?P<line>\d+)')
 
     def __init__(self, verilog_orig: str = '', verilog_fixed: str = ''):
@@ -76,10 +78,9 @@ class MetadataMapper:
             idx = lineno - 1  # convert to 0-based index
             start = max(0, idx - before)
             end = min(len(code_lines), idx + after + 1)
-            snippets.append(f"Code snippet from {path} lines {start+1}-{end}:")
+            snippets.append(f'Code snippet from {path} lines {start + 1}-{end}:')
             for i in range(start, end):
                 marker = '->' if i == idx else '  '
-                snippets.append(f"{marker} {i+1}: {code_lines[i]}")
-            snippets.append("")
-        return "\n".join(snippets)
-
+                snippets.append(f'{marker} {i + 1}: {code_lines[i]}')
+            snippets.append('')
+        return '\n'.join(snippets)

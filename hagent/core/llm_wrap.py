@@ -352,8 +352,10 @@ class LLM_wrap:
                             # Truncate last response to 2KB if needed
                             prev_response = last_response
                             if len(prev_response) > 2048:
-                                prev_response = prev_response[:2048] + "..."
-                            last_msg['content'] += f'\n\nThe last response answer was: """{prev_response}""" please try something different.'
+                                prev_response = prev_response[:2048] + '...'
+                            last_msg['content'] += (
+                                f'\n\nThe last response answer was: """{prev_response}""" please try something different.'
+                            )
 
                     r = litellm.completion(**call_args)
                     responses.append(r)

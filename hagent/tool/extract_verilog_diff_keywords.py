@@ -14,7 +14,6 @@ Usage example:
       --fixed_verilog ~/feri/fixed.v
 """
 
-import argparse
 import difflib
 import re
 from hagent.tool.fuzzy_grep import Fuzzy_grep
@@ -58,7 +57,7 @@ class Extract_verilog_diff_keywords:
 
         # Find all potential variables - alphanumeric with underscores
         basic_vars = re.findall(r'[a-zA-Z_][\w_]*', line)
-        
+
         # Additionally extract important operators such as |, &, ~
         operators = re.findall(r'[|&~]', line)
 
@@ -84,8 +83,8 @@ class Extract_verilog_diff_keywords:
                 # Process current changed line (strip the diff marker)
                 keywords.update(Extract_verilog_diff_keywords.extract_variables(line[1:]))
                 # Also process the immediate previous line if it exists and is not a hunk header (e.g. @@ ... @@)
-                if i > 0 and not lines[i-1].startswith('@@'):
-                    prev_line = lines[i-1]
+                if i > 0 and not lines[i - 1].startswith('@@'):
+                    prev_line = lines[i - 1]
                     # For context lines (starting with a space), remove the leading space.
                     if prev_line.startswith(' '):
                         prev_line = prev_line[1:]

@@ -4,6 +4,7 @@ import pytest
 import hagent.step.generate_diff.generate_diff as gen_mod
 from hagent.step.generate_diff.generate_diff import Generate_diff
 
+
 class DummyTemplate:
     def __init__(self, conf_file):
         # Simulate the loaded YAML structure
@@ -11,10 +12,11 @@ class DummyTemplate:
             'v2chisel_pass1': {
                 'prompt0': [
                     {'role': 'system', 'content': 'System prompt'},
-                    {'role': 'user', 'content': 'User prompt: {verilog_diff}, {chisel_original}, {hints}, {error_msg}'}
+                    {'role': 'user', 'content': 'User prompt: {verilog_diff}, {chisel_original}, {hints}, {error_msg}'},
                 ]
             }
         }
+
 
 class DummyWrap:
     def __init__(self, name, log_file, conf_file, overwrite_conf):
@@ -26,13 +28,16 @@ class DummyWrap:
         # Record call for inspection
         self.prompt_dicts.append((prompt_dict, prompt_index, n))
         # Return a Markdown-fenced diff
-        return ['''
+        return [
+            """
 --- a/file.scala
 +++ b/file.scala
 @@ -1 +1 @@
 -foo
 +bar
-''']
+"""
+        ]
+
 
 @pytest.fixture(autouse=True)
 def patch_llm(monkeypatch):
@@ -45,7 +50,7 @@ def test_generate_diff_success():
         'verilog_diff': 'dummy diff',
         'chisel_original': 'dummy chisel code',
         'hints': 'dummy hints',
-        'error_msg': 'previous error'
+        'error_msg': 'previous error',
     }
     step = Generate_diff()
     # Provide dummy IO so setup() succeeds
@@ -67,14 +72,10 @@ def test_generate_diff_empty_response(monkeypatch):
     # Monkeypatch inference to return empty list
     def empty_inference(self, prompt_dict, prompt_index, n):
         return []
+
     monkeypatch.setattr(DummyWrap, 'inference', empty_inference)
 
-    data = {
-        'verilog_diff': 'diff',
-        'chisel_original': 'code',
-        'hints': 'hints',
-        'error_msg': ''
-    }
+    data = {'verilog_diff': 'diff', 'chisel_original': 'code', 'hints': 'hints', 'error_msg': ''}
     step = Generate_diff()
     step.set_io('', 'dummy_out.yaml')
     step.input_data = {}

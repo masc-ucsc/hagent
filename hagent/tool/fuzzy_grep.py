@@ -291,8 +291,6 @@ class Fuzzy_grep:
         ]
         for term in search_terms:
             proc_term = self.preprocess(term)
-            for candidate in candidate_words:
-                xx = fuzz.ratio(proc_term, candidate)
 
             if any(fuzz.ratio(proc_term, candidate) >= threshold for candidate in candidate_words):
                 return True

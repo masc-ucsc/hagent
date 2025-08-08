@@ -11,9 +11,7 @@ import os
 import sys
 import subprocess
 import glob
-import re
 import time
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import argparse
 import logging
@@ -223,7 +221,7 @@ class YAMLValidator:
         # Check for modified files
         for file_path in set(files_after) & set(files_before):
             try:
-                stat_before = os.path.getmtime(file_path)
+                os.path.getmtime(file_path)
                 # This is a simplified check - in reality, we'd need to store timestamps
                 # For now, we'll assume files that exist in both lists might be modified
                 modified_files.append(file_path)
@@ -335,7 +333,7 @@ class YAMLValidator:
                 logger.error(f"Unexpected error testing profile {profile['name']}: {e}")
 
         logger.info(f"\n{'='*60}")
-        logger.info(f"VALIDATION COMPLETE")
+        logger.info("VALIDATION COMPLETE")
         logger.info(f"Successful profiles: {success_count}/{len(profiles)}")
         logger.info(f"{'='*60}")
 

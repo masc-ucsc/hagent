@@ -1,5 +1,6 @@
 import re
 
+
 class MetadataMapper:
     """
     Parses metadata comments in Verilog code and maps them to Scala (Chisel) source lines.
@@ -10,6 +11,7 @@ class MetadataMapper:
         if pointers:
             snippet = mapper.slice_chisel_by_pointers(chisel_code_str, pointers)
     """
+
     # Regex to capture comments like: // src/main/scala/Top.scala:123 or similar
     METADATA_REGEX = re.compile(r'//\s*(?P<path>[\w/\.\-]+):(?P<line>\d+)')
 
@@ -48,7 +50,7 @@ class MetadataMapper:
             path = m.group('path')
             # Normalize 'src/utils/...' to 'utils/...'
             if path.startswith('src/utils/'):
-                path = path[len('src/'):]
+                path = path[len('src/') :]
             lineno = int(m.group('line'))
             pointers.append((path, lineno))
         # Deduplicate preserving order
@@ -81,11 +83,11 @@ class MetadataMapper:
             idx = lineno  # 1-based label maps directly to filtered lines
             start = max(0, idx - context)
             end = min(len(code_lines), idx + context + 1)
-            snippet_header = f"Code snippet from {path} lines {start}-{end-1}:"
+            snippet_header = f'Code snippet from {path} lines {start}-{end - 1}:'
             snippets.append(snippet_header)
             for i in range(start, end):
                 marker = '->' if i == idx else '  '
                 # Use i as printed line number to satisfy tests
-                snippets.append(f"{marker} {i}: {code_lines[i]}")
-            snippets.append("")
-        return "\n".join(snippets)
+                snippets.append(f'{marker} {i}: {code_lines[i]}')
+            snippets.append('')
+        return '\n'.join(snippets)
