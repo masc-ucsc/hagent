@@ -291,8 +291,11 @@ class Equiv_check:
         if final_result is False:
             # store parsed failures into counterexample_info (though SMT method may not provide detailed failures)
             failures = self.parse_equiv_failures(out_smt, err_smt)
-            if failures:
-                self.counterexample_info = failures
+            signal_table = self.parse_signal_table(out_smt, err_smt)
+            if signal_table:
+                self.counterexample_info = signal_table
+            elif failures:
+                self.counterexample_info = str(failures)
 
         # 5) Copy results back to output directory if using Docker
         if self.use_docker:
@@ -350,6 +353,54 @@ class Equiv_check:
                 continue
 
         return failures
+
+    def parse_signal_table(self, out: str, err: str) -> Optional[str]:
+        """
+        Extract the signal table from Yosys output when a counterexample is found.
+        Returns the signal table as a formatted string if found, None otherwise.
+        """
+        combined_output = out + '\n' + err
+
+        # Look for the signal table header pattern
+        lines = combined_output.split('\n')
+        table_start = -1
+
+        # Find the start of the signal table
+        for i, line in enumerate(lines):
+            if 'Signal' in line and 'Dec' in line and 'Hex' in line and 'Bin' in line:
+                table_start = i
+                break
+
+        if table_start == -1:
+            return None
+
+        # Extract the table header and data lines
+        table_lines = []
+        table_lines.append(lines[table_start])  # Header line
+
+        # Find the separator line (dashes)
+        separator_found = False
+        for i in range(table_start + 1, len(lines)):
+            line = lines[i].strip()
+            if line and '----' in line:
+                table_lines.append(lines[i])
+                separator_found = True
+                continue
+            elif separator_found and line:
+                # This should be a data line
+                if line.startswith((' ', '\t')) or any(c.isdigit() for c in line):
+                    table_lines.append(lines[i])
+                else:
+                    # End of table
+                    break
+            elif separator_found:
+                # Empty line might end the table
+                break
+
+        if len(table_lines) <= 2:  # Just header and separator
+            return None
+
+        return '\n'.join(table_lines)
 
     # ------------------- Internal Helpers -------------------
 
