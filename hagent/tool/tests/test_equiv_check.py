@@ -453,5 +453,120 @@ def test_extract_module_name_with_specified_top(prepare_checker):
     assert result == 'top_module'
 
 
+def test_counterexample_with_signal_table(prepare_checker, monkeypatch):
+    """
+    Tests that get_counterexample returns the signal table when designs are not equivalent.
+    This test simulates the case where simple_test changes from 'assign y = a' to 'assign y = !a'.
+    """
+    # Mock Yosys output that includes the counterexample signal table
+    # fmt: off
+    yosys_output_with_counterexample = (
+        "[base case 1] Solving problem with 103 variables and 262 clauses..\n"
+        "SAT temporal induction proof finished - model found for base case: FAIL!\n"
+        "\n"
+        "   ______                   ___       ___       _ _            _ _\n"
+        r"  (_____ \                 / __)     / __)     (_) |          | | |" + "\n"
+        r"   _____) )___ ___   ___ _| |__    _| |__ _____ _| | _____  __| | |" + "\n"
+        r"  |  ____/ ___) _ \ / _ (_   __)  (_   __|____ | | || ___ |/ _  |_|" + "\n"
+        r"  | |   | |  | |_| | |_| || |       | |  / ___ | | || ____( (_| |_" + "\n"
+        r"  |_|   |_|   \___/ \___/ |_|       |_|  \_____|_|\_)_____)\____|_|" + "\n"
+        "\n"
+        "\n"
+        "  Time Signal Name             Dec       Hex           Bin\n"
+        "  ---- --------------- ----------- --------- -------------\n"
+        r"     1 \gate_y                   1         1             1" + "\n"
+        r"     1 \gold_y                   0         0             0" + "\n"
+        r"     1 \in_a                     1         1             1" + "\n"
+        r"     1 \trigger                  1         1             1" + "\n"
+        "\n"
+        "End of script. Logfile hash: 4e4c2a3c22, CPU: user 0.02s system 0.00s, MEM: 13.39 MB peak\n"
+        "Yosys 0.56 (git sha1 9c447ad9d4b1ea589369364eea38b4d70da2c599, clang++ 17.0.0 -fPIC -O3)\n"
+    )
+    # fmt: on
+
+    def mock_run(*args, **kwargs):
+        class MockCompleted:
+            returncode = 0
+            stdout = yosys_output_with_counterexample
+            stderr = ''
+
+        return MockCompleted()
+
+    monkeypatch.setattr('subprocess.run', mock_run)
+    monkeypatch.setattr(prepare_checker, '_extract_module_name', lambda code, top_module=None: 'simple_test')
+
+    checker = prepare_checker
+    checker.yosys_installed = True
+
+    # Define the two different versions of simple_test
+    gold_code = """
+module simple_test(
+  input  wire a,
+  output wire y
+);
+  assign y = a;
+endmodule
+"""
+
+    gate_code = """
+module simple_test(
+  input  wire a,
+  output wire y
+);
+  assign y = !a;
+endmodule
+"""
+
+    # Check equivalence - should return False since designs differ
+    result = checker.check_equivalence(gold_code, gate_code, 'simple_test')
+    assert result is False
+
+    # Get the counterexample
+    counterexample = checker.get_counterexample()
+
+    # The counterexample should contain the signal table
+    assert counterexample is not None
+    assert 'Time Signal Name' in counterexample
+    assert '\\gate_y' in counterexample
+    assert '\\gold_y' in counterexample
+    assert '\\in_a' in counterexample
+    assert '\\trigger' in counterexample
+
+
+def test_counterexample_parsing_signal_table(prepare_checker):
+    """
+    Tests the parsing of signal table from Yosys output for counterexample extraction.
+    """
+    checker = prepare_checker
+
+    # Sample Yosys output with signal table
+    # fmt: off
+    stdout_with_table = (
+        "[base case 1] Solving problem with 103 variables and 262 clauses..\n"
+        "SAT temporal induction proof finished - model found for base case: FAIL!\n"
+        "\n"
+        "  Time Signal Name             Dec       Hex           Bin\n"
+        "  ---- --------------- ----------- --------- -------------\n"
+        r"     1 \gate_y                   1         1             1" + "\n"
+        r"     1 \gold_y                   0         0             0" + "\n"
+        r"     1 \in_a                     1         1             1" + "\n"
+        r"     1 \trigger                  1         1             1" + "\n"
+        "\n"
+        "End of script. Logfile hash: 4e4c2a3c22\n"
+    )
+    # fmt: on
+
+    stderr = ''
+
+    # Test that the signal table can be parsed from this output
+    signal_table = checker.parse_signal_table(stdout_with_table, stderr)
+
+    # Verify that the signal table was extracted successfully
+    assert signal_table is not None
+    assert 'Time Signal Name' in signal_table
+    assert '\\gate_y' in signal_table
+    assert '\\gold_y' in signal_table
+
+
 if __name__ == '__main__':
     pytest.main(['-v', '-s', '--tb=long', __file__])
