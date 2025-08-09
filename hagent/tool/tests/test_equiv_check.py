@@ -117,21 +117,84 @@ def test_no_module(prepare_checker):
         checker.check_equivalence(no_module_code, 'module top(); endmodule')
 
 
-def test_multiple_modules(prepare_checker):
+def test_multiple_modules(prepare_checker, monkeypatch):
     """
-    If more than one module is found, a ValueError is raised.
+    Multiple modules in gold should be matched with compatible modules in gate.
+    Each gold module should find a matching gate module with compatible IOs.
     """
     checker = prepare_checker
     checker.yosys_installed = True
-    multi_module = """
-module m1();
+
+    # Gold design with two modules
+    gold_multi_module = """
+module m1(input a, output b);
+  assign b = a;
 endmodule
 
-module m2();
+module m2(input x, output y);
+  assign y = x;
 endmodule
 """
-    with pytest.raises(ValueError):
-        checker.check_equivalence(multi_module, 'module top(); endmodule')
+
+    # Gate design with three modules (two match gold, one extra)
+    gate_multi_module = """
+module n1(input a, output b);
+  assign b = a;
+endmodule
+
+module n2(input x, output y);
+  assign y = x;  
+endmodule
+
+module n3(input z, output w);
+  assign w = ~z;
+endmodule
+"""
+
+    # Mock successful Yosys runs for both module pairs
+    def mock_run(*args, **kwargs):
+        class MockCompleted:
+            returncode = 0
+            stdout = 'Equivalence proven'
+            stderr = ''
+
+        return MockCompleted()
+
+    monkeypatch.setattr('subprocess.run', mock_run)
+
+    # Should succeed - both gold modules find matching gate modules
+    result = checker.check_equivalence(gold_multi_module, gate_multi_module)
+    assert result is True
+
+
+def test_multiple_modules_no_match(prepare_checker):
+    """
+    When some gold modules can't find matching gate modules, ValueError should be raised.
+    """
+    checker = prepare_checker
+    checker.yosys_installed = True
+
+    # Gold design with two modules
+    gold_multi_module = """
+module m1(input a, output b);
+  assign b = a;
+endmodule
+
+module m2(input x, output y);
+  assign y = x;
+endmodule
+"""
+
+    # Gate design with only one matching module
+    gate_single_module = """
+module n1(input a, output b);
+  assign b = a;
+endmodule
+"""
+
+    # Should raise ValueError because m2 can't find a match
+    with pytest.raises(ValueError, match='Some gold modules could not find matching gate modules'):
+        checker.check_equivalence(gold_multi_module, gate_single_module)
 
 
 def test_check_equivalence_yosys_not_installed(prepare_checker):
