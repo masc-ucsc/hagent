@@ -243,7 +243,7 @@ class Equiv_check:
             raise RuntimeError('Yosys not installed or setup() not called.')
 
         # Find matching top modules
-        gold_top, gate_top = self._find_matching_tops(gold_code, gate_code, desired_top)
+        module_pairs = self._find_matching_tops(gold_code, gate_code, desired_top)
 
         # 2) Write each design to a temp file
         #
@@ -275,29 +275,52 @@ class Equiv_check:
             gold_v_filename = self._write_temp_verilog(work_dir, gold_code, 'gold')
             gate_v_filename = self._write_temp_verilog(work_dir, gate_code, 'gate')
 
-        # 3) Run SMT-based approach
-        code_smt, out_smt, err_smt = self._run_smt_method(work_dir, gold_v_filename, gate_v_filename, gold_top, gate_top)
+        # 3) Run SMT-based approach for each module pair
+        all_results = []
+        all_counterexamples = []
 
-        # Save method output for debugging
-        self._save_yosys_output(work_dir, 'smt_method', code_smt, out_smt, err_smt)
+        for i, (gold_top, gate_top) in enumerate(module_pairs):
+            print(f'Checking equivalence: {gold_top} ↔ {gate_top}')
 
-        final_result = self._analyze_yosys_result(code_smt, out_smt, err_smt, method='smt')
-        self.equivalence_check_result = final_result
+            code_smt, out_smt, err_smt = self._run_smt_method(work_dir, gold_v_filename, gate_v_filename, gold_top, gate_top)
 
-        if final_result is False:
-            # store parsed failures into counterexample_info (though SMT method may not provide detailed failures)
-            failures = self.parse_equiv_failures(out_smt, err_smt)
-            signal_table = self.parse_signal_table(out_smt, err_smt)
-            if signal_table:
-                self.counterexample_info = signal_table
-            elif failures:
-                self.counterexample_info = str(failures)
+            # Save method output for debugging
+            self._save_yosys_output(work_dir, f'smt_method_{i}', code_smt, out_smt, err_smt)
+
+            result = self._analyze_yosys_result(code_smt, out_smt, err_smt, method='smt')
+            all_results.append((gold_top, gate_top, result))
+
+            if result is False:
+                # store parsed failures for this pair
+                failures = self.parse_equiv_failures(out_smt, err_smt)
+                signal_table = self.parse_signal_table(out_smt, err_smt)
+                if signal_table:
+                    all_counterexamples.append(f'Module pair {gold_top}↔{gate_top}:\n{signal_table}')
+                elif failures:
+                    all_counterexamples.append(f'Module pair {gold_top}↔{gate_top}: {str(failures)}')
+
+        # Determine overall result: True if all pairs are equivalent, False if any are not, None if any are inconclusive
+        overall_result = True
+        for gold_top, gate_top, result in all_results:
+            if result is False:
+                overall_result = False
+                break
+            elif result is None:
+                overall_result = None  # Inconclusive if any pair is inconclusive
+
+        self.equivalence_check_result = overall_result
+
+        # Combine counterexamples
+        if all_counterexamples:
+            self.counterexample_info = '\n\n'.join(all_counterexamples)
+        else:
+            self.counterexample_info = None
 
         # 5) Copy results back to output directory if using Docker
         if self.use_docker:
             self._copy_results_from_docker(work_dir)
 
-        return final_result
+        return overall_result
 
     def get_error(self) -> str:
         """Returns the error message if any."""
@@ -398,7 +421,7 @@ class Equiv_check:
 
         return '\n'.join(table_lines)
 
-    def _find_matching_tops(self, gold_code: str, gate_code: str, desired_top: str = '') -> Tuple[str, str]:
+    def _find_matching_tops(self, gold_code: str, gate_code: str, desired_top: str = '') -> List[Tuple[str, str]]:
         """
         Find matching top modules between gold and gate designs.
 
@@ -408,7 +431,7 @@ class Equiv_check:
             desired_top: Optional desired top module name for gold
 
         Returns:
-            Tuple of (gold_top_name, gate_top_name)
+            List of tuples (gold_top_name, gate_top_name) for each matched pair
 
         Raises:
             ValueError: If no matching modules found or IO mismatch
@@ -455,24 +478,44 @@ class Equiv_check:
                     f"No gate module found with IOs matching gold module '{gold_top}'. Gold IOs: {self._format_ios(gold_ios)}"
                 )
 
-            return gold_top, matching_gate_top
+            return [(gold_top, matching_gate_top)]
 
-        # Case 2: No desired_top - match based on IOs
+        # Case 2: No desired_top - match all gold top modules with compatible gate modules
+        matched_pairs = []
+        unmatched_gold_modules = []
+
         for gold_top_candidate in gold_tops:
             gold_ios = gold_slang.get_ios(gold_top_candidate)
 
+            # Find a matching gate module for this gold module
+            matching_gate_top = None
             for gate_top_candidate in gate_tops:
                 gate_ios = gate_slang.get_ios(gate_top_candidate)
                 if self._ios_match(gold_ios, gate_ios):
-                    return gold_top_candidate, gate_top_candidate
+                    matching_gate_top = gate_top_candidate
+                    break
 
-        # No matches found
-        gold_info = [(top, self._format_ios(gold_slang.get_ios(top))) for top in gold_tops]
-        gate_info = [(top, self._format_ios(gate_slang.get_ios(top))) for top in gate_tops]
+            if matching_gate_top:
+                matched_pairs.append((gold_top_candidate, matching_gate_top))
+            else:
+                unmatched_gold_modules.append((gold_top_candidate, self._format_ios(gold_ios)))
 
-        raise ValueError(f'No modules with matching IOs found.\nGold modules: {gold_info}\nGate modules: {gate_info}')
+        # Check if all gold modules found matches
+        if unmatched_gold_modules:
+            unmatched_info = [f'{name}: {ios}' for name, ios in unmatched_gold_modules]
+            gate_info = [(top, self._format_ios(gate_slang.get_ios(top))) for top in gate_tops]
+            raise ValueError(
+                f'Some gold modules could not find matching gate modules.\n'
+                f'Unmatched gold modules: {unmatched_info}\n'
+                f'Available gate modules: {gate_info}'
+            )
 
-    def _fallback_module_matching(self, gold_code: str, gate_code: str, desired_top: str) -> Tuple[str, str]:
+        if not matched_pairs:
+            raise ValueError('No top modules found for equivalence checking')
+
+        return matched_pairs
+
+    def _fallback_module_matching(self, gold_code: str, gate_code: str, desired_top: str) -> List[Tuple[str, str]]:
         """Fallback to regex-based module matching when slang is not available"""
         if desired_top:
             gold_top = self._extract_module_name(gold_code, top_module=desired_top)
@@ -486,7 +529,7 @@ class Equiv_check:
             gold_top = self._extract_module_name(gold_code)
             gate_top = self._extract_module_name(gate_code)
 
-        return gold_top, gate_top
+        return [(gold_top, gate_top)]
 
     def _ios_match(self, ios1: List, ios2: List) -> bool:
         """
