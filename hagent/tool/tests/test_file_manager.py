@@ -27,6 +27,19 @@ def teardown_module():
 class TestFileManagerBasics:
     """Test suite for File_manager basic functionality."""
 
+    def _ensure_patch_available(self, fm):
+        """Helper method to ensure patch utility is available in container."""
+        # Check if patch is already available
+        rc, _, _ = fm.run('which patch')
+        if rc == 0:
+            return True
+
+        # Try to install patch
+        rc, _, _ = fm.run('apk update && apk add patch')
+        if rc != 0:
+            pytest.skip('Cannot install patch utility - skipping patch tests')
+        return True
+
     @pytest.fixture
     def temp_files(self):
         """Create temporary test files and clean them up after test."""
@@ -439,6 +452,274 @@ class TestFileManagerBasics:
             # Cleanup host file
             if os.path.exists(script_path):
                 os.remove(script_path)
+
+    def test_patch_file_basic_functionality(self, file_manager, temp_files):
+        """Test basic patch_file functionality with unified diff."""
+        fm = file_manager
+        self._ensure_patch_available(fm)
+
+        # Create initial file
+        initial_content = 'line1\nline2\nline3\n'
+        rc, _, _ = fm.run(f'cat > test_patch.txt << EOF\n{initial_content}EOF')
+        assert rc == 0
+
+        # Create a simple unified diff patch
+        patch_content = """--- a/test_patch.txt
++++ b/test_patch.txt
+@@ -1,3 +1,3 @@
+ line1
+-line2
++modified_line2
+ line3"""
+
+        # Apply the patch
+        success = fm.patch_file('test_patch.txt', patch_content)
+        assert success, f'patch_file should succeed: {fm.get_error()}'
+
+        # Verify the file was patched correctly
+        content = fm.get_file_content('test_patch.txt')
+        expected = 'line1\nmodified_line2\nline3\n'
+        assert content == expected, f'Content mismatch. Expected: {repr(expected)}, Got: {repr(content)}'
+
+    def test_patch_file_with_context_lines(self, file_manager):
+        """Test patch_file with more context lines."""
+        fm = file_manager
+        self._ensure_patch_available(fm)
+
+        # Create a larger file with more context
+        initial_content = """header line
+context1
+context2
+old target line
+context3
+context4
+footer line"""
+
+        rc, _, _ = fm.run(f'cat > context_test.txt << EOF\n{initial_content}\nEOF')
+        assert rc == 0
+
+        # Create patch with context
+        patch_content = """--- a/context_test.txt
++++ b/context_test.txt
+@@ -1,7 +1,7 @@
+ header line
+ context1
+ context2
+-old target line
++new target line
+ context3
+ context4
+ footer line"""
+
+        # Apply patch
+        success = fm.patch_file('context_test.txt', patch_content)
+        assert success, f'patch_file with context should succeed: {fm.get_error()}'
+
+        # Verify result
+        content = fm.get_file_content('context_test.txt')
+        assert 'new target line' in content
+        assert 'old target line' not in content
+
+    def test_patch_file_multiple_hunks(self, file_manager):
+        """Test patch_file with multiple hunks in the same file."""
+        fm = file_manager
+        self._ensure_patch_available(fm)
+
+        # Create initial file
+        initial_content = """section1_line1
+section1_line2
+section1_line3
+
+section2_line1
+section2_line2
+section2_line3
+
+section3_line1
+section3_line2
+section3_line3"""
+
+        rc, _, _ = fm.run(f'cat > multi_hunk.txt << EOF\n{initial_content}\nEOF')
+        assert rc == 0
+
+        # Create patch with multiple hunks
+        patch_content = """--- a/multi_hunk.txt
++++ b/multi_hunk.txt
+@@ -1,3 +1,3 @@
+ section1_line1
+-section1_line2
++section1_modified
+ section1_line3
+@@ -9,3 +9,3 @@
+ 
+ section3_line1
+-section3_line2
++section3_modified
+ section3_line3"""
+
+        # Apply patch
+        success = fm.patch_file('multi_hunk.txt', patch_content)
+        assert success, f'multi-hunk patch should succeed: {fm.get_error()}'
+
+        # Verify both modifications
+        content = fm.get_file_content('multi_hunk.txt')
+        assert 'section1_modified' in content
+        assert 'section3_modified' in content
+        assert 'section1_line2' not in content
+        assert 'section3_line2' not in content
+
+    def test_patch_file_invalid_patch_format(self, file_manager):
+        """Test patch_file with malformed patch content."""
+        fm = file_manager
+        self._ensure_patch_available(fm)
+
+        # Create test file
+        rc, _, _ = fm.run('echo "test content" > invalid_patch_test.txt')
+        assert rc == 0
+
+        # Try to apply invalid patch
+        invalid_patch = 'This is not a valid patch format\nAt all!'
+
+        success = fm.patch_file('invalid_patch_test.txt', invalid_patch)
+        assert not success, 'patch_file should fail with invalid patch format'
+        assert fm.get_error(), 'Should have error message for invalid patch'
+
+    def test_patch_file_nonexistent_file(self, file_manager):
+        """Test patch_file behavior with non-existent target file."""
+        fm = file_manager
+        self._ensure_patch_available(fm)
+
+        # Try to patch a file that doesn't exist
+        patch_content = """--- a/nonexistent.txt
++++ b/nonexistent.txt
+@@ -1 +1 @@
+-old line
++new line"""
+
+        success = fm.patch_file('nonexistent.txt', patch_content)
+        # This might succeed if patch creates the file, or fail - behavior depends on patch implementation
+        # We'll just verify it doesn't crash and gives appropriate feedback
+        assert isinstance(success, bool), 'Should return boolean result'
+        if not success:
+            assert fm.get_error(), 'Should have error message when failing'
+
+    def test_patch_file_before_setup(self, temp_files):
+        """Test patch_file fails when called before setup."""
+        fm = File_manager(image='alpine:latest')
+        # Don't call setup()
+
+        patch_content = """--- a/test.txt
++++ b/test.txt
+@@ -1 +1 @@
+-old
++new"""
+
+        success = fm.patch_file('test.txt', patch_content)
+        assert not success, 'patch_file should fail before setup'
+        assert 'must be called after setup' in fm.get_error()
+
+    def test_patch_file_with_special_characters(self, file_manager):
+        """Test patch_file with files containing special characters."""
+        fm = file_manager
+        self._ensure_patch_available(fm)
+
+        # Create file with special characters
+        special_content = """line with "quotes"
+line with 'apostrophes'
+line with $variables and &symbols
+line with unicode: café résumé"""
+
+        rc, _, _ = fm.run(f"cat > special_chars.txt << 'EOF'\n{special_content}\nEOF")
+        assert rc == 0
+
+        # Create patch to modify unicode line
+        patch_content = """--- a/special_chars.txt
++++ b/special_chars.txt
+@@ -2,3 +2,3 @@
+ line with 'apostrophes'
+ line with $variables and &symbols
+-line with unicode: café résumé
++line with unicode: café résumé (modified)"""
+
+        success = fm.patch_file('special_chars.txt', patch_content)
+        assert success, f'patch with special chars should succeed: {fm.get_error()}'
+
+        # Verify the modification
+        content = fm.get_file_content('special_chars.txt')
+        assert '(modified)' in content
+
+    def test_patch_file_empty_patch(self, file_manager):
+        """Test patch_file with empty patch content."""
+        fm = file_manager
+        self._ensure_patch_available(fm)
+
+        # Create test file
+        rc, _, _ = fm.run('echo "unchanged content" > empty_patch_test.txt')
+        assert rc == 0
+
+        # Try empty patch
+        success = fm.patch_file('empty_patch_test.txt', '')
+        # Empty patch might be handled differently by different patch implementations
+        assert isinstance(success, bool), 'Should return boolean for empty patch'
+
+    def test_patch_file_state_validation(self, file_manager):
+        """Test that patch_file validates file manager state correctly."""
+        fm = file_manager
+        self._ensure_patch_available(fm)
+
+        # Test after setup (should work)
+        rc, _, _ = fm.run('echo "test" > state_test.txt')
+        assert rc == 0
+
+        patch_content = """--- a/state_test.txt
++++ b/state_test.txt
+@@ -1 +1 @@
+-test
++patched"""
+
+        success = fm.patch_file('state_test.txt', patch_content)
+        assert success, f'patch_file should work after setup: {fm.get_error()}'
+
+        # Verify the file was patched
+        content = fm.get_file_content('state_test.txt')
+        assert content.strip() == 'patched'
+
+    def test_patch_file_integration_with_get_diff(self, file_manager, temp_files):
+        """Integration test: create diff, then apply as patch."""
+        fm = file_manager
+        self._ensure_patch_available(fm)
+
+        # Copy initial file and track it
+        assert fm.copy_file(temp_files['greeting_host_path'], 'integration_test.txt')
+
+        # Create checkpoint for reference
+        checkpoint = fm.image_checkpoint()
+        assert checkpoint
+
+        # Create new instance from checkpoint and modify file
+        fm2 = File_manager(image=checkpoint)
+        assert fm2.setup()
+        self._ensure_patch_available(fm2)
+
+        rc, _, _ = fm2.run('echo "World" >> integration_test.txt')
+        assert rc == 0
+
+        # Get the diff
+        diff = fm2.get_diff('integration_test.txt')
+        assert diff, 'Should have diff content'
+
+        # Create third instance to apply the patch
+        fm3 = File_manager(image=checkpoint)
+        assert fm3.setup()
+        self._ensure_patch_available(fm3)
+
+        # Apply the diff as a patch
+        success = fm3.patch_file('integration_test.txt', diff)
+        assert success, f'Should be able to apply generated diff as patch: {fm3.get_error()}'
+
+        # Verify both instances have same content
+        content2 = fm2.get_file_content('integration_test.txt')
+        content3 = fm3.get_file_content('integration_test.txt')
+        assert content2 == content3, 'Content should match after applying diff as patch'
 
 
 # Standalone test runner for compatibility
