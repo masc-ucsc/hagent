@@ -174,14 +174,14 @@ def test_equiv_mocked_equivalent(prepare_checker, monkeypatch):
 
 def test_equiv_mocked_not_equiv(prepare_checker, monkeypatch):
     """
-    Tests a scenario where the standard equivalence method fails with an assert,
+    Tests a scenario where the SMT method finds designs are not equivalent,
     proving non-equivalence.
     """
 
     def mock_run(*args, **kwargs):
         class MockCompleted:
-            returncode = 1
-            stdout = 'Assert failed at line X'
+            returncode = 0
+            stdout = 'SAT #10 FAIL at line X'
             stderr = ''
 
         return MockCompleted()
