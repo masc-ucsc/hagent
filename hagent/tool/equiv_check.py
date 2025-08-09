@@ -6,6 +6,7 @@ import sys
 from typing import Optional, Tuple, List
 from hagent.core.output_manager import get_output_dir
 from hagent.tool.file_manager import File_manager
+from hagent.tool.compile_slang import Compile_slang
 
 
 class Equiv_check:
@@ -222,14 +223,16 @@ class Equiv_check:
             if rc != 0:
                 print(f'Warning: Failed to create {filename} in Docker: {err}', file=sys.stderr)
 
-    def check_equivalence(self, gold_code: str, gate_code: str, desired_top: str = 'SingleCycleCPU') -> Optional[bool]:
+    def check_equivalence(self, gold_code: str, gate_code: str, desired_top: str = '') -> Optional[bool]:
         """
         Checks the equivalence of two Verilog designs:
           - gold_code: The 'gold' version to match
           - gate_code: The 'gate' version
+          - desired_top: Optional top module name for gold design
 
-        Both must define exactly one module each. If either file defines more or zero modules,
-        we raise an exception. We rename the gold top to 'gold', and the gate top to 'gate'.
+        If desired_top is provided, it's used for the gold design, and we find the matching
+        module in gate_code based on IO compatibility. If no desired_top is provided,
+        we match top modules based on IO compatibility.
 
         Returns:
             True if designs are equivalent,
@@ -239,15 +242,8 @@ class Equiv_check:
         if not self.yosys_installed:
             raise RuntimeError('Yosys not installed or setup() not called.')
 
-        # 1) Validate each snippet has exactly one module
-        # desired_top = self._extract_single_module_name(gate_code)
-
-        gold_top = self._extract_module_name(gold_code, top_module=desired_top)
-        gate_top = self._extract_module_name(gate_code, top_module=desired_top)
-        if gold_top == gate_top:
-            print(f'gold_top provided = gate_top provided = {gate_top}')
-        else:
-            raise ValueError(f'Error: gold_top ({gold_top}) and gate_top ({gate_top}) do not match!')
+        # Find matching top modules
+        gold_top, gate_top = self._find_matching_tops(gold_code, gate_code, desired_top)
 
         # 2) Write each design to a temp file
         #
@@ -401,6 +397,130 @@ class Equiv_check:
             return None
 
         return '\n'.join(table_lines)
+
+    def _find_matching_tops(self, gold_code: str, gate_code: str, desired_top: str = '') -> Tuple[str, str]:
+        """
+        Find matching top modules between gold and gate designs.
+
+        Args:
+            gold_code: Gold Verilog code
+            gate_code: Gate Verilog code
+            desired_top: Optional desired top module name for gold
+
+        Returns:
+            Tuple of (gold_top_name, gate_top_name)
+
+        Raises:
+            ValueError: If no matching modules found or IO mismatch
+        """
+        # Use slang to analyze both designs
+        gold_slang = Compile_slang()
+        gate_slang = Compile_slang()
+
+        if not gold_slang.setup() or not gate_slang.setup():
+            # Fall back to regex if slang not available
+            return self._fallback_module_matching(gold_code, gate_code, desired_top)
+
+        # Add code to slang compilers
+        if not gold_slang.add_inline(gold_code) or not gate_slang.add_inline(gate_code):
+            # Fall back to regex if slang fails
+            return self._fallback_module_matching(gold_code, gate_code, desired_top)
+
+        # Get top module lists
+        gold_tops = gold_slang.get_top_list()
+        gate_tops = gate_slang.get_top_list()
+
+        if not gold_tops or not gate_tops:
+            # Fall back to regex if no tops found
+            return self._fallback_module_matching(gold_code, gate_code, desired_top)
+
+        # Case 1: desired_top provided - use it for gold and find matching gate
+        if desired_top:
+            if desired_top not in gold_tops:
+                raise ValueError(f"Specified top module '{desired_top}' not found in gold design. Available: {gold_tops}")
+
+            gold_top = desired_top
+            gold_ios = gold_slang.get_ios(gold_top)
+
+            # Find gate module with matching IOs
+            matching_gate_top = None
+            for gate_top_candidate in gate_tops:
+                gate_ios = gate_slang.get_ios(gate_top_candidate)
+                if self._ios_match(gold_ios, gate_ios):
+                    matching_gate_top = gate_top_candidate
+                    break
+
+            if not matching_gate_top:
+                raise ValueError(
+                    f"No gate module found with IOs matching gold module '{gold_top}'. Gold IOs: {self._format_ios(gold_ios)}"
+                )
+
+            return gold_top, matching_gate_top
+
+        # Case 2: No desired_top - match based on IOs
+        for gold_top_candidate in gold_tops:
+            gold_ios = gold_slang.get_ios(gold_top_candidate)
+
+            for gate_top_candidate in gate_tops:
+                gate_ios = gate_slang.get_ios(gate_top_candidate)
+                if self._ios_match(gold_ios, gate_ios):
+                    return gold_top_candidate, gate_top_candidate
+
+        # No matches found
+        gold_info = [(top, self._format_ios(gold_slang.get_ios(top))) for top in gold_tops]
+        gate_info = [(top, self._format_ios(gate_slang.get_ios(top))) for top in gate_tops]
+
+        raise ValueError(f'No modules with matching IOs found.\nGold modules: {gold_info}\nGate modules: {gate_info}')
+
+    def _fallback_module_matching(self, gold_code: str, gate_code: str, desired_top: str) -> Tuple[str, str]:
+        """Fallback to regex-based module matching when slang is not available"""
+        if desired_top:
+            gold_top = self._extract_module_name(gold_code, top_module=desired_top)
+            # Try to find the same module name in gate_code, if not found, use any single module
+            try:
+                gate_top = self._extract_module_name(gate_code, top_module=desired_top)
+            except ValueError:
+                # Module name not found in gate, try to get any single module
+                gate_top = self._extract_module_name(gate_code)
+        else:
+            gold_top = self._extract_module_name(gold_code)
+            gate_top = self._extract_module_name(gate_code)
+
+        return gold_top, gate_top
+
+    def _ios_match(self, ios1: List, ios2: List) -> bool:
+        """
+        Check if two IO lists are compatible (same ports, directions, and bit widths).
+
+        Args:
+            ios1: List of IO objects from first module
+            ios2: List of IO objects from second module
+
+        Returns:
+            True if IOs match, False otherwise
+        """
+        if len(ios1) != len(ios2):
+            return False
+
+        # Sort both lists by name for comparison
+        sorted_ios1 = sorted(ios1, key=lambda x: x.name)
+        sorted_ios2 = sorted(ios2, key=lambda x: x.name)
+
+        for io1, io2 in zip(sorted_ios1, sorted_ios2):
+            if io1.name != io2.name or io1.input != io2.input or io1.output != io2.output or io1.bits != io2.bits:
+                return False
+
+        return True
+
+    def _format_ios(self, ios: List) -> str:
+        """Format IO list for user-friendly display"""
+        if not ios:
+            return 'no IOs'
+        io_strs = []
+        for io in ios:
+            direction = 'input' if io.input else 'output' if io.output else 'inout'
+            io_strs.append(f'{io.name}({direction}, {io.bits}b)')
+        return ', '.join(io_strs)
 
     # ------------------- Internal Helpers -------------------
 
