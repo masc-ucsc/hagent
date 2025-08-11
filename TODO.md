@@ -1,4 +1,22 @@
 
+-------
+
+- hagent.yaml uses a "script". ./scripts/gcd_compile ./scripts/gcd_lint ....
+
+  + each command executes the associated command.
+       It reads the BUILD_DIR for output directory or current directory if unset
+       It reads the HAGENT_WORKDIR_REPO if set or current directory otherwise.
+
+       (commands like the yosys need to use both to point to the correct direction)
+
+  + Change the track_dir to track_repo_dir track_build_dir so that they read the directory output/input automatically.
+    Assume that track_repo_dir is not generated, build_dir are generated when the associmated command is executed
+
+  + Fix the hagent.yaml for simplechisel/XiangShan
+
+- Create the MCP that reads the hagent.yaml and hagent-build.py so that it is exposed to claude code
+
+-------
 This document has a dump of "potential" TODOs, many are likely to be bad ideas.
 
 # Use 3.14 template format?
