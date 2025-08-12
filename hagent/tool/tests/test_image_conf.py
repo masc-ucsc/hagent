@@ -20,8 +20,8 @@ class TestImageConf:
     @pytest.fixture
     def file_manager(self):
         """Create and setup a File_manager instance with simplechisel image."""
-        fm = File_manager(image='mascucsc/hagent-simplechisel:2025.07')
-        assert fm.setup(workdir='/code/simplechisel'), f'Setup failed: {fm.get_error()}'
+        fm = File_manager(image='mascucsc/hagent-simplechisel:2025.08')
+        assert fm.setup(workdir='/code/workspace/repo'), f'Setup failed: {fm.get_error()}'
         yield fm
         # Cleanup: ensure the instance is properly destroyed
         try:
@@ -40,7 +40,7 @@ class TestImageConf:
         ic = image_conf
 
         # Setup Image_conf with file_manager and YAML file
-        yaml_path = '/code/simplechisel/hagent.yaml'
+        yaml_path = '/code/workspace/repo/hagent.yaml'
         assert ic.setup(fm, yaml_path), f'Image_conf setup failed: {ic.get_error()}'
 
         # Get all available commands
@@ -50,45 +50,48 @@ class TestImageConf:
         print('\n=== Available Commands ===')
         for cmd in commands:
             print(f'ID: {cmd["id"]}')
-            print(f'  Profile: {cmd["profile"]}')
-            print(f'  Name: {cmd["name"]}')
-            print(f'  Command: {cmd["command"]}')
-            print(f'  Description: {cmd["description"]}')
+            print(f'  Profile: {cmd["profile_name"]}')
+            print(f'  Profile Description: {cmd["profile_description"]}')
+            print(f'  API Name: {cmd["api_name"]}')
+            print(f'  API Command: {cmd["api_command"]}')
+            print(f'  API Description: {cmd["api_description"]}')
             print()
 
         # Verify we have the expected GCD compile command
-        gcd_commands = [cmd for cmd in commands if 'compile' in cmd['name'].lower() and 'gcd' in cmd['description'].lower()]
+        gcd_commands = [
+            cmd for cmd in commands if 'compile' in cmd['api_name'].lower() and 'gcd' in cmd['api_description'].lower()
+        ]
         assert len(gcd_commands) > 0, 'Should have at least one GCD compile command'
 
-    def test_run_gcd_compile_command(self, file_manager, image_conf):
-        """Test running the GCD compile command."""
+    def test_run_echo_compile_command(self, file_manager, image_conf):
+        """Test running the echo command."""
         fm = file_manager
         ic = image_conf
 
         # Setup Image_conf with file_manager and YAML file
-        yaml_path = '/code/simplechisel/hagent.yaml'
+        yaml_path = '/code/workspace/repo/hagent.yaml'
         assert ic.setup(fm, yaml_path), f'Image_conf setup failed: {ic.get_error()}'
 
         # Get all commands to find the GCD compile command
         commands = ic.get_commands()
 
-        # Find the GCD compile command
-        gcd_compile_cmd = None
+        # Find the echo build_dir command (which should echo HAGENT_BUILD_DIR)
+        echo_cmd = None
         for cmd in commands:
-            if 'compile' in cmd['name'].lower() and 'gcd' in cmd['description'].lower():
-                gcd_compile_cmd = cmd
+            if 'build_dir' in cmd['api_name'].lower() and 'echo' in cmd['profile_name'].lower():
+                echo_cmd = cmd
                 break
 
-        assert gcd_compile_cmd is not None, f'GCD compile command not found. Available commands: {[c["id"] for c in commands]}'
+        assert echo_cmd is not None, f'Echo build_dir command not found. Available commands: {[c["id"] for c in commands]}'
 
-        print('\n=== Running GCD Compile Command ===')
-        print(f'Command ID: {gcd_compile_cmd["id"]}')
-        print(f'Command: {gcd_compile_cmd["command"]}')
-        print(f'Description: {gcd_compile_cmd["description"]}')
+        print('\n=== Running Echo Build Dir Command ===')
+        print(f'Command ID: {echo_cmd["id"]}')
+        print(f'API Command: {echo_cmd["api_command"]}')
+        print(f'API Description: {echo_cmd["api_description"]}')
         print()
 
-        # Run the GCD compile command
-        exit_code, stdout, stderr = ic.run_command(gcd_compile_cmd['id'])
+        # Run the echo build_dir command
+        exit_code, stdout, stderr = ic.run_command(echo_cmd['id'])
 
         print(f'Exit code: {exit_code}')
         if stdout:
@@ -96,13 +99,13 @@ class TestImageConf:
         if stderr:
             print(f'STDERR:\n{stderr}')
 
-        # Check that the command executed (exit code should be 0 for successful compilation)
-        assert exit_code == 0, f'GCD compile command failed with exit code {exit_code}. STDERR: {stderr}'
+        # Check that the command executed (exit code should be 0 for successful echo)
+        assert exit_code == 0, f'Echo build_dir command failed with exit code {exit_code}. STDERR: {stderr}'
 
         # Verify that some expected files were generated (based on the output tracking)
         # The exact files depend on the YAML configuration, but we can check if tracking worked
         tracked_files = fm.get_current_tracked_files()
-        print(f'\nTracked files after compilation: {tracked_files}')
+        print(f'\nTracked files after echo command: {tracked_files}')
 
     def test_get_profiles_and_profile_commands(self, file_manager, image_conf):
         """Test getting profiles and commands for specific profiles."""
@@ -110,7 +113,7 @@ class TestImageConf:
         ic = image_conf
 
         # Setup Image_conf
-        yaml_path = '/code/simplechisel/hagent.yaml'
+        yaml_path = '/code/workspace/repo/hagent.yaml'
         assert ic.setup(fm, yaml_path), f'Image_conf setup failed: {ic.get_error()}'
 
         # Get all profiles
@@ -130,7 +133,7 @@ class TestImageConf:
             profile_commands = ic.get_profile_commands(profile_name)
             print(f'  Commands ({len(profile_commands)}):')
             for cmd in profile_commands:
-                print(f'    - {cmd["name"]}: {cmd["description"]}')
+                print(f'    - {cmd["api_name"]}: {cmd["api_description"]}')
             print()
 
     def test_command_info(self, file_manager, image_conf):
@@ -139,7 +142,7 @@ class TestImageConf:
         ic = image_conf
 
         # Setup Image_conf
-        yaml_path = '/code/simplechisel/hagent.yaml'
+        yaml_path = '/code/workspace/repo/hagent.yaml'
         assert ic.setup(fm, yaml_path), f'Image_conf setup failed: {ic.get_error()}'
 
         # Get all commands and test detailed info for the first one
@@ -151,16 +154,18 @@ class TestImageConf:
 
         assert cmd_info is not None, f'Should get command info for {first_cmd["id"]}'
         assert 'profile_name' in cmd_info
+        assert 'profile_description' in cmd_info
         assert 'api_name' in cmd_info
-        assert 'command' in cmd_info
-        assert 'description' in cmd_info
+        assert 'api_command' in cmd_info
+        assert 'api_description' in cmd_info
         assert 'profile' in cmd_info
 
         print(f'\n=== Command Info for {first_cmd["id"]} ===')
         print(f'Profile: {cmd_info["profile_name"]}')
+        print(f'Profile Description: {cmd_info["profile_description"]}')
         print(f'API Name: {cmd_info["api_name"]}')
-        print(f'Command: {cmd_info["command"]}')
-        print(f'Description: {cmd_info["description"]}')
+        print(f'API Command: {cmd_info["api_command"]}')
+        print(f'API Description: {cmd_info["api_description"]}')
 
 
 # Standalone test runner for quick testing
@@ -170,28 +175,30 @@ def test_image_conf_standalone():
 
     try:
         # Create file manager and image conf
-        fm = File_manager(image='mascucsc/hagent-simplechisel:2025.07')
-        assert fm.setup(workdir='/code/simplechisel'), f'File_manager setup failed: {fm.get_error()}'
+        fm = File_manager(image='mascucsc/hagent-simplechisel:2025.08')
+        assert fm.setup(workdir='/code/workspace/repo'), f'File_manager setup failed: {fm.get_error()}'
 
         ic = Image_conf()
-        yaml_path = '/code/simplechisel/hagent.yaml'
+        yaml_path = '/code/workspace/repo/hagent.yaml'
         assert ic.setup(fm, yaml_path), f'Image_conf setup failed: {ic.get_error()}'
 
         # List all commands
         commands = ic.get_commands()
         print(f'\nFound {len(commands)} commands:')
         for cmd in commands:
-            print(f'  {cmd["id"]}: {cmd["description"]}')
+            print(f'  {cmd["id"]}: {cmd["api_description"]}')
 
         # fm.run("echo 'hello' > potato.txt")
         # fm.image_checkpoint("potato")
 
         # Find and run a GCD compile command
-        compile_commands = [cmd for cmd in commands if 'compile' in cmd['name'].lower() and 'gcd' in cmd['description'].lower()]
+        compile_commands = [
+            cmd for cmd in commands if 'compile' in cmd['api_name'].lower() and 'gcd' in cmd['api_description'].lower()
+        ]
         if compile_commands:
             cmd_to_run = compile_commands[0]
             print(f'\nRunning command: {cmd_to_run["id"]}')
-            print(f'Command: {cmd_to_run["command"]}')
+            print(f'API Command: {cmd_to_run["api_command"]}')
 
             exit_code, stdout, stderr = ic.run_command(cmd_to_run['id'])
             print(f'Exit code: {exit_code}')
