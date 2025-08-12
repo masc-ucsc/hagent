@@ -28,7 +28,7 @@ class DockerExecutionStrategy:
 
         Args:
             command: The command to execute
-            cwd: Working directory (relative to container workdir)
+            cwd: Working directory (absolute path, will be converted for container)
             env: Environment variables (set in the host environment)
             quiet: Whether to run in quiet mode
 
@@ -43,8 +43,18 @@ class DockerExecutionStrategy:
             os.environ[key] = value
 
         try:
-            # Convert absolute cwd to relative path for container
-            container_path = '.' if cwd == self.file_manager.workdir else os.path.relpath(cwd, self.file_manager.workdir)
+            # For Docker execution, convert absolute paths to container-relative paths
+            # If cwd is a path inside the container, use it directly
+            if cwd.startswith('/code/workspace/'):
+                # Direct container path - extract relative part
+                if cwd.startswith('/code/workspace/repo'):
+                    container_path = '.' if cwd == '/code/workspace/repo' else os.path.relpath(cwd, '/code/workspace/repo')
+                else:
+                    container_path = cwd
+            else:
+                # Fallback: try to make it relative to container workdir
+                container_path = '.'
+
             return self.file_manager.run(command, container_path, quiet)
         finally:
             # Restore previous environment
@@ -108,6 +118,7 @@ class Image_conf(Tool):
         try:
             # Create a temporary YAML file on the host for HagentBuildCore to read
             import tempfile
+            from pathlib import Path
 
             with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
                 f.write(yaml_content)
@@ -117,6 +128,31 @@ class Image_conf(Tool):
                 # Initialize the core with Docker execution strategy
                 execution_strategy = DockerExecutionStrategy(file_manager)
                 self.core = HagentBuildCore(temp_yaml_path, execution_strategy)
+
+                # Override paths for Docker environment
+                # Check for standard Docker paths first
+                if file_manager.path_exists('/code/workspace/repo'):
+                    self.core.repo_dir = Path('/code/workspace/repo')
+                    if file_manager.path_exists('/code/workspace/build'):
+                        self.core.build_base = Path('/code/workspace/build')
+                    else:
+                        self.core.build_base = Path('/code/workspace/repo/build')
+                else:
+                    # Fallback: use yaml location as repo dir
+                    yaml_dir = Path(yaml_filename).parent if yaml_filename else Path('.')
+                    if file_manager.path_exists(str(yaml_dir / '../build')):
+                        self.core.repo_dir = yaml_dir
+                        self.core.build_base = yaml_dir / '../build'
+                    elif file_manager.path_exists(str(yaml_dir / 'build')):
+                        self.core.repo_dir = yaml_dir
+                        self.core.build_base = yaml_dir / 'build'
+                    else:
+                        self.set_error(
+                            'Docker container should have known repo and build directories. '
+                            'Expected /code/workspace/repo and /code/workspace/build, or '
+                            'build directory relative to hagent.yaml location.'
+                        )
+                        return False
 
                 self._is_ready = True
                 return True
@@ -129,31 +165,6 @@ class Image_conf(Tool):
             self.set_error(f'Failed to setup HagentBuildCore: {e}')
             return False
 
-    def _build_command_registry(self) -> Dict[str, Dict]:
-        """Build a registry of all commands across all profiles with unique IDs."""
-        if not self.core:
-            return {}
-
-        commands = {}
-        for profile in self.core.get_all_profiles():
-            profile_name = profile.get('name', 'unknown')
-            apis = profile.get('apis', [])
-
-            for api in apis:
-                api_name = api.get('name', 'unknown')
-                command_id = f'{profile_name}.{api_name}'
-
-                commands[command_id] = {
-                    'profile_name': profile_name,
-                    'profile_description': profile.get('description', ''),
-                    'api_name': api_name,
-                    'api_command': api.get('command', ''),
-                    'api_description': api.get('description', ''),
-                    'profile': profile,
-                }
-
-        return commands
-
     def get_commands(self) -> List[Dict[str, str]]:
         """
         Get list of all available commands with their IDs.
@@ -165,18 +176,24 @@ class Image_conf(Tool):
             return []
 
         result = []
-        commands = self._build_command_registry()
-        for command_id, cmd_info in commands.items():
-            result.append(
-                {
-                    'id': command_id,
-                    'profile_name': cmd_info['profile_name'],
-                    'profile_description': cmd_info['profile_description'],
-                    'api_name': cmd_info['api_name'],
-                    'api_command': cmd_info['api_command'],
-                    'api_description': cmd_info['api_description'],
-                }
-            )
+        for profile in self.core.get_all_profiles():
+            profile_name = profile.get('name', 'unknown')
+            profile_description = profile.get('description', '')
+
+            for api in self.core.get_profile_commands(profile):
+                api_name = api.get('name', 'unknown')
+                command_id = f'{profile_name}.{api_name}'
+
+                result.append(
+                    {
+                        'id': command_id,
+                        'profile_name': profile_name,
+                        'profile_description': profile_description,
+                        'api_name': api_name,
+                        'api_command': api.get('command', ''),
+                        'api_description': api.get('description', ''),
+                    }
+                )
 
         return result
 
@@ -212,55 +229,32 @@ class Image_conf(Tool):
 
     def parse_track_directive(self, directive: str) -> Tuple[str, str, Optional[str]]:
         """
-        Parse track_dir() or track_file() directives.
-
-        This method supports both the new track_repo_dir/track_build_dir format
-        and the legacy track_dir/track_file format for backward compatibility.
+        Parse track_repo_dir() or track_build_dir() directives.
 
         Args:
             directive: The directive string to parse
 
         Returns:
             Tuple of (path, func_type, ext) where:
-            - path: The directory or file path
-            - func_type: "dir", "file", "repo_dir", "build_dir", or "unknown"
+            - path: The directory or file path (relative for compatibility)
+            - func_type: "repo_dir", "build_dir", or "unknown"
             - ext: The extension filter (if specified)
         """
         if not self.core:
-            # Fallback to legacy parsing
-            if directive.startswith('track_dir('):
-                func_type = 'dir'
-                content = directive[10:-1]  # Remove "track_dir(" and ")"
-            elif directive.startswith('track_file('):
-                func_type = 'file'
-                content = directive[11:-1]  # Remove "track_file(" and ")"
+            return directive, 'unknown', None
+
+        try:
+            resolved_path, func_type, ext = self.core.parse_track_directive(directive)
+            # Convert absolute path back to relative for compatibility
+            if func_type == 'repo_dir':
+                path = os.path.relpath(resolved_path, self.core.repo_dir)
+            elif func_type == 'build_dir':
+                path = os.path.relpath(resolved_path, self.core.build_base)
             else:
-                return directive, 'unknown', None
-
-            # Parse parameters
-            parts = [p.strip().strip('\'"') for p in content.split(',')]
-            path = parts[0]
-            ext = None
-
-            for part in parts[1:]:
-                if part.startswith('ext='):
-                    ext = part[4:].strip('\'"')
-
+                path = resolved_path
             return path, func_type, ext
-        else:
-            # Use the core's parsing method
-            try:
-                resolved_path, func_type, ext = self.core.parse_track_directive(directive)
-                # Convert absolute path back to relative for compatibility
-                if func_type == 'repo_dir':
-                    path = os.path.relpath(resolved_path, self.core.repo_dir)
-                elif func_type == 'build_dir':
-                    path = os.path.relpath(resolved_path, self.core.build_base)
-                else:
-                    path = resolved_path
-                return path, func_type, ext
-            except Exception:
-                return directive, 'unknown', None
+        except Exception:
+            return directive, 'unknown', None
 
     def setup_tracking_for_profile(self, profile_name: str) -> bool:
         """
@@ -287,26 +281,18 @@ class Image_conf(Tool):
             source = configuration.get('source')
             if source:
                 path, func_type, ext = self.parse_track_directive(source)
-                if func_type in ('dir', 'repo_dir', 'build_dir'):
+                if func_type in ('repo_dir', 'build_dir'):
                     if not self.file_manager.track_dir(path, ext):
                         self.set_error(f'Failed to track source directory: {self.file_manager.get_error()}')
-                        return False
-                elif func_type == 'file':
-                    if not self.file_manager.track_file(path):
-                        self.set_error(f'Failed to track source file: {self.file_manager.get_error()}')
                         return False
 
             # Setup output tracking
             output = configuration.get('output')
             if output:
                 path, func_type, ext = self.parse_track_directive(output)
-                if func_type in ('dir', 'repo_dir', 'build_dir'):
+                if func_type in ('repo_dir', 'build_dir'):
                     if not self.file_manager.track_dir(path, ext):
                         self.set_error(f'Failed to track output directory: {self.file_manager.get_error()}')
-                        return False
-                elif func_type == 'file':
-                    if not self.file_manager.track_file(path):
-                        self.set_error(f'Failed to track output file: {self.file_manager.get_error()}')
                         return False
 
             # Environment variables are now handled by the execution strategy
@@ -333,15 +319,25 @@ class Image_conf(Tool):
             self.set_error(error_msg)
             return -1, '', error_msg
 
-        commands = self._build_command_registry()
-        if command_id not in commands:
-            error_msg = f"Command '{command_id}' not found"
+        # Parse command_id to extract profile_name and api_name
+        try:
+            profile_name, api_name = command_id.split('.', 1)
+        except ValueError:
+            error_msg = f"Invalid command ID format '{command_id}'. Expected 'profile_name.api_name'"
             self.set_error(error_msg)
             return -1, '', error_msg
 
-        cmd_info = commands[command_id]
-        profile_name = cmd_info['profile_name']
-        api_name = cmd_info['api_name']
+        # Verify the command exists
+        try:
+            profile = self.core.select_profile(exact_name=profile_name)
+            if not self.core.find_command_in_profile(profile, api_name):
+                error_msg = f"Command '{command_id}' not found"
+                self.set_error(error_msg)
+                return -1, '', error_msg
+        except ValueError as e:
+            error_msg = f"Command '{command_id}' not found: {e}"
+            self.set_error(error_msg)
+            return -1, '', error_msg
 
         # Setup tracking for the profile if not already done
         # Note: This is idempotent - tracking the same path multiple times is safe
@@ -351,8 +347,6 @@ class Image_conf(Tool):
 
         # Use the core to execute the command
         try:
-            profile = self.core.select_profile(exact_name=profile_name)
-
             exit_code, stdout, stderr = self.core.execute_command(
                 profile=profile,
                 command_name=api_name,
@@ -380,8 +374,28 @@ class Image_conf(Tool):
         if not self._is_ready or not self.core:
             return None
 
-        commands = self._build_command_registry()
-        return commands.get(command_id)
+        # Parse command_id to extract profile_name and api_name
+        try:
+            profile_name, api_name = command_id.split('.', 1)
+        except ValueError:
+            return None
+
+        try:
+            profile = self.core.select_profile(exact_name=profile_name)
+            api = self.core.find_command_in_profile(profile, api_name)
+            if not api:
+                return None
+
+            return {
+                'profile_name': profile_name,
+                'profile_description': profile.get('description', ''),
+                'api_name': api_name,
+                'api_command': api.get('command', ''),
+                'api_description': api.get('description', ''),
+                'profile': profile,
+            }
+        except ValueError:
+            return None
 
     def get_profile_commands(self, profile_name: str) -> List[Dict[str, str]]:
         """
@@ -396,20 +410,26 @@ class Image_conf(Tool):
         if not self._is_ready or not self.core:
             return []
 
-        result = []
-        commands = self._build_command_registry()
-        for command_id, cmd_info in commands.items():
-            if cmd_info['profile_name'] == profile_name:
+        try:
+            profile = self.core.select_profile(exact_name=profile_name)
+            result = []
+
+            for api in self.core.get_profile_commands(profile):
+                api_name = api.get('name', 'unknown')
+                command_id = f'{profile_name}.{api_name}'
+
                 result.append(
                     {
                         'id': command_id,
-                        'api_name': cmd_info['api_name'],
-                        'api_command': cmd_info['api_command'],
-                        'api_description': cmd_info['api_description'],
+                        'api_name': api_name,
+                        'api_command': api.get('command', ''),
+                        'api_description': api.get('description', ''),
                     }
                 )
 
-        return result
+            return result
+        except ValueError:
+            return []
 
     def get_memory_requirement(self, profile_name: str) -> int:
         """
