@@ -55,58 +55,15 @@ class HagentBuilder:
         self.repo_dir = self.core.repo_dir
         self.build_base = self.core.build_base
 
-    # ---------------------------- compatibility methods ----------------------------
-
-    @staticmethod
-    def _profile_title(p: dict) -> str:
-        """Backward compatibility method."""
-        return HagentBuildCore._profile_title(p)
-
-    def _get_all_profiles(self) -> List[dict]:
-        """Backward compatibility method."""
-        return self.core.get_all_profiles()
-
-    def _find_by_exact_name(self, name: str) -> List[dict]:
-        """Backward compatibility method."""
-        return self.core.find_profile_by_name(name)
-
-    def _find_by_title_query(self, query: str) -> List[dict]:
-        """Backward compatibility method."""
-        return self.core.find_profile_by_title(query)
-
-    def _ensure_build_dir(self, build_dir: Path) -> None:
-        """Backward compatibility method."""
-        build_dir.mkdir(parents=True, exist_ok=True)
-
-    def _setup_environment(self, profile: dict, build_dir: Path) -> dict:
-        """Backward compatibility method."""
-        return self.core.setup_environment(profile, build_dir)
-
-    def _parse_track_directive(self, directive: str, build_dir: Path) -> tuple:
-        """Backward compatibility method."""
-        return self.core.parse_track_directive(directive, build_dir)
-
-    def _validate_configuration(self, profile: dict, build_dir: Path, dry_run: bool = False) -> None:
-        """Backward compatibility method."""
-        self.core.validate_configuration(profile, build_dir, dry_run)
-
-    def _find_api(self, profile: dict, api_name: str) -> Optional[dict]:
-        """Backward compatibility method."""
-        return self.core.find_command_in_profile(profile, api_name)
-
-    def _select_profile(self, exact_name: Optional[str], title_query: Optional[str]) -> dict:
-        """Backward compatibility method."""
-        return self.core.select_profile(exact_name, title_query)
-
     # ---------------------------- listing methods ----------------------------
 
     def list_profiles(self):
         """List all available profiles."""
         print('\nAvailable profiles:')
         print('-' * 60)
-        for p in self._get_all_profiles():
+        for p in self.core.get_all_profiles():
             print(f'\nname: {p.get("name", "<unnamed>")}')
-            print(f'  title: {self._profile_title(p) or "N/A"}')
+            print(f'  title: {HagentBuildCore._profile_title(p) or "N/A"}')
             print('  APIs:')
             for api in p.get('apis', []):
                 print(f'    - {api.get("name", "<noname>")}: {api.get("description", "N/A")}')
@@ -114,7 +71,7 @@ class HagentBuilder:
     def list_apis_for(self, profs: List[dict]):
         """List APIs for given profiles."""
         for p in profs:
-            print(f'\nAPIs for {p.get("name", "<unnamed>")} [{self._profile_title(p) or "N/A"}]:')
+            print(f'\nAPIs for {p.get("name", "<unnamed>")} [{HagentBuildCore._profile_title(p) or "N/A"}]:')
             for api in p.get('apis', []):
                 line = f'  {api.get("name", "<noname>")}: {api.get("description", "N/A")}'
                 if 'command' in api:
@@ -145,16 +102,16 @@ class HagentBuilder:
             Exit code
         """
         try:
-            profile = self._select_profile(exact_name, title_query)
-            api = self._find_api(profile, api_name)
+            profile = self.core.select_profile(exact_name, title_query)
+            api = self.core.find_command_in_profile(profile, api_name)
             if not api:
                 self.list_apis_for([profile])
                 raise ValueError(f"API '{api_name}' not found in profile '{profile.get('name')}'")
 
             # Validate configuration before proceeding
-            self._validate_configuration(profile, self.build_base, dry_run)
+            self.core.validate_configuration(profile, self.build_base, dry_run)
 
-            env = self._setup_environment(profile, self.build_base)
+            env = self.core.setup_environment(profile, self.build_base)
 
             # Compose command; replace simple placeholders
             command = api['command']
@@ -176,7 +133,7 @@ class HagentBuilder:
             print(f'Command: {command}')
             print(f'  Build directory: {self.build_base}')
             print(f'  Profile name: {profile.get("name")}')
-            print(f'  Title: {self._profile_title(profile) or "N/A"}')
+            print(f'  Title: {HagentBuildCore._profile_title(profile) or "N/A"}')
             print(f'  API: {api_name}')
             print(f'  Working directory: {cwd_path}')
 
@@ -190,7 +147,7 @@ class HagentBuilder:
                 return 0
 
             # Create build directory only for real runs.
-            self._ensure_build_dir(self.build_base)
+            self.build_base.mkdir(parents=True, exist_ok=True)
 
             print('\n' + '=' * 60)
             result = subprocess.run(command, shell=True, cwd=str(cwd_path), env=env)
@@ -253,10 +210,10 @@ def main():
         # List APIs for selected profiles.
         if args.list_apis:
             if args.name:
-                hits = builder._find_by_exact_name(args.name)
+                hits = builder.core.find_profile_by_name(args.name)
                 if not hits:
                     # Exact error text required by user.
-                    avail = ', '.join(p.get('name', '<unnamed>') for p in builder._get_all_profiles())
+                    avail = ', '.join(p.get('name', '<unnamed>') for p in builder.core.get_all_profiles())
                     print(f"Error: No profile matched --name '{args.name}'. Available names: {avail}", file=sys.stderr)
                     return 2
                 if len(hits) > 1:
@@ -268,7 +225,7 @@ def main():
                 builder.list_apis_for(hits)
                 return 0
             elif args.profile:
-                hits = builder._find_by_title_query(args.profile)
+                hits = builder.core.find_profile_by_title(args.profile)
                 if not hits:
                     print(f"Error: --profile '{args.profile}' did not match any profile titles.", file=sys.stderr)
                     builder.list_profiles()
@@ -276,7 +233,7 @@ def main():
                 if len(hits) > 1:
                     print('Error: Multiple profiles matched --profile. Disambiguate with --name.\nMatches:', file=sys.stderr)
                     for p in hits:
-                        print(f'  {p.get("name")} : {builder._profile_title(p) or "N/A"}', file=sys.stderr)
+                        print(f'  {p.get("name")} : {HagentBuildCore._profile_title(p) or "N/A"}', file=sys.stderr)
                     return 2
                 builder.list_apis_for(hits)
                 return 0

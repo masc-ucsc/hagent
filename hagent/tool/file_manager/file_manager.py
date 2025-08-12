@@ -146,6 +146,11 @@ class File_manager:
         """Return the text content of a file from a container (defaults to main container)."""
         return self._files.get_file_content(container_path, container)
 
+    def path_exists(self, container_path: str) -> bool:
+        """Check if a path exists in the container."""
+        exit_code, _, _ = self.run(f'test -e "{container_path}"', quiet=True)
+        return exit_code == 0
+
     def track_file(self, container_path: str) -> bool:
         """Track an existing file in the container for change detection."""
         return self._files.track_file(container_path)
