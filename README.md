@@ -177,6 +177,13 @@ HAgent code is divided into four key components:
 
 Contributions are welcome! Please open an issue or submit a pull request on GitHub.
 
+Before any commit or pull request, `ruff` and `pytest` should pass:
+```
+uv run ruff format hagent
+uv run ruff check hagent
+uv run pytest -v
+```
+
 If you want to work on this project, reach out Jose Renau. Most steps and pipes have a different
 code owner.
 
