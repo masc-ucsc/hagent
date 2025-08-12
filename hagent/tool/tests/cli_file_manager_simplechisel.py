@@ -16,7 +16,7 @@ def test_main():
     """Simple example of File_manager usage with tracking."""
 
     # 1. Initialize and setup
-    fm = File_manager('mascucsc/hagent-simplechisel:2025.07')
+    fm = File_manager('mascucsc/hagent-simplechisel:2025.08')
 
     assert fm.setup(), f'Setup failed: {fm.get_error()}'
 
@@ -24,12 +24,13 @@ def test_main():
     # Extensions are now specified per directory via track_dir()
 
     # 3. Check if target files exist before tracking
-    fm.track_dir('/code/simplechisel/src/main/scala', ext='.scala')
-    fm.track_dir('/code/simplechisel/build_singlecyclecpu_nd', ext='.sv')
-    fm.track_dir('/code/simplechisel/build_singlecyclecpu_d', ext='.sv')
-    # fm.track_dir( '/code/simplechisel/build_pipelined_nd', ext=".sv")
-    fm.track_dir('/code/simplechisel/build_pipelined_d', ext='.sv')
-    fm.track_dir('/code/simplechisel/build_gcd', ext='.sv')
+    fm.track_dir('/code/simplechisel/repo/src/main/scala', ext='.scala')
+
+    fm.track_dir('/code/simplechisel/build/build_singlecyclecpu_nd', ext='.sv')
+    fm.track_dir('/code/simplechisel/build/build_singlecyclecpu_d', ext='.sv')
+    fm.track_dir('/code/simplechisel/build/build_pipelined_nd', ext='.sv')
+    fm.track_dir('/code/simplechisel/build/build_pipelined_d', ext='.sv')
+    fm.track_dir('/code/simplechisel/build/build_gcd', ext='.sv')
 
     # Just compile check, no Verilog generate
     exit_code, stdout, stderr = fm.run('sbt compile', container_path='/code/simplechisel')
