@@ -168,6 +168,49 @@ class TestImageConf:
         print(f'API Description: {cmd_info["api_description"]}')
 
 
+def test_cva6_image():
+    """CVA6 test that can be run directly for quick testing."""
+    print('Running Image_conf CVA6 test...')
+
+    try:
+        # Create file manager and image conf
+        fm = File_manager(image='mascucsc/hagent-cva6:2025.08')
+        assert fm.setup(), f'File_manager setup failed: {fm.get_error()}'
+
+        ic = Image_conf()  # read the /code/workspace/repo/hayent.yaml and create commands
+        assert ic.setup(fm), f'Image_conf setup failed: {ic.get_error()}'
+
+        cmd_to_run = ic.get_command('spec', 'run_slang')
+        if cmd_to_run:
+            print(f'\nRunning command: {cmd_to_run["id"]}')
+            print(f'API Command: {cmd_to_run["api_command"]}')
+
+            exit_code, stdout, stderr = ic.run_command(cmd_to_run['id'])
+            print(f'Exit code: {exit_code}')
+            if stdout:
+                print(f'STDOUT (first 500 chars): {stdout[:500]}')
+            if stderr:
+                print(f'STDERR (first 500 chars): {stderr[:500]}')
+
+            json = fm.get_file_content('/code/workspace/build/load_store_unit.json')
+            if json:
+                print(f'json (first 500 chars): {json[:500]}')
+
+            # fm.image_checkpoint("potato")
+
+        else:
+            print('No compile commands found')
+            # List all commands
+            commands = ic.get_commands()
+            print(f'\nFound {len(commands)} commands:')
+            for cmd in commands:
+                print(f'  {cmd["id"]}: {cmd["api_description"]}')
+
+    except Exception as e:
+        print(f'✗ Test failed: {e}')
+        raise
+
+
 # Standalone test runner for quick testing
 def test_image_conf_standalone():
     """Standalone test that can be run directly for quick testing."""
@@ -223,3 +266,4 @@ def test_image_conf_standalone():
 
 if __name__ == '__main__':
     test_image_conf_standalone()
+    test_cva6_image()
