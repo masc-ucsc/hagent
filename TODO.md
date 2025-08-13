@@ -1,4 +1,12 @@
 
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+cd /code/hagent &&
+  UV_PROJECT_ENVIRONMENT=/tmp/venv uv sync &&
+  /tmp/venv/bin/python scripts/hagent-build.py --help
+
+  UV_PROJECT_ENVIRONMENT=/tmp/venv VIRTUAL_ENV=/tmp/venv uv run ./scripts/hagent-build.py
+
 -------
 
 - hagent.yaml uses a "script". ./scripts/gcd_compile ./scripts/gcd_lint ....
