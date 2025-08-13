@@ -90,7 +90,7 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker fallback by directly calling the Docker setup method
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup_docker_fallback()
 
         if not docker_success:
             pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
@@ -105,7 +105,7 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup_docker_fallback()
         if not docker_success:
             pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
 
@@ -123,7 +123,7 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup_docker_fallback()
         if not docker_success:
             pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
 
@@ -140,7 +140,7 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup_docker_fallback()
         if not docker_success:
             pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
 
@@ -165,7 +165,7 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup_docker_fallback()
         if not docker_success:
             pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
 
@@ -183,7 +183,7 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup_docker_fallback()
         if not docker_success:
             pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
 
@@ -226,7 +226,7 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup_docker_fallback()
         if not docker_success:
             pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
 
@@ -258,7 +258,7 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup_docker_fallback()
         if not docker_success:
             pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
 
@@ -298,7 +298,7 @@ endmodule
     try:
         # Test Docker fallback setup
         equiv_checker = Equiv_check()
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup_docker_fallback()
 
         if not docker_success:
             print(f'Docker setup failed: {equiv_checker.get_error()}')
