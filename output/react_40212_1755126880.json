@@ -1,0 +1,17 @@
+{
+  "log": [
+    {
+      "iteration": 1,
+      "check": [
+        {
+          "msg": "Test error",
+          "loc": 1,
+          "hint": ""
+        }
+      ],
+      "fix": "This code has a fixed",
+      "post_check": []
+    }
+  ],
+  "last_code": "This code has a fixed"
+}

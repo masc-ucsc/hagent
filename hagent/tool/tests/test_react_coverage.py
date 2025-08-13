@@ -103,33 +103,33 @@ class TestReactCoverage(unittest.TestCase):
             insert_comment(code, comment, '#', 10)
 
     def test_get_delta(self):
-        """Test the _get_delta method."""
+        """Test the get_delta method."""
         code = '\n'.join([f'line{i}' for i in range(1, 21)])
 
         # Test getting delta from the middle
-        delta, start, end = self.react._get_delta(code, 10, window=3)
+        delta, start, end = self.react.get_delta(code, 10, window=3)
         self.assertEqual(start, 7)
         self.assertEqual(end, 13)
         self.assertIn('line7', delta)
         self.assertIn('line13', delta)
 
         # Test getting delta from the beginning
-        delta, start, end = self.react._get_delta(code, 1, window=3)
+        delta, start, end = self.react.get_delta(code, 1, window=3)
         self.assertEqual(start, 1)
         self.assertEqual(end, 4)
 
         # Test getting delta from the end
-        delta, start, end = self.react._get_delta(code, 20, window=3)
+        delta, start, end = self.react.get_delta(code, 20, window=3)
         self.assertEqual(start, 17)
         self.assertEqual(end, 20)
 
     def test_apply_patch(self):
-        """Test the _apply_patch method."""
+        """Test the apply_patch method."""
         full_code = '\n'.join([f'line{i}' for i in range(1, 11)])
         patch = 'patched_line1\npatched_line2\n'
 
         # Apply patch in the middle
-        result = self.react._apply_patch(full_code, patch, 4, 6)
+        result = self.react.apply_patch(full_code, patch, 4, 6)
         self.assertIn('line3', result)
         self.assertIn('patched_line1', result)
         self.assertIn('patched_line2', result)
@@ -139,14 +139,14 @@ class TestReactCoverage(unittest.TestCase):
         self.assertNotIn('line6', result)
 
         # Apply patch at the beginning
-        result = self.react._apply_patch(full_code, patch, 1, 2)
+        result = self.react.apply_patch(full_code, patch, 1, 2)
         self.assertIn('patched_line1', result)
         self.assertIn('line3', result)
         self.assertTrue(result.startswith('patched_line1'))
         self.assertFalse(result.startswith('line1'))
 
         # Apply patch at the end
-        result = self.react._apply_patch(full_code, patch, 9, 10)
+        result = self.react.apply_patch(full_code, patch, 9, 10)
         self.assertIn('line8', result)
         self.assertIn('patched_line1', result)
         self.assertFalse('line9\n' in result)

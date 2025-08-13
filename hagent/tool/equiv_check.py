@@ -60,7 +60,7 @@ class Equiv_check:
                 self.error_message = f'Unable to parse Yosys version output: {result.stdout}'
                 # Only fall back to Docker if no specific yosys_path was provided
                 if yosys_path is None:
-                    return self._setup_docker_fallback()
+                    return self.setup_docker_fallback()
                 else:
                     return False
 
@@ -74,7 +74,7 @@ class Equiv_check:
                 self.error_message = f'Yosys version {version_str} is below the required version 0.4'
                 # Only fall back to Docker if no specific yosys_path was provided
                 if yosys_path is None:
-                    return self._setup_docker_fallback()
+                    return self.setup_docker_fallback()
                 else:
                     return False
 
@@ -87,11 +87,11 @@ class Equiv_check:
             self.error_message = f'Yosys not found or not accessible: {e}'
             # Only fall back to Docker if no specific yosys_path was provided
             if yosys_path is None:
-                return self._setup_docker_fallback()
+                return self.setup_docker_fallback()
             else:
                 return False
 
-    def _setup_docker_fallback(self) -> bool:
+    def setup_docker_fallback(self) -> bool:
         """
         Sets up Docker fallback using File_manager with mascucsc/hagent-builder:latest image.
 
@@ -255,8 +255,8 @@ class Equiv_check:
             self.file_manager.track_dir('.')
 
             # Write files locally first, then copy to container
-            gold_v_filename = self._write_temp_verilog(work_dir, gold_code, 'gold')
-            gate_v_filename = self._write_temp_verilog(work_dir, gate_code, 'gate')
+            gold_v_filename = self.write_temp_verilog(work_dir, gold_code, 'gold')
+            gate_v_filename = self.write_temp_verilog(work_dir, gate_code, 'gate')
 
             # Copy files to container
             gold_container_path = 'gold.v'
@@ -272,8 +272,8 @@ class Equiv_check:
             gate_v_filename = gate_container_path
         else:
             # Local execution - write files directly
-            gold_v_filename = self._write_temp_verilog(work_dir, gold_code, 'gold')
-            gate_v_filename = self._write_temp_verilog(work_dir, gate_code, 'gate')
+            gold_v_filename = self.write_temp_verilog(work_dir, gold_code, 'gold')
+            gate_v_filename = self.write_temp_verilog(work_dir, gate_code, 'gate')
 
         # 3) Run SMT-based approach for each module pair
         all_results = []
@@ -287,7 +287,7 @@ class Equiv_check:
             # Save method output for debugging
             self._save_yosys_output(work_dir, f'smt_method_{i}', code_smt, out_smt, err_smt)
 
-            result = self._analyze_yosys_result(code_smt, out_smt, err_smt, method='smt')
+            result = self.analyze_yosys_result(code_smt, out_smt, err_smt, method='smt')
             all_results.append((gold_top, gate_top, result))
 
             if result is False:
@@ -518,16 +518,16 @@ class Equiv_check:
     def _fallback_module_matching(self, gold_code: str, gate_code: str, desired_top: str) -> List[Tuple[str, str]]:
         """Fallback to regex-based module matching when slang is not available"""
         if desired_top:
-            gold_top = self._extract_module_name(gold_code, top_module=desired_top)
+            gold_top = self.extract_module_name(gold_code, top_module=desired_top)
             # Try to find the same module name in gate_code, if not found, use any single module
             try:
-                gate_top = self._extract_module_name(gate_code, top_module=desired_top)
+                gate_top = self.extract_module_name(gate_code, top_module=desired_top)
             except ValueError:
                 # Module name not found in gate, try to get any single module
-                gate_top = self._extract_module_name(gate_code)
+                gate_top = self.extract_module_name(gate_code)
         else:
-            gold_top = self._extract_module_name(gold_code)
-            gate_top = self._extract_module_name(gate_code)
+            gold_top = self.extract_module_name(gold_code)
+            gate_top = self.extract_module_name(gate_code)
 
         return [(gold_top, gate_top)]
 
@@ -579,7 +579,7 @@ class Equiv_check:
     #     if len(matches) > 1:
     #         raise ValueError('Multiple modules found. Exactly one is required.')
     #     return matches[0]
-    def _extract_module_name(self, verilog_code: str, top_module: Optional[str] = None) -> str:
+    def extract_module_name(self, verilog_code: str, top_module: Optional[str] = None) -> str:
         """
         Extract a module name from the verilog_code.
         If top_module is specified and found, return it.
@@ -599,7 +599,7 @@ class Equiv_check:
             raise ValueError('Multiple modules found. Exactly one is required unless a top module is specified.')
         return matches[0]
 
-    def _write_temp_verilog(self, work_dir: str, verilog_code: str, label: str) -> str:
+    def write_temp_verilog(self, work_dir: str, verilog_code: str, label: str) -> str:
         """
         Write verilog_code to a temporary .v file in temporary directory.
         Return the file path.
@@ -638,15 +638,15 @@ class Equiv_check:
             rc, _, _ = self.file_manager.run(f"cat > {script_name} << 'EOF'\n{full_cmd}\nEOF")
             if rc != 0:
                 return rc, '', 'Failed to create script in container'
-            return self._run_yosys_command(script_name)
+            return self.run_yosys_command(script_name)
         else:
             # For local execution, create script file locally
             filename = os.path.join(work_dir, 'check.s')
             with open(filename, 'w') as f:
                 f.write(full_cmd)
-            return self._run_yosys_command(filename)
+            return self.run_yosys_command(filename)
 
-    def _run_yosys_command(self, filename: str) -> Tuple[int, str, str]:
+    def run_yosys_command(self, filename: str) -> Tuple[int, str, str]:
         """
         Actually call 'yosys -s filename' either locally or via Docker.
         Return (exit_code, stdout, stderr).
@@ -686,7 +686,7 @@ class Equiv_check:
                 self.error_message = f'Yosys execution error: {e}'
                 return 1, '', self.error_message
 
-    def _analyze_yosys_result(self, code: int, out: str, err: str, method: str) -> Optional[bool]:
+    def analyze_yosys_result(self, code: int, out: str, err: str, method: str) -> Optional[bool]:
         if 'ERROR' in err:
             print('WARNING: YOSYS failed to check with this message (likely a Verilog Syntax Error)', file=sys.stderr)
             print(err, file=sys.stderr)

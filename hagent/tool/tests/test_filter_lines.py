@@ -25,7 +25,7 @@ class TestFilterLines:
             ('a_b_long_c', ['long'], ['a', 'b', 'c']),  # Short tokens should be filtered
         ]
         for input_str, expected_in, expected_not_in in underscore_tests:
-            parts = self.filter_tool._split_on_underscore(input_str)
+            parts = self.filter_tool.split_on_underscore(input_str)
             for token in expected_in:
                 assert token in parts, f"Token '{token}' should be in {parts}"
             for token in expected_not_in:
@@ -34,7 +34,7 @@ class TestFilterLines:
         # Test split_camel with various inputs
         camel_tests = [('HelloWorldTest', ['Hello', 'World', 'Test']), ('AbcDefGhi', ['Abc', 'Def', 'Ghi'])]
         for input_str, expected in camel_tests:
-            parts = self.filter_tool._split_camel(input_str)
+            parts = self.filter_tool.split_camel(input_str)
             for token in expected:
                 assert token in parts, f"Token '{token}' should be in {parts}"
 
@@ -53,7 +53,7 @@ class TestFilterLines:
         ]
 
         for desc, input_str, expected_tokens, excluded_tokens in test_cases:
-            tokens = self.filter_tool._extract_tokens(input_str)
+            tokens = self.filter_tool.extract_tokens(input_str)
             for token in expected_tokens:
                 assert token in tokens, f"Failed in '{desc}': {token} not found in {tokens}"
             for token in excluded_tokens:
@@ -69,7 +69,7 @@ class TestFilterLines:
         ]
 
         for comment, expected_lines in test_cases:
-            hints = self.filter_tool._extract_hint_lines(comment)
+            hints = self.filter_tool.extract_hint_lines(comment)
             assert set(hints) == set(expected_lines)
 
     def create_test_files(self, diff_text, chisel_text):
