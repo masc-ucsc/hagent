@@ -117,7 +117,7 @@ class React:
 
     # Memory system handles database loading and saving
 
-    def _get_delta(self, code: str, loc: int, window: int = 5) -> Tuple[str, int, int]:
+    def get_delta(self, code: str, loc: int, window: int = 5) -> Tuple[str, int, int]:
         """
         Extracts a delta (subset of code lines) around a specified location.
 
@@ -132,7 +132,7 @@ class React:
         delta = ''.join(lines[start_line - 1 : end_line])
         return delta, start_line, end_line
 
-    def _apply_patch(self, full_code: str, patch: str, start_line: int, end_line: int) -> str:
+    def apply_patch(self, full_code: str, patch: str, start_line: int, end_line: int) -> str:
         """
         Applies a patch (delta) to the full code, replacing lines from start_line to end_line.
         """
@@ -177,7 +177,7 @@ class React:
                             fix_example = random.choice(similar_examples)
 
                 if iteration == 1:
-                    delta, start_line, end_line = self._get_delta(current_text, diagnostics[0].loc)
+                    delta, start_line, end_line = self.get_delta(current_text, diagnostics[0].loc)
                     try:
                         annotated = diagnostics[0].insert_comment(delta, self._lang_prefix)
                     except Exception as e:
@@ -186,7 +186,7 @@ class React:
                         return ''
                     fixed_delta = fix_callback(annotated, diagnostics[0], fix_example, True, iteration)
                     fix = Memory_shot(question=annotated, answer=fixed_delta)
-                    new_text = self._apply_patch(current_text, fixed_delta, start_line, end_line)
+                    new_text = self.apply_patch(current_text, fixed_delta, start_line, end_line)
                 else:
                     try:
                         annotated = diagnostics[0].insert_comment(current_text, self._lang_prefix)

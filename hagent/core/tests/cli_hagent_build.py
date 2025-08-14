@@ -63,7 +63,7 @@ class HagentBuilder:
         print('-' * 60)
         for p in self.core.get_all_profiles():
             print(f'\nname: {p.get("name", "<unnamed>")}')
-            print(f'  title: {HagentBuildCore._profile_title(p) or "N/A"}')
+            print(f'  title: {HagentBuildCore.profile_title(p) or "N/A"}')
             print('  APIs:')
             for api in p.get('apis', []):
                 print(f'    - {api.get("name", "<noname>")}: {api.get("description", "N/A")}')
@@ -71,7 +71,7 @@ class HagentBuilder:
     def list_apis_for(self, profs: List[dict]):
         """List APIs for given profiles."""
         for p in profs:
-            print(f'\nAPIs for {p.get("name", "<unnamed>")} [{HagentBuildCore._profile_title(p) or "N/A"}]:')
+            print(f'\nAPIs for {p.get("name", "<unnamed>")} [{HagentBuildCore.profile_title(p) or "N/A"}]:')
             for api in p.get('apis', []):
                 line = f'  {api.get("name", "<noname>")}: {api.get("description", "N/A")}'
                 if 'command' in api:
@@ -133,7 +133,7 @@ class HagentBuilder:
             print(f'Command: {command}')
             print(f'  Build directory: {self.build_base}')
             print(f'  Profile name: {profile.get("name")}')
-            print(f'  Title: {HagentBuildCore._profile_title(profile) or "N/A"}')
+            print(f'  Title: {HagentBuildCore.profile_title(profile) or "N/A"}')
             print(f'  API: {api_name}')
             print(f'  Working directory: {cwd_path}')
 
@@ -233,7 +233,7 @@ def main():
                 if len(hits) > 1:
                     print('Error: Multiple profiles matched --profile. Disambiguate with --name.\nMatches:', file=sys.stderr)
                     for p in hits:
-                        print(f'  {p.get("name")} : {HagentBuildCore._profile_title(p) or "N/A"}', file=sys.stderr)
+                        print(f'  {p.get("name")} : {HagentBuildCore.profile_title(p) or "N/A"}', file=sys.stderr)
                     return 2
                 builder.list_apis_for(hits)
                 return 0
