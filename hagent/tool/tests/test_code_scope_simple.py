@@ -94,7 +94,7 @@ def test_comprehensive():
     func1() {
         code1();
     }
-    
+
     func2() {
         code2();
     }

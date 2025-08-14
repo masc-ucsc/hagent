@@ -56,7 +56,7 @@ endmodule
         modules['and_gate'] = """
 module simple_and(
   input  wire a,
-  input  wire b,  
+  input  wire b,
   output wire y
 );
   assign y = a && b;  // Different syntax but equivalent for single bits

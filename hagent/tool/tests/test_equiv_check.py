@@ -143,7 +143,7 @@ module n1(input a, output b);
 endmodule
 
 module n2(input x, output y);
-  assign y = x;  
+  assign y = x;
 endmodule
 
 module n3(input z, output w);
@@ -479,7 +479,7 @@ def test_extract_module_name_no_modules(prepare_checker):
     multi_module = """
     module m1();
     endmodule
-    
+
     module m2();
     endmodule
     """
@@ -503,10 +503,10 @@ def test_extract_module_name_with_specified_top(prepare_checker):
     multi_module = """
     module m1();
     endmodule
-    
+
     module top_module();
     endmodule
-    
+
     module m2();
     endmodule
     """
