@@ -1,0 +1,140 @@
+v2chisel_batch:
+  llm:
+    model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
+    aws_region_name: "us-east-1"
+    max_tokens: 2048
+    temperature: 0.1
+  
+  # Initial prompt for first iteration
+  prompt_initial:
+    - role: system
+      content: |
+        You are an expert AI assistant specialized in translating Verilog changes to corresponding Chisel code modifications.
+        Your goal is to generate precise Chisel diffs that, when applied, will produce Verilog logically equivalent to the target changes.
+    
+    - role: user
+      content: |
+        I have a Chisel hardware design that generates Verilog. I need to modify the Chisel code to match specific changes made to the Verilog.
+        
+        Here is the unified diff showing the desired Verilog changes:
+        ```
+        {verilog_diff}
+        ```
+        
+        Here are hints from the corresponding Chisel code that likely need modification:
+        ```
+        {chisel_hints}
+        ```
+        
+        Please generate a unified diff for the Chisel code that will produce the desired Verilog changes.
+        
+        Requirements:
+        - Output ONLY the unified diff in standard format
+        - Use minimal hunks containing only the necessary changes
+        - Do NOT include any explanation, commentary, or notes
+        - Ensure the diff can be applied to existing Chisel source files
+        
+        Generate the Chisel unified diff now:
+
+  # Prompt for retry when compilation fails
+  prompt_compile_error:
+    - role: system
+      content: |
+        You are an AI specialized in fixing Chisel compilation errors while maintaining the intended functionality.
+    
+    - role: user
+      content: |
+        The previous Chisel diff caused compilation errors. I need a corrected version.
+        
+        Original Verilog diff target:
+        ```
+        {verilog_diff}
+        ```
+        
+        Previous Chisel diff that failed:
+        ```
+        {previous_chisel_diff}
+        ```
+        
+        Compilation error:
+        ```
+        {compile_error}
+        ```
+        
+        Updated hints from Chisel code:
+        ```
+        {chisel_hints}
+        ```
+        
+        Please generate a corrected unified diff that:
+        - Fixes the compilation error
+        - Still achieves the target Verilog changes
+        - Uses proper Chisel syntax
+        
+        Output ONLY the corrected unified diff:
+
+  # Prompt for retry when LEC fails
+  prompt_lec_error:
+    - role: system
+      content: |
+        You are an AI expert at ensuring Chisel-generated Verilog passes Logic Equivalence Check (LEC) against target specifications.
+    
+    - role: user
+      content: |
+        The Chisel code compiled successfully but failed Logic Equivalence Check (LEC). I need corrections.
+        
+        Target Verilog diff:
+        ```
+        {verilog_diff}
+        ```
+        
+        Current Chisel diff:
+        ```
+        {current_chisel_diff}
+        ```
+        
+        LEC failure details:
+        ```
+        {lec_error}
+        ```
+        
+        Hints from Chisel code for potential fixes:
+        ```
+        {chisel_hints}
+        ```
+        
+        Please generate a refined unified diff that will pass LEC by ensuring logical equivalence with the target Verilog.
+        
+        Output ONLY the refined unified diff:
+
+  # Prompt for final attempt with broader context
+  prompt_final_attempt:
+    - role: system
+      content: |
+        You are an AI making a final attempt to generate working Chisel code. Use all available information and consider alternative approaches.
+    
+    - role: user
+      content: |
+        Previous attempts have failed. This is the final attempt to generate correct Chisel code.
+        
+        Target Verilog changes:
+        ```
+        {verilog_diff}
+        ```
+        
+        All previous attempts and their errors:
+        ```
+        {attempt_history}
+        ```
+        
+        Complete Chisel hints with broader context:
+        ```
+        {chisel_hints}
+        ```
+        
+        Please make a final attempt with a potentially different approach. Consider:
+        - Alternative Chisel constructs that achieve the same Verilog
+        - Broader context changes if needed
+        - Different interpretation of the Verilog requirements
+        
+        Output ONLY the unified diff for this final attempt:
