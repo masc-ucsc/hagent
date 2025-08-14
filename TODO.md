@@ -2,10 +2,10 @@
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 cd /code/hagent &&
-  UV_PROJECT_ENVIRONMENT=/tmp/venv uv sync &&
+  UV_PROJECT_ENVIRONMENT=/code/workspace/cache/venv uv sync &&
   /tmp/venv/bin/python scripts/hagent-build.py --help
 
-  UV_PROJECT_ENVIRONMENT=/tmp/venv VIRTUAL_ENV=/tmp/venv uv run ./scripts/hagent-build.py
+  UV_PROJECT_ENVIRONMENT=/code/workspace/cache/venv VIRTUAL_ENV=/code/workspace/cache/venv uv run /code/hagent/scripts/hagent-build.py --config $HAGENT_REPO_DIR/hagent.yaml
 
 -------
 
