@@ -108,7 +108,7 @@ class HagentBuildCore:
     # ---------------------------- helpers ----------------------------
 
     @staticmethod
-    def _profile_title(p: dict) -> str:
+    def profile_title(p: dict) -> str:
         """Get profile title, preferring 'title' over 'description' for backward compatibility."""
         return (p.get('title') or p.get('description') or '').strip()
 
@@ -125,7 +125,7 @@ class HagentBuildCore:
     def find_profile_by_title(self, query: str) -> List[dict]:
         """Find profiles by title substring match (case-insensitive)."""
         q = (query or '').strip().lower()
-        return [p for p in self.get_all_profiles() if q in self._profile_title(p).lower()]
+        return [p for p in self.get_all_profiles() if q in self.profile_title(p).lower()]
 
     def get_profile_commands(self, profile: dict) -> List[dict]:
         """Get all commands/APIs for a profile."""
@@ -302,13 +302,13 @@ class HagentBuildCore:
                 raise ValueError(
                     f"No profile matched title query '{title_query}' in titles. "
                     + 'Try exact name. Titles: '
-                    + '; '.join(f'[{p.get("name")}] {self._profile_title(p) or "N/A"}' for p in self.get_all_profiles())
+                    + '; '.join(f'[{p.get("name")}] {self.profile_title(p) or "N/A"}' for p in self.get_all_profiles())
                 )
             if len(hits) > 1:
                 raise ValueError(
                     f"Multiple profiles matched title query '{title_query}'. "
                     + 'Disambiguate with exact name. Matches: '
-                    + '; '.join(f'[{p.get("name")}] {self._profile_title(p) or "N/A"}' for p in hits)
+                    + '; '.join(f'[{p.get("name")}] {self.profile_title(p) or "N/A"}' for p in hits)
                 )
             return hits[0]
 

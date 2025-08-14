@@ -69,7 +69,7 @@ def test_setup_version_parsing_failure(prepare_checker, monkeypatch):
         return False
 
     monkeypatch.setattr('subprocess.run', mock_run)
-    monkeypatch.setattr('hagent.tool.equiv_check.Equiv_check._setup_docker_fallback', mock_docker_fallback)
+    monkeypatch.setattr('hagent.tool.equiv_check.Equiv_check.setup_docker_fallback', mock_docker_fallback)
 
     checker = prepare_checker
     result = checker.setup()
@@ -96,7 +96,7 @@ def test_setup_version_too_old(prepare_checker, monkeypatch):
         return False
 
     monkeypatch.setattr('subprocess.run', mock_run)
-    monkeypatch.setattr('hagent.tool.equiv_check.Equiv_check._setup_docker_fallback', mock_docker_fallback)
+    monkeypatch.setattr('hagent.tool.equiv_check.Equiv_check.setup_docker_fallback', mock_docker_fallback)
 
     checker = prepare_checker
     result = checker.setup()
@@ -223,8 +223,8 @@ def test_equiv_mocked_equivalent(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
 
-    # Patch the _extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
-    monkeypatch.setattr(prepare_checker, '_extract_module_name', lambda code, top_module=None: 'Top')
+    # Patch the extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
+    monkeypatch.setattr(prepare_checker, 'extract_module_name', lambda code, top_module=None: 'Top')
 
     checker = prepare_checker
     checker.yosys_installed = True
@@ -251,8 +251,8 @@ def test_equiv_mocked_not_equiv(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
 
-    # Patch the _extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
-    monkeypatch.setattr(prepare_checker, '_extract_module_name', lambda code, top_module=None: 'Top')
+    # Patch the extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
+    monkeypatch.setattr(prepare_checker, 'extract_module_name', lambda code, top_module=None: 'Top')
 
     checker = prepare_checker
     checker.yosys_installed = True
@@ -277,8 +277,8 @@ def test_equiv_mocked_error(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
 
-    # Patch the _extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
-    monkeypatch.setattr(prepare_checker, '_extract_module_name', lambda code, top_module=None: 'Top')
+    # Patch the extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
+    monkeypatch.setattr(prepare_checker, 'extract_module_name', lambda code, top_module=None: 'Top')
 
     checker = prepare_checker
     checker.yosys_installed = True
@@ -303,8 +303,8 @@ def test_equiv_mocked_timeout(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
 
-    # Patch the _extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
-    monkeypatch.setattr(prepare_checker, '_extract_module_name', lambda code, top_module=None: 'Top')
+    # Patch the extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
+    monkeypatch.setattr(prepare_checker, 'extract_module_name', lambda code, top_module=None: 'Top')
 
     checker = prepare_checker
     checker.yosys_installed = True
@@ -330,8 +330,8 @@ def test_equiv_mocked_smt_sat(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
 
-    # Patch the _extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
-    monkeypatch.setattr(prepare_checker, '_extract_module_name', lambda code, top_module=None: 'Top')
+    # Patch the extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
+    monkeypatch.setattr(prepare_checker, 'extract_module_name', lambda code, top_module=None: 'Top')
 
     checker = prepare_checker
     checker.yosys_installed = True
@@ -357,8 +357,8 @@ def test_equiv_mocked_smt_unsat(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
 
-    # Patch the _extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
-    monkeypatch.setattr(prepare_checker, '_extract_module_name', lambda code, top_module=None: 'Top')
+    # Patch the extract_module_name method to avoid the hardcoded 'SingleCycleCPU'
+    monkeypatch.setattr(prepare_checker, 'extract_module_name', lambda code, top_module=None: 'Top')
 
     checker = prepare_checker
     checker.yosys_installed = True
@@ -384,7 +384,7 @@ def test_run_yosys_command_exception(prepare_checker, monkeypatch):
 
     try:
         checker = prepare_checker
-        code, out, err = checker._run_yosys_command(tmp_name)
+        code, out, err = checker.run_yosys_command(tmp_name)
         assert code == 1
         assert out == ''
         assert 'Test exception' in err
@@ -410,7 +410,7 @@ def test_run_yosys_command_timeout(prepare_checker, monkeypatch):
 
     try:
         checker = prepare_checker
-        code, out, err = checker._run_yosys_command(tmp_name)
+        code, out, err = checker.run_yosys_command(tmp_name)
         assert code == 1
         assert out == ''
         assert 'timeout' in err.lower()
@@ -422,17 +422,17 @@ def test_run_yosys_command_timeout(prepare_checker, monkeypatch):
 
 def test_analyze_yosys_result_unknown(prepare_checker):
     """
-    Tests _analyze_yosys_result with an unknown method.
+    Tests analyze_yosys_result with an unknown method.
     """
     checker = prepare_checker
-    result = checker._analyze_yosys_result(1, '', '', 'unknown_method')
+    result = checker.analyze_yosys_result(1, '', '', 'unknown_method')
     assert result is None
     assert 'Yosys returned code 1' in checker.error_message
 
 
 def test_write_temp_verilog(prepare_checker):
     """
-    Tests the _write_temp_verilog method.
+    Tests the write_temp_verilog method.
     """
     checker = prepare_checker
 
@@ -440,7 +440,7 @@ def test_write_temp_verilog(prepare_checker):
     try:
         # Test writing Verilog code to a file
         verilog_code = 'module Test(); endmodule'
-        filename = checker._write_temp_verilog(work_dir, verilog_code, 'test')
+        filename = checker.write_temp_verilog(work_dir, verilog_code, 'test')
 
         assert os.path.exists(filename)
         with open(filename, 'r') as f:
@@ -452,16 +452,16 @@ def test_write_temp_verilog(prepare_checker):
 
 def test_analyze_yosys_result_smt_with_sat(prepare_checker):
     """
-    Tests _analyze_yosys_result with SMT method and SAT result.
+    Tests analyze_yosys_result with SMT method and SAT result.
     """
     checker = prepare_checker
 
     # Test with SMT method and SAT result (not equivalent)
-    result = checker._analyze_yosys_result(0, 'SAT #10 FAIL', '', 'smt')
+    result = checker.analyze_yosys_result(0, 'SAT #10 FAIL', '', 'smt')
     assert result is False
 
     # Test with SMT method and no SAT/FAIL (equivalent)
-    result = checker._analyze_yosys_result(0, 'No SAT or FAIL here', '', 'smt')
+    result = checker.analyze_yosys_result(0, 'No SAT or FAIL here', '', 'smt')
     assert result is True
 
 
@@ -473,7 +473,7 @@ def test_extract_module_name_no_modules(prepare_checker):
 
     # Test with no modules
     with pytest.raises(ValueError, match="No 'module' definition found"):
-        checker._extract_module_name('// Just a comment, no modules.')
+        checker.extract_module_name('// Just a comment, no modules.')
 
     # Test with multiple modules and no top module specified
     multi_module = """
@@ -484,11 +484,11 @@ def test_extract_module_name_no_modules(prepare_checker):
     endmodule
     """
     with pytest.raises(ValueError, match='Multiple modules found'):
-        checker._extract_module_name(multi_module)
+        checker.extract_module_name(multi_module)
 
     # Test with a single module
     single_module = 'module test(); endmodule'
-    result = checker._extract_module_name(single_module)
+    result = checker.extract_module_name(single_module)
     assert result == 'test'
 
 
@@ -512,7 +512,7 @@ def test_extract_module_name_with_specified_top(prepare_checker):
     """
 
     # Test with a specified top module that exists
-    result = checker._extract_module_name(multi_module, top_module='top_module')
+    result = checker.extract_module_name(multi_module, top_module='top_module')
     assert result == 'top_module'
 
 
@@ -556,7 +556,7 @@ def test_counterexample_with_signal_table(prepare_checker, monkeypatch):
         return MockCompleted()
 
     monkeypatch.setattr('subprocess.run', mock_run)
-    monkeypatch.setattr(prepare_checker, '_extract_module_name', lambda code, top_module=None: 'simple_test')
+    monkeypatch.setattr(prepare_checker, 'extract_module_name', lambda code, top_module=None: 'simple_test')
 
     checker = prepare_checker
     checker.yosys_installed = True

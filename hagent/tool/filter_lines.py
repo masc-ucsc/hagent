@@ -26,12 +26,12 @@ class FilterLines:
     def __init__(self):
         self.error_message = ''
 
-    def _split_on_underscore(self, token: str) -> List[str]:
+    def split_on_underscore(self, token: str) -> List[str]:
         """Split a token on underscores and return non-empty parts (of length ≥2)."""
         parts = token.split('_')
         return [part for part in parts if len(part) >= 2]
 
-    def _split_camel(self, token: str) -> List[str]:
+    def split_camel(self, token: str) -> List[str]:
         """
         Split a camel-case token into its components.
         For example, "instrOut" becomes ["instr", "Out"].
@@ -40,7 +40,7 @@ class FilterLines:
         parts = re.findall(r'[A-Z]?[a-z]+', token)
         return [p for p in parts if len(p) >= 2]
 
-    def _extract_tokens(self, diff_code_line: str) -> Set[str]:
+    def extract_tokens(self, diff_code_line: str) -> Set[str]:
         """
         Given a diff code line (without diff markers or inline comments),
         extract tokens (words, numbers, and operators) and normalize them.
@@ -68,13 +68,13 @@ class FilterLines:
             if token.endswith('Out'):
                 normalized.add(token[:-3])
             if '_' in token:
-                for part in self._split_on_underscore(token):
+                for part in self.split_on_underscore(token):
                     normalized.add(part)
-            for part in self._split_camel(token):
+            for part in self.split_camel(token):
                 normalized.add(part)
         return normalized
 
-    def _extract_hint_lines(self, comment: str) -> List[int]:
+    def extract_hint_lines(self, comment: str) -> List[int]:
         """
         Given a comment from the diff line, extract hint line numbers.
         The regex is generic and will match any Scala file reference like:
@@ -137,8 +137,8 @@ class FilterLines:
                 else:
                     code_part = code_line
                     comment_part = ''
-                tokens = self._extract_tokens(code_part)
-                hint_lines = self._extract_hint_lines(comment_part)
+                tokens = self.extract_tokens(code_part)
+                hint_lines = self.extract_hint_lines(comment_part)
                 for i, chisel_line in enumerate(chisel_lines, start=1):
                     chisel_code_portion = chisel_line.split('//')[0]
                     score = 0

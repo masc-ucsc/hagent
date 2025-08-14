@@ -20,10 +20,10 @@ class MetadataMapper:
         self.verilog_fixed_lines = verilog_fixed.splitlines()
 
         # Build metadata maps for quick lookup if needed
-        self.metadata_map_orig = self._build_metadata_map(self.verilog_orig_lines)
-        self.metadata_map_fixed = self._build_metadata_map(self.verilog_fixed_lines)
+        self.metadata_map_orig = self.build_metadata_map(self.verilog_orig_lines)
+        self.metadata_map_fixed = self.build_metadata_map(self.verilog_fixed_lines)
 
-    def _build_metadata_map(self, lines: list) -> dict:
+    def build_metadata_map(self, lines: list) -> dict:
         """
         Build a mapping from line index (0-based) to (scala_file_path, scala_line_no).
         """
