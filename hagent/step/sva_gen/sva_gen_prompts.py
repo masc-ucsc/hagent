@@ -22128,7 +22128,7 @@ if (req_port_i.kill_req) begin
 systemInput_precondition_judge = """
 You are a chip design judge agent. Your task is to evaluate if the pre-conditions and post-conditions match the specification.\
     If they match, return the original text, including all the nested if conditions. If there is missing precondition, return the all the precondition including the missing ones. \
-      If there are any extra preconditions, delete the extra preconditions, return the accurtae version. 
+      If there are any extra preconditions, delete the extra preconditions, return the accurtae version.
 """
 
 precondition_evaluation_Input = 'The following is the specification of the module'

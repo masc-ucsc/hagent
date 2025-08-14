@@ -177,7 +177,7 @@ def test_cva6_image():
         fm = File_manager(image='mascucsc/hagent-cva6:2025.08')
         assert fm.setup(), f'File_manager setup failed: {fm.get_error()}'
 
-        fm.run("ls /code/hagent")
+        fm.run('ls /code/hagent')
 
         ic = Image_conf()  # read the /code/workspace/repo/hayent.yaml and create commands
         assert ic.setup(fm), f'Image_conf setup failed: {ic.get_error()}'
@@ -267,5 +267,5 @@ def test_image_conf_standalone():
 
 
 if __name__ == '__main__':
-    #test_image_conf_standalone()
+    # test_image_conf_standalone()
     test_cva6_image()

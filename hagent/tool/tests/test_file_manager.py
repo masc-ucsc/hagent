@@ -550,7 +550,7 @@ section3_line3"""
 +section1_modified
  section1_line3
 @@ -9,3 +9,3 @@
- 
+
  section3_line1
 -section3_line2
 +section3_modified

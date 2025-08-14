@@ -22,7 +22,7 @@ class TestModuleFinder(unittest.TestCase):
  );
 +  // New logic here
  endmodule
- 
+
  module Control(
 """
         modules = self.finder._extract_modules_from_diff(diff_content)
@@ -84,7 +84,7 @@ class ALU extends Module {
     val input1 = Input(UInt(32.W))
     val output = Output(UInt(32.W))
   })
-  
+
   io.output := io.input1 + 1.U
 }
 
@@ -124,7 +124,7 @@ class ALU extends Module {
     val inputy = Input(UInt(64.W))
     val result = Output(UInt(64.W))
   })
-  
+
   // ALU implementation
   io.result := io.inputx + io.inputy
 }
@@ -253,7 +253,7 @@ class Control extends Module {
      output wire done
  );
  endmodule
- 
+
  module ALU(
      input wire [63:0] a,
      input wire [63:0] b,

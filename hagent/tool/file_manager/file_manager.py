@@ -76,17 +76,17 @@ class File_manager:
         # Find the hagent root by traversing up from this file's location
         current_path = Path(__file__).resolve()
         hagent_root = None
-        
+
         # Walk up the directory tree to find the hagent project root
         for parent in current_path.parents:
             if (parent / 'hagent').is_dir() and (parent / 'pyproject.toml').exists():
                 hagent_root = parent
                 break
-        
+
         # Add the mount if we found the hagent root directory
         if hagent_root:
             self.add_mount(str(hagent_root), '/code/hagent')
-        
+
         return self._docker.setup(workdir)
 
     def cleanup(self) -> None:
