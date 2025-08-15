@@ -14,13 +14,24 @@ from typing import Dict, List, Optional, Tuple
 from hagent.tool.tool import Tool
 from hagent.tool.file_manager import File_manager
 from hagent.core.hagent_build import HagentBuildCore
+from hagent.inou.executor import DockerExecutor
 
 
 class DockerExecutionStrategy:
-    """Execution strategy that runs commands via File_manager (Docker)."""
+    """
+    DEPRECATED: Execution strategy that runs commands via File_manager (Docker).
+    Use hagent.inou.executor.DockerExecutor instead.
+    """
 
     def __init__(self, file_manager: File_manager):
+        """
+        Initialize with File_manager instance.
+
+        This is a deprecated wrapper around DockerExecutor for backward compatibility.
+        """
         self.file_manager = file_manager
+        # Create new DockerExecutor instance to delegate to
+        self._executor = DockerExecutor(file_manager)
 
     def run(self, command: str, cwd: str, env: Dict[str, str], quiet: bool = False) -> Tuple[int, str, str]:
         """
@@ -35,22 +46,8 @@ class DockerExecutionStrategy:
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
-        # Set environment variables in the current process
-        # (they'll be inherited by file_manager.run)
-        old_env = {}
-        for key, value in env.items():
-            old_env[key] = os.environ.get(key)
-            os.environ[key] = value
-
-        try:
-            return self.file_manager.run(command, cwd, quiet)
-        finally:
-            # Restore previous environment
-            for key, old_value in old_env.items():
-                if old_value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = old_value
+        # Delegate to new DockerExecutor
+        return self._executor.run(command, cwd, env, quiet)
 
 
 class Image_conf(Tool):

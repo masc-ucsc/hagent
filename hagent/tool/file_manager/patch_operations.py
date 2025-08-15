@@ -38,11 +38,15 @@ class PatchOperations:
         # Check if file was tracked via track_file or is in a tracked directory
         # Get original content from reference container
         reference_container = self.fm._docker.get_reference_container()
+        print("HERE1")
         if not reference_container:
             return ''
+        print(f"HERE2 path:{absolute_filename}")
         original_content_str = self.fm._files.get_file_content(absolute_filename, container=reference_container)
+        print(f"HERE3 txt:{original_content_str}")
         if not original_content_str and self.fm.error_message:
             return ''
+        print("HERE4")
 
         # Get modified content from main container
         modified_content_str = self.fm._files.get_file_content(absolute_filename)
@@ -57,8 +61,8 @@ class PatchOperations:
 
     def get_patch_dict(self) -> Dict[str, Any]:
         """Generate a dictionary of new files and patched files."""
-        if self.fm._state != 'EXECUTED':
-            self.fm.error_message = 'get_patch_dict must be called after run().'
+        if self.fm._state != 'CONFIGURED':
+            self.fm.error_message = 'get_patch_dict must be called after setup().'
             return {}
 
         patches = {'full': [], 'patch': []}
@@ -148,7 +152,7 @@ class PatchOperations:
 
     def patch_file(self, container_path: str, patch_content: str) -> bool:
         """Apply a unified diff patch to a file in the container."""
-        if self.fm._state not in ['CONFIGURED', 'EXECUTED']:
+        if self.fm._state != 'CONFIGURED':
             self.fm.error_message = 'patch_file must be called after setup().'
             return False
 
@@ -185,7 +189,7 @@ class PatchOperations:
 
     def apply_line_patch(self, container_path: str, line_number: int, old_line: str, new_line: str) -> bool:
         """Apply a simple line replacement patch to a file in the container."""
-        if self.fm._state not in ['CONFIGURED', 'EXECUTED']:
+        if self.fm._state != 'CONFIGURED':
             self.fm.error_message = 'apply_line_patch must be called after setup().'
             return False
 

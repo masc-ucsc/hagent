@@ -75,8 +75,9 @@ class TestContainerManager:
         """Test Docker client initialization failure."""
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_get_docker_socket_paths', return_value=['/test/socket']):
-                with pytest.raises(RuntimeError, match='Docker client initialization failed'):
-                    ContainerManager('mascucsc/hagent-simplechisel:2025.08')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
+                assert manager.get_error(), 'Should have error message'
+                assert 'Docker client initialization failed' in manager.get_error()
 
     def test_get_docker_socket_paths_darwin(self):
         """Test Docker socket path detection on macOS."""
@@ -179,8 +180,9 @@ class TestContainerManager:
                 manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
                 manager.container = mock_container
 
-                with pytest.raises(RuntimeError, match='does not have /code/workspace/ directory'):
-                    manager._validate_workspace_directory()
+                result = manager._validate_workspace_directory()
+                assert result is False, 'Should return False on validation failure'
+                assert 'does not have /code/workspace/ directory' in manager.get_error()
 
     def test_setup_container_environment(self):
         """Test container environment variable setup."""
@@ -265,8 +267,9 @@ class TestContainerManager:
                 manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
                 manager.container = MagicMock()  # Simulate setup
 
-                with pytest.raises(RuntimeError, match='add_mount must be called before setup'):
-                    manager.add_mount('/host/path', '/container/path')
+                result = manager.add_mount('/host/path', '/container/path')
+                assert result is False, 'Should return False when called after setup'
+                assert 'add_mount must be called before setup' in manager.get_error()
 
     @patch('docker.types.Mount')
     def test_setup_success(self, mock_mount):
@@ -462,8 +465,9 @@ class TestContainerManager:
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
 
-                with pytest.raises(RuntimeError, match='Container not set up'):
-                    manager.run('echo test')
+                exit_code, stdout, stderr = manager.run('echo test')
+                assert exit_code == -1, 'Should return -1 exit code when no container'
+                assert 'Container not set up' in manager.get_error()
 
     def test_image_checkpoint(self):
         """Test creating image checkpoint."""

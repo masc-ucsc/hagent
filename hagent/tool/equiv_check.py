@@ -242,6 +242,8 @@ class Equiv_check:
         if not self.yosys_installed:
             raise RuntimeError('Yosys not installed or setup() not called.')
 
+        print(f"xxxx{self.use_docker}")
+
         # Find matching top modules
         module_pairs = self._find_matching_tops(gold_code, gate_code, desired_top)
 
@@ -249,6 +251,8 @@ class Equiv_check:
         #
         # Create a subdirectory for working files
         work_dir = tempfile.mkdtemp(dir=get_output_dir(), prefix='equiv_check_')
+
+        print(f"docker{self.use_docker}")
 
         if self.use_docker:
             # For Docker, we need to setup file tracking and copy files to container
@@ -278,6 +282,8 @@ class Equiv_check:
         # 3) Run SMT-based approach for each module pair
         all_results = []
         all_counterexamples = []
+
+        print(f"HERE1: gold_v_filename:{gold_v_filename}")
 
         for i, (gold_top, gate_top) in enumerate(module_pairs):
             print(f'Checking equivalence: {gold_top} ↔ {gate_top}')

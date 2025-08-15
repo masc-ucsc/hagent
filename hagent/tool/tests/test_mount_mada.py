@@ -11,6 +11,44 @@ import pytest
 from hagent.tool.file_manager import File_manager
 
 
+@pytest.fixture(scope='session', autouse=True)
+def setup_hagent_environment():
+    """Setup HAGENT environment variables for Docker mode tests."""
+    import tempfile
+
+    original_env = {}
+
+    # Save original environment
+    hagent_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
+    for var in hagent_vars:
+        original_env[var] = os.environ.get(var)
+
+    # Set Docker mode environment with host-accessible paths for testing
+    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+
+    # Use local directories that tests can actually create and access
+    repo_dir = os.path.abspath('.')  # Current working directory
+    build_dir = os.path.join(tempfile.gettempdir(), 'hagent_test_build')
+    cache_dir = os.path.join(tempfile.gettempdir(), 'hagent_test_cache')
+
+    # Create directories if they don't exist
+    os.makedirs(build_dir, exist_ok=True)
+    os.makedirs(cache_dir, exist_ok=True)
+
+    os.environ['HAGENT_REPO_DIR'] = repo_dir
+    os.environ['HAGENT_BUILD_DIR'] = build_dir
+    os.environ['HAGENT_CACHE_DIR'] = cache_dir
+
+    yield
+
+    # Restore original environment
+    for var, value in original_env.items():
+        if value is None:
+            os.environ.pop(var, None)
+        else:
+            os.environ[var] = value
+
+
 class TestMountMada:
     """Test suite for mounting /mada/software directory."""
 
@@ -63,10 +101,8 @@ class TestMountMada:
             return
 
         with File_manager('alpine:latest') as fm:
-            # Setup first
             assert fm.setup(), f'Setup failed: {fm.get_error()}'
 
-            # Try to add mount after setup - should fail
             assert not fm.add_mount(host_path, container_path), 'add_mount should fail after setup'
 
             # Check error message

@@ -3,38 +3,50 @@
 Output directory management utility for hagent.
 
 This module provides a centralized way to determine where output files
-should be written, supporting the HAGENT_OUTPUT environment variable
-with a default fallback to 'output'.
+should be written. Now integrates with PathManager for HAGENT_CACHE_DIR
+structure while maintaining backward compatibility.
 """
 
 import os
 import sys
 from pathlib import Path
 
+from hagent.inou.path_manager import PathManager
+
 
 def get_output_dir() -> str:
     """
     Get the output directory path.
 
-    Returns the directory specified by HAGENT_OUTPUT environment variable,
-    or 'output' as the default if not set.
+    Now uses PathManager to get HAGENT_CACHE_DIR/inou/ directory structure.
+    Falls back to legacy HAGENT_OUTPUT behavior if PathManager initialization fails.
 
     The directory will be created if it doesn't exist.
 
     Returns:
         str: Path to the output directory
     """
+    try:
+        # Try to use new PathManager-based approach
+        if os.environ.get('HAGENT_EXECUTION_MODE'):
+            path_manager = PathManager(validate_env=True)
+            return path_manager.get_cache_dir()
+    except (SystemExit, Exception):
+        # Fall back to legacy behavior if PathManager fails
+        pass
+
+    # Legacy fallback behavior
     output_dir = os.environ.get('HAGENT_OUTPUT', 'output')
-
-    # Create the directory if it doesn't exist
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-
     return output_dir
 
 
 def get_output_path(filename: str) -> str:
     """
     Get the full path for an output file.
+
+    Now uses PathManager to route files to HAGENT_CACHE_DIR/inou/ structure.
+    Falls back to legacy behavior if PathManager initialization fails.
 
     Args:
         filename: The name of the output file (must be a relative path within output directory)
@@ -45,7 +57,16 @@ def get_output_path(filename: str) -> str:
     Raises:
         SystemExit: If filename is an absolute path or tries to escape the output directory
     """
-    # Check for absolute paths and escaping relative paths
+    try:
+        # Try to use new PathManager-based approach
+        if os.environ.get('HAGENT_EXECUTION_MODE'):
+            path_manager = PathManager(validate_env=True)
+            return path_manager.get_cache_path(filename)
+    except (SystemExit, Exception):
+        # Fall back to legacy behavior if PathManager fails
+        pass
+
+    # Legacy fallback behavior - same validation logic as before
     is_absolute = (
         os.path.isabs(filename)  # Standard absolute path check
         or filename.startswith('~')  # Home directory expansion

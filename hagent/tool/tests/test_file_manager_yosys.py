@@ -18,6 +18,42 @@ import pytest
 from hagent.tool.file_manager import File_manager
 
 
+@pytest.fixture(scope='session', autouse=True)
+def setup_hagent_environment():
+    """Setup HAGENT environment variables for Docker mode tests."""
+    original_env = {}
+
+    # Save original environment
+    hagent_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
+    for var in hagent_vars:
+        original_env[var] = os.environ.get(var)
+
+    # Set Docker mode environment with host-accessible paths for testing
+    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+
+    # Use local directories that tests can actually create and access
+    repo_dir = os.path.abspath('.')  # Current working directory
+    build_dir = os.path.join(tempfile.gettempdir(), 'hagent_test_build')
+    cache_dir = os.path.join(tempfile.gettempdir(), 'hagent_test_cache')
+
+    # Create directories if they don't exist
+    os.makedirs(build_dir, exist_ok=True)
+    os.makedirs(cache_dir, exist_ok=True)
+
+    os.environ['HAGENT_REPO_DIR'] = repo_dir
+    os.environ['HAGENT_BUILD_DIR'] = build_dir
+    os.environ['HAGENT_CACHE_DIR'] = cache_dir
+
+    yield
+
+    # Restore original environment
+    for var, value in original_env.items():
+        if value is None:
+            os.environ.pop(var, None)
+        else:
+            os.environ[var] = value
+
+
 class TestFileManagerYosys:
     """Test suite for File_manager with Yosys synthesis tools."""
 

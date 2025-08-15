@@ -9,9 +9,48 @@ This test demonstrates how to:
 4. Run a specific command (GCD compile)
 """
 
+import os
 import pytest
 from hagent.tool.file_manager import File_manager
 from hagent.tool.image_conf import Image_conf
+
+
+@pytest.fixture(scope='session', autouse=True)
+def setup_hagent_environment():
+    """Setup HAGENT environment variables for Docker mode tests."""
+    import tempfile
+
+    original_env = {}
+
+    # Save original environment
+    hagent_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
+    for var in hagent_vars:
+        original_env[var] = os.environ.get(var)
+
+    # Set Docker mode environment with host-accessible paths for testing
+    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+
+    # Use local directories that tests can actually create and access
+    repo_dir = os.path.abspath('.')  # Current working directory
+    build_dir = os.path.join(tempfile.gettempdir(), 'hagent_test_build')
+    cache_dir = os.path.join(tempfile.gettempdir(), 'hagent_test_cache')
+
+    # Create directories if they don't exist
+    os.makedirs(build_dir, exist_ok=True)
+    os.makedirs(cache_dir, exist_ok=True)
+
+    os.environ['HAGENT_REPO_DIR'] = repo_dir
+    os.environ['HAGENT_BUILD_DIR'] = build_dir
+    os.environ['HAGENT_CACHE_DIR'] = cache_dir
+
+    yield
+
+    # Restore original environment
+    for var, value in original_env.items():
+        if value is None:
+            os.environ.pop(var, None)
+        else:
+            os.environ[var] = value
 
 
 class TestImageConf:
@@ -21,7 +60,25 @@ class TestImageConf:
     def file_manager(self):
         """Create and setup a File_manager instance with simplechisel image."""
         fm = File_manager(image='mascucsc/hagent-simplechisel:2025.08')
-        assert fm.setup(workdir='/code/workspace/repo'), f'Setup failed: {fm.get_error()}'
+
+        assert fm.setup(), f'Setup failed: {fm.get_error()}'
+        
+        # Copy the hagent.yaml file to the container at the expected location
+        import os
+        from pathlib import Path
+        
+        # Find the hagent.yaml file in the repository
+        project_root = Path(__file__).parent.parent.parent.parent  # Go up to project root
+        yaml_file = project_root / 'local' / 'simplechisel' / 'repo' / 'hagent.yaml'
+        
+        if yaml_file.exists():
+            # Copy to the working directory where Image_conf will look for it
+            success = fm.copy_file(str(yaml_file), 'hagent.yaml')
+            if not success:
+                print(f'Warning: Failed to copy hagent.yaml: {fm.get_error()}')
+        else:
+            print(f'Warning: hagent.yaml not found at {yaml_file}')
+        
         yield fm
         # Cleanup: ensure the instance is properly destroyed
         try:
@@ -39,9 +96,8 @@ class TestImageConf:
         fm = file_manager
         ic = image_conf
 
-        # Setup Image_conf with file_manager and YAML file
-        yaml_path = '/code/workspace/repo/hagent.yaml'
-        assert ic.setup(fm, yaml_path), f'Image_conf setup failed: {ic.get_error()}'
+        # Setup Image_conf with file_manager and let it find YAML file automatically
+        assert ic.setup(fm), f'Image_conf setup failed: {ic.get_error()}'
 
         # Get all available commands
         commands = ic.get_commands()
@@ -68,9 +124,8 @@ class TestImageConf:
         fm = file_manager
         ic = image_conf
 
-        # Setup Image_conf with file_manager and YAML file
-        yaml_path = '/code/workspace/repo/hagent.yaml'
-        assert ic.setup(fm, yaml_path), f'Image_conf setup failed: {ic.get_error()}'
+        # Setup Image_conf with file_manager and let it find YAML file automatically
+        assert ic.setup(fm), f'Image_conf setup failed: {ic.get_error()}'
 
         # Get all commands to find the GCD compile command
         commands = ic.get_commands()
@@ -113,8 +168,7 @@ class TestImageConf:
         ic = image_conf
 
         # Setup Image_conf
-        yaml_path = '/code/workspace/repo/hagent.yaml'
-        assert ic.setup(fm, yaml_path), f'Image_conf setup failed: {ic.get_error()}'
+        assert ic.setup(fm), f'Image_conf setup failed: {ic.get_error()}'
 
         # Get all profiles
         profiles = ic.get_profiles()
@@ -142,8 +196,7 @@ class TestImageConf:
         ic = image_conf
 
         # Setup Image_conf
-        yaml_path = '/code/workspace/repo/hagent.yaml'
-        assert ic.setup(fm, yaml_path), f'Image_conf setup failed: {ic.get_error()}'
+        assert ic.setup(fm), f'Image_conf setup failed: {ic.get_error()}'
 
         # Get all commands and test detailed info for the first one
         commands = ic.get_commands()
@@ -179,7 +232,7 @@ def test_cva6_image():
 
         fm.run('ls /code/hagent')
 
-        ic = Image_conf()  # read the /code/workspace/repo/hayent.yaml and create commands
+        ic = Image_conf()  # read the hagent.yaml and create commands
         assert ic.setup(fm), f'Image_conf setup failed: {ic.get_error()}'
 
         cmd_to_run = ic.get_command('spec', 'run_slang')
@@ -194,7 +247,7 @@ def test_cva6_image():
             if stderr:
                 print(f'STDERR (first 500 chars): {stderr[:500]}')
 
-            json = fm.get_file_content('/code/workspace/build/load_store_unit.json')
+            json = fm.get_file_content('load_store_unit.json')
             if json:
                 print(f'json (first 500 chars): {json[:500]}')
 
@@ -221,11 +274,10 @@ def test_image_conf_standalone():
     try:
         # Create file manager and image conf
         fm = File_manager(image='mascucsc/hagent-simplechisel:2025.08')
-        assert fm.setup(workdir='/code/workspace/repo'), f'File_manager setup failed: {fm.get_error()}'
+        assert fm.setup(), f'File_manager setup failed: {fm.get_error()}'
 
         ic = Image_conf()
-        yaml_path = '/code/workspace/repo/hagent.yaml'
-        assert ic.setup(fm, yaml_path), f'Image_conf setup failed: {ic.get_error()}'
+        assert ic.setup(fm), f'Image_conf setup failed: {ic.get_error()}'
 
         # List all commands
         commands = ic.get_commands()

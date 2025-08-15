@@ -1,7 +1,9 @@
 from typing import Optional, Dict, Tuple, Any, Set, List
 from pathlib import Path
 
-from .docker_manager import DockerManager
+from hagent.inou.container_manager import ContainerManager
+from hagent.inou.file_tracker import FileTracker
+from hagent.inou.path_manager import PathManager
 from .file_operations import FileOperations
 from .patch_operations import PatchOperations
 
@@ -24,11 +26,15 @@ class File_manager:
         self.image = image
         self.error_message = ''
         self._state = 'INITIALIZED'
-        self._workdir = '/code/rundir'  # Default working directory inside the container
+        self._workdir = '/code/workspace/repo'  # Updated working directory for new mount structure
         self._config_sources: List[str] = []  # Store paths to configuration files to be sourced
 
-        # Initialize component managers with shared state
-        self._docker = DockerManager(self)
+        # Initialize PathManager and new components
+        self.path_manager = PathManager()
+        self.file_tracker = FileTracker(self.path_manager)
+
+        # Initialize component managers with new inou components
+        self._docker = ContainerManager(image, self.path_manager)
         self._files = FileOperations(self)
         self._patches = PatchOperations(self)
 
@@ -72,7 +78,7 @@ class File_manager:
             workdir: Optional working directory path inside the container.
                     If provided, must exist in the image or be creatable.
         """
-        # Auto-mount the hagent root directory to /code/hagent
+        # Auto-mount the hagent root directory to /code/hagent for backward compatibility
         # Find the hagent root by traversing up from this file's location
         current_path = Path(__file__).resolve()
         hagent_root = None
@@ -87,15 +93,31 @@ class File_manager:
         if hagent_root:
             self.add_mount(str(hagent_root), '/code/hagent')
 
-        return self._docker.setup(workdir)
+        # ContainerManager will automatically handle HAGENT_* mount points
+        success = self._docker.setup(workdir)
+        if success:
+            self._state = 'CONFIGURED'
+        return success
 
     def cleanup(self) -> None:
         """Explicitly clean up resources."""
+        # Clean up FileTracker first
+        if hasattr(self, 'file_tracker'):
+            try:
+                self.file_tracker.cleanup()
+            except Exception:
+                # Ignore cleanup errors for FileTracker
+                pass
+
         return self._docker.cleanup()
 
     def add_mount(self, host_path: str, container_path: str) -> bool:
         """Registers a directory to be mounted from the host. Must be called before setup()."""
-        return self._docker.add_mount(host_path, container_path)
+        result = self._docker.add_mount(host_path, container_path)
+        if not result:
+            # Propagate error message from ContainerManager
+            self.error_message = self._docker.get_error()
+        return result
 
     def add_config_source(self, config_path: str) -> Tuple[int, str, str]:
         """
@@ -169,10 +191,30 @@ class File_manager:
 
     def track_file(self, container_path: str) -> bool:
         """Track an existing file in the container for change detection."""
+        # Use new FileTracker for git-based tracking alongside legacy tracking
+        try:
+            # For new git-based tracking, convert container path to host path
+            host_path = self._container_to_host_path(container_path)
+            if host_path:
+                self.file_tracker.track_file(host_path)
+        except Exception:
+            # Fall back to legacy tracking if new tracking fails
+            pass
+
         return self._files.track_file(container_path)
 
     def track_dir(self, container_path: str = '.', ext: Optional[str] = None) -> bool:
         """Track a directory for change detection. Files will be discovered dynamically in get_patch_dict."""
+        # Use new FileTracker for git-based tracking alongside legacy tracking
+        try:
+            # For new git-based tracking, convert container path to host path
+            host_path = self._container_to_host_path(container_path)
+            if host_path:
+                self.file_tracker.track_dir(host_path, ext)
+        except Exception:
+            # Fall back to legacy tracking if new tracking fails
+            pass
+
         return self._files.track_dir(container_path, ext)
 
     def get_current_tracked_files(self, ext: Optional[str] = None) -> Set[str]:
@@ -185,6 +227,30 @@ class File_manager:
             Set of unique file paths that are currently tracked.
         """
         return self._files.get_current_tracked_files(ext)
+
+    def _container_to_host_path(self, container_path: str) -> Optional[str]:
+        """
+        Convert container path to corresponding host path for FileTracker.
+
+        Args:
+            container_path: Path inside the container
+
+        Returns:
+            Corresponding host path if mapping exists, None otherwise
+        """
+        # Handle the new mount structure
+        if container_path.startswith('/code/workspace/repo'):
+            relative_path = container_path[len('/code/workspace/repo') :].lstrip('/')
+            return str(self.path_manager.repo_dir / relative_path) if relative_path else str(self.path_manager.repo_dir)
+        elif container_path.startswith('/code/workspace/build'):
+            relative_path = container_path[len('/code/workspace/build') :].lstrip('/')
+            return str(self.path_manager.build_dir / relative_path) if relative_path else str(self.path_manager.build_dir)
+        elif container_path.startswith('.'):
+            # Relative paths in working directory
+            relative_path = container_path.lstrip('./')
+            return str(self.path_manager.repo_dir / relative_path) if relative_path else str(self.path_manager.repo_dir)
+
+        return None
 
     # Patch operations methods
     def get_diff(self, filename: str) -> str:
