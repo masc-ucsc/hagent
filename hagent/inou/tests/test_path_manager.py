@@ -155,7 +155,7 @@ class TestPathManager:
 
             result = pm.get_cache_dir()
             expected = str(cache_dir / 'inou')
-            assert result == expected
+            assert Path(result).resolve() == Path(expected).resolve()
 
     def test_get_cache_path_valid(self):
         """Test get_cache_path with valid relative path."""
@@ -166,7 +166,7 @@ class TestPathManager:
 
             result = pm.get_cache_path('test.log')
             expected = str(cache_dir / 'inou' / 'test.log')
-            assert result == expected
+            assert Path(result).resolve() == Path(expected).resolve()
 
     def test_get_cache_path_invalid_absolute(self):
         """Test get_cache_path with invalid absolute path."""
@@ -199,7 +199,7 @@ class TestPathManager:
 
             result = pm.get_log_dir()
             expected = str(cache_dir / 'inou' / 'logs')
-            assert result == expected
+            assert Path(result).resolve() == Path(expected).resolve()
 
     def test_get_build_cache_dir(self):
         """Test get_build_cache_dir method."""
@@ -210,7 +210,7 @@ class TestPathManager:
 
             result = pm.get_build_cache_dir()
             expected = str(cache_dir / 'build')
-            assert result == expected
+            assert Path(result).resolve() == Path(expected).resolve()
 
     def test_get_venv_dir(self):
         """Test get_venv_dir method."""
@@ -221,7 +221,7 @@ class TestPathManager:
 
             result = pm.get_venv_dir()
             expected = str(cache_dir / 'venv')
-            assert result == expected
+            assert Path(result).resolve() == Path(expected).resolve()
 
     def test_is_local_mode(self):
         """Test is_local_mode method."""
