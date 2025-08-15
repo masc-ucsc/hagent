@@ -99,7 +99,7 @@ class TestSnapshotManagement:
         mock_path_manager.repo_dir = Path('/test/repo')
 
         with (
-            patch.object(FileTracker, '_validate_git_repo', return_value=True),
+            patch.object(FileTracker, '_ensure_git_repo', return_value=True),
             patch.object(FileTracker, '_check_git_available', return_value=True),
         ):
             # Mock git commands for baseline snapshot creation
@@ -123,7 +123,7 @@ class TestSnapshotManagement:
         mock_path_manager.repo_dir = Path('/test/repo')
 
         with (
-            patch.object(FileTracker, '_validate_git_repo', return_value=True),
+            patch.object(FileTracker, '_ensure_git_repo', return_value=True),
             patch.object(FileTracker, '_check_git_available', return_value=True),
         ):
             # Mock git diff-index returning 0 (no changes)
@@ -272,8 +272,8 @@ class TestFileDirectoryTracking:
                 assert '/test/repo/src/main.py' in result
 
 
-class TestBuildDirectoryTracking:
-    """Test build directory tracking strategies."""
+class TestUnifiedGitTracking:
+    """Test unified git-based tracking (replaces build directory tracking)."""
 
     def setup_method(self):
         """Setup for each test method."""
@@ -287,45 +287,47 @@ class TestBuildDirectoryTracking:
             self.tracker.path_manager = self.mock_path_manager
             self.tracker.logger = MagicMock()
 
-    def test_setup_build_tracking_docker_mode(self):
-        """Test build tracking setup in Docker mode."""
-        self.mock_path_manager.is_docker_mode.return_value = True
+    def test_unified_tracking_any_file_type(self):
+        """Test that any file type can be tracked with git (repo or build files)."""
+        # With always-use-git strategy, all files are tracked the same way
+        self.tracker._tracked_files = set()
 
-        result = self.tracker._setup_build_tracking()
+        # Should be able to track any file - no distinction between repo/build files
+        repo_file = '/test/repo/src/main.py'
+        build_file = '/test/repo/build/output.txt'  # Note: everything is relative to repo now
 
-        assert result is True
+        with (
+            patch.object(self.tracker, '_resolve_tracking_path') as mock_resolve,
+            patch('pathlib.Path.exists', return_value=True),  # Mock file existence
+            patch('pathlib.Path.parent'),  # Mock parent directory
+        ):
+            mock_resolve.side_effect = lambda x: x  # Return path as-is for this test
 
-    @patch('shutil.copytree')
-    @patch('shutil.rmtree')
-    @patch('pathlib.Path.exists')
-    @patch('pathlib.Path.mkdir')
-    def test_setup_build_tracking_local_mode(self, mock_mkdir, mock_exists, mock_rmtree, mock_copytree):
-        """Test build tracking setup in local mode."""
-        self.mock_path_manager.is_docker_mode.return_value = False
+            result1 = self.tracker.track_file(repo_file)
+            result2 = self.tracker.track_file(build_file)
 
-        # Mock existing cache and build directories
-        mock_exists.side_effect = lambda: True
+            assert result1 is True
+            assert result2 is True
+            assert repo_file in self.tracker._tracked_files
+            assert build_file in self.tracker._tracked_files
 
-        result = self.tracker._setup_build_tracking()
+    def test_git_based_diff_generation(self):
+        """Test that all diffs are generated using git, regardless of file location."""
+        self.tracker._baseline_stash = 'abc123'
 
-        assert result is True
-        mock_copytree.assert_called_once()
+        with (
+            patch.object(self.tracker, '_resolve_tracking_path', return_value='/test/repo/file.txt'),
+            patch.object(self.tracker, '_get_snapshot_diff', return_value='mock diff content') as mock_diff,
+        ):
+            # Mock the Path.resolve chain properly to simulate file in repo directory
+            with patch('pathlib.Path') as mock_path:
+                mock_path.return_value.resolve.return_value = Path('/test/repo/file.txt')
+                mock_path.return_value.relative_to.return_value = Path('file.txt')
 
-    @patch('subprocess.run')
-    def test_track_build_changes_local(self, mock_subprocess):
-        """Test tracking build changes in local mode."""
-        self.mock_path_manager.is_local_mode.return_value = True
+                result = self.tracker.get_diff('file.txt')
 
-        # Mock diff command output
-        mock_subprocess.return_value = MagicMock(
-            returncode=1, stdout='--- /test/cache/build/file.txt\n+++ /test/build/file.txt\n@@ -1 +1 @@\n-old\n+new'
-        )
-
-        with patch('pathlib.Path.exists', return_value=True):
-            result = self.tracker._track_build_changes_local(['/test/build/file.txt'])
-
-            assert 'file.txt' in result
-            assert '--- /test/cache/build/file.txt' in result
+                assert result == 'mock diff content'
+                mock_diff.assert_called_once_with('abc123', ['file.txt'])
 
 
 class TestDiffGeneration:
@@ -441,8 +443,8 @@ class TestContextManagerAndCleanup:
             mock_cleanup.assert_called_once()
 
     @patch.object(FileTracker, '_cleanup_snapshots')
-    @patch.object(FileTracker, '_cleanup_build_tracking')
-    def test_cleanup_method(self, mock_cleanup_build, mock_cleanup_snapshots):
+    @patch.object(FileTracker, '_cleanup_temporary_git_repo')
+    def test_cleanup_method(self, mock_cleanup_git_repo, mock_cleanup_snapshots):
         """Test cleanup method calls all cleanup functions."""
         mock_path_manager = MagicMock()
 
@@ -457,7 +459,7 @@ class TestContextManagerAndCleanup:
             tracker.cleanup()
 
             mock_cleanup_snapshots.assert_called_once()
-            mock_cleanup_build.assert_called_once()
+            mock_cleanup_git_repo.assert_called_once()
             assert len(tracker._tracked_files) == 0
             assert len(tracker._tracked_dirs) == 0
             assert tracker._baseline_stash is None
@@ -518,7 +520,7 @@ class TestErrorHandling:
 
             with (
                 patch.object(tracker, '_cleanup_snapshots', side_effect=Exception('Git error')),
-                patch.object(tracker, '_cleanup_build_tracking'),
+                patch.object(tracker, '_cleanup_temporary_git_repo'),
             ):
                 # Should not raise exception
                 tracker.cleanup()

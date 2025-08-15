@@ -1,8 +1,10 @@
 """
-File tracking using git stash snapshots.
+File tracking using unified git approach.
 
-Provides consistent file tracking across Docker and local execution modes using
-git stash snapshots to track changes to explicitly specified files and directories.
+Always uses git for tracking any files (repo files, build files, etc.) by ensuring
+a git repository exists (creating temporary one if needed) and using git stash
+snapshots to track changes. This unified approach eliminates complex build directory
+tracking logic and provides consistent behavior across all execution modes.
 """
 
 import difflib
@@ -18,11 +20,12 @@ from .path_manager import PathManager
 
 class FileTracker:
     """
-    File tracking using git stash snapshots.
+    File tracking using unified git approach.
 
-    This class provides file tracking capabilities by creating git stash snapshots
-    and tracking changes to explicitly specified files and directories. It supports
-    both Docker and local execution modes seamlessly.
+    This class provides file tracking capabilities by ensuring a git repository
+    exists (creating temporary one if needed) and using git stash snapshots to
+    track changes to explicitly specified files and directories. This unified
+    approach works consistently across all execution modes and directory types.
     """
 
     def __init__(self, path_manager: PathManager):
@@ -43,14 +46,16 @@ class FileTracker:
         self._tracked_dirs: List[Dict[str, str]] = []  # [{'path': str, 'ext': str}, ...]
         self._baseline_stash: Optional[str] = None
         self._hagent_stashes: List[str] = []  # Track our stash references for cleanup
+        self.temp_git_created = False  # Track if we created a temporary git repo
 
-        # Validate git repository and setup
-        if not self._validate_git_repo():
-            self._fail_fast('FileTracker requires a git repository in REPO_DIR')
-            return
-
+        # Check git availability first
         if not self._check_git_available():
             self._fail_fast('FileTracker requires git command to be available')
+            return
+
+        # Ensure git repository exists (create temporary one if needed)
+        if not self._ensure_git_repo():
+            self._fail_fast('FileTracker failed to ensure git repository availability')
             return
 
         # Create baseline snapshot for pre-existing changes
@@ -75,12 +80,12 @@ class FileTracker:
         sys.exit(1)
         return  # For test compatibility
 
-    def _validate_git_repo(self) -> bool:
+    def _ensure_git_repo(self) -> bool:
         """
-        Validate that repo_dir is a git repository.
+        Ensure git repository exists, creating temporary one if needed.
 
         Returns:
-            True if valid git repository, False otherwise
+            True if git repository is available, False otherwise
         """
         repo_dir = Path(self.path_manager.repo_dir)
 
@@ -89,24 +94,62 @@ class FileTracker:
             self.logger.error(f'Repository directory does not exist: {repo_dir}')
             return False
 
-        # Check if it's a git repository
+        # Check if it's already a git repository
         git_dir = repo_dir / '.git'
-        if not git_dir.exists():
-            self.logger.error(f'Directory is not a git repository: {repo_dir}')
-            return False
+        if git_dir.exists():
+            # Validate existing git repository
+            try:
+                result = subprocess.run(
+                    ['git', 'rev-parse', '--git-dir'], cwd=repo_dir, capture_output=True, text=True, timeout=30
+                )
+                if result.returncode == 0:
+                    self.logger.debug(f'Using existing git repository: {repo_dir}')
+                    return True
+                else:
+                    self.logger.warning(f'Existing git repository is invalid: {result.stderr}')
+                    # Continue to create temporary git repo
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+                self.logger.warning(f'Failed to validate existing git repository: {e}')
+                # Continue to create temporary git repo
 
-        # Test git command in the repository
+        # Create temporary git repository
         try:
-            result = subprocess.run(['git', 'rev-parse', '--git-dir'], cwd=repo_dir, capture_output=True, text=True, timeout=30)
+            self.logger.info(f'Creating temporary git repository for tracking: {repo_dir}')
+
+            # Initialize git repository
+            result = subprocess.run(['git', 'init'], cwd=repo_dir, capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
-                self.logger.error(f'Git repository validation failed: {result.stderr}')
+                self.logger.error(f'Failed to initialize git repository: {result.stderr}')
                 return False
 
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
-            self.logger.error(f'Git command failed during validation: {e}')
-            return False
+            # Configure git user for commits (required for stash operations)
+            subprocess.run(['git', 'config', 'user.email', 'hagent@temporary'], cwd=repo_dir, capture_output=True, timeout=10)
+            subprocess.run(['git', 'config', 'user.name', 'HAgent Temporary'], cwd=repo_dir, capture_output=True, timeout=10)
 
-        return True
+            # Create initial commit so we can use stash operations
+            gitignore_path = repo_dir / '.gitignore'
+            gitignore_path.write_text('# Temporary HAgent git repository for file tracking\n')
+
+            subprocess.run(['git', 'add', '.gitignore'], cwd=repo_dir, capture_output=True, timeout=10)
+            commit_result = subprocess.run(
+                ['git', 'commit', '-m', 'Initial HAgent tracking commit'],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if commit_result.returncode != 0:
+                self.logger.warning(f'Failed to create initial commit: {commit_result.stderr}')
+                # Continue anyway - stash operations might still work
+
+            self.temp_git_created = True
+            self.logger.info('Successfully created temporary git repository for tracking')
+            return True
+
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+            self.logger.error(f'Failed to create temporary git repository: {e}')
+            return False
 
     def _check_git_available(self) -> bool:
         """
@@ -145,22 +188,28 @@ class FileTracker:
             result = subprocess.run(
                 ['git', 'diff-index', '--quiet', 'HEAD'], cwd=self.path_manager.repo_dir, capture_output=True, timeout=30
             )
-            
+
             has_tracked_changes = result.returncode != 0
-            
+
             # Check for staged changes
             staged_result = subprocess.run(
-                ['git', 'diff-index', '--quiet', '--cached', 'HEAD'], cwd=self.path_manager.repo_dir, capture_output=True, timeout=30
+                ['git', 'diff-index', '--quiet', '--cached', 'HEAD'],
+                cwd=self.path_manager.repo_dir,
+                capture_output=True,
+                timeout=30,
             )
-            
+
             has_staged_changes = staged_result.returncode != 0
-            
+
             # Check for untracked files
             untracked_result = subprocess.run(
-                ['git', 'ls-files', '--others', '--exclude-standard'], 
-                cwd=self.path_manager.repo_dir, capture_output=True, text=True, timeout=30
+                ['git', 'ls-files', '--others', '--exclude-standard'],
+                cwd=self.path_manager.repo_dir,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
-            
+
             has_untracked_files = bool(untracked_result.stdout.strip()) if untracked_result.returncode == 0 else False
 
             # If no changes, no staged changes, and no untracked files, nothing to snapshot
@@ -319,17 +368,16 @@ class FileTracker:
 
             result = subprocess.run(cmd, cwd=self.path_manager.repo_dir, capture_output=True, text=True, timeout=60)
 
-
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout
-            
+
             # If git diff doesn't work (e.g., for untracked files), manually compare
             diffs = []
             for path in paths:
                 diff_content = self._manual_diff_with_stash(stash_ref, path)
                 if diff_content:
                     diffs.append(diff_content)
-            
+
             return '\n'.join(diffs)
 
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
@@ -339,11 +387,11 @@ class FileTracker:
     def _manual_diff_with_stash(self, stash_ref: str, file_path: str) -> str:
         """
         Manually compare a file between stash and working tree.
-        
+
         Args:
             stash_ref: Stash reference
             file_path: Path to file (relative to repo)
-            
+
         Returns:
             Unified diff string
         """
@@ -354,39 +402,42 @@ class FileTracker:
                 cwd=self.path_manager.repo_dir,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
-            
+
             if stash_result.returncode != 0:
                 # File doesn't exist in stash
                 return ''
-            
+
             stash_content = stash_result.stdout
-            
+
             # Get current file content
             current_file = Path(self.path_manager.repo_dir) / file_path
             if not current_file.exists():
                 # File was deleted
-                return f'--- {file_path}\n+++ /dev/null\n@@ -1,{len(stash_content.splitlines())} +0,0 @@\n' + \
-                       '\n'.join(f'-{line}' for line in stash_content.splitlines())
-            
+                return f'--- {file_path}\n+++ /dev/null\n@@ -1,{len(stash_content.splitlines())} +0,0 @@\n' + '\n'.join(
+                    f'-{line}' for line in stash_content.splitlines()
+                )
+
             try:
                 current_content = current_file.read_text()
             except UnicodeDecodeError:
                 # Binary file
                 return f'Binary files {file_path} and {file_path} differ'
-            
+
             # Compare using difflib for unified diff
-            diff_lines = list(difflib.unified_diff(
-                stash_content.splitlines(keepends=True),
-                current_content.splitlines(keepends=True),
-                fromfile=f'{file_path} (baseline)',
-                tofile=f'{file_path} (current)',
-                lineterm=''
-            ))
-            
+            diff_lines = list(
+                difflib.unified_diff(
+                    stash_content.splitlines(keepends=True),
+                    current_content.splitlines(keepends=True),
+                    fromfile=f'{file_path} (baseline)',
+                    tofile=f'{file_path} (current)',
+                    lineterm='',
+                )
+            )
+
             return ''.join(diff_lines)
-            
+
         except Exception as e:
             self.logger.warning(f'Manual diff failed for {file_path}: {e}')
             return ''
@@ -477,11 +528,11 @@ class FileTracker:
         except Exception as e:
             self.logger.warning(f'Error during snapshot cleanup: {e}')
 
-        # Clean up build tracking artifacts
+        # Clean up temporary git repository if we created it
         try:
-            self._cleanup_build_tracking()
+            self._cleanup_temporary_git_repo()
         except Exception as e:
-            self.logger.warning(f'Error during build tracking cleanup: {e}')
+            self.logger.warning(f'Error during temporary git repo cleanup: {e}')
 
         # Clear tracking state
         self._tracked_files.clear()
@@ -589,7 +640,10 @@ class FileTracker:
 
     def _resolve_tracking_path(self, path: str) -> str:
         """
-        Resolve path relative to appropriate base directory.
+        Resolve path relative to git repository root.
+
+        With always-use-git strategy, all paths are resolved relative to
+        the git repository root directory (repo_dir).
 
         Args:
             path: Path to resolve
@@ -600,18 +654,9 @@ class FileTracker:
         if os.path.isabs(path):
             return os.path.normpath(path)
 
-        # Try relative to repo_dir first, then build_dir
+        # All paths are relative to repo_dir (git repository root)
         repo_path = Path(self.path_manager.repo_dir) / path
-        build_path = Path(self.path_manager.build_dir) / path
-
-        # Check which base makes more sense based on existence
-        if repo_path.exists() or repo_path.parent.exists():
-            return str(repo_path.resolve())
-        elif build_path.exists() or build_path.parent.exists():
-            return str(build_path.resolve())
-        else:
-            # Default to repo_dir for new files
-            return str(repo_path.resolve())
+        return str(repo_path.resolve())
 
     def _matches_filter(self, file_path: str, ext_filter: Optional[str], dir_ext: Optional[str]) -> bool:
         """
@@ -662,181 +707,40 @@ class FileTracker:
 
         return files
 
-    def _setup_build_tracking(self) -> bool:
+    def _cleanup_temporary_git_repo(self) -> None:
         """
-        Setup build directory tracking based on execution mode.
+        Cleanup temporary git repository if we created it.
 
-        Returns:
-            True if setup successful, False otherwise
+        This removes the .git directory we created for tracking purposes.
+        Only removes git repo if temp_git_created flag is True.
         """
-        try:
-            if self.path_manager.is_docker_mode():
-                # Docker mode: track build directory directly (mounted)
-                self.logger.debug('Docker mode: tracking build directory directly')
-                return True
-            else:
-                # Local mode: copy build to cache for tracking
-                self.logger.debug('Local mode: syncing build directory to cache')
-                return self._sync_build_dir_local()
+        if not self.temp_git_created:
+            return
 
-        except Exception as e:
-            self.logger.error(f'Failed to setup build tracking: {e}')
-            return False
-
-    def _sync_build_dir_local(self) -> bool:
-        """
-        Copy build dir to cache for local execution tracking.
-
-        Returns:
-            True if sync successful, False otherwise
-        """
         try:
             import shutil
 
-            build_dir = Path(self.path_manager.build_dir)
-            cache_build_dir = Path(self.path_manager.cache_dir) / 'build'
+            repo_dir = Path(self.path_manager.repo_dir)
+            git_dir = repo_dir / '.git'
 
-            # Remove existing cache build directory
-            if cache_build_dir.exists():
-                shutil.rmtree(cache_build_dir)
+            if git_dir.exists():
+                shutil.rmtree(git_dir)
+                self.logger.debug('Cleaned up temporary git repository')
 
-            # Copy build directory to cache if it exists
-            if build_dir.exists():
-                shutil.copytree(build_dir, cache_build_dir, dirs_exist_ok=True)
-                self.logger.debug(f'Synced build directory to cache: {cache_build_dir}')
-            else:
-                # Create empty cache directory for future builds
-                cache_build_dir.mkdir(parents=True, exist_ok=True)
-                self.logger.debug(f'Created empty cache build directory: {cache_build_dir}')
-
-            return True
+                # Also remove the .gitignore we created
+                gitignore_path = repo_dir / '.gitignore'
+                if gitignore_path.exists():
+                    gitignore_content = gitignore_path.read_text()
+                    if 'Temporary HAgent git repository' in gitignore_content:
+                        gitignore_path.unlink()
+                        self.logger.debug('Removed temporary .gitignore file')
 
         except Exception as e:
-            self.logger.error(f'Failed to sync build directory: {e}')
-            return False
-
-    def _track_build_changes(self, paths: List[str]) -> str:
-        """
-        Generate diffs for build directory changes.
-
-        Args:
-            paths: List of build directory paths to track
-
-        Returns:
-            Diff output as string
-        """
-        if not paths:
-            return ''
-
-        if self.path_manager.is_docker_mode():
-            return self._track_build_changes_docker(paths)
-        else:
-            return self._track_build_changes_local(paths)
-
-    def _track_build_changes_docker(self, paths: List[str]) -> str:
-        """
-        Track build changes in Docker mode (direct tracking).
-
-        Args:
-            paths: List of paths in build directory
-
-        Returns:
-            Diff output as string
-        """
-        # In Docker mode, we can't use git for build directory tracking
-        # since build dir is typically not a git repo. We'll use simple
-        # file comparison against baseline if available.
-
-        # For now, return empty - this could be enhanced with file timestamps
-        # or other change detection mechanisms if needed
-        self.logger.debug('Docker build tracking not fully implemented yet')
-        return ''
-
-    def _track_build_changes_local(self, paths: List[str]) -> str:
-        """
-        Track build changes in local mode (cache comparison).
-
-        Args:
-            paths: List of paths in build directory
-
-        Returns:
-            Diff output as string showing changes
-        """
-        try:
-            import subprocess
-
-            build_dir = Path(self.path_manager.build_dir)
-            cache_build_dir = Path(self.path_manager.cache_dir) / 'build'
-
-            if not cache_build_dir.exists():
-                return ''  # No baseline to compare against
-
-            diffs = []
-
-            for path in paths:
-                build_path = Path(path)
-
-                # Make sure this path is in the build directory
-                if not str(build_path).startswith(str(build_dir)):
-                    continue
-
-                # Get relative path within build directory
-                try:
-                    rel_path = build_path.relative_to(build_dir)
-                    cache_path = cache_build_dir / rel_path
-
-                    # Compare files using diff command
-                    if cache_path.exists() and build_path.exists():
-                        result = subprocess.run(
-                            ['diff', '-u', str(cache_path), str(build_path)], capture_output=True, text=True, timeout=30
-                        )
-
-                        if result.returncode == 1:  # Files differ
-                            diffs.append(result.stdout)
-                        elif result.returncode != 0:  # Error
-                            self.logger.warning(f'Diff failed for {path}: {result.stderr}')
-
-                    elif not cache_path.exists() and build_path.exists():
-                        # New file
-                        diffs.append(f'--- /dev/null\n+++ {rel_path}\n@@ -0,0 +1,1 @@\n+[New file: {rel_path}]\n')
-
-                    elif cache_path.exists() and not build_path.exists():
-                        # Deleted file
-                        diffs.append(f'--- {rel_path}\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-[Deleted file: {rel_path}]\n')
-
-                except ValueError:
-                    # Path is not relative to build_dir
-                    continue
-
-            return '\n'.join(diffs)
-
-        except Exception as e:
-            self.logger.error(f'Failed to track build changes: {e}')
-            return ''
-
-    def _cleanup_build_tracking(self) -> None:
-        """
-        Cleanup build directory tracking artifacts.
-
-        For local mode, this means cleaning up the cache build directory.
-        For Docker mode, no special cleanup is needed.
-        """
-        try:
-            if self.path_manager.is_local_mode():
-                import shutil
-
-                cache_build_dir = Path(self.path_manager.cache_dir) / 'build'
-
-                if cache_build_dir.exists():
-                    shutil.rmtree(cache_build_dir)
-                    self.logger.debug('Cleaned up cache build directory')
-
-        except Exception as e:
-            self.logger.warning(f'Error cleaning up build tracking: {e}')
+            self.logger.warning(f'Error cleaning up temporary git repository: {e}')
 
     def get_diff(self, file_path: str) -> str:
         """
-        Get unified diff for specific tracked file.
+        Get unified diff for specific tracked file using git.
 
         Args:
             file_path: Path to file to get diff for
@@ -852,18 +756,18 @@ class FileTracker:
             abs_path = self._resolve_tracking_path(file_path)
             repo_dir = Path(self.path_manager.repo_dir)
 
-
-            # Check if file is in repo directory (resolve symlinks for comparison)
+            # Convert to relative path within git repository
             abs_path_obj = Path(abs_path).resolve()
             repo_dir_resolved = repo_dir.resolve()
-            if repo_dir_resolved in abs_path_obj.parents or abs_path_obj == repo_dir_resolved:
+
+            try:
                 rel_path = abs_path_obj.relative_to(repo_dir_resolved)
                 return self._get_snapshot_diff(self._baseline_stash, [str(rel_path)])
-            else:
-                self.logger.debug(f"File is in build directory, using build tracking")
-                # File is in build directory - use build tracking
-                build_paths = [abs_path]
-                return self._track_build_changes(build_paths)
+            except ValueError:
+                # File is outside git repository - this shouldn't happen with always-use-git strategy
+                # but handle gracefully
+                self.logger.warning(f'File is outside git repository: {abs_path}')
+                return ''
 
         except Exception as e:
             self.logger.error(f"Failed to get diff for '{file_path}': {e}")

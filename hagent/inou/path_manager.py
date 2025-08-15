@@ -283,6 +283,28 @@ class PathManager:
         venv_dir = self.cache_dir / 'venv'
         return str(venv_dir)
 
+    @property
+    def inou_dir(self) -> Path:
+        """Directory for HAgent-internal files."""
+        return self.cache_dir / 'inou'
+
+    @property
+    def logs_dir(self) -> Path:
+        """Directory for log files."""
+        return self.inou_dir / 'logs'
+
+    def get_yaml_path(self, filename: str) -> Path:
+        """
+        Get path for step YAML files.
+
+        Args:
+            filename: Name of the YAML file
+
+        Returns:
+            Path to the YAML file in HAGENT_CACHE_DIR/inou/
+        """
+        return self.inou_dir / filename
+
     def is_local_mode(self) -> bool:
         """Check if running in local execution mode."""
         return self.execution_mode == 'local'

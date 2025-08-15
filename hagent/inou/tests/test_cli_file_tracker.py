@@ -425,7 +425,7 @@ class TestCLIIntegration:
         mock_subprocess.return_value.stdout = 'CLI help output'
 
         # Simulate calling the CLI as a subprocess
-        result = subprocess.run(['python', '-m', 'hagent.inou.cli_file_tracker', '--help'], capture_output=True, text=True)
+        subprocess.run(['python', '-m', 'hagent.inou.cli_file_tracker', '--help'], capture_output=True, text=True)
 
         # This is mocked, so we're testing the mock setup
         assert mock_subprocess.called

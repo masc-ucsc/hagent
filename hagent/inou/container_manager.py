@@ -296,6 +296,140 @@ class ContainerManager:
         self._mounts.append({'source': host_path, 'target': full_container_path})
         return True
 
+    def create_container(self, repo_dir=None, build_dir=None, cache_dir=None, workdir=None):
+        """
+        Create container with standardized mount points.
+
+        This is the new standardized interface for Phase 5 & 6.
+
+        Args:
+            repo_dir: Optional host repo directory to mount
+            build_dir: Optional host build directory to mount
+            cache_dir: Required host cache directory to mount
+            workdir: Optional working directory (defaults to /code/workspace/repo)
+
+        Returns:
+            Docker container object if successful, None otherwise
+        """
+        # Set working directory
+        working_dir = workdir or '/code/workspace/repo'
+
+        # Setup mount points
+        mounts = []
+        env_vars = {
+            'HAGENT_EXECUTION_MODE': 'docker',
+            'HAGENT_CACHE_DIR': '/code/workspace/cache',
+            'UV_PROJECT_ENVIRONMENT': '/code/workspace/cache/venv',
+        }
+
+        # Optional mounts
+        if repo_dir:
+            mounts.append(f'{repo_dir}:/code/workspace/repo')
+            env_vars['HAGENT_REPO_DIR'] = '/code/workspace/repo'
+
+        if build_dir:
+            mounts.append(f'{build_dir}:/code/workspace/build')
+            env_vars['HAGENT_BUILD_DIR'] = '/code/workspace/build'
+
+        # Always mount cache directory
+        if cache_dir:
+            mounts.append(f'{cache_dir}:/code/workspace/cache')
+        else:
+            self.set_error('cache_dir is required for container creation')
+            return None
+
+        return self._create_container_with_mounts(mounts, env_vars, working_dir)
+
+    def _create_container_with_mounts(self, mounts, env_vars, working_dir):
+        """
+        Internal method to create container with specified mounts and environment.
+
+        Args:
+            mounts: List of mount strings in format "host:container"
+            env_vars: Dictionary of environment variables
+            working_dir: Working directory inside container
+
+        Returns:
+            Docker container object if successful, None otherwise
+        """
+        try:
+            # Ensure Docker client is available
+            if not self.client:
+                self.set_error('Docker client not initialized')
+                return None
+
+            # Check if image exists locally, pull if needed
+            image_available = False
+            try:
+                self.client.images.get(self.image)
+                image_available = True
+            except docker.errors.ImageNotFound:
+                pass
+
+            if not image_available:
+                print(f"Pulling image '{self.image}'...")
+                try:
+                    self._pull_image_with_progress(self.image)
+                    image_available = True
+                except docker.errors.APIError as e:
+                    error_msg = str(e).lower()
+                    if 'credential' in error_msg or 'unauthorized' in error_msg:
+                        print(f'Warning: Credential issue detected: {e}')
+                        print(f'Please manually pull the image: docker pull {self.image}')
+                        return None
+                    else:
+                        print(f'Failed to pull image: {e}')
+                        return None
+
+            if not image_available:
+                self.set_error(f"Image '{self.image}' is not available")
+                return None
+
+            # Convert mount strings to Mount objects
+            mount_objs = []
+            for mount_str in mounts:
+                host_path, container_path = mount_str.split(':')
+                mount_obj = docker.types.Mount(target=container_path, source=os.path.abspath(host_path), type='bind')
+                mount_objs.append(mount_obj)
+
+            # Create the container
+            container = self.client.containers.create(
+                self.image,
+                command='tail -f /dev/null',  # Keep container running
+                mounts=mount_objs,
+                environment=env_vars,
+                working_dir=working_dir,
+                detach=True,
+            )
+
+            container.start()
+
+            # Validate container workspace structure
+            if not self._validate_container_workspace(container):
+                container.remove(force=True)
+                return None
+
+            return container
+
+        except Exception as e:
+            self.set_error(f'Failed to create container: {e}')
+            return None
+
+    def _validate_container_workspace(self, container) -> bool:
+        """Validate that container has required /code/workspace/ structure."""
+        try:
+            result = container.exec_run('test -d /code/workspace')
+            if result.exit_code != 0:
+                self.set_error(
+                    'Container image does not have /code/workspace/ directory. '
+                    'This is required for the new HAgent container structure.'
+                )
+                return False
+            return True
+        except Exception as e:
+            self.set_error(f'Failed to validate /code/workspace/ directory: {e}')
+            return False
+
     def setup(self, workdir: Optional[str] = None) -> bool:
         """
         Create and start Docker container with new mount structure.
