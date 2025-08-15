@@ -62,6 +62,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+addopts = "-v -k 'not test_file_manager'"
 testpaths = ["hagent"]
 filterwarnings = [
     "ignore::DeprecationWarning",

@@ -291,7 +291,7 @@ class V2chisel_batch(Step):
             for temp_file in self.temp_files:
                 try:
                     os.unlink(temp_file)
-                except:
+                except Exception:
                     pass
             self.temp_files = []
 
@@ -754,7 +754,7 @@ class V2chisel_batch(Step):
 
         # Step 4: Generate summary
         total_bugs = len(results)
-        successful_hits = sum(1 for r in results if r.get('module_finder_hits', 0) > 0)
+        # successful_hits = sum(1 for r in results if r.get('module_finder_hits', 0) > 0)
         bugs_with_hints = sum(1 for r in results if r.get('has_hints', False))
         module_finder_successes = sum(1 for r in results if r.get('hints_source') == 'module_finder')
         metadata_fallbacks = sum(1 for r in results if r.get('hints_source') == 'metadata_fallback')
