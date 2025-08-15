@@ -11,6 +11,8 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Protocol
 
+from hagent.inou.path_manager import PathManager
+
 
 class ExecutionStrategy(Protocol):
     """Protocol defining the interface for command execution strategies."""
@@ -51,14 +53,12 @@ class HagentBuildCore:
         self.config = self._load_config()
         self.execution_strategy = execution_strategy
 
-        # Base directory for config; used to derive sane defaults that are writable.
-        cfg_dir = Path(self.config_path).resolve().parent
+        # Initialize PathManager for centralized path management
+        self.path_manager = PathManager(validate_env=True)
 
-        # Repo dir: default to config directory; can be overridden by env.
-        self.repo_dir = Path(os.environ.get('HAGENT_REPO_DIR', str(cfg_dir))).resolve()
-
-        # Build base: default to "<cfg_dir>/build" (user-writable) unless env overrides it.
-        self.build_base = Path(os.environ.get('HAGENT_BUILD_DIR', str(cfg_dir))).resolve()
+        # Get paths from PathManager
+        self.repo_dir = self.path_manager.repo_dir
+        self.build_base = self.path_manager.build_dir
 
         # Basic sanity checks
         assert self.config_path, 'config_path must be resolved'
@@ -73,14 +73,7 @@ class HagentBuildCore:
         Returns:
             List of potential configuration file paths to check
         """
-        return [
-            './hagent.yaml',
-            'hagent.yaml',
-            '/code/workspace/repo/hagent.yaml',
-            '/code/workspace/hagent.yaml',
-            str(Path(os.environ.get('HAGENT_REPO_DIR', ''), 'hagent.yaml')),
-            str(Path(os.environ.get('HAGENT_BUILD_DIR', ''), 'hagent.yaml')),
-        ]
+        return PathManager.possible_config_paths()
 
     @staticmethod
     def find_config() -> str:
@@ -93,10 +86,7 @@ class HagentBuildCore:
         Raises:
             FileNotFoundError: If no configuration file is found
         """
-        for loc in HagentBuildCore.possible_config_paths():
-            if loc and os.path.exists(loc):
-                return str(loc)
-        raise FileNotFoundError('No hagent.yaml found in search paths')
+        return PathManager.find_config()
 
     def _load_config(self) -> dict:
         """Load YAML configuration from file."""
@@ -166,8 +156,11 @@ class HagentBuildCore:
                 # Allow $VAR expansion in YAML values
                 env[k] = os.path.expandvars(v)
 
-        env['HAGENT_REPO_DIR'] = str(self.repo_dir)
+        # Use PathManager to ensure consistent path handling
+        env['HAGENT_REPO_DIR'] = str(self.path_manager.repo_dir)
         env['HAGENT_BUILD_DIR'] = str(build_dir)
+        env['HAGENT_CACHE_DIR'] = str(self.path_manager.cache_dir)
+        env['HAGENT_EXECUTION_MODE'] = self.path_manager.execution_mode
         return env
 
     # ---------------------------- track directive parsing ----------------------------

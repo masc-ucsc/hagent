@@ -48,9 +48,21 @@ class ContainerManager:
         self._checkpoints: List[str] = []
         self._mounts: List[Dict[str, str]] = []
         self._workdir = '/code/workspace/repo'  # New default working directory
+        self.error_message: str = ''  # For error handling like Tool pattern
 
-        # Initialize Docker client
-        self._initialize_docker_client()
+        # Try to initialize Docker client - errors will be stored for later
+        try:
+            self._initialize_docker_client()
+        except Exception as e:
+            self.set_error(str(e))
+
+    def set_error(self, message: str) -> None:
+        """Set error message following Tool pattern."""
+        self.error_message = message
+
+    def get_error(self) -> str:
+        """Get current error message following Tool pattern."""
+        return self.error_message
 
     def _initialize_docker_client(self) -> None:
         """Initialize Docker client with cross-platform support."""
@@ -76,7 +88,7 @@ class ContainerManager:
                 except Exception:
                     continue
 
-        # If all attempts failed, raise error
+        # If all attempts failed, raise error to be caught by __init__
         raise RuntimeError(
             f'Docker client initialization failed. Tried:\n'
             f'- Environment-based connection\n'
@@ -220,13 +232,15 @@ class ContainerManager:
         try:
             result = self.container.exec_run('test -d /code/workspace')
             if result.exit_code != 0:
-                raise RuntimeError(
+                self.set_error(
                     'Container image does not have /code/workspace/ directory. '
                     'This is required for the new HAgent container structure.'
                 )
+                return False
             return True
         except Exception as e:
-            raise RuntimeError(f'Failed to validate /code/workspace/ directory: {e}')
+            self.set_error(f'Failed to validate /code/workspace/ directory: {e}')
+            return False
 
     def _setup_container_environment(self) -> Dict[str, str]:
         """Setup HAGENT_* environment variables inside container."""
@@ -275,7 +289,8 @@ class ContainerManager:
     def add_mount(self, host_path: str, container_path: str) -> bool:
         """Register additional directory mount. Must be called before setup()."""
         if self.container is not None:
-            raise RuntimeError('add_mount must be called before setup()')
+            self.set_error('add_mount must be called before setup()')
+            return False
 
         full_container_path = container_path if os.path.isabs(container_path) else os.path.join(self._workdir, container_path)
         self._mounts.append({'source': host_path, 'target': full_container_path})
@@ -323,7 +338,8 @@ class ContainerManager:
                         return False
 
             if not image_available:
-                raise RuntimeError(f"Image '{self.image}' is not available")
+                self.set_error(f"Image '{self.image}' is not available")
+                return False
 
             # Setup mount points and environment
             mount_objs = self._setup_mount_points()
@@ -341,12 +357,14 @@ class ContainerManager:
             self.container.start()
 
             # Validate /code/workspace/ directory exists
-            self._validate_workspace_directory()
+            if not self._validate_workspace_directory():
+                return False
 
             # Ensure working directory exists
             result = self.container.exec_run(f'mkdir -p {self._workdir}')
             if result.exit_code != 0:
-                raise RuntimeError(f'Failed to create working directory: {self._workdir}')
+                self.set_error(f'Failed to create working directory: {self._workdir}')
+                return False
 
             # Check if bash exists in the container
             result = self.container.exec_run(['test', '-x', '/bin/bash'])
@@ -359,7 +377,8 @@ class ContainerManager:
             return True
 
         except Exception as e:
-            raise RuntimeError(f'Container setup failed: {e}')
+            self.set_error(f'Container setup failed: {e}')
+            return False
 
     def run(
         self, command: str, container_path: Optional[str] = '.', quiet: bool = False, config_sources: Optional[List[str]] = None
@@ -377,7 +396,8 @@ class ContainerManager:
             Tuple of (exit_code, stdout, stderr)
         """
         if not self.container:
-            raise RuntimeError('Container not set up. Call setup() first.')
+            self.set_error('Container not set up. Call setup() first.')
+            return -1, '', 'Container not set up'
 
         # Handle working directory
         if container_path == '.':
@@ -471,7 +491,8 @@ class ContainerManager:
                 return exit_code, stdout_str, stderr_str
 
         except Exception as e:
-            raise RuntimeError(f'Command execution failed: {e}')
+            self.set_error(f'Command execution failed: {e}')
+            return -1, '', str(e)
 
     def image_checkpoint(self, name: Optional[str] = None) -> Optional[str]:
         """
@@ -484,7 +505,8 @@ class ContainerManager:
             The image name/tag of the created checkpoint, or None if failed
         """
         if not self.container:
-            raise RuntimeError('No container available for checkpoint')
+            self.set_error('No container available for checkpoint')
+            return None
 
         try:
             # Generate checkpoint name
@@ -531,7 +553,8 @@ class ContainerManager:
             return checkpoint_name
 
         except Exception as e:
-            raise RuntimeError(f'Failed to create checkpoint: {e}')
+            self.set_error(f'Failed to create checkpoint: {e}')
+            return None
 
     def _cleanup_anonymous_checkpoints(self) -> None:
         """Clean up anonymous checkpoints created by this instance."""
@@ -592,6 +615,33 @@ class ContainerManager:
 
         # Clean up anonymous checkpoints
         self._cleanup_anonymous_checkpoints()
+
+    def get_reference_container(self) -> Optional['docker.models.containers.Container']:
+        """Get or create a reference container for comparing original files."""
+        if self._reference_container is None:
+            try:
+                # Create a fresh container from the same image
+                self._reference_container = self.client.containers.create(
+                    self.image,
+                    command='tail -f /dev/null',  # Keep it alive
+                    working_dir=self._workdir,
+                    detach=True,
+                )
+                self._reference_container.start()
+            except Exception as e:
+                self.set_error(f'Failed to create reference container: {e}')
+                return None
+        return self._reference_container
+
+    def _ensure_container_directory(self, dir_path: str) -> bool:
+        """Ensure a directory exists in the container."""
+        try:
+            # Create directory if it doesn't exist
+            result = self.container.exec_run(f'mkdir -p {dir_path}')
+            return result.exit_code == 0
+        except Exception as e:
+            print(f"Failed to create directory '{dir_path}': {e}", file=sys.stderr)
+            return False
 
     def __enter__(self):
         """Context manager entry."""

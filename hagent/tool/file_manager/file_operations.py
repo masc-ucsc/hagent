@@ -57,7 +57,7 @@ class FileOperations:
 
     def copy_dir(self, host_path: str, container_path: str = '.', ext: Optional[str] = None) -> bool:
         """Copies a host directory into the container. Must be called after setup()."""
-        if self.fm._state not in ['CONFIGURED', 'EXECUTED']:
+        if self.fm._state != 'CONFIGURED':
             self.fm.error_message = f'copy_dir must be called after setup(). {self.fm._state}'
             return False
         try:
@@ -79,7 +79,7 @@ class FileOperations:
 
     def copy_file(self, host_path: str, container_path: Optional[str] = '.') -> bool:
         """Copies a single file from the host into the container's tracked directory."""
-        if self.fm._state not in ['CONFIGURED', 'EXECUTED']:
+        if self.fm._state != 'CONFIGURED':
             self.fm.error_message = f'copy_file must be called after setup(). {self.fm._state}'
             return False
 
@@ -109,10 +109,39 @@ class FileOperations:
             tar_stream = io.BytesIO()
             tar = tarfile.open(fileobj=tar_stream, mode='w')
 
-            # Add file to tar
+            # Add file to tar with appropriate ownership and permissions
             tarinfo = tarfile.TarInfo(name=filename)
             tarinfo.size = len(file_content)
-            tarinfo.mode = 0o644
+            tarinfo.mode = 0o666  # Read-write for everyone
+            
+            # Get current user info from container to set correct ownership
+            try:
+                user_info = self.fm._docker.container.exec_run('id -u && id -g && whoami')
+                if user_info.exit_code == 0:
+                    lines = user_info.output.decode('utf-8').strip().split('\n')
+                    if len(lines) >= 3:
+                        tarinfo.uid = int(lines[0])  # uid
+                        tarinfo.gid = int(lines[1])  # gid
+                        tarinfo.uname = lines[2]     # username
+                        # Try to get group name (may fail, use gid as fallback)
+                        group_info = self.fm._docker.container.exec_run('id -gn')
+                        if group_info.exit_code == 0:
+                            tarinfo.gname = group_info.output.decode('utf-8').strip()
+                        else:
+                            tarinfo.gname = str(tarinfo.gid)
+                else:
+                    # Fallback to safe defaults if user detection fails
+                    tarinfo.uid = 0
+                    tarinfo.gid = 0
+                    tarinfo.uname = 'root'
+                    tarinfo.gname = 'root'
+            except Exception:
+                # Fallback to safe defaults on any error
+                tarinfo.uid = 0
+                tarinfo.gid = 0
+                tarinfo.uname = 'root'
+                tarinfo.gname = 'root'
+                
             tar.addfile(tarinfo, io.BytesIO(file_content))
             tar.close()
 
@@ -127,6 +156,8 @@ class FileOperations:
             success = self.fm._docker.container.put_archive(path=dest_path, data=tar_stream.getvalue())
 
             if success:
+                # No need to fix permissions since we set them in the tar archive
+                
                 print(f"Successfully copied '{host_path}' to container path '{final_container_path}'")
                 return True
             else:
@@ -149,7 +180,7 @@ class FileOperations:
         Returns:
             True if successful, False otherwise
         """
-        if self.fm._state not in ['CONFIGURED', 'EXECUTED']:
+        if self.fm._state != 'CONFIGURED':
             self.fm.error_message = f'install_executable must be called after setup(). {self.fm._state}'
             return False
 
@@ -206,8 +237,8 @@ class FileOperations:
 
     def get_file_content(self, container_path: str, container=None) -> str:
         """Return the text content of a file from a container (defaults to main container)."""
-        # Allow getting file content in EXECUTED state (and also CONFIGURED for flexibility)
-        if self.fm._state not in ['CONFIGURED', 'EXECUTED']:
+        # Allow getting file content in CONFIGURED state
+        if self.fm._state != 'CONFIGURED':
             self.fm.error_message = 'get_file_content must be called after setup().'
             return ''
 
@@ -244,7 +275,7 @@ class FileOperations:
 
     def track_file(self, container_path: str) -> bool:
         """Track an existing file in the container for change detection."""
-        if self.fm._state not in ['CONFIGURED', 'EXECUTED']:
+        if self.fm._state != 'CONFIGURED':
             self.fm.error_message = 'track_file must be called after setup().'
             return False
 
@@ -266,7 +297,7 @@ class FileOperations:
 
     def track_dir(self, container_path: str = '.', ext: Optional[str] = None) -> bool:
         """Track a directory for change detection. Files will be discovered dynamically in get_patch_dict."""
-        if self.fm._state not in ['CONFIGURED', 'EXECUTED']:
+        if self.fm._state != 'CONFIGURED':
             self.fm.error_message = 'track_dir must be called after setup().'
             return False
 
@@ -309,7 +340,7 @@ class FileOperations:
             all_tracked_files.update(self._tracked_individual_files)
 
         # Add files from tracked directories (track_dir approach) - discover dynamically
-        if self.fm._state in ['CONFIGURED', 'EXECUTED'] and self.fm._docker.container:
+        if self.fm._state == 'CONFIGURED' and self.fm._docker.container:
             for dir_entry in self._tracked_dirs:
                 dir_path = dir_entry['path']
                 dir_ext_filter = dir_entry['ext']
