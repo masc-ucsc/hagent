@@ -131,7 +131,10 @@ endmodule
         # Force Docker fallback by directly calling the Docker setup method
         docker_success = equiv_checker.setup_docker_fallback()
 
+        print('HELLO')
+
         if not docker_success:
+            print(f'Docker setup failed: {equiv_checker.get_error()}')
             pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
 
         assert equiv_checker.use_docker is True
@@ -143,7 +146,7 @@ endmodule
         """Test equivalence checking with equivalent designs using Docker."""
         equiv_checker = Equiv_check()
 
-        return # FIXME: TOO SLOW
+        return  # FIXME: TOO SLOW
 
         # Force Docker usage
         docker_success = equiv_checker.setup_docker_fallback()
@@ -180,7 +183,7 @@ endmodule
         """Test equivalence checking with non-equivalent designs using Docker."""
         equiv_checker = Equiv_check()
 
-        return # FIXME TOO SLOW
+        return  # FIXME TOO SLOW
 
         # Force Docker usage
         docker_success = equiv_checker.setup_docker_fallback()
@@ -352,8 +355,8 @@ endmodule
         # Run equivalence check
         result = equiv_checker.check_equivalence(gold_code=gold_code, gate_code=gate_code, desired_top='simple_test')
 
-        print(f"gold_code:{gold_code}")
-        print(f"gold_code:{gate_code}")
+        print(f'gold_code:{gold_code}')
+        print(f'gold_code:{gate_code}')
         print(f'✓ Equivalence check result: {result}')
 
         if result is True:

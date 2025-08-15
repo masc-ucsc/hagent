@@ -1,5 +1,4 @@
-from typing import Optional, Dict, Tuple, Any, Set, List
-from pathlib import Path
+from typing import Optional, Tuple, List
 
 from hagent.inou.container_manager import ContainerManager
 from hagent.inou.file_tracker import FileTracker
@@ -55,13 +54,11 @@ class File_manager:
             # Ignore any errors during destruction cleanup
             pass
 
-
     def get_error(self) -> str:
         """Return the last recorded error message (empty if none)."""
         return self.error_message
 
     # Docker and container management methods
-
 
     def cleanup(self) -> None:
         """Explicitly clean up resources."""
@@ -83,15 +80,11 @@ class File_manager:
             self.error_message = self._docker.get_error()
         return result
 
-
     def run(self, command: str, container_path: Optional[str] = '.', quiet: bool = False) -> Tuple[int, str, str]:
         """Execute command inside the container."""
         return self._docker.run(command, container_path, quiet, config_sources=self._config_sources)
 
-
     # File operations methods
-
-
 
     def get_file_content(self, container_path: str, container=None) -> str:
         """Return the text content of a file from a container (defaults to main container)."""
@@ -101,9 +94,6 @@ class File_manager:
         """Check if a path exists in the container."""
         exit_code, _, _ = self.run(f'test -e "{container_path}"', quiet=True)
         return exit_code == 0
-
-
-
 
     def _container_to_host_path(self, container_path: str) -> Optional[str]:
         """
@@ -130,8 +120,3 @@ class File_manager:
         return None
 
     # Patch operations methods
-
-
-
-
-

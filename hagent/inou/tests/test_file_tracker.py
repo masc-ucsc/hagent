@@ -1,412 +1,527 @@
 """
 Tests for FileTracker
 
-Tests git-based file tracking with stash snapshots, directory tracking,
-and build directory synchronization for both local and Docker modes.
+Tests git-based file tracking with stash snapshots, comprehensive tracking
+functionality, and diff generation for both local and Docker execution modes.
 """
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+import pytest
 
 from hagent.inou.file_tracker import FileTracker
 
 
-class TestFileTracker:
-    """Test FileTracker functionality."""
+class TestFileTrackerInitialization:
+    """Test FileTracker initialization and validation."""
 
-    def test_initialization_without_path_manager(self):
-        """Test FileTracker initialization without providing path manager."""
-        with patch('hagent.inou.file_tracker.PathManager') as mock_pm_class:
-            mock_pm = MagicMock()
-            mock_pm_class.return_value = mock_pm
+    @patch('hagent.inou.file_tracker.subprocess.run')
+    @patch('pathlib.Path.exists')
+    def test_successful_initialization(self, mock_exists, mock_subprocess):
+        """Test successful FileTracker initialization."""
+        # Mock PathManager
+        mock_path_manager = MagicMock()
+        mock_path_manager.repo_dir = Path('/test/repo')
 
-            with patch.object(FileTracker, '_initialize_session'):
-                tracker = FileTracker()
-                assert tracker.path_manager == mock_pm
-                mock_pm_class.assert_called_once()
+        # Mock git repository validation - directory and .git exist
+        def mock_exists_func():
+            return True  # Both repo dir and .git dir exist
 
-    def test_initialization_with_path_manager(self):
-        """Test FileTracker initialization with provided path manager."""
-        mock_pm = MagicMock()
+        mock_exists.side_effect = mock_exists_func
 
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
-            assert tracker.path_manager == mock_pm
-            assert tracker._tracked_paths == set()
-            assert tracker._stash_name is None
-            assert tracker._stash_created is False
-
-    @patch('subprocess.run')
-    def test_initialize_session_with_changes(self, mock_subprocess):
-        """Test session initialization when there are changes to stash."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-        mock_pm.is_local_mode.return_value = False
-
-        # Mock git stash create success
+        # Mock git commands
         mock_subprocess.side_effect = [
-            MagicMock(returncode=0, stdout='abc123def456'),  # stash create
-            MagicMock(returncode=0),  # stash store
+            MagicMock(returncode=0, stdout='/test/repo/.git'),  # git rev-parse
+            MagicMock(returncode=0, stdout='git version 2.34.1'),  # git --version
+            MagicMock(returncode=1, stdout=''),  # git diff-index (changes exist)
         ]
 
-        tracker = FileTracker(mock_pm)
+        with patch.object(FileTracker, '_create_baseline_snapshot', return_value='abc123'):
+            tracker = FileTracker(mock_path_manager)
 
-        assert tracker._stash_created is True
-        assert tracker._stash_name == 'stash@{0}'
+            assert tracker.path_manager == mock_path_manager
+            assert tracker._baseline_stash == 'abc123'
+            assert len(tracker._tracked_files) == 0
+            assert len(tracker._tracked_dirs) == 0
 
-        # Verify git commands were called
-        assert mock_subprocess.call_count == 2
-        mock_subprocess.assert_any_call(
-            ['git', 'stash', 'create', 'pre-hagent-session'],
-            cwd='/test/repo',
-            capture_output=True,
-            text=True,
-        )
+    @patch('hagent.inou.file_tracker.sys.exit')
+    @patch('pathlib.Path.exists', return_value=False)
+    def test_repo_dir_not_exists(self, mock_exists, mock_exit):
+        """Test failure when repo directory doesn't exist."""
+        mock_path_manager = MagicMock()
+        mock_path_manager.repo_dir = Path('/nonexistent/repo')
 
-    @patch('subprocess.run')
-    def test_initialize_session_no_changes(self, mock_subprocess):
-        """Test session initialization when there are no changes."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-        mock_pm.is_local_mode.return_value = False
+        FileTracker(mock_path_manager)
 
-        # Mock git stash create with no output (no changes)
-        mock_subprocess.return_value = MagicMock(returncode=0, stdout='')
+        mock_exit.assert_called_once_with(1)
 
-        with patch.object(FileTracker, '_create_empty_stash') as mock_empty_stash:
-            FileTracker(mock_pm)
-            mock_empty_stash.assert_called_once()
+    @patch('hagent.inou.file_tracker.sys.exit')
+    @patch('pathlib.Path.exists')
+    def test_not_git_repo(self, mock_exists, mock_exit):
+        """Test failure when directory is not a git repository."""
+        mock_path_manager = MagicMock()
+        mock_path_manager.repo_dir = Path('/test/repo')
 
-    @patch('subprocess.run')
-    def test_create_empty_stash(self, mock_subprocess):
-        """Test empty stash creation."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-        mock_pm.is_local_mode.return_value = False
+        # Repo exists but .git doesn't
+        mock_exists.side_effect = lambda: str(self) == '/test/repo'
 
-        # Mock successful empty stash creation
+        FileTracker(mock_path_manager)
+
+        mock_exit.assert_called_once_with(1)
+
+    @patch('hagent.inou.file_tracker.sys.exit')
+    @patch('hagent.inou.file_tracker.subprocess.run')
+    @patch('pathlib.Path.exists', return_value=True)
+    def test_git_command_not_available(self, mock_exists, mock_subprocess, mock_exit):
+        """Test failure when git command is not available."""
+        mock_path_manager = MagicMock()
+        mock_path_manager.repo_dir = Path('/test/repo')
+
+        # Git repository validation fails
         mock_subprocess.side_effect = [
-            MagicMock(returncode=0),  # git add
-            MagicMock(returncode=0, stdout='empty123'),  # stash create
-            MagicMock(returncode=0),  # stash store
-            MagicMock(returncode=0),  # git reset
+            MagicMock(returncode=1, stderr='git command not found'),
+            subprocess.CalledProcessError(1, 'git'),
         ]
 
-        with patch('pathlib.Path.write_text'):
-            with patch('pathlib.Path.unlink'):
-                tracker = FileTracker(mock_pm)
-                tracker._create_empty_stash()
+        FileTracker(mock_path_manager)
 
-                assert tracker._stash_created is True
-                assert tracker._stash_name == 'stash@{0}'
+        mock_exit.assert_called_once_with(1)
 
-    @patch('shutil.copytree')
-    @patch('shutil.rmtree')
-    def test_sync_build_directory(self, mock_rmtree, mock_copytree):
-        """Test build directory synchronization for local mode."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-        mock_pm.build_dir = Path('/test/build')
-        mock_pm.get_build_cache_dir.return_value = '/test/cache/build'
-        mock_pm.is_local_mode.return_value = True
 
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
+class TestSnapshotManagement:
+    """Test git stash snapshot management."""
 
+    @patch('hagent.inou.file_tracker.subprocess.run')
+    def test_create_baseline_snapshot_with_changes(self, mock_subprocess):
+        """Test baseline snapshot creation when changes exist."""
+        mock_path_manager = MagicMock()
+        mock_path_manager.repo_dir = Path('/test/repo')
+
+        with (
+            patch.object(FileTracker, '_validate_git_repo', return_value=True),
+            patch.object(FileTracker, '_check_git_available', return_value=True),
+        ):
+            # Mock git commands for baseline snapshot creation
+            mock_subprocess.side_effect = [
+                MagicMock(returncode=1, stdout=''),  # diff-index (tracked changes exist)
+                MagicMock(returncode=0, stdout=''),  # diff-index --cached (staged changes)
+                MagicMock(returncode=0, stdout=''),  # ls-files --others (untracked files)
+                MagicMock(returncode=0, stdout='abc123\n'),  # stash create
+                MagicMock(returncode=0, stdout=''),  # stash store
+            ]
+
+            tracker = FileTracker(mock_path_manager)
+
+            assert tracker._baseline_stash == 'abc123'
+            assert 'abc123' in tracker._hagent_stashes
+
+    @patch('hagent.inou.file_tracker.subprocess.run')
+    def test_create_baseline_snapshot_no_changes(self, mock_subprocess):
+        """Test baseline snapshot when no changes exist."""
+        mock_path_manager = MagicMock()
+        mock_path_manager.repo_dir = Path('/test/repo')
+
+        with (
+            patch.object(FileTracker, '_validate_git_repo', return_value=True),
+            patch.object(FileTracker, '_check_git_available', return_value=True),
+        ):
+            # Mock git diff-index returning 0 (no changes)
+            mock_subprocess.return_value = MagicMock(returncode=0, stdout='')
+
+            tracker = FileTracker(mock_path_manager)
+
+            assert tracker._baseline_stash is None
+            assert len(tracker._hagent_stashes) == 0
+
+    @patch('hagent.inou.file_tracker.subprocess.run')
+    def test_create_snapshot(self, mock_subprocess):
+        """Test creating a snapshot."""
+        mock_path_manager = MagicMock()
+        mock_path_manager.repo_dir = Path('/test/repo')
+
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            tracker = FileTracker(mock_path_manager)
+            tracker.path_manager = mock_path_manager
+            tracker.logger = MagicMock()
+
+            # Mock successful stash creation
+            mock_subprocess.return_value = MagicMock(returncode=0, stdout='def456\n')
+
+            result = tracker._create_snapshot('test-message')
+
+            assert result == 'def456'
+            mock_subprocess.assert_called_once()
+
+    @patch('hagent.inou.file_tracker.subprocess.run')
+    def test_store_snapshot(self, mock_subprocess):
+        """Test storing a snapshot."""
+        mock_path_manager = MagicMock()
+        mock_path_manager.repo_dir = Path('/test/repo')
+
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            tracker = FileTracker(mock_path_manager)
+            tracker.path_manager = mock_path_manager
+            tracker.logger = MagicMock()
+            tracker._hagent_stashes = []
+
+            # Mock successful stash store
+            mock_subprocess.return_value = MagicMock(returncode=0)
+
+            result = tracker._store_snapshot('def456', 'test-message')
+
+            assert result is True
+            assert 'def456' in tracker._hagent_stashes
+
+    @patch('hagent.inou.file_tracker.subprocess.run')
+    def test_cleanup_snapshots(self, mock_subprocess):
+        """Test cleanup of snapshots."""
+        mock_path_manager = MagicMock()
+        mock_path_manager.repo_dir = Path('/test/repo')
+
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            tracker = FileTracker(mock_path_manager)
+            tracker.path_manager = mock_path_manager
+            tracker.logger = MagicMock()
+            tracker._hagent_stashes = ['abc123', 'def456']
+
+            # Mock stash list and drop
+            mock_subprocess.side_effect = [
+                MagicMock(returncode=0, stdout='abc123 stash@{0}\ndef456 stash@{1}\n'),  # stash list
+                MagicMock(returncode=0),  # stash drop
+                MagicMock(returncode=0, stdout='def456 stash@{0}\n'),  # stash list again
+                MagicMock(returncode=0),  # stash drop
+            ]
+
+            tracker._cleanup_snapshots()
+
+            assert len(tracker._hagent_stashes) == 0
+
+
+class TestFileDirectoryTracking:
+    """Test file and directory tracking functionality."""
+
+    def setup_method(self):
+        """Setup for each test method."""
+        self.mock_path_manager = MagicMock()
+        self.mock_path_manager.repo_dir = Path('/test/repo')
+        self.mock_path_manager.build_dir = Path('/test/build')
+
+        # Create tracker with mocked initialization
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            self.tracker = FileTracker(self.mock_path_manager)
+            self.tracker.path_manager = self.mock_path_manager
+            self.tracker.logger = MagicMock()
+            self.tracker._tracked_files = set()
+            self.tracker._tracked_dirs = []
+
+    def test_track_file_success(self):
+        """Test successful file tracking."""
         with patch('pathlib.Path.exists', return_value=True):
-            tracker._sync_build_directory()
+            result = self.tracker.track_file('src/main.py')
 
-            mock_rmtree.assert_called_once_with(Path('/test/cache/build'))
-            mock_copytree.assert_called_once_with(Path('/test/build'), Path('/test/cache/build'))
-            assert tracker._build_cache_synced is True
+            assert result is True
+            assert len(self.tracker._tracked_files) == 1
+            tracked_path = next(iter(self.tracker._tracked_files))
+            assert 'src/main.py' in tracked_path
 
     def test_track_file_absolute_path(self):
         """Test tracking file with absolute path."""
-        mock_pm = MagicMock()
+        with patch('pathlib.Path.exists', return_value=True):
+            result = self.tracker.track_file('/absolute/path/file.py')
 
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
+            assert result is True
+            assert '/absolute/path/file.py' in self.tracker._tracked_files
 
-        result = tracker.track_file('/absolute/path/file.txt')
+    def test_track_dir_success(self):
+        """Test successful directory tracking."""
+        with patch('pathlib.Path.exists', return_value=True):
+            result = self.tracker.track_dir('src', '.py')
+
+            assert result is True
+            assert len(self.tracker._tracked_dirs) == 1
+            assert self.tracker._tracked_dirs[0]['ext'] == '.py'
+
+    def test_track_dir_no_extension(self):
+        """Test directory tracking without extension filter."""
+        with patch('pathlib.Path.exists', return_value=True):
+            result = self.tracker.track_dir('src')
+
+            assert result is True
+            assert len(self.tracker._tracked_dirs) == 1
+            assert self.tracker._tracked_dirs[0]['ext'] is None
+
+    def test_get_tracked_files_empty(self):
+        """Test getting tracked files when none are tracked."""
+        result = self.tracker.get_tracked_files()
+
+        assert isinstance(result, set)
+        assert len(result) == 0
+
+    def test_get_tracked_files_with_directory(self):
+        """Test getting tracked files from directory tracking."""
+        # Setup directory tracking
+        self.tracker._tracked_dirs = [{'path': '/test/repo/src', 'ext': '.py'}]
+
+        # Mock the helper methods directly
+        with patch.object(self.tracker, '_find_files_in_dir', return_value=['/test/repo/src/main.py']):
+            with patch('pathlib.Path.exists', return_value=True):
+                result = self.tracker.get_tracked_files('.py')
+
+                assert len(result) == 1  # Only .py file should match
+                assert '/test/repo/src/main.py' in result
+
+
+class TestBuildDirectoryTracking:
+    """Test build directory tracking strategies."""
+
+    def setup_method(self):
+        """Setup for each test method."""
+        self.mock_path_manager = MagicMock()
+        self.mock_path_manager.repo_dir = Path('/test/repo')
+        self.mock_path_manager.build_dir = Path('/test/build')
+        self.mock_path_manager.cache_dir = Path('/test/cache')
+
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            self.tracker = FileTracker(self.mock_path_manager)
+            self.tracker.path_manager = self.mock_path_manager
+            self.tracker.logger = MagicMock()
+
+    def test_setup_build_tracking_docker_mode(self):
+        """Test build tracking setup in Docker mode."""
+        self.mock_path_manager.is_docker_mode.return_value = True
+
+        result = self.tracker._setup_build_tracking()
 
         assert result is True
-        assert str(Path('/absolute/path/file.txt').resolve()) in tracker._tracked_paths
 
-    def test_track_file_relative_path_repo(self):
-        """Test tracking file with relative path (found in repo)."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-        mock_pm.build_dir = Path('/test/build')
+    @patch('shutil.copytree')
+    @patch('shutil.rmtree')
+    @patch('pathlib.Path.exists')
+    @patch('pathlib.Path.mkdir')
+    def test_setup_build_tracking_local_mode(self, mock_mkdir, mock_exists, mock_rmtree, mock_copytree):
+        """Test build tracking setup in local mode."""
+        self.mock_path_manager.is_docker_mode.return_value = False
 
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
+        # Mock existing cache and build directories
+        mock_exists.side_effect = lambda: True
 
-        with patch('pathlib.Path.exists', side_effect=lambda: True):
-            result = tracker.track_file('src/main.py')
+        result = self.tracker._setup_build_tracking()
 
-            assert result is True
-            expected_path = str((mock_pm.repo_dir / 'src/main.py').resolve())
-            assert expected_path in tracker._tracked_paths
+        assert result is True
+        mock_copytree.assert_called_once()
 
-    def test_track_file_relative_path_build(self):
-        """Test tracking file with relative path (found in build)."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-        mock_pm.build_dir = Path('/test/build')
+    @patch('subprocess.run')
+    def test_track_build_changes_local(self, mock_subprocess):
+        """Test tracking build changes in local mode."""
+        self.mock_path_manager.is_local_mode.return_value = True
 
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
-
-        def mock_exists(self):
-            # Repo path doesn't exist, build path does
-            return str(self).startswith('/test/build')
-
-        with patch('pathlib.Path.exists', mock_exists):
-            result = tracker.track_file('output/result.txt')
-
-            assert result is True
-            expected_path = str((mock_pm.build_dir / 'output/result.txt').resolve())
-            assert expected_path in tracker._tracked_paths
-
-    def test_track_dir_without_extension(self):
-        """Test tracking directory without extension filter."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-        mock_pm.build_dir = Path('/test/build')
-
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
+        # Mock diff command output
+        mock_subprocess.return_value = MagicMock(
+            returncode=1, stdout='--- /test/cache/build/file.txt\n+++ /test/build/file.txt\n@@ -1 +1 @@\n-old\n+new'
+        )
 
         with patch('pathlib.Path.exists', return_value=True):
-            result = tracker.track_dir('src/main')
+            result = self.tracker._track_build_changes_local(['/test/build/file.txt'])
 
-            assert result is True
-            expected_path = str((mock_pm.repo_dir / 'src/main').resolve())
-            assert expected_path in tracker._tracked_paths
+            assert 'file.txt' in result
+            assert '--- /test/cache/build/file.txt' in result
 
-    def test_track_dir_with_extension(self):
-        """Test tracking directory with extension filter."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
 
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
+class TestDiffGeneration:
+    """Test diff and patch generation functionality."""
 
-        with patch('pathlib.Path.exists', return_value=True):
-            result = tracker.track_dir('src', '.py')
+    def setup_method(self):
+        """Setup for each test method."""
+        self.mock_path_manager = MagicMock()
+        self.mock_path_manager.repo_dir = Path('/test/repo')
 
-            assert result is True
-            expected_pattern = str((mock_pm.repo_dir / 'src').resolve() / '*.py')
-            assert expected_pattern in tracker._tracked_paths
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            self.tracker = FileTracker(self.mock_path_manager)
+            self.tracker.path_manager = self.mock_path_manager
+            self.tracker.logger = MagicMock()
+            self.tracker._baseline_stash = 'abc123'
 
-    def test_track_file_error_handling(self):
-        """Test track_file error handling."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-        mock_pm.build_dir = Path('/test/build')
+    @patch.object(FileTracker, '_get_snapshot_diff')
+    def test_get_diff_repo_file(self, mock_get_snapshot_diff):
+        """Test getting diff for repository file."""
+        mock_get_snapshot_diff.return_value = 'diff output'
 
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
+        result = self.tracker.get_diff('src/main.py')
 
-        with patch('pathlib.Path.resolve', side_effect=Exception('Test error')):
-            with patch('builtins.print') as mock_print:
-                result = tracker.track_file('test.txt')
+        assert result == 'diff output'
+        mock_get_snapshot_diff.assert_called_once()
+
+    def test_get_all_diffs_empty(self):
+        """Test getting all diffs when no files tracked."""
+        with patch.object(self.tracker, 'get_tracked_files', return_value=set()):
+            result = self.tracker.get_all_diffs()
+
+            assert isinstance(result, dict)
+            assert len(result) == 0
+
+    def test_get_patch_dict_structure(self):
+        """Test patch dictionary structure."""
+        with patch.object(self.tracker, 'get_all_diffs', return_value={}):
+            result = self.tracker.get_patch_dict()
+
+            assert 'full' in result
+            assert 'patch' in result
+            assert isinstance(result['full'], list)
+            assert isinstance(result['patch'], list)
+
+    @patch('builtins.open')
+    def test_read_file_content_text_file(self, mock_open):
+        """Test reading text file content."""
+        mock_open.return_value.__enter__.return_value.read.return_value = 'file content'
+
+        with patch.object(self.tracker, '_is_binary_file', return_value=False), patch('pathlib.Path.exists', return_value=True):
+            result = self.tracker._read_file_content('/test/file.txt')
+
+            assert result == 'file content'
+
+    def test_is_binary_file_with_null_bytes(self):
+        """Test binary file detection with null bytes."""
+        with patch('builtins.open') as mock_open:
+            mock_open.return_value.__enter__.return_value.read.return_value = b'text\x00binary'
+            with patch('pathlib.Path.exists', return_value=True):
+                result = self.tracker._is_binary_file('/test/file.bin')
+
+                assert result is True
+
+    def test_should_use_full_content_small_file(self):
+        """Test using full content for small files."""
+        diff_content = 'small diff'
+        file_content = 'small file'  # Less than 1KB
+
+        result = self.tracker._should_use_full_content(diff_content, file_content)
+
+        assert result is True
+
+    def test_should_use_full_content_large_diff(self):
+        """Test using full content when diff is large relative to file."""
+        diff_content = 'x' * 1000  # Large diff
+        file_content = 'x' * 1500  # File content (diff > 50% of file)
+
+        result = self.tracker._should_use_full_content(diff_content, file_content)
+
+        assert result is True
+
+
+class TestContextManagerAndCleanup:
+    """Test context manager functionality and cleanup."""
+
+    @patch.object(FileTracker, 'cleanup')
+    def test_context_manager_success(self, mock_cleanup):
+        """Test successful context manager usage."""
+        mock_path_manager = MagicMock()
+
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            tracker = FileTracker(mock_path_manager)
+            tracker.path_manager = mock_path_manager
+
+            with tracker as t:
+                assert t is tracker
+
+            mock_cleanup.assert_called_once()
+
+    @patch.object(FileTracker, 'cleanup')
+    def test_context_manager_with_exception(self, mock_cleanup):
+        """Test context manager cleanup on exception."""
+        mock_path_manager = MagicMock()
+
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            tracker = FileTracker(mock_path_manager)
+            tracker.path_manager = mock_path_manager
+
+            with pytest.raises(ValueError):
+                with tracker:
+                    raise ValueError('Test exception')
+
+            mock_cleanup.assert_called_once()
+
+    @patch.object(FileTracker, '_cleanup_snapshots')
+    @patch.object(FileTracker, '_cleanup_build_tracking')
+    def test_cleanup_method(self, mock_cleanup_build, mock_cleanup_snapshots):
+        """Test cleanup method calls all cleanup functions."""
+        mock_path_manager = MagicMock()
+
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            tracker = FileTracker(mock_path_manager)
+            tracker.path_manager = mock_path_manager
+            tracker.logger = MagicMock()
+            tracker._tracked_files = {'file1'}
+            tracker._tracked_dirs = [{'path': 'dir1', 'ext': None}]
+            tracker._baseline_stash = 'abc123'
+
+            tracker.cleanup()
+
+            mock_cleanup_snapshots.assert_called_once()
+            mock_cleanup_build.assert_called_once()
+            assert len(tracker._tracked_files) == 0
+            assert len(tracker._tracked_dirs) == 0
+            assert tracker._baseline_stash is None
+
+    @patch.object(FileTracker, 'cleanup')
+    def test_destructor_cleanup(self, mock_cleanup):
+        """Test cleanup is called in destructor."""
+        mock_path_manager = MagicMock()
+
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            tracker = FileTracker(mock_path_manager)
+            del tracker
+
+            # Cleanup should be called at least once
+            assert mock_cleanup.call_count >= 1
+
+
+class TestErrorHandling:
+    """Test error handling and edge cases."""
+
+    def test_track_file_with_exception(self):
+        """Test track_file handles exceptions gracefully."""
+        mock_path_manager = MagicMock()
+
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            tracker = FileTracker(mock_path_manager)
+            tracker.path_manager = mock_path_manager
+            tracker.logger = MagicMock()
+            tracker._tracked_files = set()
+
+            with patch.object(tracker, '_resolve_tracking_path', side_effect=Exception('Test error')):
+                result = tracker.track_file('test.py')
 
                 assert result is False
-                mock_print.assert_called()
 
-    @patch('subprocess.run')
-    def test_get_tracked_changes_with_changes(self, mock_subprocess):
-        """Test getting tracked changes with repository changes."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-        mock_pm.is_local_mode.return_value = False
+    def test_get_diff_no_baseline_stash(self):
+        """Test get_diff when no baseline stash exists."""
+        mock_path_manager = MagicMock()
 
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            tracker = FileTracker(mock_path_manager)
+            tracker._baseline_stash = None
 
-        # Set up tracking state
-        tracker._stash_created = True
-        tracker._stash_name = 'stash@{0}'
-        tracker._tracked_paths = {'/test/repo/src/main.py'}
+            result = tracker.get_diff('test.py')
 
-        # Mock git diff output
-        mock_subprocess.return_value = MagicMock(
-            returncode=0,
-            stdout='diff --git a/src/main.py b/src/main.py\nindex abc123..def456 100644\n--- a/src/main.py\n+++ b/src/main.py\n@@ -1,3 +1,4 @@\n line1\n line2\n+new line\n line3',
-        )
+            assert result == ''
 
-        result = tracker.get_tracked_changes()
+    def test_cleanup_with_subprocess_error(self):
+        """Test cleanup handles subprocess errors gracefully."""
+        mock_path_manager = MagicMock()
 
-        assert 'Repository Changes' in result
-        assert 'diff --git a/src/main.py' in result
+        with patch.object(FileTracker, '__init__', lambda x, y: None):
+            tracker = FileTracker(mock_path_manager)
+            tracker.logger = MagicMock()
+            tracker._tracked_files = set()
+            tracker._tracked_dirs = []
+            tracker._baseline_stash = None
 
-        # Verify git diff was called with correct arguments
-        mock_subprocess.assert_called_once()
-        args, kwargs = mock_subprocess.call_args
-        assert args[0] == ['git', 'diff', 'stash@{0}', '--', 'src/main.py']
-        assert kwargs['cwd'] == '/test/repo'
+            with (
+                patch.object(tracker, '_cleanup_snapshots', side_effect=Exception('Git error')),
+                patch.object(tracker, '_cleanup_build_tracking'),
+            ):
+                # Should not raise exception
+                tracker.cleanup()
 
-    def test_get_tracked_changes_no_stash(self):
-        """Test getting tracked changes when no stash was created."""
-        mock_pm = MagicMock()
-
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
-
-        # No stash created
-        tracker._stash_created = False
-
-        result = tracker.get_tracked_changes()
-        assert result == ''
-
-    def test_get_tracked_changes_no_tracked_paths(self):
-        """Test getting tracked changes when no paths are tracked."""
-        mock_pm = MagicMock()
-
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
-
-        tracker._stash_created = True
-        tracker._stash_name = 'stash@{0}'
-        tracker._tracked_paths = set()  # No tracked paths
-
-        result = tracker.get_tracked_changes()
-        assert result == ''
-
-    @patch('subprocess.run')
-    def test_get_tracked_changes_local_mode_with_build(self, mock_subprocess):
-        """Test getting tracked changes in local mode with build changes."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-        mock_pm.is_local_mode.return_value = True
-
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
-
-        tracker._stash_created = True
-        tracker._stash_name = 'stash@{0}'
-        tracker._tracked_paths = {'/test/repo/src/main.py'}
-        tracker._build_cache_synced = True
-
-        # Mock git diff for repo changes
-        mock_subprocess.return_value = MagicMock(returncode=0, stdout='repo diff output')
-
-        with patch.object(tracker, '_get_build_directory_changes', return_value='build diff output'):
-            result = tracker.get_tracked_changes()
-
-            assert 'Repository Changes' in result
-            assert 'repo diff output' in result
-            assert 'Build Directory Changes' in result
-            assert 'build diff output' in result
-
-    @patch('subprocess.run')
-    def test_get_build_directory_changes(self, mock_subprocess):
-        """Test getting build directory changes."""
-        mock_pm = MagicMock()
-        mock_pm.build_dir = Path('/test/build')
-        mock_pm.get_build_cache_dir.return_value = '/test/cache/build'
-
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
-
-        tracker._tracked_paths = {'/test/build/output.txt'}
-
-        with patch('pathlib.Path.exists', return_value=True):
-            # Mock diff command success
-            mock_subprocess.return_value = MagicMock(
-                returncode=1,  # diff returns 1 when differences found
-                stdout='diff -u /test/cache/build/output.txt /test/build/output.txt\n--- old\n+++ new\n@@ -1 +1 @@\n-old line\n+new line',
-            )
-
-            result = tracker._get_build_directory_changes()
-
-            assert 'diff -u' in result
-            assert 'output.txt' in result
-
-            # Verify diff command was called
-            mock_subprocess.assert_called_once()
-            args = mock_subprocess.call_args[0][0]
-            assert args[0] == 'diff'
-            assert '-u' in args
-            assert '-r' in args
-
-    def test_get_tracked_paths(self):
-        """Test getting list of tracked paths."""
-        mock_pm = MagicMock()
-
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
-
-        tracker._tracked_paths = {'/path1', '/path2', '/path3'}
-
-        result = tracker.get_tracked_paths()
-        assert isinstance(result, list)
-        assert set(result) == {'/path1', '/path2', '/path3'}
-
-    @patch('subprocess.run')
-    def test_cleanup(self, mock_subprocess):
-        """Test cleanup method."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
-
-        # Set up state to cleanup
-        tracker._stash_created = True
-        tracker._stash_name = 'stash@{0}'
-        tracker._tracked_paths = {'/some/path'}
-
-        tracker.cleanup()
-
-        # Verify git stash drop was called
-        mock_subprocess.assert_called_once_with(
-            ['git', 'stash', 'drop', 'stash@{0}'],
-            cwd='/test/repo',
-            capture_output=True,
-        )
-
-        # Verify state was cleared
-        assert tracker._stash_created is False
-        assert tracker._stash_name is None
-        assert len(tracker._tracked_paths) == 0
-
-    def test_cleanup_error_handling(self):
-        """Test cleanup error handling."""
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/test/repo')
-
-        with patch.object(FileTracker, '_initialize_session'):
-            tracker = FileTracker(mock_pm)
-
-        tracker._stash_created = True
-        tracker._stash_name = 'stash@{0}'
-
-        with patch('subprocess.run', side_effect=Exception('Git error')):
-            with patch('builtins.print') as mock_print:
-                tracker.cleanup()  # Should not raise exception
-                mock_print.assert_called()
-
-    def test_context_manager(self):
-        """Test FileTracker as context manager."""
-        mock_pm = MagicMock()
-
-        with patch.object(FileTracker, '_initialize_session'):
-            with patch.object(FileTracker, 'cleanup') as mock_cleanup:
-                with FileTracker(mock_pm) as tracker:
-                    assert isinstance(tracker, FileTracker)
-
-                mock_cleanup.assert_called_once()
-
-    def test_destructor_cleanup(self):
-        """Test cleanup on object destruction."""
-        mock_pm = MagicMock()
-
-        with patch.object(FileTracker, '_initialize_session'):
-            with patch.object(FileTracker, 'cleanup') as mock_cleanup:
-                tracker = FileTracker(mock_pm)
-                del tracker
-
-                # Cleanup should be called at least once (may be called multiple times by garbage collector)
-                assert mock_cleanup.call_count >= 1
+                # Should still clear tracking state
+                assert len(tracker._tracked_files) == 0

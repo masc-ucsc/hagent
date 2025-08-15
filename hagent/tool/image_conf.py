@@ -2,6 +2,8 @@
 """
 Image Configuration Tool for HAgent
 
+DEPRECATED: This module is deprecated. Use hagent.inou.executor instead.
+
 Provides a simple API for reading YAML configuration files and executing
 commands through file_manager instances. Designed for integration with
 hagent/tool/file_manager.py for setting up tracked directories/files and environment.
@@ -9,12 +11,11 @@ hagent/tool/file_manager.py for setting up tracked directories/files and environ
 Now uses the shared HagentBuildCore for configuration management.
 """
 
-import os
-from typing import Dict, List, Optional, Tuple
+import warnings
+from typing import Dict, Optional, Tuple
 from hagent.tool.tool import Tool
 from hagent.tool.file_manager import File_manager
 from hagent.core.hagent_build import HagentBuildCore
-from hagent.inou.executor import DockerExecutor
 
 
 class DockerExecutionStrategy:
@@ -29,14 +30,36 @@ class DockerExecutionStrategy:
 
         This is a deprecated wrapper around DockerExecutor for backward compatibility.
         """
+        warnings.warn(
+            'DockerExecutionStrategy is deprecated. Use hagent.inou.executor.DockerExecutor instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.file_manager = file_manager
         # Create new DockerExecutor instance to delegate to
-        self._executor = DockerExecutor(file_manager)
+        from hagent.inou.executor import DockerExecutor
 
+        self._executor = DockerExecutor(file_manager=file_manager)
+
+    def run(self, command: str, cwd: str, env: Dict[str, str], quiet: bool = False) -> Tuple[int, str, str]:
+        """
+        Execute command using the new executor interface.
+
+        DEPRECATED: Use hagent.inou.executor.DockerExecutor.run() instead.
+        """
+        warnings.warn(
+            'DockerExecutionStrategy.run() is deprecated. Use hagent.inou.executor.DockerExecutor.run() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._executor.run(command, cwd, env, quiet)
 
 
 class Image_conf(Tool):
     """
+    DEPRECATED: Tool for reading and managing YAML configuration files.
+    Use hagent.inou.executor and hagent.core.hagent_build directly instead.
+
     Tool for reading and managing YAML configuration files that define
     profiles with APIs, track_dir/track_file specifications, and environment setup.
     Works in conjunction with File_manager to execute commands.
@@ -44,12 +67,14 @@ class Image_conf(Tool):
 
     def __init__(self):
         """Initialize the Image_conf tool."""
+        warnings.warn(
+            'Image_conf is deprecated. Use hagent.inou.executor and hagent.core.hagent_build directly instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__()
         self.core: Optional[HagentBuildCore] = None
         self.file_manager: Optional[File_manager] = None
-
-
-
 
     def get_profile(self, profile_name: str) -> Optional[Dict]:
         """
@@ -69,7 +94,6 @@ class Image_conf(Tool):
         except ValueError:
             self.set_error(f"Profile '{profile_name}' not found")
             return None
-
 
     def setup_tracking_for_profile(self, profile_name: str) -> bool:
         """
@@ -116,8 +140,3 @@ class Image_conf(Tool):
         except Exception as e:
             self.set_error(f"Failed to setup tracking for profile '{profile_name}': {e}")
             return False
-
-
-
-
-

@@ -9,28 +9,10 @@ execution through pluggable execution strategies.
 import os
 import yaml
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Protocol
+from typing import Dict, List, Optional, Tuple
 
 from hagent.inou.path_manager import PathManager
-
-
-class ExecutionStrategy(Protocol):
-    """Protocol defining the interface for command execution strategies."""
-
-    def run(self, command: str, cwd: str, env: Dict[str, str], quiet: bool = False) -> Tuple[int, str, str]:
-        """
-        Execute a command with the given parameters.
-
-        Args:
-            command: The command to execute
-            cwd: Working directory for the command
-            env: Environment variables
-            quiet: Whether to run in quiet mode
-
-        Returns:
-            Tuple of (exit_code, stdout, stderr)
-        """
-        ...
+from hagent.inou.executor import ExecutionStrategy
 
 
 class HagentBuildCore:
