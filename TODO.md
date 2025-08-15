@@ -1,4 +1,16 @@
 
+Add option to mount repo/cache/build dir from local instead of mounting.
+
+Maybe create a shared "hagent" setup section that it is shared across all the passes when set in the input yaml.
+
+hagent:
+  execution_mode: "docker" # (or local)
+  mount_build_dir: ./xxx
+  mount_cache_dir: ./xxx
+  mount_repo_dir: ./xxx
+
+
+-------
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 cd /code/hagent &&
@@ -7,22 +19,7 @@ cd /code/hagent &&
 
   UV_PROJECT_ENVIRONMENT=/code/workspace/cache/venv VIRTUAL_ENV=/code/workspace/cache/venv uv run /code/hagent/scripts/hagent-build.py --config $HAGENT_REPO_DIR/hagent.yaml
 
--------
 
-- hagent.yaml uses a "script". ./scripts/gcd_compile ./scripts/gcd_lint ....
-
-  + each command executes the associated command.
-       It reads the BUILD_DIR for output directory or current directory if unset
-       It reads the HAGENT_WORKDIR_REPO if set or current directory otherwise.
-
-       (commands like the yosys need to use both to point to the correct direction)
-
-  + Change the track_dir to track_repo_dir track_build_dir so that they read the directory output/input automatically.
-    Assume that track_repo_dir is not generated, build_dir are generated when the associmated command is executed
-
-  + Fix the hagent.yaml for simplechisel/XiangShan
-
-- Create the MCP that reads the hagent.yaml and hagent-build.py so that it is exposed to claude code
 
 -------
 This document has a dump of "potential" TODOs, many are likely to be bad ideas.
