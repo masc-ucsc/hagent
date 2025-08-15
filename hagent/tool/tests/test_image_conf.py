@@ -62,15 +62,14 @@ class TestImageConf:
         fm = File_manager(image='mascucsc/hagent-simplechisel:2025.08')
 
         assert fm.setup(), f'Setup failed: {fm.get_error()}'
-        
+
         # Copy the hagent.yaml file to the container at the expected location
-        import os
         from pathlib import Path
-        
+
         # Find the hagent.yaml file in the repository
         project_root = Path(__file__).parent.parent.parent.parent  # Go up to project root
         yaml_file = project_root / 'local' / 'simplechisel' / 'repo' / 'hagent.yaml'
-        
+
         if yaml_file.exists():
             # Copy to the working directory where Image_conf will look for it
             success = fm.copy_file(str(yaml_file), 'hagent.yaml')
@@ -78,7 +77,7 @@ class TestImageConf:
                 print(f'Warning: Failed to copy hagent.yaml: {fm.get_error()}')
         else:
             print(f'Warning: hagent.yaml not found at {yaml_file}')
-        
+
         yield fm
         # Cleanup: ensure the instance is properly destroyed
         try:

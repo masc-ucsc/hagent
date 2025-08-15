@@ -1,8 +1,6 @@
 import os
 import tarfile
 import io
-import shutil
-import tempfile
 from typing import Optional, List, Dict, Set
 
 
@@ -30,9 +28,6 @@ class FileOperations:
             return exit_code == 0
         except Exception:
             return False
-
-
-
 
     def copy_file(self, host_path: str, container_path: Optional[str] = '.') -> bool:
         """Copies a single file from the host into the container's tracked directory."""
@@ -70,7 +65,7 @@ class FileOperations:
             tarinfo = tarfile.TarInfo(name=filename)
             tarinfo.size = len(file_content)
             tarinfo.mode = 0o666  # Read-write for everyone
-            
+
             # Get current user info from container to set correct ownership
             try:
                 user_info = self.fm._docker.container.exec_run('id -u && id -g && whoami')
@@ -79,7 +74,7 @@ class FileOperations:
                     if len(lines) >= 3:
                         tarinfo.uid = int(lines[0])  # uid
                         tarinfo.gid = int(lines[1])  # gid
-                        tarinfo.uname = lines[2]     # username
+                        tarinfo.uname = lines[2]  # username
                         # Try to get group name (may fail, use gid as fallback)
                         group_info = self.fm._docker.container.exec_run('id -gn')
                         if group_info.exit_code == 0:
@@ -98,7 +93,7 @@ class FileOperations:
                 tarinfo.gid = 0
                 tarinfo.uname = 'root'
                 tarinfo.gname = 'root'
-                
+
             tar.addfile(tarinfo, io.BytesIO(file_content))
             tar.close()
 
@@ -114,7 +109,7 @@ class FileOperations:
 
             if success:
                 # No need to fix permissions since we set them in the tar archive
-                
+
                 print(f"Successfully copied '{host_path}' to container path '{final_container_path}'")
                 return True
             else:
@@ -124,9 +119,3 @@ class FileOperations:
         except Exception as e:
             self.fm.error_message = f"Failed to copy file '{host_path}': {e}"
             return False
-
-
-
-
-
-

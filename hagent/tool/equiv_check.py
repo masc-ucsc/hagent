@@ -5,7 +5,9 @@ import tempfile
 import sys
 from typing import Optional, Tuple, List
 from hagent.core.output_manager import get_output_dir
-from hagent.tool.file_manager import File_manager
+from hagent.inou.container_manager import ContainerManager
+from hagent.inou.file_tracker import FileTracker
+from hagent.inou.path_manager import PathManager
 from hagent.tool.compile_slang import Compile_slang
 
 
@@ -26,7 +28,9 @@ class Equiv_check:
         Initializes the Equiv_check object:
          - yosys_installed: indicates if Yosys is available.
          - use_docker: indicates if Docker fallback should be used.
-         - file_manager: File_manager instance for Docker operations.
+         - container_manager: ContainerManager instance for Docker operations.
+         - file_tracker: FileTracker instance for file tracking.
+         - path_manager: PathManager instance for path resolution.
          - error_message: stores any error encountered.
          - equivalence_check_result: last known equivalence outcome (True/False/None).
          - counterexample_info: stores counterexample details if available.
@@ -34,7 +38,9 @@ class Equiv_check:
         """
         self.yosys_installed = False
         self.use_docker = False
-        self.file_manager: Optional[File_manager] = None
+        self.container_manager: Optional[ContainerManager] = None
+        self.file_tracker: Optional[FileTracker] = None
+        self.path_manager: Optional[PathManager] = None
         self.error_message = ''
         self.equivalence_check_result: Optional[bool] = None
         self.counterexample_info: Optional[str] = None
@@ -93,24 +99,27 @@ class Equiv_check:
 
     def setup_docker_fallback(self) -> bool:
         """
-        Sets up Docker fallback using File_manager with mascucsc/hagent-builder:latest image.
+        Sets up Docker fallback using ContainerManager with mascucsc/hagent-builder:latest image.
 
         Returns True if Docker setup succeeds, False otherwise.
         """
         try:
-            self.file_manager = File_manager(image='mascucsc/hagent-builder:latest')
-            if self.file_manager.setup():
+            self.path_manager = PathManager()
+            self.container_manager = ContainerManager(image='mascucsc/hagent-builder:latest', path_manager=self.path_manager)
+            if self.container_manager.setup():
                 # Test that Yosys is available in the Docker container
-                rc, out, err = self.file_manager.run('yosys --version')
+                rc, out, err = self.container_manager.run('yosys --version')
                 if rc == 0 and 'Yosys' in out:
                     self.use_docker = True
                     self.yosys_installed = True
+                    # Initialize file tracker for Docker mode
+                    self.file_tracker = FileTracker(self.path_manager)
                     return True
                 else:
                     self.error_message = f'Yosys not available in Docker container - RC: {rc}, ERR: {err}'
                     return False
             else:
-                self.error_message = f'Docker setup failed: {self.file_manager.get_error()}'
+                self.error_message = f'Docker setup failed: {self.container_manager.get_error()}'
                 return False
         except Exception as e:
             self.error_message = f'Docker fallback setup error: {e}'
@@ -121,14 +130,14 @@ class Equiv_check:
         Copy any result files from the Docker container back to the local work directory.
         This ensures output files are available in the expected output directory.
         """
-        if not self.use_docker or not self.file_manager:
+        if not self.use_docker or not self.file_tracker:
             return
 
         try:
-            # Get patch dictionary to see what files were created in the container
-            patches = self.file_manager.get_patch_dict()
+            # Get patch dictionary to see what files were created/modified
+            patches = self.file_tracker.get_patch_dict()
 
-            # Copy all new files from the container to the work directory
+            # Copy all modified files from the tracked changes
             if 'full' in patches:
                 for file_item in patches['full']:
                     container_path = file_item['filename']
@@ -136,12 +145,11 @@ class Equiv_check:
                     if container_path.endswith(('.v', '.s')):
                         continue
 
-                    # Get file content and write to local work directory
-                    content = self.file_manager.get_file_content(container_path)
-                    if content:
+                    # Use file content from the tracked changes
+                    if 'contents' in file_item:
                         local_path = os.path.join(work_dir, os.path.basename(container_path))
                         with open(local_path, 'w') as f:
-                            f.write(content)
+                            f.write(file_item['contents'])
 
             # Also copy any debug output files that were created in Docker working directory
             debug_files = [
@@ -152,11 +160,13 @@ class Equiv_check:
 
             for debug_file in debug_files:
                 try:
-                    content = self.file_manager.get_file_content(debug_file)
-                    if content:
-                        local_path = os.path.join(work_dir, debug_file)
-                        with open(local_path, 'w') as f:
-                            f.write(content)
+                    # Try to read file directly from container using container manager
+                    if self.container_manager:
+                        rc, content, _ = self.container_manager.run(f'cat {debug_file}', quiet=True)
+                        if rc == 0 and content:
+                            local_path = os.path.join(work_dir, debug_file)
+                            with open(local_path, 'w') as f:
+                                f.write(content)
                 except Exception:
                     # File might not exist if only one method was run, that's okay
                     pass
@@ -178,7 +188,7 @@ class Equiv_check:
             stderr: Standard error from Yosys
         """
         try:
-            if self.use_docker and self.file_manager:
+            if self.use_docker and self.container_manager:
                 # For Docker, save files in the container working directory
                 self._save_yosys_output_docker(method_name, return_code, stdout, stderr)
             else:
@@ -209,7 +219,7 @@ class Equiv_check:
 
     def _save_yosys_output_docker(self, method_name: str, return_code: int, stdout: str, stderr: str) -> None:
         """Save Yosys output to Docker container files."""
-        # Save files in Docker container using file_manager.run()
+        # Save files in Docker container using container_manager.run()
         files_to_create = [
             (f'{method_name}_stdout.log', f'Return code: {return_code}\nMethod: {method_name}\n{"-" * 50}\n{stdout}'),
             (f'{method_name}_stderr.log', f'Return code: {return_code}\nMethod: {method_name}\n{"-" * 50}\n{stderr}'),
@@ -219,7 +229,7 @@ class Equiv_check:
             # Use heredoc to write file content in Docker container
             escaped_content = content.replace("'", "'\"'\"'")  # Escape single quotes for heredoc
             cmd = f"cat > {filename} << 'EOF'\n{escaped_content}\nEOF"
-            rc, out, err = self.file_manager.run(cmd)
+            rc, out, err = self.container_manager.run(cmd)
             if rc != 0:
                 print(f'Warning: Failed to create {filename} in Docker: {err}', file=sys.stderr)
 
@@ -242,7 +252,7 @@ class Equiv_check:
         if not self.yosys_installed:
             raise RuntimeError('Yosys not installed or setup() not called.')
 
-        print(f"xxxx{self.use_docker}")
+        print(f'xxxx{self.use_docker}')
 
         # Find matching top modules
         module_pairs = self._find_matching_tops(gold_code, gate_code, desired_top)
@@ -252,24 +262,37 @@ class Equiv_check:
         # Create a subdirectory for working files
         work_dir = tempfile.mkdtemp(dir=get_output_dir(), prefix='equiv_check_')
 
-        print(f"docker{self.use_docker}")
+        print(f'docker{self.use_docker}')
 
         if self.use_docker:
             # For Docker, we need to setup file tracking and copy files to container
-            self.file_manager.track_dir('.')
+            self.file_tracker.track_dir('.')
 
             # Write files locally first, then copy to container
             gold_v_filename = self.write_temp_verilog(work_dir, gold_code, 'gold')
             gate_v_filename = self.write_temp_verilog(work_dir, gate_code, 'gate')
 
-            # Copy files to container
+            # Copy files to container working directory using container manager
             gold_container_path = 'gold.v'
             gate_container_path = 'gate.v'
 
-            if not self.file_manager.copy_file(gold_v_filename, gold_container_path):
-                raise RuntimeError(f'Failed to copy gold file to container: {self.file_manager.get_error()}')
-            if not self.file_manager.copy_file(gate_v_filename, gate_container_path):
-                raise RuntimeError(f'Failed to copy gate file to container: {self.file_manager.get_error()}')
+            # Read local files and write to container using echo/cat
+            with open(gold_v_filename, 'r') as f:
+                gold_content = f.read()
+            with open(gate_v_filename, 'r') as f:
+                gate_content = f.read()
+
+            # Write files to container
+            escaped_gold = gold_content.replace("'", "'\"'\"'")
+            escaped_gate = gate_content.replace("'", "'\"'\"'")
+
+            rc1, _, err1 = self.container_manager.run(f"cat > {gold_container_path} << 'EOF'\n{escaped_gold}\nEOF")
+            rc2, _, err2 = self.container_manager.run(f"cat > {gate_container_path} << 'EOF'\n{escaped_gate}\nEOF")
+
+            if rc1 != 0:
+                raise RuntimeError(f'Failed to copy gold file to container: {err1}')
+            if rc2 != 0:
+                raise RuntimeError(f'Failed to copy gate file to container: {err2}')
 
             # Use container paths for processing
             gold_v_filename = gold_container_path
@@ -283,7 +306,7 @@ class Equiv_check:
         all_results = []
         all_counterexamples = []
 
-        print(f"HERE1: gold_v_filename:{gold_v_filename}")
+        print(f'HERE1: gold_v_filename:{gold_v_filename}')
 
         for i, (gold_top, gate_top) in enumerate(module_pairs):
             print(f'Checking equivalence: {gold_top} ↔ {gate_top}')
@@ -641,7 +664,7 @@ class Equiv_check:
         if self.use_docker:
             # For Docker, create script in container working directory
             script_name = 'check.s'
-            rc, _, _ = self.file_manager.run(f"cat > {script_name} << 'EOF'\n{full_cmd}\nEOF")
+            rc, _, _ = self.container_manager.run(f"cat > {script_name} << 'EOF'\n{full_cmd}\nEOF")
             if rc != 0:
                 return rc, '', 'Failed to create script in container'
             return self.run_yosys_command(script_name)
@@ -657,7 +680,7 @@ class Equiv_check:
         Actually call 'yosys -s filename' either locally or via Docker.
         Return (exit_code, stdout, stderr).
         """
-        if self.use_docker and self.file_manager:
+        if self.use_docker and self.container_manager:
             # Docker execution
             try:
                 # For Docker, filename should be just the script name (not full path)
@@ -665,11 +688,15 @@ class Equiv_check:
 
                 # Copy script to container if it's a local path
                 if os.path.exists(filename):
-                    if not self.file_manager.copy_file(filename, script_name):
-                        self.error_message = f'Failed to copy script to container: {self.file_manager.get_error()}'
+                    with open(filename, 'r') as f:
+                        script_content = f.read()
+                    escaped_content = script_content.replace("'", "'\"'\"'")
+                    rc, _, err = self.container_manager.run(f"cat > {script_name} << 'EOF'\n{escaped_content}\nEOF")
+                    if rc != 0:
+                        self.error_message = f'Failed to copy script to container: {err}'
                         return 1, '', self.error_message
 
-                rc, stdout, stderr = self.file_manager.run(f'yosys -s {script_name}')
+                rc, stdout, stderr = self.container_manager.run(f'yosys -s {script_name}')
                 return rc, stdout, stderr
             except Exception as e:
                 self.error_message = f'Docker Yosys execution error: {e}'

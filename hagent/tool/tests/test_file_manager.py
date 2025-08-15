@@ -202,7 +202,6 @@ class TestFileManagerBasics:
         temp_content = fm.get_file_content(temp_files['temp_file_name'])
         assert temp_content == 'destroyer\n'
 
-
     def test_patch_export(self, file_manager, temp_files):
         """Test YAML patch export functionality."""
         fm = file_manager
@@ -298,8 +297,6 @@ class TestFileManagerBasics:
         for line in expected_lines:
             assert line in content
 
-
-
     def test_install_executable_with_filename(self, file_manager, temp_files):
         """Test installing executable with custom filename."""
         fm = file_manager
@@ -330,8 +327,6 @@ class TestFileManagerBasics:
             # Cleanup host file
             if os.path.exists(script_path):
                 os.remove(script_path)
-
-
 
     def test_patch_file_nonexistent_file(self, file_manager):
         """Test patch_file behavior with non-existent target file."""
@@ -366,7 +361,3 @@ class TestFileManagerBasics:
         success = fm.patch_file('test.txt', patch_content)
         assert not success, 'patch_file should fail before setup'
         assert 'must be called after setup' in fm.get_error()
-
-
-
-

@@ -142,20 +142,36 @@ class LocalExecutor:
 class DockerExecutor:
     """Execution strategy that runs commands within Docker containers."""
 
-    def __init__(self, file_manager, path_manager: Optional[PathManager] = None):
+    def __init__(self, container_manager=None, file_manager=None, path_manager: Optional[PathManager] = None):
         """
         Initialize DockerExecutor.
 
         Args:
-            file_manager: File_manager instance for Docker operations
+            container_manager: ContainerManager instance for Docker operations (preferred)
+            file_manager: File_manager instance for Docker operations (deprecated, for backwards compatibility)
             path_manager: PathManager instance for path resolution
         """
-        self.file_manager = file_manager
         self.path_manager = path_manager or PathManager()
+
+        # Prefer container_manager over file_manager
+        if container_manager is not None:
+            self.container_manager = container_manager
+            self.file_manager = None  # Don't use deprecated file_manager
+        elif file_manager is not None:
+            self.file_manager = file_manager
+            self.container_manager = None
+        else:
+            # Create a new container_manager if neither provided
+            from .container_manager import ContainerManager
+
+            self.container_manager = ContainerManager(
+                image='mascucsc/hagent-simplechisel:2025.08', path_manager=self.path_manager
+            )
+            self.file_manager = None
 
     def run(self, command: str, cwd: str, env: Dict[str, str], quiet: bool = False) -> Tuple[int, str, str]:
         """
-        Execute command using File_manager (Docker).
+        Execute command using ContainerManager or File_manager (Docker).
 
         Args:
             command: The command to execute
@@ -170,14 +186,21 @@ class DockerExecutor:
         container_cwd = self._translate_path_to_container(cwd)
 
         # Set environment variables in the current process
-        # (they'll be inherited by file_manager.run)
+        # (they'll be inherited by the Docker execution)
         old_env = {}
         for key, value in env.items():
             old_env[key] = os.environ.get(key)
             os.environ[key] = value
 
         try:
-            return self.file_manager.run(command, container_cwd, quiet)
+            if self.container_manager is not None:
+                # Use new ContainerManager approach
+                return self.container_manager.run(command, container_cwd, quiet)
+            elif self.file_manager is not None:
+                # Use deprecated File_manager approach for backwards compatibility
+                return self.file_manager.run(command, container_cwd, quiet)
+            else:
+                return -1, '', 'No Docker execution backend available'
         finally:
             # Restore previous environment
             for key, old_value in old_env.items():
@@ -227,19 +250,22 @@ class ExecutorFactory:
     """Factory for creating appropriate executor instances."""
 
     @staticmethod
-    def create_executor(file_manager=None, path_manager: Optional[PathManager] = None) -> ExecutionStrategy:
+    def create_executor(
+        container_manager=None, file_manager=None, path_manager: Optional[PathManager] = None
+    ) -> ExecutionStrategy:
         """
         Create an appropriate executor based on HAGENT_EXECUTION_MODE.
 
         Args:
-            file_manager: Optional File_manager instance for Docker execution
+            container_manager: Optional ContainerManager instance for Docker execution (preferred)
+            file_manager: Optional File_manager instance for Docker execution (deprecated)
             path_manager: Optional PathManager instance
 
         Returns:
             ExecutionStrategy instance (LocalExecutor or DockerExecutor)
 
         Raises:
-            ValueError: If execution mode is invalid or required dependencies are missing
+            ValueError: If execution mode is invalid
         """
         if not path_manager:
             path_manager = PathManager()
@@ -249,12 +275,7 @@ class ExecutorFactory:
         if execution_mode == 'local':
             return LocalExecutor(path_manager)
         elif execution_mode == 'docker':
-            if not file_manager:
-                raise ValueError(
-                    'Docker execution mode requires a file_manager instance. '
-                    'Please provide a File_manager instance to ExecutorFactory.create_executor().'
-                )
-            return DockerExecutor(file_manager, path_manager)
+            return DockerExecutor(container_manager, file_manager, path_manager)
         else:
             raise ValueError(f"Invalid execution mode: '{execution_mode}'. Must be 'local' or 'docker'.")
 
@@ -262,18 +283,19 @@ class ExecutorFactory:
 # Convenience functions for backward compatibility and ease of use
 
 
-def create_executor(file_manager=None, path_manager: Optional[PathManager] = None) -> ExecutionStrategy:
+def create_executor(container_manager=None, file_manager=None, path_manager: Optional[PathManager] = None) -> ExecutionStrategy:
     """
     Convenience function to create an appropriate executor.
 
     Args:
-        file_manager: Optional File_manager instance for Docker execution
+        container_manager: Optional ContainerManager instance for Docker execution (preferred)
+        file_manager: Optional File_manager instance for Docker execution (deprecated)
         path_manager: Optional PathManager instance
 
     Returns:
         ExecutionStrategy instance
     """
-    return ExecutorFactory.create_executor(file_manager, path_manager)
+    return ExecutorFactory.create_executor(container_manager, file_manager, path_manager)
 
 
 def run_command(
@@ -281,6 +303,7 @@ def run_command(
     cwd: str = '.',
     env: Optional[Dict[str, str]] = None,
     quiet: bool = False,
+    container_manager=None,
     file_manager=None,
     path_manager: Optional[PathManager] = None,
 ) -> Tuple[int, str, str]:
@@ -292,13 +315,14 @@ def run_command(
         cwd: Working directory for the command
         env: Additional environment variables
         quiet: Whether to run in quiet mode
-        file_manager: Optional File_manager instance for Docker execution
+        container_manager: Optional ContainerManager instance for Docker execution (preferred)
+        file_manager: Optional File_manager instance for Docker execution (deprecated)
         path_manager: Optional PathManager instance
 
     Returns:
         Tuple of (exit_code, stdout, stderr)
     """
-    executor = create_executor(file_manager, path_manager)
+    executor = create_executor(container_manager, file_manager, path_manager)
     env = env or {}
 
     # Resolve working directory

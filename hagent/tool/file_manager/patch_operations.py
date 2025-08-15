@@ -1,9 +1,7 @@
 import os
 import difflib
-from datetime import datetime
 from typing import Dict, Any
 
-from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 
@@ -38,15 +36,15 @@ class PatchOperations:
         # Check if file was tracked via track_file or is in a tracked directory
         # Get original content from reference container
         reference_container = self.fm._docker.get_reference_container()
-        print("HERE1")
+        print('HERE1')
         if not reference_container:
             return ''
-        print(f"HERE2 path:{absolute_filename}")
+        print(f'HERE2 path:{absolute_filename}')
         original_content_str = self.fm._files.get_file_content(absolute_filename, container=reference_container)
-        print(f"HERE3 txt:{original_content_str}")
+        print(f'HERE3 txt:{original_content_str}')
         if not original_content_str and self.fm.error_message:
             return ''
-        print("HERE4")
+        print('HERE4')
 
         # Get modified content from main container
         modified_content_str = self.fm._files.get_file_content(absolute_filename)
@@ -149,7 +147,3 @@ class PatchOperations:
                 patches['full'].append({'filename': absolute_file_path, 'contents': modified_content_str})
 
         return patches
-
-
-
-

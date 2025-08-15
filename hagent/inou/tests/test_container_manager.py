@@ -5,7 +5,6 @@ Tests Docker container lifecycle management, mount point configuration,
 environment variable injection, and workspace validation.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 

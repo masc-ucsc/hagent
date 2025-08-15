@@ -4,8 +4,7 @@ import os
 import threading
 import sys
 import time
-from datetime import datetime
-from typing import Optional, List, Dict, Tuple, Any
+from typing import Optional, List, Dict, Any
 
 
 class DockerManager:
@@ -157,7 +156,6 @@ class DockerManager:
         if pull_error:
             raise pull_error
 
-
     def _get_image_user(self) -> Optional[str]:
         """Get the default user from the Docker image."""
         if self._image_user is not None:
@@ -228,11 +226,6 @@ class DockerManager:
             self.fm.error_message = f'Failed to validate working directory "{workdir}": {e}'
             return False
 
-
-
-
-
-
     def _cleanup_reference_container(self) -> None:
         """Clean up reference container."""
         if self._reference_container:
@@ -242,7 +235,6 @@ class DockerManager:
                 self._reference_container = None
             except Exception as e:
                 print(f'Warning: Failed to clean up reference container: {e}')
-
 
     def _cleanup_anonymous_checkpoints(self) -> None:
         """Clean up anonymous checkpoints created by this instance."""
