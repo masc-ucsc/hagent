@@ -2,7 +2,7 @@
 bug_list_file: "/home/farzaneh/hagent/bug_lists_unified.yaml"
 
 # Docker configuration
-docker_container: "mystifying_dirac"
+docker_container: "musing_sammet"
 docker_patterns:
   - "/code/workspace/repo"
 
