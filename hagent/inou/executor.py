@@ -18,6 +18,15 @@ from .path_manager import PathManager
 class ExecutionStrategy(Protocol):
     """Protocol defining the interface for command execution strategies."""
 
+    def setup(self) -> bool:
+        """
+        Setup the execution environment.
+
+        Returns:
+            True if setup successful, False otherwise
+        """
+        ...
+
     def run(self, command: str, cwd: str, env: Dict[str, str], quiet: bool = False) -> Tuple[int, str, str]:
         """
         Execute a command with the given parameters.
@@ -33,6 +42,18 @@ class ExecutionStrategy(Protocol):
         """
         ...
 
+    def set_cwd(self, new_workdir: str) -> bool:
+        """
+        Change the working directory with validation.
+
+        Args:
+            new_workdir: New working directory path
+
+        Returns:
+            True if successful, False if path doesn't exist
+        """
+        ...
+
 
 class LocalExecutor:
     """Execution strategy that runs commands directly on the host system."""
@@ -45,6 +66,71 @@ class LocalExecutor:
             path_manager: PathManager instance for path resolution
         """
         self.path_manager = path_manager or PathManager()
+        self._workdir = str(self.path_manager.repo_dir)
+        self.error_message = ''
+
+    def set_error(self, message: str) -> None:
+        """Set error message following Tool pattern."""
+        self.error_message = message
+
+    def get_error(self) -> str:
+        """Get current error message following Tool pattern."""
+        return self.error_message
+
+    def setup(self) -> bool:
+        """
+        Setup local execution environment.
+        Working directory is always the repo directory.
+
+        Returns:
+            True if setup successful, False otherwise
+        """
+        try:
+            # Validate that the repo directory exists
+            repo_path = Path(self._workdir).resolve()
+            if not repo_path.exists():
+                self.set_error(f'Repository directory does not exist: {repo_path}')
+                return False
+            if not repo_path.is_dir():
+                self.set_error(f'Repository path is not a directory: {repo_path}')
+                return False
+            return True
+        except Exception as e:
+            self.set_error(f'Local setup failed: {e}')
+            return False
+
+    def set_cwd(self, new_workdir: str) -> bool:
+        """
+        Change the working directory with validation.
+
+        Args:
+            new_workdir: New working directory path (relative to repo or absolute)
+
+        Returns:
+            True if successful, False if path doesn't exist
+        """
+        try:
+            # Convert relative paths to absolute
+            if not os.path.isabs(new_workdir):
+                target_workdir = os.path.join(self._workdir, new_workdir)
+            else:
+                target_workdir = new_workdir
+
+            # Validate that the path exists and is a directory
+            target_path = Path(target_workdir).resolve()
+            if not target_path.exists():
+                self.set_error(f'Directory does not exist: {target_path}')
+                return False
+            if not target_path.is_dir():
+                self.set_error(f'Path exists but is not a directory: {target_path}')
+                return False
+
+            # Update the working directory
+            self._workdir = str(target_path)
+            return True
+        except Exception as e:
+            self.set_error(f'Failed to change working directory: {e}')
+            return False
 
     def run(self, command: str, cwd: str, env: Dict[str, str], quiet: bool = False) -> Tuple[int, str, str]:
         """
@@ -52,7 +138,7 @@ class LocalExecutor:
 
         Args:
             command: The command to execute
-            cwd: Working directory for the command (absolute path)
+            cwd: Working directory for the command (relative to current workdir or absolute path)
             env: Environment variables
             quiet: Whether to run in quiet mode
 
@@ -60,12 +146,25 @@ class LocalExecutor:
             Tuple of (exit_code, stdout, stderr)
         """
         try:
+            # Handle working directory
+            if cwd == '.':
+                workdir = self._workdir
+            else:
+                if not os.path.isabs(cwd):
+                    workdir = os.path.join(self._workdir, cwd)
+                else:
+                    workdir = cwd
+
             # Validate working directory exists
-            cwd_path = Path(cwd).resolve()
+            cwd_path = Path(workdir).resolve()
             if not cwd_path.exists():
-                return -1, '', f'Working directory does not exist: {cwd_path}'
+                error_msg = f'Working directory does not exist: {cwd_path}'
+                self.set_error(error_msg)
+                return -1, '', error_msg
             if not cwd_path.is_dir():
-                return -1, '', f'Working directory path is not a directory: {cwd_path}'
+                error_msg = f'Working directory path is not a directory: {cwd_path}'
+                self.set_error(error_msg)
+                return -1, '', error_msg
 
             # Prepare environment
             full_env = os.environ.copy()
@@ -171,6 +270,59 @@ class DockerExecutor:
 
         # Container instance for reuse
         self._container = None
+        self.error_message = ''
+
+    def set_error(self, message: str) -> None:
+        """Set error message following Tool pattern."""
+        self.error_message = message
+
+    def get_error(self) -> str:
+        """Get current error message following Tool pattern."""
+        return self.error_message
+
+    def setup(self) -> bool:
+        """
+        Setup Docker execution environment.
+        Working directory is always /code/workspace/repo.
+
+        Returns:
+            True if setup successful, False otherwise
+        """
+        if self.container_manager:
+            success = self.container_manager.setup()
+            if not success:
+                self.set_error(f'Container setup failed: {self.container_manager.get_error()}')
+            return success
+        elif self.file_manager:
+            # For backwards compatibility with file_manager
+            # Assume file_manager has its own setup logic
+            return True
+        else:
+            self.set_error('No Docker execution backend available')
+            return False
+
+    def set_cwd(self, new_workdir: str) -> bool:
+        """
+        Change the working directory with validation.
+
+        Args:
+            new_workdir: New working directory path (relative to /code/workspace/repo or absolute)
+
+        Returns:
+            True if successful, False if path doesn't exist
+        """
+        if self.container_manager:
+            success = self.container_manager.set_cwd(new_workdir)
+            if not success:
+                self.set_error(self.container_manager.get_error())
+            return success
+        elif self.file_manager:
+            # For backwards compatibility - file_manager may not have set_cwd
+            self.set_error('set_cwd not supported with deprecated file_manager')
+            return False
+        else:
+            self.set_error('No Docker execution backend available')
+            return False
 
     def execute_command(self, command, working_dir=None, **kwargs):
         """
