@@ -5,7 +5,6 @@ Tests Docker container lifecycle management, mount point configuration,
 environment variable injection, and workspace validation.
 """
 
-import os
 import subprocess
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -605,7 +604,6 @@ class TestContainerManager:
 
     def test_setup_mount_points_relative_paths(self, setup_local_directory):
         """Test setup of mount points with relative paths."""
-        local_dirs = setup_local_directory
         mock_pm = MagicMock()
         mock_pm.cache_dir = Path('local/cache')  # Relative path
         mock_pm.repo_dir = Path('local/repo')  # Relative path
