@@ -5,10 +5,71 @@ Tests Docker container lifecycle management, mount point configuration,
 environment variable injection, and workspace validation.
 """
 
+import os
+import subprocess
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+import pytest
 
 from hagent.inou.container_manager import ContainerManager
+
+
+@pytest.fixture(scope='session')
+def setup_local_directory():
+    """
+    Setup ./output/local directory structure for testing.
+    Creates the directory structure if it doesn't exist:
+    - ./output/local/repo (with simplechisel git clone)
+    - ./output/local/build (empty directory)
+    - ./output/local/cache (empty directory)
+    """
+    local_dir = Path('./output/local')
+    repo_dir = local_dir / 'repo'
+    build_dir = local_dir / 'build'
+    cache_dir = local_dir / 'cache'
+
+    # Create local directory if it doesn't exist
+    if not local_dir.exists():
+        print(f'Creating {local_dir} directory...')
+        local_dir.mkdir(parents=True, exist_ok=True)
+
+    # Setup repo directory with git clone if it doesn't exist or is empty
+    if not repo_dir.exists() or not any(repo_dir.iterdir()):
+        print(f'Setting up {repo_dir} with simplechisel repository...')
+        if repo_dir.exists():
+            # Remove empty directory
+            repo_dir.rmdir()
+
+        # Clone the repository
+        try:
+            subprocess.run(
+                ['git', 'clone', 'https://github.com/masc-ucsc/simplechisel.git', str(repo_dir)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            print(f'Successfully cloned simplechisel to {repo_dir}')
+        except subprocess.CalledProcessError as e:
+            print(f'Warning: Failed to clone repository: {e}')
+            # Create a basic directory structure as fallback
+            repo_dir.mkdir(exist_ok=True)
+            (repo_dir / 'README.md').write_text('# Test Repository\n')
+
+    # Create build directory
+    if not build_dir.exists():
+        print(f'Creating {build_dir} directory...')
+        build_dir.mkdir(exist_ok=True)
+
+    # Create cache directory
+    if not cache_dir.exists():
+        print(f'Creating {cache_dir} directory...')
+        cache_dir.mkdir(exist_ok=True)
+
+    # Create additional test directories
+    (local_dir / 'extra').mkdir(exist_ok=True)
+    (local_dir / 'test_path').mkdir(exist_ok=True)
+
+    return {'local_dir': local_dir, 'repo_dir': repo_dir, 'build_dir': build_dir, 'cache_dir': cache_dir}
 
 
 class TestContainerManager:
@@ -201,12 +262,13 @@ class TestContainerManager:
 
                 assert env_vars == expected
 
-    def test_setup_mount_points(self):
+    def test_setup_mount_points(self, setup_local_directory):
         """Test setup of standard mount points."""
+        local_dirs = setup_local_directory
         mock_pm = MagicMock()
-        mock_pm.cache_dir = Path('/host/cache')
-        mock_pm.repo_dir = Path('/host/repo')
-        mock_pm.build_dir = Path('/host/build')
+        mock_pm.cache_dir = local_dirs['cache_dir']
+        mock_pm.repo_dir = local_dirs['repo_dir']
+        mock_pm.build_dir = local_dirs['build_dir']
 
         with patch.object(ContainerManager, '_initialize_docker_client'):
             manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
@@ -228,17 +290,18 @@ class TestContainerManager:
                 assert '/code/workspace/repo' in mount_targets
                 assert '/code/workspace/build' in mount_targets
 
-    def test_setup_mount_points_with_additional_mounts(self):
+    def test_setup_mount_points_with_additional_mounts(self, setup_local_directory):
         """Test setup with additional mounts."""
+        local_dirs = setup_local_directory
         mock_pm = MagicMock()
-        mock_pm.cache_dir = Path('/host/cache')
-        mock_pm.repo_dir = Path('/host/repo')
+        mock_pm.cache_dir = local_dirs['cache_dir']
+        mock_pm.repo_dir = local_dirs['repo_dir']
         # Delete build_dir from the mock to simulate it not being available
         del mock_pm.build_dir
 
         with patch.object(ContainerManager, '_initialize_docker_client'):
             manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
-            manager._mounts = [{'source': '/host/extra', 'target': '/container/extra'}]
+            manager._mounts = [{'source': str(local_dirs['local_dir'] / 'extra'), 'target': '/container/extra'}]
 
             with patch('docker.types.Mount') as mock_mount:
                 manager._setup_mount_points()
@@ -246,35 +309,42 @@ class TestContainerManager:
                 # Should have 3 mounts (cache, repo, extra)
                 assert mock_mount.call_count == 3
 
-    def test_add_mount_before_setup(self):
+    def test_add_mount_before_setup(self, setup_local_directory):
         """Test adding mount before container setup."""
+        local_dirs = setup_local_directory
+        test_path = str(local_dirs['local_dir'] / 'test_path')
+
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
 
-                result = manager.add_mount('/host/path', '/container/path')
+                result = manager.add_mount(test_path, '/container/path')
 
                 assert result is True
                 assert len(manager._mounts) == 1
-                assert manager._mounts[0]['source'] == '/host/path'
+                assert manager._mounts[0]['source'] == test_path
                 assert manager._mounts[0]['target'] == '/container/path'
 
-    def test_add_mount_after_setup(self):
+    def test_add_mount_after_setup(self, setup_local_directory):
         """Test adding mount after container setup fails."""
+        local_dirs = setup_local_directory
+        test_path = str(local_dirs['local_dir'] / 'test_path')
+
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
                 manager.container = MagicMock()  # Simulate setup
 
-                result = manager.add_mount('/host/path', '/container/path')
+                result = manager.add_mount(test_path, '/container/path')
                 assert result is False, 'Should return False when called after setup'
                 assert 'add_mount must be called before setup' in manager.get_error()
 
     @patch('docker.types.Mount')
-    def test_setup_success(self, mock_mount):
+    def test_setup_success(self, mock_mount, setup_local_directory):
         """Test successful container setup."""
+        local_dirs = setup_local_directory
         mock_pm = MagicMock()
-        mock_pm.cache_dir = Path('/host/cache')
+        mock_pm.cache_dir = local_dirs['cache_dir']
 
         mock_client = MagicMock()
         mock_image = MagicMock()
@@ -301,10 +371,11 @@ class TestContainerManager:
             mock_client.containers.create.assert_called_once()
             mock_container.start.assert_called_once()
 
-    def test_setup_image_pull_required(self):
+    def test_setup_image_pull_required(self, setup_local_directory):
         """Test setup when image needs to be pulled."""
+        local_dirs = setup_local_directory
         mock_pm = MagicMock()
-        mock_pm.cache_dir = Path('/host/cache')
+        mock_pm.cache_dir = local_dirs['cache_dir']
 
         mock_client = MagicMock()
         from docker.errors import ImageNotFound
@@ -332,10 +403,11 @@ class TestContainerManager:
                 assert manager._has_bash is False  # bash test failed
                 mock_pull.assert_called_once_with('mascucsc/hagent-simplechisel:2025.08')
 
-    def test_setup_pull_credential_error(self):
+    def test_setup_pull_credential_error(self, setup_local_directory):
         """Test setup with credential error during pull."""
+        local_dirs = setup_local_directory
         mock_pm = MagicMock()
-        mock_pm.cache_dir = Path('/host/cache')
+        mock_pm.cache_dir = local_dirs['cache_dir']
 
         mock_client = MagicMock()
         from docker.errors import ImageNotFound
@@ -530,3 +602,60 @@ class TestContainerManager:
                     del manager
 
                     mock_cleanup.assert_called_once()
+
+    def test_setup_mount_points_relative_paths(self, setup_local_directory):
+        """Test setup of mount points with relative paths."""
+        local_dirs = setup_local_directory
+        mock_pm = MagicMock()
+        mock_pm.cache_dir = Path('local/cache')  # Relative path
+        mock_pm.repo_dir = Path('local/repo')  # Relative path
+        mock_pm.build_dir = Path('local/build')  # Relative path
+
+        with patch.object(ContainerManager, '_initialize_docker_client'):
+            manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
+
+            with patch('docker.types.Mount') as mock_mount:
+                mock_mount_obj = MagicMock()
+                mock_mount.return_value = mock_mount_obj
+
+                mounts = manager._setup_mount_points()
+
+                # Should have 3 mounts (cache, repo, build)
+                assert len(mounts) == 3
+                assert mock_mount.call_count == 3
+
+                # Verify mount calls
+                calls = mock_mount.call_args_list
+                mount_targets = [call[1]['target'] for call in calls]
+                assert '/code/workspace/cache' in mount_targets
+                assert '/code/workspace/repo' in mount_targets
+                assert '/code/workspace/build' in mount_targets
+
+    def test_setup_mount_points_absolute_paths(self, setup_local_directory):
+        """Test setup of mount points with absolute paths."""
+        local_dirs = setup_local_directory
+
+        mock_pm = MagicMock()
+        mock_pm.cache_dir = local_dirs['cache_dir'].resolve()  # Absolute path
+        mock_pm.repo_dir = local_dirs['repo_dir'].resolve()  # Absolute path
+        mock_pm.build_dir = local_dirs['build_dir'].resolve()  # Absolute path
+
+        with patch.object(ContainerManager, '_initialize_docker_client'):
+            manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
+
+            with patch('docker.types.Mount') as mock_mount:
+                mock_mount_obj = MagicMock()
+                mock_mount.return_value = mock_mount_obj
+
+                mounts = manager._setup_mount_points()
+
+                # Should have 3 mounts (cache, repo, build)
+                assert len(mounts) == 3
+                assert mock_mount.call_count == 3
+
+                # Verify mount calls
+                calls = mock_mount.call_args_list
+                mount_targets = [call[1]['target'] for call in calls]
+                assert '/code/workspace/cache' in mount_targets
+                assert '/code/workspace/repo' in mount_targets
+                assert '/code/workspace/build' in mount_targets

@@ -6,24 +6,6 @@ In equiv_check.py, we do not need to have use_docker. If container_manger is not
 
 Container_manager.setup accepts a workdir as option, we should remove this as it is not needed.
 
--------
-This code in path_manager.py seems wrong:
-```
-    def _validate_docker_mode(self) -> None:
-        """Validate environment variables for Docker execution mode."""
-        # In Docker mode, only HAGENT_EXECUTION_MODE is required from user
-        # Container manager will set the rest automatically inside the container
-
-        # If we're inside a container, these will be set by container_manager
-        if os.environ.get('HAGENT_REPO_DIR'):
-            self._repo_dir = Path(os.environ['HAGENT_REPO_DIR']).resolve()
-        if os.environ.get('HAGENT_BUILD_DIR'):
-            self._build_dir = Path(os.environ['HAGENT_BUILD_DIR']).resolve()
-        if os.environ.get('HAGENT_CACHE_DIR'):
-            self._cache_dir = Path(os.environ['HAGENT_CACHE_DIR']).resolve()
-```
-
-The reason is that inside docker, we can not use Path to validate a path.
 
 -------
 
