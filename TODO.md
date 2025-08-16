@@ -1,5 +1,70 @@
+-------
+
+In equiv_check.py, we do not need to have use_docker. If container_manger is not None, we are in use_docker mode
+
+-------
+
+Container_manager.setup accepts a workdir as option, we should remove this as it is not needed.
+
+-------
+This code in path_manager.py seems wrong:
+```
+    def _validate_docker_mode(self) -> None:
+        """Validate environment variables for Docker execution mode."""
+        # In Docker mode, only HAGENT_EXECUTION_MODE is required from user
+        # Container manager will set the rest automatically inside the container
+
+        # If we're inside a container, these will be set by container_manager
+        if os.environ.get('HAGENT_REPO_DIR'):
+            self._repo_dir = Path(os.environ['HAGENT_REPO_DIR']).resolve()
+        if os.environ.get('HAGENT_BUILD_DIR'):
+            self._build_dir = Path(os.environ['HAGENT_BUILD_DIR']).resolve()
+        if os.environ.get('HAGENT_CACHE_DIR'):
+            self._cache_dir = Path(os.environ['HAGENT_CACHE_DIR']).resolve()
+```
+
+The reason is that inside docker, we can not use Path to validate a path.
+
+-------
+
+To copy files inside the docker, several times (equiv_check.py), we use a "cat" command passed to the container_manager.run
+
+It may be nicer if we create a write_file method in container_manager.
+
+-------
 
 Add option to mount repo/cache/build dir from local instead of mounting.
+
+-------
+container_manager:create_container is not testing in test_container_manager.
+
+ Maybe the test for this should do this:
+  Create a temp directory
+   -git clone https://github.com/masc-ucsc/simplechisel repo
+   -Create a cache and build
+   -mount hagent directory '/code/hagent'
+   -Make sure that the venv works runing something simple like `uv run python ./scripts/hagent-build.py --config $HAGENT_REPO_DIR/hagent.yaml --list`
+
+-------
+
+When I run:
+```
+ HAGENT_CACHE_DIR=./local/cache HAGENT_BUILD_DIR=./local/build/ HAGENT_REPO_DIR=./local/repo/ HAGENT_EXECUTION_MODE=docker uv run python ./hagent/tool/tests/test_equiv_check_docker.py
+```
+
+It creates files in the repo directory:
+```
+local/repo/check.s                      local/repo/gold.v                       local/repo/smt_method_0_stdout.log
+local/repo/gate.v                       local/repo/smt_method_0_stderr.log
+```
+and the cache/inou:
+```
+local/cache/inou/equiv_check_jd7sikuu
+```
+
+It should only create the cache/inou, it should not create files in the repo for this type of test. equiv_check, should only create a temporary directory in cache/inou/equiv_check_??????
+
+-------
 
 Maybe create a shared "hagent" setup section that it is shared across all the passes when set in the input yaml.
 

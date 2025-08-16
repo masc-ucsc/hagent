@@ -50,7 +50,7 @@ class Equiv_check:
         """
         Checks if Yosys is installed, accessible, and meets the minimum version 0.4.
         If yosys_path is provided, that binary is used; otherwise, the system PATH is used.
-        If local Yosys is not available, falls back to Docker with mascucsc/hagent-builder:latest.
+        If local Yosys is not available, falls back to Docker with mascucsc/hagent-builder:2025.08.
 
         Returns True if Yosys is available (locally or via Docker), False otherwise.
         """
@@ -99,13 +99,13 @@ class Equiv_check:
 
     def setup_docker_fallback(self) -> bool:
         """
-        Sets up Docker fallback using ContainerManager with mascucsc/hagent-builder:latest image.
+        Sets up Docker fallback using ContainerManager with mascucsc/hagent-builder:2025.08 image.
 
         Returns True if Docker setup succeeds, False otherwise.
         """
         try:
             self.path_manager = PathManager()
-            self.container_manager = ContainerManager(image='mascucsc/hagent-builder:latest', path_manager=self.path_manager)
+            self.container_manager = ContainerManager(image='mascucsc/hagent-builder:2025.08', path_manager=self.path_manager)
             if self.container_manager.setup():
                 # Test that Yosys is available in the Docker container
                 rc, out, err = self.container_manager.run('yosys --version')
@@ -130,46 +130,44 @@ class Equiv_check:
         Copy any result files from the Docker container back to the local work directory.
         This ensures output files are available in the expected output directory.
         """
-        if not self.use_docker or not self.file_tracker:
+        if not self.use_docker or not self.container_manager:
             return
 
         try:
-            # Get patch dictionary to see what files were created/modified
-            patches = self.file_tracker.get_patch_dict()
+            # Convert host work_dir to container path
+            if self.path_manager:
+                cache_dir = self.path_manager.cache_dir
+                relative_path = os.path.relpath(work_dir, cache_dir)
+                container_work_dir = f'/code/workspace/cache/{relative_path}'
+            else:
+                container_work_dir = work_dir
 
-            # Copy all modified files from the tracked changes
-            if 'full' in patches:
-                for file_item in patches['full']:
-                    container_path = file_item['filename']
-                    # Skip the original input files we copied to the container
-                    if container_path.endswith(('.v', '.s')):
-                        continue
+            # Get list of files to copy from the container work directory
+            # We want to copy check.s script and any .log files
+            rc, out, err = self.container_manager.run(
+                f'find {container_work_dir} -type f \\( -name "check.s" -o -name "*.log" \\) 2>/dev/null || true'
+            )
+            if rc != 0:
+                print(f'Warning: Failed to list files in Docker work directory {container_work_dir}: {err}', file=sys.stderr)
+                return
 
-                    # Use file content from the tracked changes
-                    if 'contents' in file_item:
-                        local_path = os.path.join(work_dir, os.path.basename(container_path))
-                        with open(local_path, 'w') as f:
-                            f.write(file_item['contents'])
+            files_to_copy = []
+            for line in out.strip().split('\n'):
+                if line.strip():
+                    files_to_copy.append(line.strip())
 
-            # Also copy any debug output files that were created in Docker working directory
-            debug_files = [
-                'check.s',
-                'smt_method_stdout.log',
-                'smt_method_stderr.log',
-            ]
+            # Copy each file from container to local work directory
+            for container_file_path in files_to_copy:
+                local_file_path = os.path.join(work_dir, os.path.basename(container_file_path))
 
-            for debug_file in debug_files:
-                try:
-                    # Try to read file directly from container using container manager
-                    if self.container_manager:
-                        rc, content, _ = self.container_manager.run(f'cat {debug_file}', quiet=True)
-                        if rc == 0 and content:
-                            local_path = os.path.join(work_dir, debug_file)
-                            with open(local_path, 'w') as f:
-                                f.write(content)
-                except Exception:
-                    # File might not exist if only one method was run, that's okay
-                    pass
+                # Read file content from container
+                rc, file_content, err = self.container_manager.run(f'cat {container_file_path}')
+                if rc == 0:
+                    # Write to local file
+                    with open(local_file_path, 'w') as f:
+                        f.write(file_content)
+                else:
+                    print(f'Warning: Failed to read {container_file_path} from Docker: {err}', file=sys.stderr)
 
         except Exception as e:
             # Don't fail the main operation if we can't copy results
@@ -181,7 +179,7 @@ class Equiv_check:
         For local execution, saves to work_dir. For Docker execution, saves to container working directory.
 
         Args:
-            work_dir: Directory where output files should be saved (local execution only)
+            work_dir: Directory where output files should be saved
             method_name: Name of the method (e.g., 'equiv_method', 'smt_method')
             return_code: Exit code from Yosys command
             stdout: Standard output from Yosys
@@ -190,7 +188,7 @@ class Equiv_check:
         try:
             if self.use_docker and self.container_manager:
                 # For Docker, save files in the container working directory
-                self._save_yosys_output_docker(method_name, return_code, stdout, stderr)
+                self._save_yosys_output_docker(work_dir, method_name, return_code, stdout, stderr)
             else:
                 # For local execution, save files in the work directory
                 self._save_yosys_output_local(work_dir, method_name, return_code, stdout, stderr)
@@ -217,18 +215,28 @@ class Equiv_check:
             f.write('-' * 50 + '\n')
             f.write(stderr)
 
-    def _save_yosys_output_docker(self, method_name: str, return_code: int, stdout: str, stderr: str) -> None:
+    def _save_yosys_output_docker(self, work_dir: str, method_name: str, return_code: int, stdout: str, stderr: str) -> None:
         """Save Yosys output to Docker container files."""
-        # Save files in Docker container using container_manager.run()
+        # Convert host work_dir to container path
+        if self.path_manager:
+            cache_dir = self.path_manager.cache_dir
+            relative_path = os.path.relpath(work_dir, cache_dir)
+            container_work_dir = f'/code/workspace/cache/{relative_path}'
+        else:
+            container_work_dir = work_dir
+
+        stdout_content = 'Return code: {}\nMethod: {}\n{}\n{}'.format(return_code, method_name, '-' * 50, stdout)
+        stderr_content = 'Return code: {}\nMethod: {}\n{}\n{}'.format(return_code, method_name, '-' * 50, stderr)
+
         files_to_create = [
-            (f'{method_name}_stdout.log', f'Return code: {return_code}\nMethod: {method_name}\n{"-" * 50}\n{stdout}'),
-            (f'{method_name}_stderr.log', f'Return code: {return_code}\nMethod: {method_name}\n{"-" * 50}\n{stderr}'),
+            (f'{container_work_dir}/{method_name}_stdout.log', stdout_content),
+            (f'{container_work_dir}/{method_name}_stderr.log', stderr_content),
         ]
 
         for filename, content in files_to_create:
             # Use heredoc to write file content in Docker container
             escaped_content = content.replace("'", "'\"'\"'")  # Escape single quotes for heredoc
-            cmd = f"cat > {filename} << 'EOF'\n{escaped_content}\nEOF"
+            cmd = f"mkdir -p {container_work_dir} && cat > {filename} << 'EOF'\n{escaped_content}\nEOF"
             rc, out, err = self.container_manager.run(cmd)
             if rc != 0:
                 print(f'Warning: Failed to create {filename} in Docker: {err}', file=sys.stderr)
@@ -252,8 +260,6 @@ class Equiv_check:
         if not self.yosys_installed:
             raise RuntimeError('Yosys not installed or setup() not called.')
 
-        print(f'xxxx{self.use_docker}')
-
         # Find matching top modules
         module_pairs = self._find_matching_tops(gold_code, gate_code, desired_top)
 
@@ -262,51 +268,17 @@ class Equiv_check:
         # Create a subdirectory for working files
         work_dir = tempfile.mkdtemp(dir=get_output_dir(), prefix='equiv_check_')
 
-        print(f'docker{self.use_docker}')
-
         if self.use_docker:
-            # For Docker, we need to setup file tracking and copy files to container
-            self.file_tracker.track_dir('.')
+            # For Docker, we operate in work_dir, which is mounted into the container.
+            if self.file_tracker:
+                self.file_tracker.track_dir(work_dir)
 
-            # Write files locally first, then copy to container
-            gold_v_filename = self.write_temp_verilog(work_dir, gold_code, 'gold')
-            gate_v_filename = self.write_temp_verilog(work_dir, gate_code, 'gate')
-
-            # Copy files to container working directory using container manager
-            gold_container_path = 'gold.v'
-            gate_container_path = 'gate.v'
-
-            # Read local files and write to container using echo/cat
-            with open(gold_v_filename, 'r') as f:
-                gold_content = f.read()
-            with open(gate_v_filename, 'r') as f:
-                gate_content = f.read()
-
-            # Write files to container
-            escaped_gold = gold_content.replace("'", "'\"'\"'")
-            escaped_gate = gate_content.replace("'", "'\"'\"'")
-
-            rc1, _, err1 = self.container_manager.run(f"cat > {gold_container_path} << 'EOF'\n{escaped_gold}\nEOF")
-            rc2, _, err2 = self.container_manager.run(f"cat > {gate_container_path} << 'EOF'\n{escaped_gate}\nEOF")
-
-            if rc1 != 0:
-                raise RuntimeError(f'Failed to copy gold file to container: {err1}')
-            if rc2 != 0:
-                raise RuntimeError(f'Failed to copy gate file to container: {err2}')
-
-            # Use container paths for processing
-            gold_v_filename = gold_container_path
-            gate_v_filename = gate_container_path
-        else:
-            # Local execution - write files directly
-            gold_v_filename = self.write_temp_verilog(work_dir, gold_code, 'gold')
-            gate_v_filename = self.write_temp_verilog(work_dir, gate_code, 'gate')
+        gold_v_filename = self.write_temp_verilog(work_dir, gold_code, 'gold')
+        gate_v_filename = self.write_temp_verilog(work_dir, gate_code, 'gate')
 
         # 3) Run SMT-based approach for each module pair
         all_results = []
         all_counterexamples = []
-
-        print(f'HERE1: gold_v_filename:{gold_v_filename}')
 
         for i, (gold_top, gate_top) in enumerate(module_pairs):
             print(f'Checking equivalence: {gold_top} ↔ {gate_top}')
@@ -369,13 +341,13 @@ class Equiv_check:
         failures: List[Tuple[str, str]] = []
 
         # Pattern 1: “Trying to prove $equiv for \MODULE.IO: failed.”
-        pat1 = re.compile(r"""Trying to prove \$equiv for \\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+):\s*failed""")
+        pat1 = re.compile(r'Trying to prove \$equiv for \\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+):\s*failed')
 
         # Pattern 2: “Unproven $equiv ...: \MODULE.IO_NAME_gold \MODULE.IO_NAME_gate”
-        pat2 = re.compile(r"""Unproven \$equiv [^:]*:\s*\\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)_(?:gold|gate)""")
+        pat2 = re.compile(r'Unproven \$equiv [^:]*:\s*\\([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)_(?:gold|gate)')
 
         # Pattern 3: summary "ERROR: Found N unproven $equiv cells in 'equiv_status ...'."
-        pat3 = re.compile(r"""ERROR:\s*Found\s+(\d+)\s+unproven\s+\$equiv\s+cells""", flags=re.IGNORECASE)
+        pat3 = re.compile(r'ERROR:\s*Found\s+(\d+)\s+unproven\s+\$equiv\s+cells', flags=re.IGNORECASE)
 
         for line in out.splitlines() + err.splitlines():
             # Check for "Trying to prove $equiv for \Module.IO: failed"
@@ -640,7 +612,12 @@ class Equiv_check:
         return filename
 
     def _run_smt_method(
-        self, work_dir: str, gold_v_filename: str, gate_v_filename: str, gold_top: str, gate_top: str
+        self,
+        work_dir: str,
+        gold_v_filename: str,
+        gate_v_filename: str,
+        gold_top: str,
+        gate_top: str,
     ) -> Tuple[int, str, str]:
         """
         Build a Yosys command string for the simple SMT-based approach,
@@ -662,41 +639,53 @@ class Equiv_check:
         full_cmd = ';\n'.join(cmd)
 
         if self.use_docker:
-            # For Docker, create script in container working directory
+            # For Docker, we need to translate the host work_dir to the container path
+            # The work_dir is in the cache directory which is mounted at /code/workspace/cache
+            if self.path_manager:
+                cache_dir = self.path_manager.cache_dir
+                # Convert host work_dir to container path
+                relative_path = os.path.relpath(work_dir, cache_dir)
+                container_work_dir = f'/code/workspace/cache/{relative_path}'
+            else:
+                # Fallback: assume work_dir is already a container path
+                container_work_dir = work_dir
+
             script_name = 'check.s'
-            rc, _, _ = self.container_manager.run(f"cat > {script_name} << 'EOF'\n{full_cmd}\nEOF")
+            container_script_path = f'{container_work_dir}/{script_name}'
+
+            # Use relative paths in the script since we run from container_work_dir
+            relative_gold = os.path.basename(gold_v_filename)
+            relative_gate = os.path.basename(gate_v_filename)
+            cmd[0] = f'read_verilog -sv {relative_gold}'
+            cmd[4] = f'read_verilog -sv {relative_gate}'
+            full_cmd = ';\n'.join(cmd)
+
+            # Create the script in the container
+            rc, _, err = self.container_manager.run(
+                f"mkdir -p {container_work_dir} && cat > {container_script_path} << 'EOF'\n{full_cmd}\nEOF"
+            )
             if rc != 0:
-                return rc, '', 'Failed to create script in container'
-            return self.run_yosys_command(script_name)
+                return rc, '', f'Failed to create script in container: {err}'
+
+            # Run Yosys from within container_work_dir
+            yosys_cmd = f'cd {container_work_dir} && yosys -s {script_name}'
+            return self.run_yosys_command(yosys_cmd)
         else:
             # For local execution, create script file locally
             filename = os.path.join(work_dir, 'check.s')
             with open(filename, 'w') as f:
                 f.write(full_cmd)
-            return self.run_yosys_command(filename)
+            return self.run_yosys_command(f'yosys -s {filename}')
 
-    def run_yosys_command(self, filename: str) -> Tuple[int, str, str]:
+    def run_yosys_command(self, command: str) -> Tuple[int, str, str]:
         """
-        Actually call 'yosys -s filename' either locally or via Docker.
+        Actually call 'yosys' either locally or via Docker.
         Return (exit_code, stdout, stderr).
         """
         if self.use_docker and self.container_manager:
             # Docker execution
             try:
-                # For Docker, filename should be just the script name (not full path)
-                script_name = os.path.basename(filename)
-
-                # Copy script to container if it's a local path
-                if os.path.exists(filename):
-                    with open(filename, 'r') as f:
-                        script_content = f.read()
-                    escaped_content = script_content.replace("'", "'\"'\"'")
-                    rc, _, err = self.container_manager.run(f"cat > {script_name} << 'EOF'\n{escaped_content}\nEOF")
-                    if rc != 0:
-                        self.error_message = f'Failed to copy script to container: {err}'
-                        return 1, '', self.error_message
-
-                rc, stdout, stderr = self.container_manager.run(f'yosys -s {script_name}')
+                rc, stdout, stderr = self.container_manager.run(command)
                 return rc, stdout, stderr
             except Exception as e:
                 self.error_message = f'Docker Yosys execution error: {e}'
@@ -705,7 +694,7 @@ class Equiv_check:
             # Local execution
             try:
                 proc = subprocess.run(
-                    ['yosys', '-s', filename],
+                    command.split(),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,

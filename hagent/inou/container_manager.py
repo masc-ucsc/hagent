@@ -257,31 +257,66 @@ class ContainerManager:
         """Setup standard mount points based on path manager."""
         mount_objs = []
 
-        # Always mount cache directory
-        cache_mount = docker.types.Mount(target='/code/workspace/cache', source=str(self.path_manager.cache_dir), type='bind')
+        # Always mount cache directory - ensure it exists first
+        # Use environment variable directly if available, otherwise use path_manager
+        cache_dir_path = os.environ.get('HAGENT_CACHE_DIR')
+        if not cache_dir_path:
+            try:
+                cache_dir_path = str(self.path_manager.cache_dir)
+            except (AttributeError, TypeError) as e:
+                self.set_error(f'Cache directory not available: {e}')
+                return []
+
+        # Ensure cache directory exists before mounting
+        os.makedirs(cache_dir_path, exist_ok=True)
+        # Resolve symlinks (important on macOS where /var -> /private/var)
+        cache_dir_path = os.path.realpath(cache_dir_path)
+
+        cache_mount = docker.types.Mount(target='/code/workspace/cache', source=cache_dir_path, type='bind')
         mount_objs.append(cache_mount)
 
         # Mount repo directory if available
-        try:
-            repo_mount = docker.types.Mount(target='/code/workspace/repo', source=str(self.path_manager.repo_dir), type='bind')
+        repo_dir_path = os.environ.get('HAGENT_REPO_DIR')
+        if not repo_dir_path:
+            try:
+                repo_dir_path = str(self.path_manager.repo_dir)
+            except (AttributeError, TypeError):
+                # Repo dir not available - container will use image default
+                repo_dir_path = None
+
+        if repo_dir_path:
+            # Ensure repo directory exists before mounting
+            os.makedirs(repo_dir_path, exist_ok=True)
+            # Resolve symlinks (important on macOS where /var -> /private/var)
+            repo_dir_path = os.path.realpath(repo_dir_path)
+            repo_mount = docker.types.Mount(target='/code/workspace/repo', source=repo_dir_path, type='bind')
             mount_objs.append(repo_mount)
-        except (AttributeError, TypeError):
-            # Repo dir not available - container will use image default
-            pass
 
         # Mount build directory if available
-        try:
-            build_mount = docker.types.Mount(target='/code/workspace/build', source=str(self.path_manager.build_dir), type='bind')
+        build_dir_path = os.environ.get('HAGENT_BUILD_DIR')
+        if not build_dir_path:
+            try:
+                build_dir_path = str(self.path_manager.build_dir)
+            except (AttributeError, TypeError):
+                # Build dir not available - container will use image default
+                build_dir_path = None
+
+        if build_dir_path:
+            # Ensure build directory exists before mounting
+            os.makedirs(build_dir_path, exist_ok=True)
+            # Resolve symlinks (important on macOS where /var -> /private/var)
+            build_dir_path = os.path.realpath(build_dir_path)
+            build_mount = docker.types.Mount(target='/code/workspace/build', source=build_dir_path, type='bind')
             mount_objs.append(build_mount)
-        except (AttributeError, TypeError):
-            # Build dir not available - container will use image default
-            pass
 
         # Add any additional mounts registered via add_mount()
         for mount_config in self._mounts:
-            mount_obj = docker.types.Mount(
-                target=mount_config['target'], source=os.path.abspath(mount_config['source']), type='bind'
-            )
+            source_path = os.path.abspath(mount_config['source'])
+            # Ensure additional mount source exists
+            os.makedirs(source_path, exist_ok=True)
+            # Resolve symlinks (important on macOS where /var -> /private/var)
+            source_path = os.path.realpath(source_path)
+            mount_obj = docker.types.Mount(target=mount_config['target'], source=source_path, type='bind')
             mount_objs.append(mount_obj)
 
         return mount_objs
@@ -389,7 +424,12 @@ class ContainerManager:
             mount_objs = []
             for mount_str in mounts:
                 host_path, container_path = mount_str.split(':')
-                mount_obj = docker.types.Mount(target=container_path, source=os.path.abspath(host_path), type='bind')
+                abs_host_path = os.path.abspath(host_path)
+                # Ensure host directory exists before mounting
+                os.makedirs(abs_host_path, exist_ok=True)
+                # Resolve symlinks (important on macOS where /var -> /private/var)
+                abs_host_path = os.path.realpath(abs_host_path)
+                mount_obj = docker.types.Mount(target=container_path, source=abs_host_path, type='bind')
                 mount_objs.append(mount_obj)
 
             # Create the container
