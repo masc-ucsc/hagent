@@ -94,19 +94,38 @@ class PathManager:
     def _validate_docker_mode(self) -> None:
         """Validate environment variables for Docker execution mode."""
         # In Docker mode, only HAGENT_EXECUTION_MODE is required from user
-        # Container manager will set the rest automatically inside the container
+        # Other variables are optional - if provided, they will be mounted as host directories
+        # If not provided, use default container paths
 
-        # If we're inside a container, these will be set by container_manager
+        # Check for host directory mounts (optional)
         if os.environ.get('HAGENT_REPO_DIR'):
             self._repo_dir = Path(os.environ['HAGENT_REPO_DIR']).resolve()
+            if not self._repo_dir.exists():
+                self._fail_fast(f'HAGENT_REPO_DIR path does not exist: {self._repo_dir}')
+                return
+        else:
+            # Use default container path - this will be a virtual path for container creation
+            self._repo_dir = Path('/code/workspace/repo')
+
         if os.environ.get('HAGENT_BUILD_DIR'):
             self._build_dir = Path(os.environ['HAGENT_BUILD_DIR']).resolve()
+        else:
+            # Use default container path
+            self._build_dir = Path('/code/workspace/build')
+
         if os.environ.get('HAGENT_CACHE_DIR'):
             self._cache_dir = Path(os.environ['HAGENT_CACHE_DIR']).resolve()
+        else:
+            # Use default container path  
+            self._cache_dir = Path('/code/workspace/cache')
 
     def _create_cache_structure(self) -> None:
         """Create the HAGENT_CACHE_DIR directory structure."""
         if not self._cache_dir:
+            return
+
+        # Skip cache creation for container paths (they don't exist on the host)
+        if str(self._cache_dir).startswith('/code/workspace/'):
             return
 
         try:

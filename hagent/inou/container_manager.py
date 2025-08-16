@@ -267,13 +267,15 @@ class ContainerManager:
                 self.set_error(f'Cache directory not available: {e}')
                 return []
 
-        # Ensure cache directory exists before mounting
-        os.makedirs(cache_dir_path, exist_ok=True)
-        # Resolve symlinks (important on macOS where /var -> /private/var)
-        cache_dir_path = os.path.realpath(cache_dir_path)
+        # Only mount cache directory if it's a real host path (not a container path)
+        if not cache_dir_path.startswith('/code/workspace/'):
+            # Ensure cache directory exists before mounting
+            os.makedirs(cache_dir_path, exist_ok=True)
+            # Resolve symlinks (important on macOS where /var -> /private/var)
+            cache_dir_path = os.path.realpath(cache_dir_path)
 
-        cache_mount = docker.types.Mount(target='/code/workspace/cache', source=cache_dir_path, type='bind')
-        mount_objs.append(cache_mount)
+            cache_mount = docker.types.Mount(target='/code/workspace/cache', source=cache_dir_path, type='bind')
+            mount_objs.append(cache_mount)
 
         # Mount repo directory if available
         repo_dir_path = os.environ.get('HAGENT_REPO_DIR')
@@ -284,7 +286,7 @@ class ContainerManager:
                 # Repo dir not available - container will use image default
                 repo_dir_path = None
 
-        if repo_dir_path:
+        if repo_dir_path and not repo_dir_path.startswith('/code/workspace/'):
             # Ensure repo directory exists before mounting
             os.makedirs(repo_dir_path, exist_ok=True)
             # Resolve symlinks (important on macOS where /var -> /private/var)
@@ -301,7 +303,7 @@ class ContainerManager:
                 # Build dir not available - container will use image default
                 build_dir_path = None
 
-        if build_dir_path:
+        if build_dir_path and not build_dir_path.startswith('/code/workspace/'):
             # Ensure build directory exists before mounting
             os.makedirs(build_dir_path, exist_ok=True)
             # Resolve symlinks (important on macOS where /var -> /private/var)
@@ -357,21 +359,22 @@ class ContainerManager:
             'UV_PROJECT_ENVIRONMENT': '/code/workspace/cache/venv',
         }
 
-        # Optional mounts
-        if repo_dir:
+        # Optional mounts - only mount if the path is a real host directory
+        if repo_dir and not str(repo_dir).startswith('/code/workspace/'):
             mounts.append(f'{repo_dir}:/code/workspace/repo')
             env_vars['HAGENT_REPO_DIR'] = '/code/workspace/repo'
 
-        if build_dir:
+        if build_dir and not str(build_dir).startswith('/code/workspace/'):
             mounts.append(f'{build_dir}:/code/workspace/build')
             env_vars['HAGENT_BUILD_DIR'] = '/code/workspace/build'
 
-        # Always mount cache directory
-        if cache_dir:
+        # Mount cache directory only if it's a real host directory
+        if cache_dir and not str(cache_dir).startswith('/code/workspace/'):
             mounts.append(f'{cache_dir}:/code/workspace/cache')
-        else:
-            self.set_error('cache_dir is required for container creation')
-            return None
+        
+        # Always set the environment variables for container paths
+        env_vars['HAGENT_REPO_DIR'] = '/code/workspace/repo'
+        env_vars['HAGENT_BUILD_DIR'] = '/code/workspace/build'
 
         return self._create_container_with_mounts(mounts, env_vars, working_dir)
 
