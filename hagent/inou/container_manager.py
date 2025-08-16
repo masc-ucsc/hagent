@@ -470,18 +470,14 @@ class ContainerManager:
             self.set_error(f'Failed to validate /code/workspace/ directory: {e}')
             return False
 
-    def setup(self, workdir: Optional[str] = None) -> bool:
+    def setup(self) -> bool:
         """
         Create and start Docker container with new mount structure.
-
-        Args:
-            workdir: Optional working directory path inside the container
+        Working directory is always /code/workspace/repo.
 
         Returns:
             True if setup successful, False otherwise
         """
-        if workdir:
-            self._workdir = workdir
 
         # Clean up existing container
         if self.container:
@@ -581,6 +577,12 @@ class ContainerManager:
                 workdir = os.path.join(self._workdir, container_path)
             else:
                 workdir = container_path
+
+            # Validate that the container path exists
+            if not self._validate_container_path(workdir):
+                error_msg = f'Directory does not exist in container: {workdir}'
+                self.set_error(error_msg)
+                return -1, '', error_msg
 
         try:
             # Build the command with sourcing configuration files if provided
@@ -806,6 +808,54 @@ class ContainerManager:
                 self.set_error(f'Failed to create reference container: {e}')
                 return None
         return self._reference_container
+
+    def _validate_container_path(self, container_path: str) -> bool:
+        """Validate that a container path exists in the repo."""
+        try:
+            # Check if the path exists in the container
+            result = self.container.exec_run(f'test -e {container_path}')
+            return result.exit_code == 0
+        except Exception:
+            return False
+
+    def set_cwd(self, new_workdir: str) -> bool:
+        """
+        Change the working directory with validation.
+
+        Args:
+            new_workdir: New working directory path (relative to /code/workspace/repo or absolute)
+
+        Returns:
+            True if successful, False if path doesn't exist
+        """
+        if not self.container:
+            self.set_error('Container not set up. Call setup() first.')
+            return False
+
+        # Convert relative paths to absolute
+        if not os.path.isabs(new_workdir):
+            target_workdir = os.path.join('/code/workspace/repo', new_workdir)
+        else:
+            target_workdir = new_workdir
+
+        # Validate that the path exists and is a directory
+        if not self._validate_container_path(target_workdir):
+            self.set_error(f'Directory does not exist in container: {target_workdir}')
+            return False
+
+        # Check if it's actually a directory
+        try:
+            result = self.container.exec_run(f'test -d {target_workdir}')
+            if result.exit_code != 0:
+                self.set_error(f'Path exists but is not a directory: {target_workdir}')
+                return False
+        except Exception as e:
+            self.set_error(f'Failed to validate directory: {e}')
+            return False
+
+        # Update the working directory
+        self._workdir = target_workdir
+        return True
 
     def _ensure_container_directory(self, dir_path: str) -> bool:
         """Ensure a directory exists in the container."""
