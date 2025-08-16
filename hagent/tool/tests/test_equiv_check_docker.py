@@ -77,7 +77,7 @@ module simple_inverter(
   input  wire a,
   output wire y
 );
-  assign y = !a;  # Different syntax but logically equivalent
+  assign y = !a;  // Different syntax but logically equivalent
 endmodule
 """
 
@@ -98,7 +98,7 @@ module simple_and(
   input  wire b,
   output wire y
 );
-  assign y = a && b;  # Different syntax but equivalent for single bits
+  assign y = a && b;  // Different syntax but equivalent for single bits
 endmodule
 """
 
