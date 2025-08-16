@@ -19,8 +19,6 @@ from hagent.tool.equiv_check import Equiv_check
 @pytest.fixture(scope='session', autouse=True)
 def setup_hagent_environment():
     """Setup HAGENT environment variables for Docker mode tests."""
-    import tempfile
-
     original_env = {}
 
     # Save original environment
@@ -32,9 +30,11 @@ def setup_hagent_environment():
     os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
 
     # Use local directories that tests can actually create and access
+    # Use home directory subfolders which Docker Desktop has access to by default
+    home_dir = os.path.expanduser('~')
     repo_dir = os.path.abspath('.')  # Current working directory
-    build_dir = os.path.join(tempfile.gettempdir(), 'hagent_test_build')
-    cache_dir = os.path.join(tempfile.gettempdir(), 'hagent_test_cache')
+    build_dir = os.path.join(home_dir, 'hagent_test_build')
+    cache_dir = os.path.join(home_dir, 'hagent_test_cache')
 
     # Create directories if they don't exist
     os.makedirs(build_dir, exist_ok=True)
@@ -77,7 +77,7 @@ module simple_inverter(
   input  wire a,
   output wire y
 );
-  assign y = !a;  // Different syntax but logically equivalent
+  assign y = !a;  # Different syntax but logically equivalent
 endmodule
 """
 
@@ -98,7 +98,7 @@ module simple_and(
   input  wire b,
   output wire y
 );
-  assign y = a && b;  // Different syntax but equivalent for single bits
+  assign y = a && b;  # Different syntax but equivalent for single bits
 endmodule
 """
 
@@ -139,14 +139,12 @@ endmodule
 
         assert equiv_checker.use_docker is True
         assert equiv_checker.yosys_installed is True
-        assert equiv_checker.file_manager is not None
+        assert equiv_checker.file_tracker is not None
         print('✓ Docker fallback setup successful')
 
     def test_docker_equivalent_designs(self, verilog_modules):
         """Test equivalence checking with equivalent designs using Docker."""
         equiv_checker = Equiv_check()
-
-        return  # FIXME: TOO SLOW
 
         # Force Docker usage
         docker_success = equiv_checker.setup_docker_fallback()
@@ -182,8 +180,6 @@ endmodule
     def test_docker_non_equivalent_designs(self, verilog_modules):
         """Test equivalence checking with non-equivalent designs using Docker."""
         equiv_checker = Equiv_check()
-
-        return  # FIXME TOO SLOW
 
         # Force Docker usage
         docker_success = equiv_checker.setup_docker_fallback()
@@ -238,12 +234,12 @@ endmodule
             gold_code=verilog_modules['inverter_gold'], gate_code=verilog_modules['inverter_gate'], desired_top='simple_inverter'
         )
 
-        # Verify that file_manager was used
-        assert equiv_checker.file_manager is not None
+        # Verify that file_tracker was used
+        assert equiv_checker.file_tracker is not None
         assert equiv_checker.use_docker is True
 
         # Check that patches were tracked (indicates files were managed)
-        patches = equiv_checker.file_manager.get_patch_dict()
+        patches = equiv_checker.file_tracker.get_patch_dict()
         assert 'full' in patches or 'patch' in patches
 
         print('✓ Docker file management working correctly')
@@ -261,7 +257,7 @@ endmodule
         # Check which mode it's using
         if equiv_checker.use_docker:
             print('✓ Setup using Docker fallback')
-            assert equiv_checker.file_manager is not None
+            assert equiv_checker.file_tracker is not None
         else:
             print('✓ Setup using local Yosys installation')
 
@@ -341,6 +337,27 @@ module simple_test(
 endmodule
 """
 
+    # Setup temporary environment for standalone run
+    repo_dir = os.environ.get('HAGENT_REPO_DIR')
+    build_dir = os.environ.get('HAGENT_BUILD_DIR')
+    cache_dir = os.environ.get('HAGENT_CACHE_DIR')
+
+    home_dir = os.path.expanduser('output')
+    if not repo_dir:
+        repo_dir = os.path.join(home_dir, 'hagent_test_repo')
+        os.makedirs(repo_dir, exist_ok=True)
+        os.environ['HAGENT_REPO_DIR'] = repo_dir
+    if not build_dir:
+        build_dir = os.path.join(home_dir, 'hagent_test_build')
+        os.makedirs(build_dir, exist_ok=True)
+        os.environ['HAGENT_BUILD_DIR'] = build_dir
+    if not cache_dir:
+        cache_dir = os.path.join(home_dir, 'hagent_test_cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        os.environ['HAGENT_CACHE_DIR'] = cache_dir
+
+    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+
     try:
         # Test Docker fallback setup
         equiv_checker = Equiv_check()
@@ -356,7 +373,7 @@ endmodule
         result = equiv_checker.check_equivalence(gold_code=gold_code, gate_code=gate_code, desired_top='simple_test')
 
         print(f'gold_code:{gold_code}')
-        print(f'gold_code:{gate_code}')
+        print(f'gate_code:{gate_code}')
         print(f'✓ Equivalence check result: {result}')
 
         if result is True:
@@ -376,7 +393,7 @@ if __name__ == '__main__':
     success = test_docker_integration_standalone()
 
     if success:
-        print('\n🎉 Docker integration test passed!')
+        print(' 🎉 Docker integration test passed!')
     else:
-        print('\n❌ Docker integration test failed')
+        print(' ❌ Docker integration test failed')
         exit(1)

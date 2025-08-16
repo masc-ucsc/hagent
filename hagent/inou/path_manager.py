@@ -96,11 +96,6 @@ class PathManager:
         # In Docker mode, only HAGENT_EXECUTION_MODE is required from user
         # Container manager will set the rest automatically inside the container
 
-        # Get optional host paths that may be mounted
-        # These may be set by container_manager inside the container
-        os.environ.get('HAGENT_REPO_DIR')
-        os.environ.get('HAGENT_BUILD_DIR')
-
         # If we're inside a container, these will be set by container_manager
         if os.environ.get('HAGENT_REPO_DIR'):
             self._repo_dir = Path(os.environ['HAGENT_REPO_DIR']).resolve()
