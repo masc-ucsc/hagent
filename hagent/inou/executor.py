@@ -27,14 +27,16 @@ class ExecutionStrategy(Protocol):
         """
         ...
 
-    def run(self, command: str, cwd: str, env: Dict[str, str], quiet: bool = False) -> Tuple[int, str, str]:
+    def run(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]:
         """
         Execute a command with the given parameters.
 
         Args:
             command: The command to execute
-            cwd: Working directory for the command
-            env: Environment variables
+            cwd: Working directory for the command (defaults to "." which uses internal _workdir)
+            env: Additional environment variables (defaults to None, HAGENT vars are automatically included)
             quiet: Whether to run in quiet mode
 
         Returns:
@@ -76,6 +78,16 @@ class LocalExecutor:
     def get_error(self) -> str:
         """Get current error message following Tool pattern."""
         return self.error_message
+
+    def _setup_hagent_environment(self) -> Dict[str, str]:
+        """Setup HAGENT environment variables for local execution."""
+        env_vars = {
+            'HAGENT_EXECUTION_MODE': 'local',
+            'HAGENT_REPO_DIR': str(self.path_manager.repo_dir),
+            'HAGENT_BUILD_DIR': str(getattr(self.path_manager, 'build_dir', '')),
+            'HAGENT_CACHE_DIR': str(self.path_manager.cache_dir),
+        }
+        return env_vars
 
     def setup(self) -> bool:
         """
@@ -132,14 +144,16 @@ class LocalExecutor:
             self.set_error(f'Failed to change working directory: {e}')
             return False
 
-    def run(self, command: str, cwd: str, env: Dict[str, str], quiet: bool = False) -> Tuple[int, str, str]:
+    def run(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]:
         """
         Execute command directly on the host system.
 
         Args:
             command: The command to execute
             cwd: Working directory for the command (relative to current workdir or absolute path)
-            env: Environment variables
+            env: Additional environment variables (HAGENT vars are automatically included)
             quiet: Whether to run in quiet mode
 
         Returns:
@@ -166,9 +180,12 @@ class LocalExecutor:
                 self.set_error(error_msg)
                 return -1, '', error_msg
 
-            # Prepare environment
+            # Prepare environment with HAGENT variables
             full_env = os.environ.copy()
-            full_env.update(env)
+            hagent_env = self._setup_hagent_environment()
+            full_env.update(hagent_env)
+            if env:
+                full_env.update(env)  # Additional env vars override defaults
 
             # Execute command
             if quiet:
@@ -280,6 +297,16 @@ class DockerExecutor:
         """Get current error message following Tool pattern."""
         return self.error_message
 
+    def _setup_hagent_environment(self) -> Dict[str, str]:
+        """Setup HAGENT environment variables for Docker execution."""
+        env_vars = {
+            'HAGENT_EXECUTION_MODE': 'docker',
+            'HAGENT_REPO_DIR': str(self.path_manager.repo_dir),
+            'HAGENT_BUILD_DIR': str(getattr(self.path_manager, 'build_dir', '')),
+            'HAGENT_CACHE_DIR': str(self.path_manager.cache_dir),
+        }
+        return env_vars
+
     def setup(self) -> bool:
         """
         Setup Docker execution environment.
@@ -387,14 +414,16 @@ class DockerExecutor:
             # Fallback to old method
             return self.run(command, working_dir or '/code/workspace/repo', kwargs.get('env', {}), kwargs.get('quiet', False))
 
-    def run(self, command: str, cwd: str, env: Dict[str, str], quiet: bool = False) -> Tuple[int, str, str]:
+    def run(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]:
         """
         Execute command using ContainerManager or File_manager (Docker).
 
         Args:
             command: The command to execute
-            cwd: Working directory (absolute path, will be converted for container)
-            env: Environment variables (set in the host environment)
+            cwd: Working directory (will be converted for container, defaults to ".")
+            env: Additional environment variables (set in the host environment, HAGENT vars are automatically included)
             quiet: Whether to run in quiet mode
 
         Returns:
@@ -405,8 +434,13 @@ class DockerExecutor:
 
         # Set environment variables in the current process
         # (they'll be inherited by the Docker execution)
+        hagent_env = self._setup_hagent_environment()
+        combined_env = hagent_env.copy()
+        if env:
+            combined_env.update(env)  # Additional env vars override defaults
+
         old_env = {}
-        for key, value in env.items():
+        for key, value in combined_env.items():
             old_env[key] = os.environ.get(key)
             os.environ[key] = value
 
