@@ -116,7 +116,7 @@ class PathManager:
         if os.environ.get('HAGENT_CACHE_DIR'):
             self._cache_dir = Path(os.environ['HAGENT_CACHE_DIR']).resolve()
         else:
-            # Use default container path  
+            # Use default container path
             self._cache_dir = Path('/code/workspace/cache')
 
     def _create_cache_structure(self) -> None:
