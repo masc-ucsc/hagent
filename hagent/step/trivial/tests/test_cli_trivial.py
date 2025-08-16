@@ -8,7 +8,6 @@ for the trivial step to ensure proper Docker and local execution.
 
 import os
 import subprocess
-import tempfile
 import pytest
 from pathlib import Path
 
@@ -28,16 +27,16 @@ class TestTrivialCLI:
         # Get the project root (4 levels up from test file)
         project_root = Path(__file__).parent.parent.parent.parent.parent
         output_dir = project_root / 'output' / 'test_cli_trivial'
-        
+
         # Create output directory if it doesn't exist
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Create output file with test name for easy identification
         test_name = request.node.name
         output_file = output_dir / f'{test_name}.yaml'
-        
+
         yield str(output_file)
-        
+
         # Keep the file for debugging - don't delete it
 
     def test_local_execution_with_all_env_vars(self, input_file, output_file):
@@ -45,12 +44,14 @@ class TestTrivialCLI:
         env = os.environ.copy()
         # Get paths relative to the project root (4 levels up from this test file)
         project_root = Path(__file__).parent.parent.parent.parent.parent
-        env.update({
-            'HAGENT_EXECUTION_MODE': 'local',
-            'HAGENT_REPO_DIR': str((project_root / 'output/local/repo').resolve()),
-            'HAGENT_BUILD_DIR': str((project_root / 'output/local/build').resolve()),
-            'HAGENT_CACHE_DIR': str((project_root / 'output/local/cache').resolve()),
-        })
+        env.update(
+            {
+                'HAGENT_EXECUTION_MODE': 'local',
+                'HAGENT_REPO_DIR': str((project_root / 'output/local/repo').resolve()),
+                'HAGENT_BUILD_DIR': str((project_root / 'output/local/build').resolve()),
+                'HAGENT_CACHE_DIR': str((project_root / 'output/local/cache').resolve()),
+            }
+        )
 
         # Ensure directories exist
         for dir_path in [env['HAGENT_REPO_DIR'], env['HAGENT_BUILD_DIR'], env['HAGENT_CACHE_DIR']]:
@@ -58,22 +59,21 @@ class TestTrivialCLI:
 
         # Get the trivial.py path relative to the current working directory
         trivial_script = Path(__file__).parent.parent / 'trivial.py'
-        
-        result = subprocess.run([
-            'uv', 'run', 'python', str(trivial_script),
-            input_file, '-o', output_file
-        ], env=env, capture_output=True, text=True)
 
-        assert result.returncode == 0, f"Local execution failed: {result.stderr}"
-        assert os.path.exists(output_file), "Output file was not created"
+        result = subprocess.run(
+            ['uv', 'run', 'python', str(trivial_script), input_file, '-o', output_file], env=env, capture_output=True, text=True
+        )
+
+        assert result.returncode == 0, f'Local execution failed: {result.stderr}'
+        assert os.path.exists(output_file), 'Output file was not created'
 
         # Check that output contains expected fields
         with open(output_file, 'r') as f:
             content = f.read()
             assert 'added_field_trivial: sample' in content
-            assert 'uname_ret: \'0\'' in content
-            assert 'pwd_ret: \'0\'' in content
-            assert 'yosys_path_ret: \'0\'' in content
+            assert "uname_ret: '0'" in content
+            assert "pwd_ret: '0'" in content
+            assert "yosys_path_ret: '0'" in content
             # Check that original input data is preserved
             assert 'POTATO: foo' in content
             assert 'FOOO_VAR: another_value' in content
@@ -89,22 +89,25 @@ class TestTrivialCLI:
 
         # Get the trivial.py path relative to the current working directory
         trivial_script = Path(__file__).parent.parent / 'trivial.py'
-        
-        result = subprocess.run([
-            'uv', 'run', 'python', str(trivial_script),
-            input_file, '-o', output_file
-        ], env=env, capture_output=True, text=True, timeout=300)
 
-        assert result.returncode == 0, f"Docker execution failed: {result.stderr}"
-        assert os.path.exists(output_file), "Output file was not created"
+        result = subprocess.run(
+            ['uv', 'run', 'python', str(trivial_script), input_file, '-o', output_file],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        assert result.returncode == 0, f'Docker execution failed: {result.stderr}'
+        assert os.path.exists(output_file), 'Output file was not created'
 
         # Check that output contains expected fields and shows container environment
         with open(output_file, 'r') as f:
             content = f.read()
             assert 'added_field_trivial: sample' in content
-            assert 'uname_ret: \'0\'' in content
-            assert 'pwd_ret: \'0\'' in content
-            assert 'yosys_path_ret: \'0\'' in content
+            assert "uname_ret: '0'" in content
+            assert "pwd_ret: '0'" in content
+            assert "yosys_path_ret: '0'" in content
             # Container should show Linux and /code/workspace/repo path
             assert 'Linux' in content
             assert '/code/workspace/repo' in content
@@ -118,11 +121,13 @@ class TestTrivialCLI:
         # Get paths relative to the project root
         project_root = Path(__file__).parent.parent.parent.parent.parent
         repo_path = project_root / 'output/local/repo'
-        
-        env.update({
-            'HAGENT_EXECUTION_MODE': 'docker',
-            'HAGENT_REPO_DIR': str(repo_path),
-        })
+
+        env.update(
+            {
+                'HAGENT_EXECUTION_MODE': 'docker',
+                'HAGENT_REPO_DIR': str(repo_path),
+            }
+        )
 
         # Remove other directory env vars to test partial mounting
         for key in ['HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
@@ -133,22 +138,25 @@ class TestTrivialCLI:
 
         # Get the trivial.py path relative to the current working directory
         trivial_script = Path(__file__).parent.parent / 'trivial.py'
-        
-        result = subprocess.run([
-            'uv', 'run', 'python', str(trivial_script),
-            input_file, '-o', output_file
-        ], env=env, capture_output=True, text=True, timeout=300)
 
-        assert result.returncode == 0, f"Docker execution with repo mount failed: {result.stderr}"
-        assert os.path.exists(output_file), "Output file was not created"
+        result = subprocess.run(
+            ['uv', 'run', 'python', str(trivial_script), input_file, '-o', output_file],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        assert result.returncode == 0, f'Docker execution with repo mount failed: {result.stderr}'
+        assert os.path.exists(output_file), 'Output file was not created'
 
         # Check that output contains expected fields
         with open(output_file, 'r') as f:
             content = f.read()
             assert 'added_field_trivial: sample' in content
-            assert 'uname_ret: \'0\'' in content
-            assert 'pwd_ret: \'0\'' in content
-            assert 'yosys_path_ret: \'0\'' in content
+            assert "uname_ret: '0'" in content
+            assert "pwd_ret: '0'" in content
+            assert "yosys_path_ret: '0'" in content
             # Check that original input data is preserved
             assert 'POTATO: foo' in content
             assert 'FOOO_VAR: another_value' in content
@@ -160,12 +168,14 @@ class TestTrivialCLI:
         project_root = Path(__file__).parent.parent.parent.parent.parent
         repo_dir = (project_root / 'output/local/repo').resolve()
         cache_dir = (project_root / 'output/local/cache').resolve()
-        
-        env.update({
-            'HAGENT_EXECUTION_MODE': 'docker',
-            'HAGENT_REPO_DIR': str(repo_dir),
-            'HAGENT_CACHE_DIR': str(cache_dir),
-        })
+
+        env.update(
+            {
+                'HAGENT_EXECUTION_MODE': 'docker',
+                'HAGENT_REPO_DIR': str(repo_dir),
+                'HAGENT_CACHE_DIR': str(cache_dir),
+            }
+        )
 
         # Ensure directories exist
         os.makedirs(repo_dir, exist_ok=True)
@@ -173,39 +183,41 @@ class TestTrivialCLI:
 
         # Get the trivial.py path relative to the current working directory
         trivial_script = Path(__file__).parent.parent / 'trivial.py'
-        
-        result = subprocess.run([
-            'uv', 'run', 'python', str(trivial_script),
-            input_file, '-o', output_file
-        ], env=env, capture_output=True, text=True, timeout=300)
 
-        assert result.returncode == 0, f"Docker execution with absolute paths failed: {result.stderr}"
-        assert os.path.exists(output_file), "Output file was not created"
+        result = subprocess.run(
+            ['uv', 'run', 'python', str(trivial_script), input_file, '-o', output_file],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        assert result.returncode == 0, f'Docker execution with absolute paths failed: {result.stderr}'
+        assert os.path.exists(output_file), 'Output file was not created'
 
         # Check that output contains expected fields
         with open(output_file, 'r') as f:
             content = f.read()
             assert 'added_field_trivial: sample' in content
-            assert 'uname_ret: \'0\'' in content
+            assert "uname_ret: '0'" in content
 
     def test_local_execution_missing_env_vars(self, input_file, output_file):
         """Test that local execution fails when required environment variables are missing."""
         env = os.environ.copy()
         env['HAGENT_EXECUTION_MODE'] = 'local'
-        
+
         # Remove required env vars
         for key in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
             env.pop(key, None)
 
         # Get the trivial.py path relative to the current working directory
         trivial_script = Path(__file__).parent.parent / 'trivial.py'
-        
-        result = subprocess.run([
-            'uv', 'run', 'python', str(trivial_script),
-            input_file, '-o', output_file
-        ], env=env, capture_output=True, text=True)
 
-        assert result.returncode != 0, "Local execution should fail without required env vars"
+        result = subprocess.run(
+            ['uv', 'run', 'python', str(trivial_script), input_file, '-o', output_file], env=env, capture_output=True, text=True
+        )
+
+        assert result.returncode != 0, 'Local execution should fail without required env vars'
         assert 'Local execution mode requires these environment variables' in result.stderr
 
     def test_invalid_execution_mode(self, input_file, output_file):
@@ -215,13 +227,12 @@ class TestTrivialCLI:
 
         # Get the trivial.py path relative to the current working directory
         trivial_script = Path(__file__).parent.parent / 'trivial.py'
-        
-        result = subprocess.run([
-            'uv', 'run', 'python', str(trivial_script),
-            input_file, '-o', output_file
-        ], env=env, capture_output=True, text=True)
 
-        assert result.returncode != 0, "Should fail with invalid execution mode"
+        result = subprocess.run(
+            ['uv', 'run', 'python', str(trivial_script), input_file, '-o', output_file], env=env, capture_output=True, text=True
+        )
+
+        assert result.returncode != 0, 'Should fail with invalid execution mode'
         assert 'Invalid HAGENT_EXECUTION_MODE' in result.stderr
 
     def test_missing_execution_mode(self, input_file, output_file):
@@ -231,13 +242,12 @@ class TestTrivialCLI:
 
         # Get the trivial.py path relative to the current working directory
         trivial_script = Path(__file__).parent.parent / 'trivial.py'
-        
-        result = subprocess.run([
-            'uv', 'run', 'python', str(trivial_script),
-            input_file, '-o', output_file
-        ], env=env, capture_output=True, text=True)
 
-        assert result.returncode != 0, "Should fail without execution mode"
+        result = subprocess.run(
+            ['uv', 'run', 'python', str(trivial_script), input_file, '-o', output_file], env=env, capture_output=True, text=True
+        )
+
+        assert result.returncode != 0, 'Should fail without execution mode'
         assert 'HAGENT_EXECUTION_MODE environment variable is not set' in result.stderr
 
 

@@ -371,7 +371,7 @@ class ContainerManager:
         # Mount cache directory only if it's a real host directory
         if cache_dir and not str(cache_dir).startswith('/code/workspace/'):
             mounts.append(f'{cache_dir}:/code/workspace/cache')
-        
+
         # Always set the environment variables for container paths
         env_vars['HAGENT_REPO_DIR'] = '/code/workspace/repo'
         env_vars['HAGENT_BUILD_DIR'] = '/code/workspace/build'

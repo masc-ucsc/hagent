@@ -9,11 +9,12 @@ from typing import Dict
 
 import os
 
+
 # Trivial example of extending the Pass class
 class Trivial(Step):
     def setup(self):
         super().setup()  # superclass
-        if os.getenv("HAGENT_EXECUTION_MODE") == "docker":
+        if os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
             container = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
             self.executor = ExecutorFactory.create_executor(container)
         else:
@@ -27,8 +28,8 @@ class Trivial(Step):
         data_copy['added_field_trivial'] = 'sample'
 
         ret, out, err = self.executor.run('uname -a')
-        if ret !=0:
-            print(f"ERROR in uname?? ret:{ret} out:{out} err:{err}")
+        if ret != 0:
+            print(f'ERROR in uname?? ret:{ret} out:{out} err:{err}')
             exit(-3)
 
         data_copy['uname_ret'] = str(ret)
