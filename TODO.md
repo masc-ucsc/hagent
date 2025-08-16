@@ -4,8 +4,13 @@ In equiv_check.py, we do not need to have use_docker. If container_manger is not
 
 -------
 
-Container_manager.setup accepts a workdir as option, we should remove this as it is not needed.
+Run local after removing local and see if it fails, if not no need to patch this
 
+Several tests need a working repo/cache/build directory. When needed to run one for test reasons, let's be consistent and make sure that all use the output/local/repo output/local/build and output/local/cache instead of ./local
+
+-------
+
+In step objects, we use self.error to set an error. In many other code places, we use self.set_error. For consistency, we should rename the code in hagent/core/step.py to use set_error (and associated files in hagent/step/**.py)
 
 -------
 

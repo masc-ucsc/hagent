@@ -430,7 +430,11 @@ class DockerExecutor:
             Tuple of (exit_code, stdout, stderr)
         """
         # Convert host paths to container paths if needed
-        container_cwd = self._translate_path_to_container(cwd)
+        if cwd == ".":
+            # Default to container's working directory instead of translating host path
+            container_cwd = "."  # ContainerManager will use its internal _workdir
+        else:
+            container_cwd = self._translate_path_to_container(cwd)
 
         # Set environment variables in the current process
         # (they'll be inherited by the Docker execution)
