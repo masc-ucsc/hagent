@@ -452,6 +452,16 @@ class ContainerManager:
                 container.remove(force=True)
                 return None
 
+            # Fix permissions for mounted directories to match container user
+            # Temporarily store the container to use the existing method
+            original_container = self.container
+            self.container = container
+            try:
+                if not self._fix_mounted_directory_permissions():
+                    print('Warning: Could not fix mounted directory permissions')
+            finally:
+                self.container = original_container
+
             return container
 
         except Exception as e:
@@ -471,6 +481,52 @@ class ContainerManager:
             return True
         except Exception as e:
             self.set_error(f'Failed to validate /code/workspace/ directory: {e}')
+            return False
+
+    def _fix_mounted_directory_permissions(self) -> bool:
+        """
+        Fix permissions on mounted directories to allow container user to write.
+        
+        This addresses permission issues in CI environments where the host
+        user UID doesn't match the container user UID.
+        """
+        try:
+            # Get the container user's UID and GID
+            result = self.container.exec_run('id -u')
+            if result.exit_code != 0:
+                self.set_error('Failed to get container user UID')
+                return False
+            container_uid = result.output.decode('utf-8').strip()
+            
+            result = self.container.exec_run('id -g')
+            if result.exit_code != 0:
+                self.set_error('Failed to get container user GID')
+                return False
+            container_gid = result.output.decode('utf-8').strip()
+            
+            # List of mounted directories that need permission fixes
+            mount_points = ['/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache']
+            
+            for mount_point in mount_points:
+                # Check if the mount point exists
+                result = self.container.exec_run(f'test -d {mount_point}')
+                if result.exit_code == 0:
+                    # Fix ownership and permissions
+                    # First, try to chown as root (if available in the image)
+                    result = self.container.exec_run(f'chown -R {container_uid}:{container_gid} {mount_point}', user='root')
+                    if result.exit_code != 0:
+                        # If root user is not available, try chmod to make it writable by all
+                        result = self.container.exec_run(f'chmod -R 755 {mount_point}')
+                        if result.exit_code != 0:
+                            # As a last resort, just try to make the directory writable
+                            result = self.container.exec_run(f'chmod 777 {mount_point}')
+                            if result.exit_code != 0:
+                                print(f'Warning: Could not fix permissions for {mount_point}')
+            
+            return True
+            
+        except Exception as e:
+            self.set_error(f'Failed to fix mounted directory permissions: {e}')
             return False
 
     def setup(self) -> bool:
@@ -537,6 +593,10 @@ class ContainerManager:
             result = self.container.exec_run(f'mkdir -p {self._workdir}')
             if result.exit_code != 0:
                 self.set_error(f'Failed to create working directory: {self._workdir}')
+                return False
+
+            # Fix permissions for mounted directories to match container user
+            if not self._fix_mounted_directory_permissions():
                 return False
 
             # Check if bash exists in the container
