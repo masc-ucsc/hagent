@@ -81,6 +81,7 @@ omit = [
     "hagent/tool/**/tests/*",
 ]
 data_file = ".coverage"
+concurrency = ["multiprocessing"]
 
 [tool.coverage.report]
 exclude_lines = [

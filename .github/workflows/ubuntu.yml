@@ -62,21 +62,18 @@ jobs:
       - name: Run tests with coverage
         env:
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
-          COVERAGE_FILE: ${{ github.workspace }}/.coverage
           TEMP: /tmp
           TMPDIR: /tmp
         run: |
-          # Create and set permissions for coverage directory
-          mkdir -p ${{ github.workspace }}/coverage_data
-          chmod 755 ${{ github.workspace }}/coverage_data
-          chmod 755 ${{ github.workspace }}
+          # Clean up any existing coverage files to prevent database corruption
+          rm -f .coverage*
           
           # Ensure temp directories are writable
           sudo mkdir -p /tmp/pytest_temp
           sudo chmod 777 /tmp/pytest_temp
           
-          # Run tests with coverage using absolute path, excluding slow tests by default
-          COVERAGE_FILE=${{ github.workspace }}/.coverage uv run pytest --cov --cov-branch --cov-report=xml -m "not slow"
+          # Run tests with coverage, excluding slow tests by default
+          uv run pytest --cov --cov-branch --cov-report=xml -m "not slow"
       - name: List coverage files
         if: always()
         run: |
