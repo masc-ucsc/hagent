@@ -660,9 +660,9 @@ class TestContainerManager:
         # Create a real PathManager with test environment using relative paths
         with patch.dict('os.environ', {
             'HAGENT_EXECUTION_MODE': 'docker',
-            'HAGENT_REPO_DIR': 'local/repo',
-            'HAGENT_BUILD_DIR': 'local/build', 
-            'HAGENT_CACHE_DIR': 'local/cache'
+            'HAGENT_REPO_DIR': 'output/local/repo',
+            'HAGENT_BUILD_DIR': 'output/local/build', 
+            'HAGENT_CACHE_DIR': 'output/local/cache'
         }):
             mock_pm = PathManager()
 
