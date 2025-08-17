@@ -55,6 +55,7 @@ def setup_hagent_environment():
             os.environ[var] = value
 
 
+@pytest.mark.slow
 class TestExecutorYosysSynthesis:
     """Test suite for Yosys synthesis operations using new Executor API."""
 
