@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-XiangShan patches and hints generator using Executor API.
+XiangShan patches and hints generator using Runner API.
 
 This script:
 1) Applies modifications to XiangShan source files
@@ -14,7 +14,7 @@ This script:
    - Slicing each block out with context
 5) Saves the hints to xiangshan_hints.yaml for LLM prompting
 
-Converted from File_manager to Executor/ContainerManager/PathManager API.
+Converted to use Runner instead of direct Executor/ContainerManager/PathManager usage.
 
 Can be run as:
 1. CLI tool: uv run python hagent/inou/tests/cli_executor_patches_xiangshan.py
@@ -26,12 +26,10 @@ import pytest
 from ruamel.yaml import YAML
 
 # Set up environment for testing - only set execution mode
-# Let ContainerManager handle all Docker paths internally
+# Let Runner handle all Docker paths internally
 os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
 
-from hagent.inou.container_manager import ContainerManager
-from hagent.inou.executor import ExecutorFactory
-from hagent.inou.path_manager import PathManager
+from hagent.inou.runner import Runner
 from hagent.tool.fuzzy_grep import Fuzzy_grep
 from hagent.tool.extract_verilog_diff_keywords import Extract_verilog_diff_keywords
 
@@ -64,21 +62,20 @@ def cluster_line_numbers(line_nums, max_gap=5):
 def _run_xiangshan_patches_test():
     """Core XiangShan patches and hints generation logic."""
 
-    # 1. Initialize components
-    path_manager = PathManager()
-    container_manager = ContainerManager('mascucsc/hagent-xiangshan:2025.08', path_manager)
-    executor = ExecutorFactory.create_executor(container_manager)
+    # 1. Initialize Runner with Docker image
+    runner = Runner(docker_image='mascucsc/hagent-xiangshan:2025.08')
 
-    # 2. Setup executor
-    assert executor.setup(), f'Setup failed: {executor.get_error()}'
+    # 2. Setup runner
+    assert runner.setup(), f'Setup failed: {runner.get_error()}'
     print('✅ Container setup successful')
 
     # 3. Verify XiangShan project structure
     print('Checking XiangShan project structure...')
-    exit_code, stdout, stderr = executor.run('ls -la /code/workspace/repo/', cwd='/')
+    exit_code, stdout, stderr = runner.run('ls -la /code/workspace/repo/', cwd='/')
     if exit_code != 0:
         print('❌ XiangShan project not found in expected location')
         print('This test requires the mascucsc/hagent-xiangshan:2025.08 image with XiangShan project')
+        runner.cleanup()
         return
 
     print('✅ Found XiangShan project at: /code/workspace/repo')
@@ -88,25 +85,27 @@ def _run_xiangshan_patches_test():
 
     # Check if IFU.scala exists
     print('Checking for IFU.scala file...')
-    exit_code, stdout, stderr = executor.run(f'test -f "{ifu_path}"', cwd='/')
+    exit_code, stdout, stderr = runner.run(f'test -f "{ifu_path}"', cwd='/')
     if exit_code != 0:
         print(f'❌ IFU.scala not found at {ifu_path}')
         # Try to find it
-        exit_code, stdout, stderr = executor.run('find /code/workspace/repo -name "IFU.scala" | head -3', cwd='/')
+        exit_code, stdout, stderr = runner.run('find /code/workspace/repo -name "IFU.scala" | head -3', cwd='/')
         if stdout.strip():
             ifu_path = stdout.strip().split('\n')[0]
             print(f'Found IFU.scala at: {ifu_path}')
         else:
             print('❌ No IFU.scala file found. Cannot proceed.')
+            runner.cleanup()
             return
 
     # 5. Create a snapshot of the current state (before modifications)
     print('Creating baseline snapshot...')
 
     # Create a simple tracking mechanism by storing original content
-    exit_code, original_ifu_content, stderr = executor.run(f'cat "{ifu_path}"', cwd='/')
+    exit_code, original_ifu_content, stderr = runner.run(f'cat "{ifu_path}"', cwd='/')
     if exit_code != 0:
         print(f'❌ Failed to read IFU.scala: {stderr}')
+        runner.cleanup()
         return
 
     # 6. Apply the modification to IFU.scala
@@ -118,7 +117,7 @@ def _run_xiangshan_patches_test():
 
     # Use sed to make the replacement
     sed_command = f'sed -i "s/{old_pattern}/{new_pattern}/g" "{ifu_path}"'
-    exit_code, stdout, stderr = executor.run(sed_command, cwd='/')
+    exit_code, stdout, stderr = runner.run(sed_command, cwd='/')
 
     if exit_code != 0:
         print(f'⚠️  Modification may have failed: {stderr}')
@@ -126,7 +125,7 @@ def _run_xiangshan_patches_test():
         print('✅ Successfully applied modification to IFU.scala')
 
         # Verify the change
-        exit_code, stdout, stderr = executor.run(f'grep -n "f2_flush.*backend_redirect" "{ifu_path}"', cwd='/')
+        exit_code, stdout, stderr = runner.run(f'grep -n "f2_flush.*backend_redirect" "{ifu_path}"', cwd='/')
         print(f'Modified line(s):\n{stdout}')
 
     # 7. Run XiangShan build to generate Verilog
@@ -137,7 +136,7 @@ def _run_xiangshan_patches_test():
         'make BUILD_DIR=/code/workspace/build/build_dbg DEBUG_VERILOG=1 CONFIG=MinimalConfig EMU_THREADS=2 sim-verilog'
     )
 
-    exit_code, stdout, stderr = executor.run(build_command, cwd='/code/workspace/repo')
+    exit_code, stdout, stderr = runner.run(build_command, cwd='/code/workspace/repo')
 
     if exit_code != 0:
         print(f'❌ XiangShan build failed with exit code {exit_code}')
@@ -152,9 +151,10 @@ def _run_xiangshan_patches_test():
     print('Generating patches...')
 
     # Get current content
-    exit_code, current_ifu_content, stderr = executor.run(f'cat "{ifu_path}"', cwd='/')
+    exit_code, current_ifu_content, stderr = runner.run(f'cat "{ifu_path}"', cwd='/')
     if exit_code != 0:
         print(f'❌ Failed to read modified IFU.scala: {stderr}')
+        runner.cleanup()
         return
 
     # Create a simple diff
@@ -177,7 +177,7 @@ def _run_xiangshan_patches_test():
         print(f'✅ Generated patch for {ifu_path}')
 
     # Look for generated .sv files and create mock patches for demonstration
-    exit_code, stdout, stderr = executor.run('find /code/workspace/build -name "*.sv" | head -5', cwd='/')
+    exit_code, stdout, stderr = runner.run('find /code/workspace/build -name "*.sv" | head -5', cwd='/')
     if exit_code == 0 and stdout.strip():
         sv_files = stdout.strip().split('\n')
         print(f'Found {len(sv_files)} .sv files')
@@ -202,7 +202,7 @@ def _run_xiangshan_patches_test():
     print('Generating hints from patches...')
 
     # Find Scala files in the project
-    exit_code, files_txt, stderr = executor.run('find /code/workspace/repo/src/main/scala/xiangshan -name "*.scala"', cwd='/')
+    exit_code, files_txt, stderr = runner.run('find /code/workspace/repo/src/main/scala/xiangshan -name "*.scala"', cwd='/')
     if exit_code != 0:
         print('⚠️  Could not find Scala files')
         scala_files = []
@@ -241,7 +241,7 @@ def _run_xiangshan_patches_test():
         # Fuzzy-grep each candidate file
         file_hits = {}
         for path in search_space[:5]:  # Limit for performance
-            exit_code, content, stderr = executor.run(f'cat "{path}"', cwd='/')
+            exit_code, content, stderr = runner.run(f'cat "{path}"', cwd='/')
             if exit_code != 0:
                 continue
 
@@ -279,17 +279,14 @@ def _run_xiangshan_patches_test():
 
     # 10. Cleanup
     print('Cleaning up...')
-    try:
-        container_manager.cleanup()
-    except Exception as e:
-        print(f'⚠️  Cleanup warning: {e}')
+    runner.cleanup()
 
     print('✅ Test completed successfully - XiangShan patches and hints generated')
 
 
 @pytest.mark.slow
 def test_xiangshan_patches_execution():
-    """Pytest slow test for XiangShan patches and hints generation via Executor API."""
+    """Pytest slow test for XiangShan patches and hints generation via Runner API."""
     _run_xiangshan_patches_test()
 
 
