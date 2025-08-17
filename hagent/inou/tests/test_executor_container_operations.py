@@ -212,8 +212,8 @@ class TestExecutorContainerOperations:
             os.chmod(script_path, 0o755)
 
             # Note: In new API, we would need to implement file copying via container_manager
-            # For now, we'll create the script directly in container
-            custom_name = 'my_custom_tool'
+            # For now, we'll create the script directly in container in /tmp to avoid mount permission issues
+            custom_name = '/tmp/my_custom_tool'
 
             # Create script in container
             rc, out, err = executor.run(f"echo '{script_content}' > {custom_name}")
@@ -224,7 +224,7 @@ class TestExecutorContainerOperations:
             assert rc == 0, f'chmod failed - RC: {rc}, ERR: {err}'
 
             # Test execution
-            rc, out, err = executor.run(f'./{custom_name}')
+            rc, out, err = executor.run(f'{custom_name}')
             assert rc == 0, f'Script execution failed - RC: {rc}, ERR: {err}'
             assert 'Hello from custom script' in out
 
