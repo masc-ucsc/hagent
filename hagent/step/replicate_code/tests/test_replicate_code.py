@@ -45,6 +45,10 @@ def test_replicate_code():
         trivial_step = Replicate_code()
         trivial_step.set_io(inp_file=inp_file, out_file=get_output_path('test_replicate_code_output.yaml'))
 
+        # Skip if no AWS credentials are available (common after clean)
+        if not os.environ.get('AWS_BEARER_TOKEN_BEDROCK'):
+            pytest.skip("AWS credentials not available - skipping LLM test")
+
         trivial_step.setup()
 
         res = trivial_step.step()
