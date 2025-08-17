@@ -62,7 +62,15 @@ jobs:
       - name: Run tests with coverage
         env:
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
-        run: uv run pytest --cov --cov-branch --cov-report=xml
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage
+        run: |
+          # Create and set permissions for coverage directory
+          mkdir -p ${{ github.workspace }}/coverage_data
+          chmod 777 ${{ github.workspace }}/coverage_data
+          chmod 777 ${{ github.workspace }}
+          
+          # Run tests with coverage using absolute path
+          COVERAGE_FILE=${{ github.workspace }}/.coverage uv run pytest --cov --cov-branch --cov-report=xml
       - name: List coverage files
         if: always()
         run: |
