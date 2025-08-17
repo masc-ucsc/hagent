@@ -345,7 +345,7 @@ class HagentBuildCore:
 
         # Validate working directory exists (skip for Docker execution strategies)
         # Docker strategies handle their own path validation inside containers
-        if not hasattr(self.execution_strategy, 'file_manager'):
+        if not hasattr(self.execution_strategy, 'container_manager'):
             if not cwd_path.exists():
                 raise FileNotFoundError(f'Working directory does not exist: {cwd_path}')
             if not cwd_path.is_dir():
@@ -355,7 +355,7 @@ class HagentBuildCore:
             return 0, f'Would execute: {command} in {cwd_path}', ''
 
         # Create build directory for real runs (skip for Docker execution strategies)
-        if not hasattr(self.execution_strategy, 'file_manager'):
+        if not hasattr(self.execution_strategy, 'container_manager'):
             build_dir.mkdir(parents=True, exist_ok=True)
 
         # Execute using the strategy
