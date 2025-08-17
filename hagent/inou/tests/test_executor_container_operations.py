@@ -134,10 +134,10 @@ class TestExecutorContainerOperations:
         # Create the test output directory in container and write content to a file there
         container_output_dir = 'output/test_executor_container_operations'
         container_temp_file = f'{container_output_dir}/{temp_files["temp_file_name"]}'
-        
+
         rc, out, err = executor.run(f'mkdir -p {container_output_dir}')
         assert rc == 0, f'Directory creation failed - RC: {rc}, ERR: {err}'
-        
+
         rc, out, err = executor.run(f'echo "{temp_file_content}" > {container_temp_file}')
         assert rc == 0, f'File write failed - RC: {rc}, ERR: {err}'
 
@@ -176,15 +176,19 @@ class TestExecutorContainerOperations:
         # Create test output directory and greeting file there
         container_output_dir = 'output/test_executor_container_operations'
         container_greeting_file = f'{container_output_dir}/greeting.txt'
-        
+
         rc, out, err = executor.run(f'mkdir -p {container_output_dir}')
         assert rc == 0, f'Directory creation failed - RC: {rc}, ERR: {err}'
-        
+
         rc, out, err = executor.run(f'echo "Hello" > {container_greeting_file}')
         assert rc == 0, f'Create greeting failed - RC: {rc}, ERR: {err}'
 
         # Execute multiple commands
-        commands = [f'echo "World" >> {container_greeting_file}', f'cat {container_greeting_file}', f'wc -l {container_greeting_file}']
+        commands = [
+            f'echo "World" >> {container_greeting_file}',
+            f'cat {container_greeting_file}',
+            f'wc -l {container_greeting_file}',
+        ]
 
         for cmd in commands:
             rc, _, _ = executor.run(cmd)
