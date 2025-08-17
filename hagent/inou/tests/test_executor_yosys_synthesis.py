@@ -12,9 +12,7 @@ This test suite validates executor functionality with Yosys synthesis tools. Tes
 Converted from original test_file_manager_yosys.py to use new Executor API.
 """
 
-import tempfile
 import os
-import uuid
 import pytest
 from hagent.inou.container_manager import ContainerManager
 from hagent.inou.executor import ExecutorFactory
@@ -111,16 +109,16 @@ endmodule
         cache_dir = os.environ.get('HAGENT_CACHE_DIR')
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
-            
+
         path_manager = PathManager()
         # Use image with Yosys tools - may need to change to appropriate image
         container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', path_manager)
         executor = ExecutorFactory.create_executor(container_manager)
-        
+
         assert executor.setup(), f'Executor setup failed: {executor.get_error()}'
-        
+
         yield executor, container_manager
-        
+
         # Cleanup
         try:
             container_manager.cleanup()
@@ -150,9 +148,12 @@ endmodule
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
+        # Clean up any existing files
+        executor.run('rm -f *.v *.json')
+
         # Create simple Verilog file in container
         verilog_content = verilog_files['inverter.v']
-        rc, out, err = executor.run(f'cat << \'EOF\' > inverter.v\n{verilog_content}\nEOF')
+        rc, out, err = executor.run(f"cat << 'EOF' > inverter.v\n{verilog_content}\nEOF")
         assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
 
         # Simple synthesis
@@ -178,9 +179,12 @@ endmodule
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
+        # Clean up any existing files
+        executor.run('rm -f *.v *.json')
+
         # Create Verilog file
         verilog_content = verilog_files['and_gate.v']
-        rc, out, err = executor.run(f'cat << \'EOF\' > and_gate.v\n{verilog_content}\nEOF')
+        rc, out, err = executor.run(f"cat << 'EOF' > and_gate.v\n{verilog_content}\nEOF")
         assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
 
         # Synthesis with statistics
@@ -200,9 +204,12 @@ endmodule
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
+        # Clean up any existing files
+        executor.run('rm -f *.v *.json')
+
         # Create Verilog file
         verilog_content = verilog_files['inverter.v']
-        rc, out, err = executor.run(f'cat << \'EOF\' > inverter.v\n{verilog_content}\nEOF')
+        rc, out, err = executor.run(f"cat << 'EOF' > inverter.v\n{verilog_content}\nEOF")
         assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
 
         # Synthesis to JSON
@@ -228,24 +235,28 @@ endmodule
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
+        # Clean up any existing files
+        executor.run('rm -f *.v *.json')
+
         # Create invalid Verilog file
         invalid_verilog = """
 module broken_module(
   invalid syntax here
   missing endmodule
 """
-        rc, out, err = executor.run(f'cat << \'EOF\' > broken.v\n{invalid_verilog}\nEOF')
+        rc, out, err = executor.run(f"cat << 'EOF' > broken.v\n{invalid_verilog}\nEOF")
         assert rc == 0, f'Failed to create invalid Verilog file - RC: {rc}, ERR: {err}'
 
         # Try to synthesize invalid file
         yosys_cmd = 'yosys -p "read_verilog broken.v; synth"'
         rc, out, err = executor.run(yosys_cmd)
-        assert rc != 0, f'Yosys should have failed on invalid Verilog but succeeded'
+        assert rc != 0, 'Yosys should have failed on invalid Verilog but succeeded'
 
         # Check that error message is informative
         combined_output = out + err
-        assert 'syntax error' in combined_output.lower() or 'error' in combined_output.lower(), \
+        assert 'syntax error' in combined_output.lower() or 'error' in combined_output.lower(), (
             f'Error output should contain error information: {combined_output}'
+        )
 
     def test_multiple_file_synthesis(self, yosys_executor, verilog_files):
         """Test synthesis with multiple Verilog files."""
@@ -256,9 +267,12 @@ module broken_module(
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
+        # Clean up any existing .v files to avoid conflicts
+        executor.run('rm -f *.v *.json')
+
         # Create multiple Verilog files
         for filename, content in verilog_files.items():
-            rc, out, err = executor.run(f'cat << \'EOF\' > {filename}\n{content}\nEOF')
+            rc, out, err = executor.run(f"cat << 'EOF' > {filename}\n{content}\nEOF")
             assert rc == 0, f'Failed to create {filename} - RC: {rc}, ERR: {err}'
 
         # Synthesis with multiple files
@@ -283,9 +297,12 @@ module broken_module(
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
+        # Clean up any existing files
+        executor.run('rm -f *.v *.json')
+
         # Create Verilog file
         verilog_content = verilog_files['counter.v']
-        rc, out, err = executor.run(f'cat << \'EOF\' > counter.v\n{verilog_content}\nEOF')
+        rc, out, err = executor.run(f"cat << 'EOF' > counter.v\n{verilog_content}\nEOF")
         assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
 
         # Synthesis with technology mapping (using basic cell library)
@@ -308,9 +325,12 @@ module broken_module(
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
+        # Clean up any existing files
+        executor.run('rm -f *.v *.json *.ys')
+
         # Create Verilog file
         verilog_content = verilog_files['and_gate.v']
-        rc, out, err = executor.run(f'cat << \'EOF\' > and_gate.v\n{verilog_content}\nEOF')
+        rc, out, err = executor.run(f"cat << 'EOF' > and_gate.v\n{verilog_content}\nEOF")
         assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
 
         # Create Yosys script
@@ -320,7 +340,7 @@ synth
 stat
 write_verilog and_gate_script.v
 """
-        rc, out, err = executor.run(f'cat << \'EOF\' > synth.ys\n{yosys_script}\nEOF')
+        rc, out, err = executor.run(f"cat << 'EOF' > synth.ys\n{yosys_script}\nEOF")
         assert rc == 0, f'Failed to create Yosys script - RC: {rc}, ERR: {err}'
 
         # Execute script

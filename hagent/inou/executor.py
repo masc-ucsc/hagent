@@ -477,9 +477,7 @@ class ExecutorFactory:
     """Factory for creating appropriate executor instances."""
 
     @staticmethod
-    def create_executor(
-        container_manager=None, path_manager: Optional[PathManager] = None
-    ) -> ExecutionStrategy:
+    def create_executor(container_manager=None, path_manager: Optional[PathManager] = None) -> ExecutionStrategy:
         """
         Create an appropriate executor based on HAGENT_EXECUTION_MODE.
 

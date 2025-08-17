@@ -137,16 +137,18 @@ class TestDockerExecutor:
     """Test DockerExecutor functionality."""
 
     def test_initialization_with_file_manager(self):
-        """Test DockerExecutor initialization with file_manager (deprecated)."""
-        mock_fm = MagicMock()
-        with patch('hagent.inou.executor.PathManager') as mock_pm_class:
-            mock_pm = MagicMock()
-            mock_pm_class.return_value = mock_pm
+        """Test DockerExecutor initialization without managers (creates default container_manager)."""
+        with patch('hagent.inou.container_manager.ContainerManager') as mock_cm_class:
+            with patch('hagent.inou.executor.PathManager') as mock_pm_class:
+                mock_cm = MagicMock()
+                mock_pm = MagicMock()
+                mock_cm_class.return_value = mock_cm
+                mock_pm_class.return_value = mock_pm
 
-            executor = DockerExecutor(file_manager=mock_fm)
-            assert executor.file_manager == mock_fm
-            assert executor.container_manager is None
-            assert executor.path_manager == mock_pm
+                executor = DockerExecutor()
+                assert executor.container_manager == mock_cm
+                assert executor.path_manager == mock_pm
+                mock_cm_class.assert_called_once_with(image='mascucsc/hagent-simplechisel:2025.08', path_manager=mock_pm)
 
     def test_initialization_with_container_manager(self):
         """Test DockerExecutor initialization with container_manager (preferred)."""
@@ -154,17 +156,14 @@ class TestDockerExecutor:
         mock_pm = MagicMock()
         executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
         assert executor.container_manager == mock_cm
-        assert executor.file_manager is None
         assert executor.path_manager == mock_pm
 
     def test_initialization_with_both_managers(self):
-        """Test DockerExecutor initialization with both managers (prefers container_manager)."""
+        """Test DockerExecutor initialization with both container and path managers."""
         mock_cm = MagicMock()
-        mock_fm = MagicMock()
         mock_pm = MagicMock()
-        executor = DockerExecutor(container_manager=mock_cm, file_manager=mock_fm, path_manager=mock_pm)
+        executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
         assert executor.container_manager == mock_cm
-        assert executor.file_manager is None  # Should be None when container_manager provided
         assert executor.path_manager == mock_pm
 
     def test_initialization_no_managers(self):
@@ -178,16 +177,15 @@ class TestDockerExecutor:
 
                 executor = DockerExecutor()
                 assert executor.container_manager == mock_cm
-                assert executor.file_manager is None
                 mock_cm_class.assert_called_once_with(image='mascucsc/hagent-simplechisel:2025.08', path_manager=mock_pm)
 
     def test_run_basic_with_file_manager(self):
-        """Test DockerExecutor.run basic functionality with file_manager."""
-        mock_fm = MagicMock()
+        """Test DockerExecutor.run basic functionality with container_manager."""
+        mock_cm = MagicMock()
         mock_pm = MagicMock()
-        mock_fm.run.return_value = (0, 'output', 'error')
+        mock_cm.run.return_value = (0, 'output', 'error')
 
-        executor = DockerExecutor(file_manager=mock_fm, path_manager=mock_pm)
+        executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 
         with patch.dict(os.environ, {}, clear=True):
             exit_code, stdout, stderr = executor.run('echo test', '/test/path', {'TEST_VAR': 'value'}, quiet=True)
@@ -196,8 +194,8 @@ class TestDockerExecutor:
         assert stdout == 'output'
         assert stderr == 'error'
 
-        # Verify file_manager.run was called
-        mock_fm.run.assert_called_once_with('echo test', '/test/path', True)
+        # Verify container_manager.run was called
+        mock_cm.run.assert_called_once_with('echo test', '/test/path', True)
 
     def test_run_basic_with_container_manager(self):
         """Test DockerExecutor.run basic functionality with container_manager."""
@@ -219,11 +217,11 @@ class TestDockerExecutor:
 
     def test_run_environment_restoration(self):
         """Test DockerExecutor.run environment variable restoration."""
-        mock_fm = MagicMock()
+        mock_cm = MagicMock()
         mock_pm = MagicMock()
-        mock_fm.run.return_value = (0, 'output', 'error')
+        mock_cm.run.return_value = (0, 'output', 'error')
 
-        executor = DockerExecutor(file_manager=mock_fm, path_manager=mock_pm)
+        executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 
         # Set initial environment
         original_env = os.environ.copy()
@@ -245,14 +243,14 @@ class TestDockerExecutor:
 
     def test_translate_path_to_container_repo_dir(self):
         """Test path translation for repo directory."""
-        mock_fm = MagicMock()
+        mock_cm = MagicMock()
         mock_pm = MagicMock()
         mock_pm.is_docker_mode.return_value = True
         mock_pm.repo_dir = Path('/host/repo')
         mock_pm.build_dir = Path('/host/build')
         mock_pm.cache_dir = Path('/host/cache')
 
-        executor = DockerExecutor(file_manager=mock_fm, path_manager=mock_pm)
+        executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 
         # Test repo dir path translation
         result = executor._translate_path_to_container('/host/repo/subdir')
@@ -264,14 +262,14 @@ class TestDockerExecutor:
 
     def test_translate_path_to_container_build_dir(self):
         """Test path translation for build directory."""
-        mock_fm = MagicMock()
+        mock_cm = MagicMock()
         mock_pm = MagicMock()
         mock_pm.is_docker_mode.return_value = True
         mock_pm.repo_dir = Path('/host/repo')
         mock_pm.build_dir = Path('/host/build')
         mock_pm.cache_dir = Path('/host/cache')
 
-        executor = DockerExecutor(file_manager=mock_fm, path_manager=mock_pm)
+        executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 
         # Test build dir path translation
         result = executor._translate_path_to_container('/host/build/output')
@@ -279,14 +277,14 @@ class TestDockerExecutor:
 
     def test_translate_path_to_container_cache_dir(self):
         """Test path translation for cache directory."""
-        mock_fm = MagicMock()
+        mock_cm = MagicMock()
         mock_pm = MagicMock()
         mock_pm.is_docker_mode.return_value = True
         mock_pm.repo_dir = Path('/host/repo')
         mock_pm.build_dir = Path('/host/build')
         mock_pm.cache_dir = Path('/host/cache')
 
-        executor = DockerExecutor(file_manager=mock_fm, path_manager=mock_pm)
+        executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 
         # Test cache dir path translation
         result = executor._translate_path_to_container('/host/cache/logs')
@@ -294,14 +292,14 @@ class TestDockerExecutor:
 
     def test_translate_path_to_container_no_match(self):
         """Test path translation for unknown path."""
-        mock_fm = MagicMock()
+        mock_cm = MagicMock()
         mock_pm = MagicMock()
         mock_pm.is_docker_mode.return_value = True
         mock_pm.repo_dir = Path('/host/repo')
         mock_pm.build_dir = Path('/host/build')
         mock_pm.cache_dir = Path('/host/cache')
 
-        executor = DockerExecutor(file_manager=mock_fm, path_manager=mock_pm)
+        executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 
         # Test unknown path - should return original
         result = executor._translate_path_to_container('/other/path')
@@ -309,11 +307,11 @@ class TestDockerExecutor:
 
     def test_translate_path_to_container_non_docker_mode(self):
         """Test path translation in non-Docker mode."""
-        mock_fm = MagicMock()
+        mock_cm = MagicMock()
         mock_pm = MagicMock()
         mock_pm.is_docker_mode.return_value = False
 
-        executor = DockerExecutor(file_manager=mock_fm, path_manager=mock_pm)
+        executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 
         result = executor._translate_path_to_container('/any/path')
         assert result == str(Path('/any/path').resolve())
@@ -337,19 +335,19 @@ class TestExecutorFactory:
             mock_local.assert_called_once_with(mock_pm)
 
     def test_create_executor_docker_mode_with_file_manager(self):
-        """Test factory creates DockerExecutor for Docker mode with file_manager."""
+        """Test factory creates DockerExecutor for Docker mode with container_manager."""
         mock_pm = MagicMock()
         mock_pm.execution_mode = 'docker'
-        mock_fm = MagicMock()
+        mock_cm = MagicMock()
 
         with patch('hagent.inou.executor.DockerExecutor') as mock_docker:
             mock_executor = MagicMock()
             mock_docker.return_value = mock_executor
 
-            result = ExecutorFactory.create_executor(file_manager=mock_fm, path_manager=mock_pm)
+            result = ExecutorFactory.create_executor(container_manager=mock_cm, path_manager=mock_pm)
 
             assert result == mock_executor
-            mock_docker.assert_called_once_with(None, mock_fm, mock_pm)
+            mock_docker.assert_called_once_with(mock_cm, mock_pm)
 
     def test_create_executor_docker_mode_with_container_manager(self):
         """Test factory creates DockerExecutor for Docker mode with container_manager."""
@@ -364,7 +362,7 @@ class TestExecutorFactory:
             result = ExecutorFactory.create_executor(container_manager=mock_cm, path_manager=mock_pm)
 
             assert result == mock_executor
-            mock_docker.assert_called_once_with(mock_cm, None, mock_pm)
+            mock_docker.assert_called_once_with(mock_cm, mock_pm)
 
     def test_create_executor_docker_mode_no_managers(self):
         """Test factory creates DockerExecutor for Docker mode without managers (auto-creates container_manager)."""
@@ -378,7 +376,7 @@ class TestExecutorFactory:
             result = ExecutorFactory.create_executor(path_manager=mock_pm)
 
             assert result == mock_executor
-            mock_docker.assert_called_once_with(None, None, mock_pm)
+            mock_docker.assert_called_once_with(None, mock_pm)
 
     def test_create_executor_invalid_mode(self):
         """Test factory raises error for invalid execution mode."""
@@ -410,13 +408,12 @@ class TestConvenienceFunctions:
             mock_create.return_value = mock_executor
 
             mock_cm = MagicMock()
-            mock_fm = MagicMock()
             mock_pm = MagicMock()
 
-            result = create_executor(mock_cm, mock_fm, mock_pm)
+            result = create_executor(mock_cm, mock_pm)
 
             assert result == mock_executor
-            mock_create.assert_called_once_with(mock_cm, mock_fm, mock_pm)
+            mock_create.assert_called_once_with(mock_cm, mock_pm)
 
     def test_run_command_function_with_defaults(self):
         """Test run_command convenience function with defaults."""
@@ -443,7 +440,6 @@ class TestConvenienceFunctions:
             mock_create.return_value = mock_executor
 
             mock_cm = MagicMock()
-            mock_fm = MagicMock()
             mock_pm = MagicMock()
             env = {'TEST': 'value'}
 
@@ -453,10 +449,9 @@ class TestConvenienceFunctions:
                 env=env,
                 quiet=True,
                 container_manager=mock_cm,
-                file_manager=mock_fm,
                 path_manager=mock_pm,
             )
 
             assert result == (0, 'output', 'error')
-            mock_create.assert_called_once_with(mock_cm, mock_fm, mock_pm)
+            mock_create.assert_called_once_with(mock_cm, mock_pm)
             mock_executor.run.assert_called_once_with('echo test', '/test/dir', env, True)

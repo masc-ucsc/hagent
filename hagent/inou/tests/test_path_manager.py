@@ -83,21 +83,26 @@ class TestPathManager:
         """Test Docker mode with minimal environment (only HAGENT_EXECUTION_MODE)."""
         pm = PathManager(validate_env=True)
         assert pm.execution_mode == 'docker'
-        # In Docker mode without container-set variables, these should be None
-        assert pm._repo_dir is None
-        assert pm._build_dir is None
-        assert pm._cache_dir is None
+        # In Docker mode without host-mounted variables, use default container paths
+        assert pm._repo_dir == Path('/code/workspace/repo')
+        assert pm._build_dir == Path('/code/workspace/build')
+        assert pm._cache_dir == Path('/code/workspace/cache')
 
     def test_docker_mode_with_container_variables(self):
-        """Test Docker mode with container-set environment variables."""
+        """Test Docker mode with host-mounted environment variables."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
+            repo_dir = temp_path / 'repo'
+            build_dir = temp_path / 'build'
             cache_dir = temp_path / 'cache'
+
+            # Create repo directory (must exist for validation)
+            repo_dir.mkdir()
 
             env_vars = {
                 'HAGENT_EXECUTION_MODE': 'docker',
-                'HAGENT_REPO_DIR': '/code/workspace/repo',
-                'HAGENT_BUILD_DIR': '/code/workspace/build',
+                'HAGENT_REPO_DIR': str(repo_dir),
+                'HAGENT_BUILD_DIR': str(build_dir),
                 'HAGENT_CACHE_DIR': str(cache_dir),
             }
 
@@ -105,9 +110,15 @@ class TestPathManager:
                 pm = PathManager(validate_env=True)
 
                 assert pm.execution_mode == 'docker'
-                assert pm.repo_dir == Path('/code/workspace/repo').resolve()
-                assert pm.build_dir == Path('/code/workspace/build').resolve()
+                assert pm.repo_dir == repo_dir.resolve()
+                assert pm.build_dir == build_dir.resolve()
                 assert pm.cache_dir == cache_dir.resolve()
+
+                # Check cache structure was created (since these are host paths)
+                assert (cache_dir / 'inou').exists()
+                assert (cache_dir / 'inou' / 'logs').exists()
+                assert (cache_dir / 'build').exists()
+                assert (cache_dir / 'venv').exists()
 
     def test_possible_config_paths(self):
         """Test config path generation."""
