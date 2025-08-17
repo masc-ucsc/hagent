@@ -80,6 +80,16 @@ omit = [
     "hagent/step/**/tests/*",
     "hagent/tool/**/tests/*",
 ]
+data_file = ".coverage"
+parallel = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
 
 [tool.pydoc-markdown]
 loaders = [
