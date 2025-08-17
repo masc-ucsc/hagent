@@ -11,7 +11,7 @@ from pathlib import Path
 
 # Add the project root to the path so we can import hagent modules
 project_root = Path(__file__).parent.parent
-print(f"root:{project_root}")
+print(f'root:{project_root}')
 sys.path.insert(0, str(project_root))
 
 try:
