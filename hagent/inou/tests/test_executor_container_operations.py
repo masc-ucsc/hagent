@@ -131,21 +131,27 @@ class TestExecutorContainerOperations:
         # Note: In the new API, we use container_manager for file operations
         temp_file_content = 'potato'
 
-        # Write content to a file in the container
-        rc, out, err = executor.run(f'echo "{temp_file_content}" > {temp_files["temp_file_name"]}')
+        # Create the test output directory in container and write content to a file there
+        container_output_dir = 'output/test_executor_container_operations'
+        container_temp_file = f'{container_output_dir}/{temp_files["temp_file_name"]}'
+        
+        rc, out, err = executor.run(f'mkdir -p {container_output_dir}')
+        assert rc == 0, f'Directory creation failed - RC: {rc}, ERR: {err}'
+        
+        rc, out, err = executor.run(f'echo "{temp_file_content}" > {container_temp_file}')
         assert rc == 0, f'File write failed - RC: {rc}, ERR: {err}'
 
         # Verify file exists and has correct content
-        rc, out, err = executor.run(f'cat {temp_files["temp_file_name"]}')
+        rc, out, err = executor.run(f'cat {container_temp_file}')
         assert rc == 0, f'File read failed - RC: {rc}, ERR: {err}'
         assert temp_file_content in out
 
         # Test file modification
-        rc, out, err = executor.run(f'echo "destroyer" > {temp_files["temp_file_name"]}')
+        rc, out, err = executor.run(f'echo "destroyer" > {container_temp_file}')
         assert rc == 0, f'File modification failed - RC: {rc}, ERR: {err}'
 
         # Verify modification
-        rc, out, err = executor.run(f'cat {temp_files["temp_file_name"]}')
+        rc, out, err = executor.run(f'cat {container_temp_file}')
         assert rc == 0, f'Modified file read failed - RC: {rc}, ERR: {err}'
         assert 'destroyer' in out
 
@@ -167,19 +173,25 @@ class TestExecutorContainerOperations:
         """Test executing multiple commands in sequence."""
         executor, _ = executor_setup
 
-        # Create a greeting file
-        rc, out, err = executor.run('echo "Hello" > greeting.txt')
+        # Create test output directory and greeting file there
+        container_output_dir = 'output/test_executor_container_operations'
+        container_greeting_file = f'{container_output_dir}/greeting.txt'
+        
+        rc, out, err = executor.run(f'mkdir -p {container_output_dir}')
+        assert rc == 0, f'Directory creation failed - RC: {rc}, ERR: {err}'
+        
+        rc, out, err = executor.run(f'echo "Hello" > {container_greeting_file}')
         assert rc == 0, f'Create greeting failed - RC: {rc}, ERR: {err}'
 
         # Execute multiple commands
-        commands = ['echo "World" >> greeting.txt', 'cat greeting.txt', 'wc -l greeting.txt']
+        commands = [f'echo "World" >> {container_greeting_file}', f'cat {container_greeting_file}', f'wc -l {container_greeting_file}']
 
         for cmd in commands:
             rc, _, _ = executor.run(cmd)
             assert rc == 0, f'Command failed: {cmd}'
 
         # Verify final content
-        rc, out, err = executor.run('cat greeting.txt')
+        rc, out, err = executor.run(f'cat {container_greeting_file}')
         assert rc == 0, f'Final read failed - RC: {rc}, ERR: {err}'
         assert 'Hello' in out and 'World' in out
 

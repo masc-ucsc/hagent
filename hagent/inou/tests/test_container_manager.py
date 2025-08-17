@@ -11,6 +11,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from hagent.inou.container_manager import ContainerManager
+from hagent.inou.path_manager import PathManager
 
 
 @pytest.fixture(scope='session')
@@ -264,10 +265,15 @@ class TestContainerManager:
     def test_setup_mount_points(self, setup_local_directory):
         """Test setup of standard mount points."""
         local_dirs = setup_local_directory
-        mock_pm = MagicMock()
-        mock_pm.cache_dir = local_dirs['cache_dir']
-        mock_pm.repo_dir = local_dirs['repo_dir']
-        mock_pm.build_dir = local_dirs['build_dir']
+        
+        # Create a real PathManager with test environment
+        with patch.dict('os.environ', {
+            'HAGENT_EXECUTION_MODE': 'docker',
+            'HAGENT_REPO_DIR': str(local_dirs['repo_dir']),
+            'HAGENT_BUILD_DIR': str(local_dirs['build_dir']),
+            'HAGENT_CACHE_DIR': str(local_dirs['cache_dir'])
+        }):
+            mock_pm = PathManager()
 
         with patch.object(ContainerManager, '_initialize_docker_client'):
             manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
@@ -292,11 +298,15 @@ class TestContainerManager:
     def test_setup_mount_points_with_additional_mounts(self, setup_local_directory):
         """Test setup with additional mounts."""
         local_dirs = setup_local_directory
-        mock_pm = MagicMock()
-        mock_pm.cache_dir = local_dirs['cache_dir']
-        mock_pm.repo_dir = local_dirs['repo_dir']
-        # Delete build_dir from the mock to simulate it not being available
-        del mock_pm.build_dir
+        
+        # Create a real PathManager with test environment (missing build_dir)
+        with patch.dict('os.environ', {
+            'HAGENT_EXECUTION_MODE': 'docker',
+            'HAGENT_REPO_DIR': str(local_dirs['repo_dir']),
+            'HAGENT_CACHE_DIR': str(local_dirs['cache_dir'])
+            # Note: HAGENT_BUILD_DIR is intentionally omitted
+        }):
+            mock_pm = PathManager()
 
         with patch.object(ContainerManager, '_initialize_docker_client'):
             manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
@@ -342,8 +352,13 @@ class TestContainerManager:
     def test_setup_success(self, mock_mount, setup_local_directory):
         """Test successful container setup."""
         local_dirs = setup_local_directory
-        mock_pm = MagicMock()
-        mock_pm.cache_dir = local_dirs['cache_dir']
+        
+        # Create a real PathManager with test environment
+        with patch.dict('os.environ', {
+            'HAGENT_EXECUTION_MODE': 'docker',
+            'HAGENT_CACHE_DIR': str(local_dirs['cache_dir'])
+        }):
+            mock_pm = PathManager()
 
         mock_client = MagicMock()
         mock_image = MagicMock()
@@ -387,8 +402,13 @@ class TestContainerManager:
     def test_setup_image_pull_required(self, setup_local_directory):
         """Test setup when image needs to be pulled."""
         local_dirs = setup_local_directory
-        mock_pm = MagicMock()
-        mock_pm.cache_dir = local_dirs['cache_dir']
+        
+        # Create a real PathManager with test environment
+        with patch.dict('os.environ', {
+            'HAGENT_EXECUTION_MODE': 'docker',
+            'HAGENT_CACHE_DIR': str(local_dirs['cache_dir'])
+        }):
+            mock_pm = PathManager()
 
         mock_client = MagicMock()
         from docker.errors import ImageNotFound
@@ -433,8 +453,13 @@ class TestContainerManager:
     def test_setup_pull_credential_error(self, setup_local_directory):
         """Test setup with credential error during pull."""
         local_dirs = setup_local_directory
-        mock_pm = MagicMock()
-        mock_pm.cache_dir = local_dirs['cache_dir']
+        
+        # Create a real PathManager with test environment
+        with patch.dict('os.environ', {
+            'HAGENT_EXECUTION_MODE': 'docker',
+            'HAGENT_CACHE_DIR': str(local_dirs['cache_dir'])
+        }):
+            mock_pm = PathManager()
 
         mock_client = MagicMock()
         from docker.errors import ImageNotFound
@@ -632,10 +657,14 @@ class TestContainerManager:
 
     def test_setup_mount_points_relative_paths(self, setup_local_directory):
         """Test setup of mount points with relative paths."""
-        mock_pm = MagicMock()
-        mock_pm.cache_dir = Path('local/cache')  # Relative path
-        mock_pm.repo_dir = Path('local/repo')  # Relative path
-        mock_pm.build_dir = Path('local/build')  # Relative path
+        # Create a real PathManager with test environment using relative paths
+        with patch.dict('os.environ', {
+            'HAGENT_EXECUTION_MODE': 'docker',
+            'HAGENT_REPO_DIR': 'local/repo',
+            'HAGENT_BUILD_DIR': 'local/build', 
+            'HAGENT_CACHE_DIR': 'local/cache'
+        }):
+            mock_pm = PathManager()
 
         with patch.object(ContainerManager, '_initialize_docker_client'):
             manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
@@ -661,10 +690,14 @@ class TestContainerManager:
         """Test setup of mount points with absolute paths."""
         local_dirs = setup_local_directory
 
-        mock_pm = MagicMock()
-        mock_pm.cache_dir = local_dirs['cache_dir'].resolve()  # Absolute path
-        mock_pm.repo_dir = local_dirs['repo_dir'].resolve()  # Absolute path
-        mock_pm.build_dir = local_dirs['build_dir'].resolve()  # Absolute path
+        # Create a real PathManager with test environment
+        with patch.dict('os.environ', {
+            'HAGENT_EXECUTION_MODE': 'docker',
+            'HAGENT_REPO_DIR': str(local_dirs['repo_dir'].resolve()),
+            'HAGENT_BUILD_DIR': str(local_dirs['build_dir'].resolve()),
+            'HAGENT_CACHE_DIR': str(local_dirs['cache_dir'].resolve())
+        }):
+            mock_pm = PathManager()
 
         with patch.object(ContainerManager, '_initialize_docker_client'):
             manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
