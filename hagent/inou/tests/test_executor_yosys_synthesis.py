@@ -33,11 +33,12 @@ def setup_hagent_environment():
     os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
 
     # Use local directories that Docker can easily mount
-    repo_dir = os.path.abspath('.')  # Current working directory
-    build_dir = os.path.abspath('./output/test_yosys_build')
-    cache_dir = os.path.abspath('./output/test_yosys_cache')
+    repo_dir = os.path.abspath('./output/test_executor_yosys_synthesis')
+    build_dir = os.path.abspath('./output/test_executor_yosys_synthesis/build')
+    cache_dir = os.path.abspath('./output/test_executor_yosys_synthesis/cache')
 
     # Create directories if they don't exist
+    os.makedirs(repo_dir, exist_ok=True)
     os.makedirs(build_dir, exist_ok=True)
     os.makedirs(cache_dir, exist_ok=True)
 
