@@ -79,6 +79,7 @@ class TestTrivialCLI:
             assert 'POTATO: foo' in content
             assert 'FOOO_VAR: another_value' in content
 
+    @pytest.mark.slow
     def test_docker_execution_no_env_vars(self, input_file, output_file):
         """Test Docker execution with only execution mode (no directory mounts)."""
         env = os.environ.copy()
@@ -117,6 +118,7 @@ class TestTrivialCLI:
             assert 'POTATO: foo' in content
             assert 'FOOO_VAR: another_value' in content
 
+    @pytest.mark.slow
     def test_docker_execution_with_repo_mount(self, input_file, output_file):
         """Test Docker execution with repo directory mounted."""
         env = os.environ.copy()
@@ -164,6 +166,7 @@ class TestTrivialCLI:
             assert 'POTATO: foo' in content
             assert 'FOOO_VAR: another_value' in content
 
+    @pytest.mark.slow
     def test_docker_execution_with_absolute_paths(self, input_file, output_file):
         """Test Docker execution with absolute paths for mounting."""
         env = os.environ.copy()

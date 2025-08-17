@@ -75,8 +75,8 @@ jobs:
           sudo mkdir -p /tmp/pytest_temp
           sudo chmod 777 /tmp/pytest_temp
           
-          # Run tests with coverage using absolute path
-          COVERAGE_FILE=${{ github.workspace }}/.coverage uv run pytest --cov --cov-branch --cov-report=xml
+          # Run tests with coverage using absolute path, excluding slow tests by default
+          COVERAGE_FILE=${{ github.workspace }}/.coverage uv run pytest --cov --cov-branch --cov-report=xml -m "not slow"
       - name: List coverage files
         if: always()
         run: |
@@ -90,4 +90,34 @@ jobs:
           files: ./coverage.xml
           fail_ci_if_error: false
           verbose: true
+
+  test_slow:
+    name: Run slow tests
+    runs-on: ubuntu-latest
+    needs: install_uv
+    if: github.event_name == 'schedule' || contains(github.event.head_commit.message, '[run-slow]')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.7.17"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Install project
+        run: uv sync --extra dev
+
+      - name: Run slow tests
+        env:
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          TEMP: /tmp
+          TMPDIR: /tmp
+        run: |
+          # Create and set permissions for temp directories
+          sudo mkdir -p /tmp/pytest_temp
+          sudo chmod 777 /tmp/pytest_temp
+          
+          # Run only slow tests with extended timeout
+          uv run pytest -m "slow" --tb=short --maxfail=3 -v
 

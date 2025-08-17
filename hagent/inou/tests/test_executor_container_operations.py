@@ -55,6 +55,7 @@ def setup_hagent_environment():
             os.environ[var] = value
 
 
+@pytest.mark.slow
 class TestExecutorContainerOperations:
     """Test suite for container operations using new Executor API."""
 
