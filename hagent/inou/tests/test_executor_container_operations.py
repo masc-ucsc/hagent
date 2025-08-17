@@ -4,7 +4,7 @@ Converted test suite for container operations using new Executor API.
 
 This test covers:
 1. File copying and basic container operations
-2. Shell command execution with redirection  
+2. Shell command execution with redirection
 3. File content retrieval and modification
 4. Error handling and edge cases
 
@@ -91,15 +91,15 @@ class TestExecutorContainerOperations:
         cache_dir = os.environ.get('HAGENT_CACHE_DIR')
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
-            
+
         path_manager = PathManager()
         container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', path_manager)
         executor = ExecutorFactory.create_executor(container_manager)
-        
+
         assert executor.setup(), f'Executor setup failed: {executor.get_error()}'
-        
+
         yield executor, container_manager
-        
+
         # Cleanup
         try:
             container_manager.cleanup()
@@ -127,7 +127,7 @@ class TestExecutorContainerOperations:
         # Copy file to container using container_manager's copy functionality
         # Note: In the new API, we use container_manager for file operations
         temp_file_content = 'potato'
-        
+
         # Write content to a file in the container
         rc, out, err = executor.run(f'echo "{temp_file_content}" > {temp_files["temp_file_name"]}')
         assert rc == 0, f'File write failed - RC: {rc}, ERR: {err}'
@@ -169,11 +169,7 @@ class TestExecutorContainerOperations:
         assert rc == 0, f'Create greeting failed - RC: {rc}, ERR: {err}'
 
         # Execute multiple commands
-        commands = [
-            'echo "World" >> greeting.txt',
-            'cat greeting.txt',
-            'wc -l greeting.txt'
-        ]
+        commands = ['echo "World" >> greeting.txt', 'cat greeting.txt', 'wc -l greeting.txt']
 
         for cmd in commands:
             rc, _, _ = executor.run(cmd)
@@ -203,20 +199,20 @@ class TestExecutorContainerOperations:
         # Create a simple executable script on host
         script_content = '#!/bin/sh\necho "Hello from custom script"\n'
         script_path = os.path.join(tempfile.gettempdir(), 'test_script.sh')
-        
+
         try:
             with open(script_path, 'w') as f:
                 f.write(script_content)
-            
+
             # Make it executable on host
             os.chmod(script_path, 0o755)
 
             # Note: In new API, we would need to implement file copying via container_manager
             # For now, we'll create the script directly in container
             custom_name = 'my_custom_tool'
-            
+
             # Create script in container
-            rc, out, err = executor.run(f'echo \'{script_content}\' > {custom_name}')
+            rc, out, err = executor.run(f"echo '{script_content}' > {custom_name}")
             assert rc == 0, f'Script creation failed - RC: {rc}, ERR: {err}'
 
             # Make executable
