@@ -258,32 +258,25 @@ class LocalExecutor:
 class DockerExecutor:
     """Execution strategy that runs commands within Docker containers."""
 
-    def __init__(self, container_manager=None, file_manager=None, path_manager: Optional[PathManager] = None):
+    def __init__(self, container_manager=None, path_manager: Optional[PathManager] = None):
         """
         Initialize DockerExecutor.
 
         Args:
-            container_manager: ContainerManager instance for Docker operations (preferred)
-            file_manager: File_manager instance for Docker operations (deprecated, for backwards compatibility)
+            container_manager: ContainerManager instance for Docker operations
             path_manager: PathManager instance for path resolution
         """
         self.path_manager = path_manager or PathManager()
 
-        # Prefer container_manager over file_manager
         if container_manager is not None:
             self.container_manager = container_manager
-            self.file_manager = None  # Don't use deprecated file_manager
-        elif file_manager is not None:
-            self.file_manager = file_manager
-            self.container_manager = None
         else:
-            # Create a new container_manager if neither provided
+            # Create a new container_manager if not provided
             from .container_manager import ContainerManager
 
             self.container_manager = ContainerManager(
                 image='mascucsc/hagent-simplechisel:2025.08', path_manager=self.path_manager
             )
-            self.file_manager = None
 
         # Container instance for reuse
         self._container = None
@@ -315,18 +308,10 @@ class DockerExecutor:
         Returns:
             True if setup successful, False otherwise
         """
-        if self.container_manager:
-            success = self.container_manager.setup()
-            if not success:
-                self.set_error(f'Container setup failed: {self.container_manager.get_error()}')
-            return success
-        elif self.file_manager:
-            # For backwards compatibility with file_manager
-            # Assume file_manager has its own setup logic
-            return True
-        else:
-            self.set_error('No Docker execution backend available')
-            return False
+        success = self.container_manager.setup()
+        if not success:
+            self.set_error(f'Container setup failed: {self.container_manager.get_error()}')
+        return success
 
     def set_cwd(self, new_workdir: str) -> bool:
         """
@@ -338,18 +323,10 @@ class DockerExecutor:
         Returns:
             True if successful, False if path doesn't exist
         """
-        if self.container_manager:
-            success = self.container_manager.set_cwd(new_workdir)
-            if not success:
-                self.set_error(self.container_manager.get_error())
-            return success
-        elif self.file_manager:
-            # For backwards compatibility - file_manager may not have set_cwd
-            self.set_error('set_cwd not supported with deprecated file_manager')
-            return False
-        else:
-            self.set_error('No Docker execution backend available')
-            return False
+        success = self.container_manager.set_cwd(new_workdir)
+        if not success:
+            self.set_error(self.container_manager.get_error())
+        return success
 
     def execute_command(self, command, working_dir=None, **kwargs):
         """
@@ -449,14 +426,8 @@ class DockerExecutor:
             os.environ[key] = value
 
         try:
-            if self.container_manager is not None:
-                # Use new ContainerManager approach
-                return self.container_manager.run(command, container_cwd, quiet)
-            elif self.file_manager is not None:
-                # Use deprecated File_manager approach for backwards compatibility
-                return self.file_manager.run(command, container_cwd, quiet)
-            else:
-                return -1, '', 'No Docker execution backend available'
+            # Use ContainerManager approach
+            return self.container_manager.run(command, container_cwd, quiet)
         finally:
             # Restore previous environment
             for key, old_value in old_env.items():
@@ -507,14 +478,13 @@ class ExecutorFactory:
 
     @staticmethod
     def create_executor(
-        container_manager=None, file_manager=None, path_manager: Optional[PathManager] = None
+        container_manager=None, path_manager: Optional[PathManager] = None
     ) -> ExecutionStrategy:
         """
         Create an appropriate executor based on HAGENT_EXECUTION_MODE.
 
         Args:
-            container_manager: Optional ContainerManager instance for Docker execution (preferred)
-            file_manager: Optional File_manager instance for Docker execution (deprecated)
+            container_manager: Optional ContainerManager instance for Docker execution
             path_manager: Optional PathManager instance
 
         Returns:
@@ -531,7 +501,7 @@ class ExecutorFactory:
         if execution_mode == 'local':
             return LocalExecutor(path_manager)
         elif execution_mode == 'docker':
-            return DockerExecutor(container_manager, file_manager, path_manager)
+            return DockerExecutor(container_manager, path_manager)
         else:
             raise ValueError(f"Invalid execution mode: '{execution_mode}'. Must be 'local' or 'docker'.")
 
@@ -539,19 +509,18 @@ class ExecutorFactory:
 # Convenience functions for backward compatibility and ease of use
 
 
-def create_executor(container_manager=None, file_manager=None, path_manager: Optional[PathManager] = None) -> ExecutionStrategy:
+def create_executor(container_manager=None, path_manager: Optional[PathManager] = None) -> ExecutionStrategy:
     """
     Convenience function to create an appropriate executor.
 
     Args:
-        container_manager: Optional ContainerManager instance for Docker execution (preferred)
-        file_manager: Optional File_manager instance for Docker execution (deprecated)
+        container_manager: Optional ContainerManager instance for Docker execution
         path_manager: Optional PathManager instance
 
     Returns:
         ExecutionStrategy instance
     """
-    return ExecutorFactory.create_executor(container_manager, file_manager, path_manager)
+    return ExecutorFactory.create_executor(container_manager, path_manager)
 
 
 def run_command(
@@ -560,7 +529,6 @@ def run_command(
     env: Optional[Dict[str, str]] = None,
     quiet: bool = False,
     container_manager=None,
-    file_manager=None,
     path_manager: Optional[PathManager] = None,
 ) -> Tuple[int, str, str]:
     """
@@ -571,14 +539,13 @@ def run_command(
         cwd: Working directory for the command
         env: Additional environment variables
         quiet: Whether to run in quiet mode
-        container_manager: Optional ContainerManager instance for Docker execution (preferred)
-        file_manager: Optional File_manager instance for Docker execution (deprecated)
+        container_manager: Optional ContainerManager instance for Docker execution
         path_manager: Optional PathManager instance
 
     Returns:
         Tuple of (exit_code, stdout, stderr)
     """
-    executor = create_executor(container_manager, file_manager, path_manager)
+    executor = create_executor(container_manager, path_manager)
     env = env or {}
 
     # Resolve working directory
