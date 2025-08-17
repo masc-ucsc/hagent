@@ -4,7 +4,7 @@ import os
 import pytest
 
 from hagent.step.replicate_code.replicate_code import Replicate_code
-from hagent.core.output_manager import get_output_path
+from hagent.inou.output_manager import get_output_path
 
 
 def test_replicate_missing_llm():

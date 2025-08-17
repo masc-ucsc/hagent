@@ -3,39 +3,45 @@
 Output directory management utility for hagent.
 
 This module provides a centralized way to determine where output files
-should be written. Now integrates with PathManager for HAGENT_CACHE_DIR
-structure while maintaining backward compatibility.
+should be written (logs, test results, etc.). Uses HAGENT_OUTPUT_DIR
+when set, otherwise falls back to HAGENT_CACHE_DIR/inou/logs/ structure.
 """
 
 import os
 import sys
 from pathlib import Path
 
-from hagent.inou.path_manager import PathManager
+from .path_manager import PathManager
 
 
 def get_output_dir() -> str:
     """
     Get the output directory path.
 
-    Now uses PathManager to get HAGENT_CACHE_DIR/inou/ directory structure.
-    Falls back to legacy HAGENT_OUTPUT behavior if PathManager initialization fails.
+    Uses HAGENT_OUTPUT_DIR if set, otherwise uses PathManager to get
+    HAGENT_CACHE_DIR/inou/logs/ for logs and output files.
 
     The directory will be created if it doesn't exist.
 
     Returns:
         str: Path to the output directory
     """
+    # First priority: HAGENT_OUTPUT_DIR if explicitly set
+    if os.environ.get('HAGENT_OUTPUT_DIR'):
+        output_dir = os.environ['HAGENT_OUTPUT_DIR']
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        return output_dir
+
+    # Second priority: Use PathManager for structured logs directory
     try:
-        # Try to use new PathManager-based approach
         if os.environ.get('HAGENT_EXECUTION_MODE'):
             path_manager = PathManager(validate_env=True)
-            return path_manager.get_cache_dir()
+            return path_manager.get_log_dir()
     except (SystemExit, Exception):
         # Fall back to legacy behavior if PathManager fails
         pass
 
-    # Legacy fallback behavior
+    # Final fallback: legacy HAGENT_OUTPUT behavior for backward compatibility
     output_dir = os.environ.get('HAGENT_OUTPUT', 'output')
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     return output_dir
@@ -45,8 +51,8 @@ def get_output_path(filename: str) -> str:
     """
     Get the full path for an output file.
 
-    Now uses PathManager to route files to HAGENT_CACHE_DIR/inou/ structure.
-    Falls back to legacy behavior if PathManager initialization fails.
+    Uses HAGENT_OUTPUT_DIR if set, otherwise uses PathManager to route files
+    to HAGENT_CACHE_DIR/inou/logs/ structure.
 
     Args:
         filename: The name of the output file (must be a relative path within output directory)
@@ -57,16 +63,7 @@ def get_output_path(filename: str) -> str:
     Raises:
         SystemExit: If filename is an absolute path or tries to escape the output directory
     """
-    try:
-        # Try to use new PathManager-based approach
-        if os.environ.get('HAGENT_EXECUTION_MODE'):
-            path_manager = PathManager(validate_env=True)
-            return path_manager.get_cache_path(filename)
-    except (SystemExit, Exception):
-        # Fall back to legacy behavior if PathManager fails
-        pass
-
-    # Legacy fallback behavior - same validation logic as before
+    # Validate filename first (same validation logic as before)
     is_absolute = (
         os.path.isabs(filename)  # Standard absolute path check
         or filename.startswith('~')  # Home directory expansion

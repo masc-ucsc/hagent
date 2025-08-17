@@ -14,7 +14,7 @@ from typing import (
 )
 
 from ruamel.yaml import YAML
-from hagent.core.output_manager import get_output_path
+from hagent.inou.output_manager import get_output_path
 
 # Keep everything under specific tabs in the Perfetto timeline.
 HAGENT_PID = 0

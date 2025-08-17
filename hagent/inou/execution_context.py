@@ -7,6 +7,7 @@ commands without needing to know about the underlying execution environment.
 """
 
 from .execution_detector import ExecutionDetector
+from .output_manager import get_output_dir
 
 
 class ExecutionContext:
@@ -95,13 +96,13 @@ class ExecutionContext:
         """
         Get logs directory for current execution mode.
 
+        Uses output_manager to respect HAGENT_OUTPUT_DIR if set,
+        otherwise uses structured cache directory.
+
         Returns:
             Logs directory path
         """
-        if self.execution_mode == 'docker':
-            return '/code/workspace/cache/inou/logs'
-        else:
-            return str(self.path_manager.logs_dir)
+        return get_output_dir()
 
     def is_local_mode(self) -> bool:
         """Check if running in local execution mode."""

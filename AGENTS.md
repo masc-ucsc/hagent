@@ -125,6 +125,7 @@ uv run python -c "from hagent.tool.tool import Tool; help(Tool)"
 
 ## Required Environment Variables
 
+### API Keys
 ```bash
 # Required for most pipelines (LLM_wrap validates based on model prefix)
 export OPENAI_API_KEY=your_openai_key_here           # for models starting with openai/*
@@ -139,18 +140,65 @@ export AWS_BEARER_TOKEN_BEDROCK=your_aws_bedrock_token_here  # for models starti
 export FIREWORKS_AI_API_KEY=dummy_key_for_testing
 ```
 
+### Execution Mode Configuration
+```bash
+# REQUIRED: Choose execution mode
+export HAGENT_EXECUTION_MODE=docker    # Recommended for production
+# OR
+export HAGENT_EXECUTION_MODE=local     # For debugging/development
+
+# For LOCAL mode - ALL required:
+export HAGENT_REPO_DIR=/path/to/git/repository      # Must be a git repository root
+export HAGENT_BUILD_DIR=/path/to/build/directory    # Build output directory
+export HAGENT_CACHE_DIR=/path/to/cache/directory    # HAgent internal cache
+
+# For DOCKER mode - OPTIONAL (will be mounted if provided):
+export HAGENT_REPO_DIR=/path/to/git/repository      # Mounted to /code/workspace/repo
+export HAGENT_BUILD_DIR=/path/to/build/directory    # Mounted to /code/workspace/build
+# HAGENT_CACHE_DIR is automatically managed in Docker mode
+
+# For BOTH modes - OPTIONAL:
+export HAGENT_OUTPUT_DIR=/path/to/output/directory   # Custom logs/test results output directory
+```
+
 ## Example Usage
 
 ### Running Individual Steps
+
+#### Docker Mode (Recommended)
 ```bash
-# Run trivial step
+# Set execution mode
+export HAGENT_EXECUTION_MODE=docker
+
+# Run trivial step - Docker handles everything automatically
+mkdir tmp && cd tmp
+uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -o output.yaml
+
+# With optional host directory mounting
+export HAGENT_REPO_DIR=/path/to/your/project
+uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -o output.yaml
+```
+
+#### Local Mode (Development/Debugging)
+```bash
+# Set execution mode and required paths
+export HAGENT_EXECUTION_MODE=local
+export HAGENT_REPO_DIR=$(pwd)/..                    # Git repository root
+export HAGENT_BUILD_DIR=$(pwd)/build                # Build directory
+export HAGENT_CACHE_DIR=$(pwd)/cache                # Cache directory
+
+# Optional: Set custom output directory
+export HAGENT_OUTPUT_DIR=$(pwd)/test_output         # Custom output directory
+
+# Same command as Docker mode!
 mkdir tmp && cd tmp
 uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -o output.yaml
 ```
 
 ### Running Tools
 ```bash
-# React agent for fixing buggy Verilog
+# React agent for fixing buggy Verilog (works in both modes)
+export HAGENT_EXECUTION_MODE=docker  # or local with full path setup
 cd tmp
 uv run python ../hagent/tool/tests/test_react_compile_slang_simple.py ../hagent/tool/tests/buggy_verilog.v
 ```
@@ -173,10 +221,11 @@ uv run ./scripts/build_perfetto_trace.py -i .
 
 ## Dependencies
 
-- **Python**: >=3.11,<4.0 (managed by UV)
+- **Python**: >=3.13,<4.0 (managed by UV)
 - **Package Manager**: UV (modern Python package manager)
-- **Key Libraries**: litellm, pyslang, pyyaml, pytest, ruff
-- **External Tools**: Yosys (for benchmarking), Docker (optional)
+- **Key Libraries**: litellm, pyslang, pyyaml, pytest, ruff, docker
+- **External Tools**: Yosys (for benchmarking), Docker (recommended for production)
+- **Infrastructure**: Git (required for file tracking in both modes)
 
 ## Development Workflow
 
@@ -206,76 +255,60 @@ These commands ensure code quality, consistency, and compliance with the project
 - Configuration files use modern Python tooling (pyproject.toml with UV/Ruff)
 - Documentation focuses on hardware design workflows and AI integration
 
-## Output File Management
+## Path Management and File Organization
 
-When developing HAgent components that create output files (reports, logs, generated code, trace files, etc.), **always use the output directory utilities** to maintain clean project organization:
+HAgent uses a modernized path management system with structured directories based on execution mode:
+
+### Directory Structure
+
+```bash
+# In LOCAL mode - user-controlled paths
+HAGENT_REPO_DIR/     # Git repository (source code)
+HAGENT_BUILD_DIR/    # Build outputs (generated Verilog, logs)
+HAGENT_CACHE_DIR/    # HAgent internals (YAML files, caches)
+  ├── inou/          # Step configurations, logs
+  ├── inou/logs/     # Execution logs
+  ├── build/         # Build cache
+  └── venv/          # Python virtual environment
+
+# In DOCKER mode - standardized container paths
+/code/workspace/repo/   # Mounted from HAGENT_REPO_DIR (if provided)
+/code/workspace/build/  # Mounted from HAGENT_BUILD_DIR (if provided)
+/code/workspace/cache/  # HAgent internals (auto-managed)
+```
 
 ### For Python Components
 
-Import and use the output manager utilities:
+Use the path manager utilities for consistent file handling:
 
 ```python
-from hagent.core.output_manager import get_output_dir, get_output_path
+from hagent.inou.path_manager import PathManager
+from hagent.inou.output_manager import get_output_dir, get_output_path
 
-# For creating files in the output directory
-output_file = get_output_path('my_report.txt')
-with open(output_file, 'w') as f:
-    f.write('Generated content')
+# Initialize path manager (respects HAGENT_EXECUTION_MODE)
+path_manager = PathManager()
 
-# For creating subdirectories in the output directory
-import tempfile
-work_dir = tempfile.mkdtemp(dir=get_output_dir(), prefix='my_component_')
+# Access structured directories
+repo_dir = path_manager.repo_dir      # Source code location
+build_dir = path_manager.build_dir    # Build outputs
+cache_dir = path_manager.cache_dir    # HAgent internals
+
+# Cache subdirectories
+log_dir = path_manager.get_log_dir()              # inou/logs/
+config_dir = path_manager.get_cache_path('step.yaml')  # inou/step.yaml
+
+# Output files (logs, test results) - respects HAGENT_OUTPUT_DIR
+output_dir = get_output_dir()                     # Uses HAGENT_OUTPUT_DIR or cache/inou/logs/
+log_file = get_output_path('test_results.log')   # Full path for output files
 ```
 
-### Key Guidelines
+### Key Benefits
 
-- **DO**: Use `get_output_path()` when creating any output files
-- **DO**: Use `get_output_dir()` when creating temporary directories
-- **DO**: Pass only paths under the output directory (filenames or subpaths like `logs/file.log`) to `get_output_path()`
-- **DON'T**: Write files directly to the current working directory
-- **DON'T**: Hard-code paths like `./output/` in your code
-- **DON'T**: Pass absolute paths to `get_output_path()` (will cause program to exit with error)
-- **DON'T**: Use parent directory traversal like `../...` (keeps outputs contained)
+- **Mode Transparency**: Same code works in local and Docker modes
+- **Automatic Setup**: Directories created automatically as needed  
+- **Git Integration**: File tracking works consistently across modes
+- **Structured Organization**: Clear separation between source, build, and cache files
+- **Container Compatibility**: Docker mounts and paths handled automatically
 
-### Examples from Codebase
-
-```python
-# Equivalence checking (equiv_check.py)
-work_dir = tempfile.mkdtemp(dir=get_output_dir(), prefix='equiv_check_')
-
-# Trace generation (tracer.py)
-filename = get_output_path('trace.json')
-
-# Test output files (test_replicate_code.py)
-out_file = get_output_path('test_results.yaml')
-```
-
-### API Validation
-
-`get_output_path()` validates its input and will exit with an error if called with absolute paths. Avoid parent-directory traversal paths to ensure outputs stay contained:
-
-```python
-# ✅ CORRECT usage
-get_output_path('report.txt')           # filename only
-get_output_path('logs/debug.log')       # relative path
-
-# ❌ INCORRECT usage (will exit with detailed error message)
-get_output_path('/tmp/report.txt')      # absolute path
-get_output_path('/Users/name/file.txt') # absolute path  
-get_output_path('~/report.txt')         # home directory
-get_output_path('C:\\Windows\\file.txt') # Windows absolute path
-# ❌ INCORRECT usage (path traversal; not allowed)
-get_output_path('../shared/data.json')  # parent directory traversal
-```
-
-This validation prevents accidental misuse and ensures consistent output file organization.
-
-### Environment Variable Support
-
-The output directory respects the `HAGENT_OUTPUT` environment variable:
-- Default: `output/`
-- Custom: Set `HAGENT_OUTPUT=/path/to/custom/dir`
-- Auto-created: Directory is created automatically if it doesn't exist
-
-This pattern keeps the project directory clean and gives users control over where generated files are stored.
+This system eliminates manual path configuration while providing clean organization and cross-mode compatibility.
 
