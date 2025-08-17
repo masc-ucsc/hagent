@@ -11,7 +11,6 @@ This test covers:
 Converted from original test_file_manager.py to use new Executor API.
 """
 
-import tempfile
 import os
 import uuid
 import pytest
@@ -63,8 +62,11 @@ class TestExecutorContainerOperations:
     def temp_files(self):
         """Create temporary test files and clean them up after test."""
         temp_file_name = f'tmp_{uuid.uuid4().hex}.txt'
-        temp_file_host_path = os.path.join(tempfile.gettempdir(), temp_file_name)
-        greeting_host_path = os.path.join(tempfile.gettempdir(), 'greeting.txt')
+        test_output_dir = os.path.abspath('./output/test_executor_container_operations')
+        os.makedirs(test_output_dir, exist_ok=True)
+
+        temp_file_host_path = os.path.join(test_output_dir, temp_file_name)
+        greeting_host_path = os.path.join(test_output_dir, 'greeting.txt')
 
         # Create initial test files
         with open(temp_file_host_path, 'w') as f:
@@ -198,7 +200,9 @@ class TestExecutorContainerOperations:
 
         # Create a simple executable script on host
         script_content = '#!/bin/sh\necho "Hello from custom script"\n'
-        script_path = os.path.join(tempfile.gettempdir(), 'test_script.sh')
+        test_output_dir = os.path.abspath('./output/test_executor_container_operations')
+        os.makedirs(test_output_dir, exist_ok=True)
+        script_path = os.path.join(test_output_dir, 'test_script.sh')
 
         try:
             with open(script_path, 'w') as f:
