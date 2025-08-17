@@ -63,11 +63,17 @@ jobs:
         env:
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           COVERAGE_FILE: ${{ github.workspace }}/.coverage
+          TEMP: /tmp
+          TMPDIR: /tmp
         run: |
           # Create and set permissions for coverage directory
           mkdir -p ${{ github.workspace }}/coverage_data
-          chmod 777 ${{ github.workspace }}/coverage_data
-          chmod 777 ${{ github.workspace }}
+          chmod 755 ${{ github.workspace }}/coverage_data
+          chmod 755 ${{ github.workspace }}
+          
+          # Ensure temp directories are writable
+          sudo mkdir -p /tmp/pytest_temp
+          sudo chmod 777 /tmp/pytest_temp
           
           # Run tests with coverage using absolute path
           COVERAGE_FILE=${{ github.workspace }}/.coverage uv run pytest --cov --cov-branch --cov-report=xml
@@ -81,7 +87,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: masc-ucsc/hagent
-          file: ./coverage.xml
+          files: ./coverage.xml
           fail_ci_if_error: false
+          verbose: true
 
