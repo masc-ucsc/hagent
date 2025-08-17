@@ -1,5 +1,5 @@
 # Minimal input for v2chisel_batch testing
-bug_list_file: "/home/farzaneh/hagent/bug_lists_unified.yaml"
+bug_list_file: "bug_lists_unified.yaml"
 
 # Docker configuration
 docker_container: "musing_sammet"

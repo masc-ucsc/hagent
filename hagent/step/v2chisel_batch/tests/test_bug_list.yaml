@@ -1,0 +1,15 @@
+bugs:
+- file: Adder.sv
+  unified_diff: |
+    --- a/Adder.sv
+    +++ b/Adder.sv
+    @@ -1,1 +1,1 @@
+    -assign io_c = 11'(io_a - io_b);
+    +assign io_c = 11'(io_a + io_b);
+- file: Alu.sv
+  unified_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -1,1 +1,1 @@
+    -assign io_out_valid = io_in_valid;
+    +assign io_out_valid = ~io_in_valid;
