@@ -486,7 +486,7 @@ class ContainerManager:
     def _fix_mounted_directory_permissions(self) -> bool:
         """
         Fix permissions on mounted directories to allow container user to write.
-        
+
         This addresses permission issues in CI environments where the host
         user UID doesn't match the container user UID.
         """
@@ -497,16 +497,16 @@ class ContainerManager:
                 self.set_error('Failed to get container user UID')
                 return False
             container_uid = result.output.decode('utf-8').strip()
-            
+
             result = self.container.exec_run('id -g')
             if result.exit_code != 0:
                 self.set_error('Failed to get container user GID')
                 return False
             container_gid = result.output.decode('utf-8').strip()
-            
+
             # List of mounted directories that need permission fixes
             mount_points = ['/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache']
-            
+
             for mount_point in mount_points:
                 # Check if the mount point exists
                 result = self.container.exec_run(f'test -d {mount_point}')
@@ -522,9 +522,9 @@ class ContainerManager:
                             result = self.container.exec_run(f'chmod 777 {mount_point}')
                             if result.exit_code != 0:
                                 print(f'Warning: Could not fix permissions for {mount_point}')
-            
+
             return True
-            
+
         except Exception as e:
             self.set_error(f'Failed to fix mounted directory permissions: {e}')
             return False
