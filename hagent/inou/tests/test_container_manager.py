@@ -349,9 +349,23 @@ class TestContainerManager:
         mock_image = MagicMock()
         mock_client.images.get.return_value = mock_image
         mock_container = MagicMock()
+        # Mock UID/GID output for permission fixing
+        uid_result = MagicMock(exit_code=0)
+        uid_result.output.decode.return_value = '9001'
+        gid_result = MagicMock(exit_code=0)
+        gid_result.output.decode.return_value = '9001'
+        
         mock_container.exec_run.side_effect = [
             MagicMock(exit_code=0),  # workspace validation
             MagicMock(exit_code=0),  # mkdir workdir
+            uid_result,              # id -u for permission fix
+            gid_result,              # id -g for permission fix
+            MagicMock(exit_code=0),  # test -d /code/workspace/repo
+            MagicMock(exit_code=0),  # chown repo directory
+            MagicMock(exit_code=0),  # test -d /code/workspace/build
+            MagicMock(exit_code=0),  # chown build directory
+            MagicMock(exit_code=0),  # test -d /code/workspace/cache
+            MagicMock(exit_code=0),  # chown cache directory
             MagicMock(exit_code=0),  # bash test
         ]
         mock_client.containers.create.return_value = mock_container
@@ -384,9 +398,23 @@ class TestContainerManager:
             MagicMock(),  # After pull succeeds
         ]
         mock_container = MagicMock()
+        # Mock UID/GID output for permission fixing
+        uid_result = MagicMock(exit_code=0)
+        uid_result.output.decode.return_value = '9001'
+        gid_result = MagicMock(exit_code=0)
+        gid_result.output.decode.return_value = '9001'
+        
         mock_container.exec_run.side_effect = [
             MagicMock(exit_code=0),  # workspace validation
             MagicMock(exit_code=0),  # mkdir workdir
+            uid_result,              # id -u for permission fix
+            gid_result,              # id -g for permission fix
+            MagicMock(exit_code=0),  # test -d /code/workspace/repo
+            MagicMock(exit_code=0),  # chown repo directory
+            MagicMock(exit_code=0),  # test -d /code/workspace/build
+            MagicMock(exit_code=0),  # chown build directory
+            MagicMock(exit_code=0),  # test -d /code/workspace/cache
+            MagicMock(exit_code=0),  # chown cache directory
             MagicMock(exit_code=1),  # bash test fails
         ]
         mock_client.containers.create.return_value = mock_container

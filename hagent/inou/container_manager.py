@@ -511,12 +511,12 @@ class ContainerManager:
                 # Check if the mount point exists
                 result = self.container.exec_run(f'test -d {mount_point}')
                 if result.exit_code == 0:
-                    # Fix ownership and permissions
+                    # For performance, just fix the directory itself rather than recursively
                     # First, try to chown as root (if available in the image)
-                    result = self.container.exec_run(f'chown -R {container_uid}:{container_gid} {mount_point}', user='root')
+                    result = self.container.exec_run(f'chown {container_uid}:{container_gid} {mount_point}', user='root')
                     if result.exit_code != 0:
                         # If root user is not available, try chmod to make it writable by all
-                        result = self.container.exec_run(f'chmod -R 755 {mount_point}')
+                        result = self.container.exec_run(f'chmod 755 {mount_point}')
                         if result.exit_code != 0:
                             # As a last resort, just try to make the directory writable
                             result = self.container.exec_run(f'chmod 777 {mount_point}')
