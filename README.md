@@ -103,7 +103,7 @@ cat output.yaml
 
 # Alternative: Run in local mode
 export HAGENT_EXECUTION_MODE=local
-export HAGENT_REPO_DIR=$(pwd)/..
+export HAGENT_REPO_DIR=$(pwd)
 export HAGENT_BUILD_DIR=$(pwd)/build
 export HAGENT_CACHE_DIR=$(pwd)/cache
 # Same command works in both modes!
@@ -121,16 +121,17 @@ For detailed examples and sample usage patterns, please see [AGENTS.md](AGENTS.m
 Basic test commands:
 ```bash
 # Set required API key for tests
-export FIREWORKS_AI_API_KEY=whatever_key_you_like_most
+export AWS_BEARER_TOKEN_BEDROCK=your_aws_bedrock_token_here  # for models starting with bedrock/*
+export OPENAI_API_KEY=your_openai_key_here           # for models starting with openai/*
 
 # Set execution mode (docker is recommended for full testing)
 export HAGENT_EXECUTION_MODE=docker
 
 # For local mode testing, also set:
 # export HAGENT_EXECUTION_MODE=local
-# export HAGENT_REPO_DIR=$(pwd)
-# export HAGENT_BUILD_DIR=$(pwd)/build  
-# export HAGENT_CACHE_DIR=$(pwd)/cache
+# export HAGENT_REPO_DIR=$(pwd)/tmp/local/repo
+# export HAGENT_BUILD_DIR=$(pwd)/tmp/local/build
+# export HAGENT_CACHE_DIR=$(pwd)/tmp/local/cache
 
 # Optional: Set custom output directory for logs and test results
 # export HAGENT_OUTPUT_DIR=/path/to/custom/output
@@ -153,7 +154,7 @@ For local execution (debugging, single tasks), you must set all required environ
 # Required for local mode
 export HAGENT_EXECUTION_MODE=local
 export HAGENT_REPO_DIR=/path/to/your/git/repository     # Git repository root
-export HAGENT_BUILD_DIR=/path/to/your/build/directory   # Build output directory  
+export HAGENT_BUILD_DIR=/path/to/your/build/directory   # Build output directory
 export HAGENT_CACHE_DIR=/path/to/your/cache/directory   # HAgent cache directory
 
 # Optional: Set custom output directory for logs and test results
@@ -167,7 +168,7 @@ uv run python hagent/step/trivial/trivial.py hagent/step/trivial/tests/input1.ya
 For Docker execution (production, complex builds), only set the execution mode:
 
 ```bash
-# Required for Docker mode  
+# Required for Docker mode
 export HAGENT_EXECUTION_MODE=docker
 
 # Optional: Mount host directories into container
