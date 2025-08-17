@@ -8,7 +8,7 @@ from hagent.core.step import Step
 from hagent.core.llm_wrap import LLM_wrap
 from hagent.tool.equiv_check import Equiv_check
 from hagent.tool.extract_code import Extract_code_verilog
-from hagent.core.output_manager import get_output_dir
+from hagent.inou.output_manager import get_output_dir
 
 
 class Replicate_code(Step):

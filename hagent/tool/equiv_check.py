@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 import sys
 from typing import Optional, Tuple, List
-from hagent.core.output_manager import get_output_dir
+from hagent.inou.output_manager import get_output_dir
 from hagent.inou.container_manager import ContainerManager
 from hagent.inou.file_tracker import FileTracker
 from hagent.inou.path_manager import PathManager

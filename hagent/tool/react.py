@@ -10,7 +10,7 @@ import json
 import random
 from hagent.tool.compile import Diagnostic
 from hagent.tool.memory import FewShotMemory, Memory_shot
-from hagent.core.output_manager import get_output_path
+from hagent.inou.output_manager import get_output_path
 
 
 def process_multiline_strings(obj):

@@ -9,29 +9,36 @@ from unittest.mock import patch
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-from hagent.core.output_manager import get_output_dir, get_output_path
+from hagent.inou.output_manager import get_output_dir, get_output_path
 
 
 class TestOutputManager:
     def setup_method(self):
-        self.original_env = os.environ.get('HAGENT_OUTPUT')
+        self.original_output_dir = os.environ.get('HAGENT_OUTPUT_DIR')
+        self.original_execution_mode = os.environ.get('HAGENT_EXECUTION_MODE')
 
     def teardown_method(self):
-        if self.original_env is not None:
-            os.environ['HAGENT_OUTPUT'] = self.original_env
-        elif 'HAGENT_OUTPUT' in os.environ:
-            del os.environ['HAGENT_OUTPUT']
+        # Restore HAGENT_OUTPUT_DIR
+        if self.original_output_dir is not None:
+            os.environ['HAGENT_OUTPUT_DIR'] = self.original_output_dir
+        elif 'HAGENT_OUTPUT_DIR' in os.environ:
+            del os.environ['HAGENT_OUTPUT_DIR']
 
-    def test_get_output_dir_default(self):
-        if 'HAGENT_OUTPUT' in os.environ:
-            del os.environ['HAGENT_OUTPUT']
+        # Restore HAGENT_EXECUTION_MODE
+        if self.original_execution_mode is not None:
+            os.environ['HAGENT_EXECUTION_MODE'] = self.original_execution_mode
+        elif 'HAGENT_EXECUTION_MODE' in os.environ:
+            del os.environ['HAGENT_EXECUTION_MODE']
 
-        result = get_output_dir()
-        assert result == 'output'
+    def test_get_output_dir_with_hagent_output_dir(self):
+        """Test that HAGENT_OUTPUT_DIR takes priority."""
+        # Clear other environment variables
+        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+            if var in os.environ:
+                del os.environ[var]
 
-    def test_get_output_dir_env_variable(self):
-        test_dir = 'custom_output_test'
-        os.environ['HAGENT_OUTPUT'] = test_dir
+        test_dir = 'custom_output_dir_test'
+        os.environ['HAGENT_OUTPUT_DIR'] = test_dir
 
         try:
             result = get_output_dir()
@@ -41,10 +48,26 @@ class TestOutputManager:
             if Path(test_dir).exists():
                 shutil.rmtree(test_dir)
 
+    def test_get_output_dir_default(self):
+        """Test default fallback to 'output' directory."""
+        # Clear all relevant environment variables
+        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+            if var in os.environ:
+                del os.environ[var]
+
+        result = get_output_dir()
+        assert result == 'output'
+
     def test_get_output_dir_creates_directory(self):
+        """Test that output directory is created automatically."""
+        # Clear all environment variables
+        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+            if var in os.environ:
+                del os.environ[var]
+
         with tempfile.TemporaryDirectory() as temp_dir:
             test_output = os.path.join(temp_dir, 'new_output_dir')
-            os.environ['HAGENT_OUTPUT'] = test_output
+            os.environ['HAGENT_OUTPUT_DIR'] = test_output
 
             assert not Path(test_output).exists()
 
@@ -53,31 +76,43 @@ class TestOutputManager:
             assert Path(test_output).exists()
 
     def test_get_output_path_valid_filename(self):
-        if 'HAGENT_OUTPUT' in os.environ:
-            del os.environ['HAGENT_OUTPUT']
+        """Test get_output_path with simple filename."""
+        # Clear all relevant environment variables to test default behavior
+        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+            if var in os.environ:
+                del os.environ[var]
 
         result = get_output_path('test.txt')
         expected = os.path.join('output', 'test.txt')
         assert result == expected
 
     def test_get_output_path_valid_relative_path(self):
-        if 'HAGENT_OUTPUT' in os.environ:
-            del os.environ['HAGENT_OUTPUT']
+        """Test get_output_path with relative path."""
+        # Clear all relevant environment variables to test default behavior
+        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+            if var in os.environ:
+                del os.environ[var]
 
         result = get_output_path('subdir/test.txt')
         expected = os.path.join('output', 'subdir', 'test.txt')
         assert result == expected
 
-    def test_get_output_path_with_custom_output_dir(self):
-        os.environ['HAGENT_OUTPUT'] = 'custom_dir'
+    def test_get_output_path_with_hagent_output_dir(self):
+        """Test get_output_path with HAGENT_OUTPUT_DIR."""
+        # Clear other environment variables
+        for var in ['HAGENT_EXECUTION_MODE']:
+            if var in os.environ:
+                del os.environ[var]
+
+        os.environ['HAGENT_OUTPUT_DIR'] = 'custom_output_dir'
 
         try:
             result = get_output_path('test.txt')
-            expected = os.path.join('custom_dir', 'test.txt')
+            expected = os.path.join('custom_output_dir', 'test.txt')
             assert result == expected
         finally:
-            if Path('custom_dir').exists():
-                shutil.rmtree('custom_dir')
+            if Path('custom_output_dir').exists():
+                shutil.rmtree('custom_output_dir')
 
     def test_get_output_path_absolute_unix_path_fails(self):
         with pytest.raises(SystemExit) as excinfo:
@@ -105,8 +140,10 @@ class TestOutputManager:
         assert excinfo.value.code == 1
 
     def test_get_output_path_current_directory_reference(self):
-        if 'HAGENT_OUTPUT' in os.environ:
-            del os.environ['HAGENT_OUTPUT']
+        # Clear environment variables
+        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+            if var in os.environ:
+                del os.environ[var]
 
         result = get_output_path('./test.txt')
         expected = os.path.join('output', '.', 'test.txt')

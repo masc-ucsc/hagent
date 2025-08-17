@@ -14,7 +14,7 @@ HAgent is an open-source infrastructure that brings the power of Large Language 
 
 ### Prerequisites
 
-- **Python 3.11** or higher (required by the project)
+- **Python 3.13** or higher (required by the project)
 - **[uv](https://docs.astral.sh/uv/getting-started/installation/)** for managing dependencies
 - **Yosys**: Required for benchmarking and testing
 
@@ -95,10 +95,19 @@ After installation, run a simple test to verify everything works:
 # Run basic tests
 uv run pytest hagent/step/trivial/tests/
 
-# Run a simple trivial step
+# Run a simple trivial step (Docker mode - recommended)
+export HAGENT_EXECUTION_MODE=docker
 mkdir -p tmp && cd tmp
 uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -o output.yaml
 cat output.yaml
+
+# Alternative: Run in local mode
+export HAGENT_EXECUTION_MODE=local
+export HAGENT_REPO_DIR=$(pwd)/..
+export HAGENT_BUILD_DIR=$(pwd)/build
+export HAGENT_CACHE_DIR=$(pwd)/cache
+# Same command works in both modes!
+uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -o output.yaml
 ```
 
 ### Usage
@@ -114,9 +123,17 @@ Basic test commands:
 # Set required API key for tests
 export FIREWORKS_AI_API_KEY=whatever_key_you_like_most
 
-# Optional: Set custom output directory for generated files
-# (defaults to 'output' if not set)
-export HAGENT_OUTPUT=./my_output_dir
+# Set execution mode (docker is recommended for full testing)
+export HAGENT_EXECUTION_MODE=docker
+
+# For local mode testing, also set:
+# export HAGENT_EXECUTION_MODE=local
+# export HAGENT_REPO_DIR=$(pwd)
+# export HAGENT_BUILD_DIR=$(pwd)/build  
+# export HAGENT_CACHE_DIR=$(pwd)/cache
+
+# Optional: Set custom output directory for logs and test results
+# export HAGENT_OUTPUT_DIR=/path/to/custom/output
 
 # Run all tests
 uv run pytest
@@ -125,25 +142,49 @@ uv run pytest
 uv run pytest --testmon
 ```
 
-#### Output Directory Management
+#### Execution Mode Configuration
 
-HAgent generates various output files during testing and operation (equivalence check directories, Verilog files, JSON traces, etc.). By default, these files are organized in an `output/` directory in your project root.
+HAgent supports two execution modes: **local** and **docker**. The mode is controlled by environment variables:
 
-You can customize the output location using the `HAGENT_OUTPUT` environment variable:
+##### Local Mode
+For local execution (debugging, single tasks), you must set all required environment variables:
 
 ```bash
-# Use a custom output directory
-export HAGENT_OUTPUT=/path/to/my/output
-uv run pytest
+# Required for local mode
+export HAGENT_EXECUTION_MODE=local
+export HAGENT_REPO_DIR=/path/to/your/git/repository     # Git repository root
+export HAGENT_BUILD_DIR=/path/to/your/build/directory   # Build output directory  
+export HAGENT_CACHE_DIR=/path/to/your/cache/directory   # HAgent cache directory
 
-# Use a temporary directory
-export HAGENT_OUTPUT=/tmp/hagent_run
-python -m hagent.step.some_step
+# Optional: Set custom output directory for logs and test results
+export HAGENT_OUTPUT_DIR=/path/to/your/output/directory  # Test/log output directory
 
-# Files will be created in the specified directory instead of ./output/
+# Run a step locally
+uv run python hagent/step/trivial/trivial.py hagent/step/trivial/tests/input1.yaml -o output.yaml
 ```
 
-This helps keep your project directory clean and allows you to easily manage generated files.
+##### Docker Mode (Recommended)
+For Docker execution (production, complex builds), only set the execution mode:
+
+```bash
+# Required for Docker mode  
+export HAGENT_EXECUTION_MODE=docker
+
+# Optional: Mount host directories into container
+export HAGENT_REPO_DIR=/path/to/your/git/repository     # Will be mounted to /code/workspace/repo
+export HAGENT_BUILD_DIR=/path/to/your/build/directory   # Will be mounted to /code/workspace/build
+
+# Optional: Set custom output directory for logs and test results
+export HAGENT_OUTPUT_DIR=/path/to/your/output/directory  # Test/log output directory
+
+# Run the same step in Docker - identical command!
+uv run python hagent/step/trivial/trivial.py hagent/step/trivial/tests/input1.yaml -o output.yaml
+```
+
+**Key Benefits:**
+- Same command works for both modes - only environment setup differs
+- Docker mode automatically handles container setup and path mounting
+- Local mode provides direct access for debugging and development
 
 
 ## Structure
@@ -289,13 +330,13 @@ uv run python hagent/step/trivial/trivial.py --help
 ```
 
 #### Python version issues
-HAgent requires Python 3.11+. Check your Python version:
+HAgent requires Python 3.13+. Check your Python version:
 ```bash
 uv run python --version
-# Should show Python 3.11 or higher
+# Should show Python 3.13 or higher
 
 # If using wrong version, uv will automatically download the correct one
-uv python install 3.11
+uv python install 3.13
 ```
 
 #### API Key not working
@@ -352,30 +393,35 @@ For docker/colima, you need to have enough memory. In OSX colima, the default is
  docker run --rm busybox cat /proc/meminfo | grep MemTotal
 ```
 
-#### Docker Image Checkpointing
+#### Docker Container Management
 
-HAgent's `File_manager` class supports creating checkpoints of running Docker containers for debugging purposes. This feature allows you to save the current state of a container (including all files and modifications) as a new Docker image.
+HAgent uses a modernized container management system that automatically handles Docker setup and execution. Key features include:
 
-**Creating a checkpoint:**
-```python
-# Create a named checkpoint
-fm.image_checkpoint("test")
+**Automatic Container Setup:**
+- Containers are automatically created and configured based on `HAGENT_EXECUTION_MODE`
+- Host directories are mounted to standard container paths (`/code/workspace/repo`, `/code/workspace/build`)
+- Environment variables are automatically set inside containers
+
+**Path Translation:**
+- Host paths are transparently translated to container paths
+- File tracking works consistently across local and Docker modes
+- No manual path configuration required
+
+**Container Lifecycle:**
+- Containers are automatically cleaned up after execution
+- Resource management is handled transparently
+- No manual Docker commands needed
+
+**Example Docker Usage:**
+```bash
+# Set Docker mode
+export HAGENT_EXECUTION_MODE=docker
+
+# Optionally mount your project directory
+export HAGENT_REPO_DIR=/path/to/your/project
+
+# Run any HAgent step - Docker is handled automatically
+uv run python hagent/step/trivial/trivial.py input.yaml -o output.yaml
 ```
 
-This will create a new Docker image that preserves:
-- All file modifications made within the container
-- The current working directory state
-- Any installed packages or tools
-- The original container's interactive command behavior
-
-**Using the checkpoint:**
-- The checkpoint image can be listed with: `docker image list`
-- If the original image was `alpine:latest`, the checkpoint will be named `alpine:latest_checkpoint_test`
-- Run the checkpoint interactively: `docker run --rm -it alpine:latest_checkpoint_test`
-
-**Key benefits:**
-- **Debugging**: Inspect container state at specific points during execution
-- **Reproducibility**: Save intermediate states for later analysis
-- **Development**: Create snapshots before risky operations
-
-The checkpoint preserves the original image's command behavior, so interactive sessions will work properly (unlike the internal container which uses `tail -f /dev/null` to stay alive).
+The container management system eliminates the need for manual Docker commands while providing the benefits of isolated, reproducible execution environments.

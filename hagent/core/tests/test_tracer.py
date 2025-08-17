@@ -4,7 +4,7 @@ import os
 import pytest
 
 import hagent.core.tracer as tracer
-from hagent.core.output_manager import get_output_path
+from hagent.inou.output_manager import get_output_path
 
 
 @pytest.fixture

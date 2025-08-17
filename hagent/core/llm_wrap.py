@@ -9,7 +9,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from hagent.core.llm_template import LLM_template
-from hagent.core.output_manager import get_output_path
+from hagent.inou.output_manager import get_output_path
 
 
 def dict_deep_merge(dict1: Dict, dict2: Dict) -> Dict:
