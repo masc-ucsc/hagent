@@ -354,12 +354,12 @@ class TestContainerManager:
         uid_result.output.decode.return_value = '9001'
         gid_result = MagicMock(exit_code=0)
         gid_result.output.decode.return_value = '9001'
-        
+
         mock_container.exec_run.side_effect = [
             MagicMock(exit_code=0),  # workspace validation
             MagicMock(exit_code=0),  # mkdir workdir
-            uid_result,              # id -u for permission fix
-            gid_result,              # id -g for permission fix
+            uid_result,  # id -u for permission fix
+            gid_result,  # id -g for permission fix
             MagicMock(exit_code=0),  # test -d /code/workspace/repo
             MagicMock(exit_code=0),  # chown repo directory
             MagicMock(exit_code=0),  # test -d /code/workspace/build
@@ -403,12 +403,12 @@ class TestContainerManager:
         uid_result.output.decode.return_value = '9001'
         gid_result = MagicMock(exit_code=0)
         gid_result.output.decode.return_value = '9001'
-        
+
         mock_container.exec_run.side_effect = [
             MagicMock(exit_code=0),  # workspace validation
             MagicMock(exit_code=0),  # mkdir workdir
-            uid_result,              # id -u for permission fix
-            gid_result,              # id -g for permission fix
+            uid_result,  # id -u for permission fix
+            gid_result,  # id -g for permission fix
             MagicMock(exit_code=0),  # test -d /code/workspace/repo
             MagicMock(exit_code=0),  # chown repo directory
             MagicMock(exit_code=0),  # test -d /code/workspace/build
