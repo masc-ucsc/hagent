@@ -59,12 +59,13 @@ class V2chisel_batch(Step):
         # Only pass overwrite_conf if we have config to override
         if final_llm_config:
             self.lw = LLM_wrap(
-                name='v2chisel_batch', log_file='v2chisel_batch.log', conf_file=conf_file, overwrite_conf={'llm': final_llm_config}
+                name='v2chisel_batch',
+                log_file='v2chisel_batch.log',
+                conf_file=conf_file,
+                overwrite_conf={'llm': final_llm_config},
             )
         else:
-            self.lw = LLM_wrap(
-                name='v2chisel_batch', log_file='v2chisel_batch.log', conf_file=conf_file
-            )
+            self.lw = LLM_wrap(name='v2chisel_batch', log_file='v2chisel_batch.log', conf_file=conf_file)
 
         if self.lw.last_error:
             raise ValueError(self.lw.last_error)
@@ -297,7 +298,7 @@ class V2chisel_batch(Step):
             for temp_file in self.temp_files:
                 try:
                     os.unlink(temp_file)
-                except:
+                except OSError:
                     pass
             self.temp_files = []
 
@@ -760,7 +761,6 @@ class V2chisel_batch(Step):
 
         # Step 4: Generate summary
         total_bugs = len(results)
-        successful_hits = sum(1 for r in results if r.get('module_finder_hits', 0) > 0)
         bugs_with_hints = sum(1 for r in results if r.get('has_hints', False))
         module_finder_successes = sum(1 for r in results if r.get('hints_source') == 'module_finder')
         metadata_fallbacks = sum(1 for r in results if r.get('hints_source') == 'metadata_fallback')
