@@ -1,0 +1,16 @@
+# Test input for v2chisel_batch (no Docker dependency)
+bug_list_file: "hagent/step/v2chisel_batch/tests/test_bug_list.yaml"
+
+# No Docker configuration - will only use local files
+# docker_container: ""
+# docker_patterns: []
+
+# Local patterns only
+chisel_patterns:
+  - "hagent/step/v2chisel_batch/tests/sample_chisel/*.scala"
+
+# LLM configuration (optional override)
+llm:
+  model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
+  temperature: 0.1
+  max_tokens: 1024

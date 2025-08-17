@@ -56,9 +56,15 @@ class V2chisel_batch(Step):
         # Allow override from input_data while keeping generic structure
         final_llm_config = {**llm_config, **self.input_data.get('llm', {})}
 
-        self.lw = LLM_wrap(
-            name='v2chisel_batch', log_file='v2chisel_batch.log', conf_file=conf_file, overwrite_conf={'llm': final_llm_config}
-        )
+        # Only pass overwrite_conf if we have config to override
+        if final_llm_config:
+            self.lw = LLM_wrap(
+                name='v2chisel_batch', log_file='v2chisel_batch.log', conf_file=conf_file, overwrite_conf={'llm': final_llm_config}
+            )
+        else:
+            self.lw = LLM_wrap(
+                name='v2chisel_batch', log_file='v2chisel_batch.log', conf_file=conf_file
+            )
 
         if self.lw.last_error:
             raise ValueError(self.lw.last_error)
@@ -291,7 +297,7 @@ class V2chisel_batch(Step):
             for temp_file in self.temp_files:
                 try:
                     os.unlink(temp_file)
-                except Exception:
+                except:
                     pass
             self.temp_files = []
 
@@ -697,7 +703,7 @@ class V2chisel_batch(Step):
         print('\n🚀 Starting V2chisel_batch processing...')
 
         # Step 1: Load bug list (assume it's provided in input_data or use default)
-        bug_file = self.input_data.get('bug_list_file', '/home/farzaneh/hagent/bug_lists_unified.yaml')
+        bug_file = self.input_data.get('bug_list_file', 'bug_lists_unified.yaml')
         bugs = self._load_bug_list(bug_file)
 
         # Step 2: Get configuration (but don't search files yet - we'll do per-bug filtering)
@@ -754,7 +760,7 @@ class V2chisel_batch(Step):
 
         # Step 4: Generate summary
         total_bugs = len(results)
-        # successful_hits = sum(1 for r in results if r.get('module_finder_hits', 0) > 0)
+        successful_hits = sum(1 for r in results if r.get('module_finder_hits', 0) > 0)
         bugs_with_hints = sum(1 for r in results if r.get('has_hints', False))
         module_finder_successes = sum(1 for r in results if r.get('hints_source') == 'module_finder')
         metadata_fallbacks = sum(1 for r in results if r.get('hints_source') == 'metadata_fallback')
