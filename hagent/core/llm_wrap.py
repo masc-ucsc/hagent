@@ -126,7 +126,18 @@ class LLM_wrap:
             # Ollama access is achieved through a URL such as 'http://localhost:11434'
             required_key = 'OLLAMA_API_BASE'
         elif model.startswith('bedrock'):
-            required_key = 'AWS_BEARER_TOKEN_BEDROCK'
+            # AWS Bedrock requires both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+            if os.environ.get('AWS_ACCESS_KEY_ID') is None:
+                error_message = f"Error: Environment variable 'AWS_ACCESS_KEY_ID' is not set for model '{model}'."
+                print(error_message, file=sys.stderr)
+                self._set_error(error_message)
+                return False
+            if os.environ.get('AWS_SECRET_ACCESS_KEY') is None:
+                error_message = f"Error: Environment variable 'AWS_SECRET_ACCESS_KEY' is not set for model '{model}'."
+                print(error_message, file=sys.stderr)
+                self._set_error(error_message)
+                return False
+            return True
         # Add more providers as needed...
         else:
             # No specific key required for this model type (or you can raise an error if unknown)
@@ -137,7 +148,7 @@ class LLM_wrap:
             error_message = f"Error: Environment variable '{required_key}' is not set for model '{model}'."
             print(error_message, file=sys.stderr)  # Print to stderr
             self._set_error(error_message)
-            raise ValueError(error_message)
+            return False
 
         return True
 

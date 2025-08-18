@@ -16,9 +16,11 @@ if [ ! -f "hagent/step/v2chisel_batch/v2chisel_batch.py" ]; then
 fi
 
 # Set environment variables if not already set
-if [ -z "$AWS_BEARER_TOKEN_BEDROCK" ]; then
-    echo "⚠️  AWS_BEARER_TOKEN_BEDROCK not set - LLM calls will fail"
-    echo "   Set it with: export AWS_BEARER_TOKEN_BEDROCK=<your-token>"
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    echo "⚠️  AWS credentials not set - LLM calls will fail"
+    echo "   Set them with:"
+    echo "   export AWS_ACCESS_KEY_ID=<your-access-key-id>"
+    echo "   export AWS_SECRET_ACCESS_KEY=<your-secret-access-key>"
 fi
 
 if [ -z "$AWS_DEFAULT_REGION" ]; then
