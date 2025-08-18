@@ -81,6 +81,10 @@ jobs:
         if: always()
         run: |
           ls -la /tmp/coverage.xml || echo "/tmp/coverage.xml not found"
+      - name: Copy coverage.xml to workspace (optional)
+        if: always()
+        run: |
+          cp -f /tmp/coverage.xml "${{ github.workspace }}/coverage.xml" || true
       - name: Upload coverage reports to Codecov
         if: always()
         uses: codecov/codecov-action@v5
