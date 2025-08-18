@@ -4,6 +4,7 @@ Unit tests for the Fuzzy_grep tool.
 """
 
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
 from hagent.tool.fuzzy_grep import Fuzzy_grep
@@ -52,9 +53,9 @@ class TestFuzzGrep(unittest.TestCase):
     def test_search_file_input(self):
         # Create a temporary file.
         test_content = '\n'.join(['Alpha line', 'Beta line with __Example string and _3_test__123123 value.', 'Gamma line'])
-        test_file = 'temp_fuzzy_grep_test.txt'
-        with open(test_file, 'w', encoding='utf-8') as f:
-            f.write(test_content)
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as temp_file:
+            temp_file.write(test_content)
+            test_file = temp_file.name
         try:
             res = self.tool.search(files=[test_file], search_terms=['example', 'test'], threshold=70)
             self.assertIn(test_file, res)
@@ -64,22 +65,17 @@ class TestFuzzGrep(unittest.TestCase):
 
     def test_search_directory_input(self):
         # Create a temporary directory with two files.
-        test_dir = 'temp_fuzzy_grep_dir'
-        os.makedirs(test_dir, exist_ok=True)
-        file1 = os.path.join(test_dir, 'file1.txt')
-        file2 = os.path.join(test_dir, 'file2.txt')
-        with open(file1, 'w', encoding='utf-8') as f:
-            f.write('File one has Example string and test value.\nAnother line.')
-        with open(file2, 'w', encoding='utf-8') as f:
-            f.write('File two does not match.\nNothing here.')
-        try:
+        with tempfile.TemporaryDirectory() as test_dir:
+            file1 = os.path.join(test_dir, 'file1.txt')
+            file2 = os.path.join(test_dir, 'file2.txt')
+            with open(file1, 'w', encoding='utf-8') as f:
+                f.write('File one has Example string and test value.\nAnother line.')
+            with open(file2, 'w', encoding='utf-8') as f:
+                f.write('File two does not match.\nNothing here.')
+
             res = self.tool.search(directory=test_dir, search_terms=['example', 'test'], threshold=70)
             self.assertIn(file1, res)
             self.assertNotIn(file2, res)
-        finally:
-            os.remove(file1)
-            os.remove(file2)
-            os.rmdir(test_dir)
 
     def test_setup_with_unsupported_language(self):
         """Test setup with an unsupported language."""

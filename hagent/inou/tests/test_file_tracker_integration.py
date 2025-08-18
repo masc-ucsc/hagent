@@ -5,9 +5,9 @@ Tests FileTracker integration with PathManager, real git repositories,
 and various file system scenarios to ensure robust operation.
 """
 
-import tempfile
-import shutil
 import subprocess
+import uuid
+import datetime
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
@@ -88,7 +88,9 @@ class TestGitRepositoryIntegration:
 
     def setup_method(self):
         """Setup temporary git repository for each test."""
-        self.temp_dir = Path(tempfile.mkdtemp())
+        test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+        self.temp_dir = Path('output') / 'test_file_tracker_integration' / test_id
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.repo_dir = self.temp_dir / 'repo'
         self.repo_dir.mkdir()
 
@@ -105,8 +107,7 @@ class TestGitRepositoryIntegration:
 
     def teardown_method(self):
         """Cleanup temporary repository."""
-        if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
+        # Leave directories for inspection - they will be in output/
 
     def test_file_tracker_with_real_git_repo(self):
         """Test FileTracker with real git repository."""
@@ -212,7 +213,9 @@ class TestFileSystemIntegration:
 
     def setup_method(self):
         """Setup temporary directories for each test."""
-        self.temp_dir = Path(tempfile.mkdtemp())
+        test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+        self.temp_dir = Path('output') / 'test_file_tracker_filesystem' / test_id
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.repo_dir = self.temp_dir / 'repo'
         self.build_dir = self.temp_dir / 'build'
         self.cache_dir = self.temp_dir / 'cache'
@@ -223,8 +226,7 @@ class TestFileSystemIntegration:
 
     def teardown_method(self):
         """Cleanup temporary directories."""
-        if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
+        # Leave directories for inspection - they will be in output/
 
     def test_file_tracker_with_various_file_types(self):
         """Test FileTracker with different file types."""
@@ -344,14 +346,15 @@ class TestPerformanceIntegration:
 
     def setup_method(self):
         """Setup for performance tests."""
-        self.temp_dir = Path(tempfile.mkdtemp())
+        test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+        self.temp_dir = Path('output') / 'test_file_tracker_performance' / test_id
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.repo_dir = self.temp_dir / 'repo'
         self.repo_dir.mkdir()
 
     def teardown_method(self):
         """Cleanup after performance tests."""
-        if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
+        # Leave directories for inspection - they will be in output/
 
     def test_file_tracker_with_many_files(self):
         """Test FileTracker performance with many files."""

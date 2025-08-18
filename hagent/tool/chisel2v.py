@@ -3,8 +3,10 @@
 import os
 import re
 import subprocess
-import tempfile
 import shutil
+import uuid
+import datetime
+from pathlib import Path
 from typing import Optional
 
 
@@ -130,7 +132,10 @@ class Chisel2v:
         if not self._is_ready:
             raise RuntimeError('Chisel2v not ready; call setup() first')
         # Create a unique temp dir
-        work_dir = tempfile.mkdtemp(dir=os.getcwd(), prefix='chisel2v_')
+        test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+        work_dir = Path('output') / 'chisel2v' / test_id
+        work_dir.mkdir(parents=True, exist_ok=True)
+        work_dir = str(work_dir)
         print(f'Chisel2v working directory:{work_dir}')
         try:
             # Copy the build.sbt template
@@ -169,5 +174,4 @@ class Chisel2v:
         except Exception as ex:
             raise RuntimeError(f'Failed to generate Verilog: {ex}') from ex
         # finally:
-        # Cleanup
-        # shutil.rmtree(work_dir, ignore_errors=True)
+        # Leave directories for inspection - they will be in output/

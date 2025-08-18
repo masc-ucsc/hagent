@@ -3,7 +3,6 @@
 import os
 import sys
 import tempfile
-import shutil
 from pathlib import Path
 from unittest.mock import patch
 import pytest
@@ -37,16 +36,13 @@ class TestOutputManager:
             if var in os.environ:
                 del os.environ[var]
 
-        test_dir = 'custom_output_dir_test'
-        os.environ['HAGENT_OUTPUT_DIR'] = test_dir
+        with tempfile.TemporaryDirectory() as temp_base:
+            test_dir = os.path.join(temp_base, 'custom_output_dir_test')
+            os.environ['HAGENT_OUTPUT_DIR'] = test_dir
 
-        try:
             result = get_output_dir()
             assert result == test_dir
             assert Path(test_dir).exists()
-        finally:
-            if Path(test_dir).exists():
-                shutil.rmtree(test_dir)
 
     def test_get_output_dir_default(self):
         """Test default fallback to 'output' directory."""
@@ -104,15 +100,13 @@ class TestOutputManager:
             if var in os.environ:
                 del os.environ[var]
 
-        os.environ['HAGENT_OUTPUT_DIR'] = 'custom_output_dir'
+        with tempfile.TemporaryDirectory() as temp_base:
+            test_dir = os.path.join(temp_base, 'custom_output_dir')
+            os.environ['HAGENT_OUTPUT_DIR'] = test_dir
 
-        try:
             result = get_output_path('test.txt')
-            expected = os.path.join('custom_output_dir', 'test.txt')
+            expected = os.path.join(test_dir, 'test.txt')
             assert result == expected
-        finally:
-            if Path('custom_output_dir').exists():
-                shutil.rmtree('custom_output_dir')
 
     def test_get_output_path_absolute_unix_path_fails(self):
         with pytest.raises(SystemExit) as excinfo:

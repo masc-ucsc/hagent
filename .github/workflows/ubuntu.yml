@@ -70,11 +70,16 @@ jobs:
           # Clean up any existing coverage files to prevent database corruption
           rm -f .coverage*
           rm -f /tmp/.coverage*
-          
+
           # Ensure temp directories are writable
           sudo mkdir -p /tmp/pytest_temp
           sudo chmod 777 /tmp/pytest_temp
-          
+
+          # To avoid races (test could build this but can create problems)
+          mkdir -p output/local/build
+          mkdir -p output/local/cache
+          git clone --depth 1 https://github.com/masc-ucsc/simplechisel.git output/local/repo
+
           # Run tests with coverage, excluding slow tests by default
           uv run pytest --cov --cov-branch --cov-report=xml:/tmp/coverage.xml -m "not slow"
       - name: List coverage files
@@ -122,6 +127,6 @@ jobs:
           # Create and set permissions for temp directories
           sudo mkdir -p /tmp/pytest_temp
           sudo chmod 777 /tmp/pytest_temp
-          
+
           # Run only slow tests with extended timeout
           uv run pytest -m "slow" --tb=short --maxfail=3 -v

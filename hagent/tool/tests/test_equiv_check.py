@@ -1,8 +1,9 @@
 import os
 import pytest
-import shutil
-import tempfile
 import subprocess
+import uuid
+import datetime
+from pathlib import Path
 from hagent.tool.equiv_check import Equiv_check
 
 
@@ -11,11 +12,21 @@ def prepare_checker():
     """
     Fixture to instantiate the checker and ensure a clean workspace before each test.
     """
-    # Cleanup before test runs:
-    if os.path.isdir('equiv_check'):
-        shutil.rmtree('equiv_check')
+    # Create unique directory for test
+    test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+    test_dir = Path('output') / 'equiv_check' / test_id
+    test_dir.mkdir(parents=True, exist_ok=True)
+
+    # Change to test directory for the test
+    original_cwd = os.getcwd()
+    os.chdir(test_dir)
+
     checker = Equiv_check()
-    return checker
+
+    yield checker
+
+    # Change back to original directory
+    os.chdir(original_cwd)
 
 
 def test_setup_failure(prepare_checker):
@@ -378,20 +389,18 @@ def test_run_yosys_command_exception(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
 
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp_name = tmp.name
-        tmp.write(b'test command')
+    test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+    test_dir = Path('output') / 'equiv_check_command_test' / test_id
+    test_dir.mkdir(parents=True, exist_ok=True)
+    tmp_name = test_dir / 'test_command.ys'
+    tmp_name.write_text('test command')
 
-    try:
-        checker = prepare_checker
-        code, out, err = checker.run_yosys_command(tmp_name)
-        assert code == 1
-        assert out == ''
-        assert 'Test exception' in err
-        assert 'Test exception' in checker.error_message
-    finally:
-        if os.path.exists(tmp_name):
-            os.remove(tmp_name)
+    checker = prepare_checker
+    code, out, err = checker.run_yosys_command(str(tmp_name))
+    assert code == 1
+    assert out == ''
+    assert 'Test exception' in err
+    assert 'Test exception' in checker.error_message
 
 
 def test_run_yosys_command_timeout(prepare_checker, monkeypatch):
@@ -404,20 +413,18 @@ def test_run_yosys_command_timeout(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
 
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp_name = tmp.name
-        tmp.write(b'test command')
+    test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+    test_dir = Path('output') / 'equiv_check_timeout_test' / test_id
+    test_dir.mkdir(parents=True, exist_ok=True)
+    tmp_name = test_dir / 'test_command.ys'
+    tmp_name.write_text('test command')
 
-    try:
-        checker = prepare_checker
-        code, out, err = checker.run_yosys_command(tmp_name)
-        assert code == 1
-        assert out == ''
-        assert 'timeout' in err.lower()
-        assert 'timeout' in checker.error_message.lower()
-    finally:
-        if os.path.exists(tmp_name):
-            os.remove(tmp_name)
+    checker = prepare_checker
+    code, out, err = checker.run_yosys_command(str(tmp_name))
+    assert code == 1
+    assert out == ''
+    assert 'timeout' in err.lower()
+    assert 'timeout' in checker.error_message.lower()
 
 
 def test_analyze_yosys_result_unknown(prepare_checker):
@@ -436,18 +443,18 @@ def test_write_temp_verilog(prepare_checker):
     """
     checker = prepare_checker
 
-    work_dir = tempfile.mkdtemp()
-    try:
-        # Test writing Verilog code to a file
-        verilog_code = 'module Test(); endmodule'
-        filename = checker.write_temp_verilog(work_dir, verilog_code, 'test')
+    test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+    work_dir = Path('output') / 'equiv_check_verilog_test' / test_id
+    work_dir.mkdir(parents=True, exist_ok=True)
 
-        assert os.path.exists(filename)
-        with open(filename, 'r') as f:
-            content = f.read()
-        assert content == verilog_code
-    finally:
-        shutil.rmtree(work_dir)
+    # Test writing Verilog code to a file
+    verilog_code = 'module Test(); endmodule'
+    filename = checker.write_temp_verilog(str(work_dir), verilog_code, 'test')
+
+    assert os.path.exists(filename)
+    with open(filename, 'r') as f:
+        content = f.read()
+    assert content == verilog_code
 
 
 def test_analyze_yosys_result_smt_with_sat(prepare_checker):
