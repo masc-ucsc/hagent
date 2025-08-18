@@ -64,7 +64,7 @@ def test_replicate_code():
             trivial_step.setup()
 
             # Run the actual test and check for LLM errors
-                try:
+            try:
                 res = trivial_step.step()
 
                 # If we get here, the test completed successfully
@@ -81,12 +81,12 @@ def test_replicate_code():
                 llm_error_indicators = [
                     'environment variable',
                     'aws_access_key_id',
-                    'aws_secret_access_key', 
+                    'aws_secret_access_key',
                     'openai_api_key',
                     'anthropic_api_key',
                     'not set',
                     'authentication',
-                    'api key'
+                    'api key',
                 ]
 
                 # Check if this is an LLM credential error

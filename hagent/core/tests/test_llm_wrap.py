@@ -3,7 +3,6 @@
 
 import os
 import tempfile
-import pytest
 
 from hagent.core.llm_wrap import LLM_wrap
 
@@ -78,23 +77,27 @@ def test_bad_config_file_bad_yaml():
 def test_missing_env_var(monkeypatch):
     # Test environment variable validation by removing all common LLM provider keys
     env_vars_to_remove = [
-        'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_BEARER_TOKEN_BEDROCK',
-        'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'FIREWORKS_AI_API_KEY'
+        'AWS_ACCESS_KEY_ID',
+        'AWS_SECRET_ACCESS_KEY',
+        'AWS_BEARER_TOKEN_BEDROCK',
+        'OPENAI_API_KEY',
+        'ANTHROPIC_API_KEY',
+        'FIREWORKS_AI_API_KEY',
     ]
-    
+
     # Remove all LLM provider environment variables
     for var in env_vars_to_remove:
         monkeypatch.delenv(var, raising=False)
 
-        # Use existing configuration file for caching test.
-        conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
+    # Use existing configuration file for caching test.
+    conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
-        lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
+    lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
     # Should return empty result since check_env_keys returns False
     result = lw.inference({}, 'use_prompt1', n=1)
     assert result == []
-        assert 'Environment' in lw.last_error
+    assert 'Environment' in lw.last_error
 
 
 if __name__ == '__main__':  # pragma: no cover

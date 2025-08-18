@@ -23,12 +23,12 @@ def get_docker_client():
         return client
     except Exception:
         pass  # Try alternative methods
-    
+
     # Try platform-specific socket paths
     socket_paths = []
     system = platform.system().lower()
     username = os.getenv('USER', os.getenv('USERNAME', 'user'))
-    
+
     if system == 'darwin':  # macOS
         socket_paths = [
             # Colima (most common alternative on macOS)
@@ -47,18 +47,18 @@ def get_docker_client():
         ]
     else:
         socket_paths = ['/var/run/docker.sock']
-    
+
     # Try each socket path
     for socket_path in socket_paths:
         if os.path.exists(socket_path):
             try:
                 client = docker.DockerClient(base_url=f'unix://{socket_path}')
                 client.ping()  # Test connection
-                print(f"✅ Connected to Docker via {socket_path}")
+                print(f'✅ Connected to Docker via {socket_path}')
                 return client
             except Exception:
                 continue
-    
+
     return None
 
 
@@ -67,11 +67,11 @@ def cleanup_test_containers():
     try:
         # Try to connect to Docker with multiple methods
         client = get_docker_client()
-        
+
         if client is None:
-            print("❌ Cannot connect to Docker daemon")
-            print("💡 Make sure Docker Desktop or Colima is running")
-            print("💡 Try running: docker ps")
+            print('❌ Cannot connect to Docker daemon')
+            print('💡 Make sure Docker Desktop or Colima is running')
+            print('💡 Try running: docker ps')
             return 1
 
         # Pattern to match hagent images: mascucsc/hagent-*
