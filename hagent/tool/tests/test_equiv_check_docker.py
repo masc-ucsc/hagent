@@ -32,11 +32,13 @@ def setup_hagent_environment():
     # Use local directories that tests can actually create and access
     # Use home directory subfolders which Docker Desktop has access to by default
     home_dir = os.path.expanduser('~')
-    repo_dir = os.path.abspath('.')  # Current working directory
+    # IMPORTANT: Don't use repository root directory - use home subdirectory instead
+    repo_dir = os.path.join(home_dir, 'hagent_test_repo')  # Use subdirectory instead of '.'
     build_dir = os.path.join(home_dir, 'hagent_test_build')
     cache_dir = os.path.join(home_dir, 'hagent_test_cache')
 
     # Create directories if they don't exist
+    os.makedirs(repo_dir, exist_ok=True)
     os.makedirs(build_dir, exist_ok=True)
     os.makedirs(cache_dir, exist_ok=True)
 
@@ -342,7 +344,7 @@ endmodule
     build_dir = os.environ.get('HAGENT_BUILD_DIR')
     cache_dir = os.environ.get('HAGENT_CACHE_DIR')
 
-    home_dir = os.path.expanduser('output')
+    home_dir = os.path.expanduser('~')
     if not repo_dir:
         repo_dir = os.path.join(home_dir, 'hagent_test_repo')
         os.makedirs(repo_dir, exist_ok=True)

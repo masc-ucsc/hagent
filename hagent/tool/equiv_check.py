@@ -100,13 +100,16 @@ class Equiv_check:
     def setup_docker_fallback(self) -> bool:
         """
         Sets up Docker fallback using ContainerManager with mascucsc/hagent-builder:2025.08 image.
+        Uses no mount points - files are copied in/out as needed.
 
         Returns True if Docker setup succeeds, False otherwise.
         """
         try:
             self.path_manager = PathManager()
             self.container_manager = ContainerManager(image='mascucsc/hagent-builder:2025.08', path_manager=self.path_manager)
-            if self.container_manager.setup():
+
+            # Setup container with no automatic mounts for equiv_check operations
+            if self.container_manager.setup(automount=False):
                 # Test that Yosys is available in the Docker container
                 rc, out, err = self.container_manager.run('yosys --version')
                 if rc == 0 and 'Yosys' in out:
