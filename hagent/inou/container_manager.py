@@ -12,10 +12,16 @@ import os
 import threading
 import sys
 import time
+import atexit
+import weakref
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple, Any
 
 from .path_manager import PathManager
+
+# Global registry to track ContainerManager instances for cleanup
+_container_manager_registry: weakref.WeakSet = weakref.WeakSet()
+_cleanup_registered = False
 
 
 class ContainerManager:
@@ -38,6 +44,8 @@ class ContainerManager:
             image: Docker image name to use
             path_manager: PathManager instance for path resolution
         """
+        global _cleanup_registered, _container_manager_registry
+
         self.image = image
         self.path_manager = path_manager or PathManager()
         self.client: Optional[docker.DockerClient] = None
@@ -49,6 +57,15 @@ class ContainerManager:
         self._mounts: List[Dict[str, str]] = []
         self._workdir = '/code/workspace/repo'  # New default working directory
         self.error_message: str = ''  # For error handling like Tool pattern
+        self._cleaned_up = False  # Track cleanup state
+
+        # Register this instance for cleanup
+        _container_manager_registry.add(self)
+
+        # Register global cleanup function once
+        if not _cleanup_registered:
+            atexit.register(_cleanup_all_containers)
+            _cleanup_registered = True
 
         # Try to initialize Docker client - errors will be stored for later
         try:
@@ -835,21 +852,32 @@ class ContainerManager:
 
     def cleanup(self) -> None:
         """Clean up container and resources."""
+        if self._cleaned_up:
+            return  # Already cleaned up
+
+        self._cleaned_up = True
+
         if self.container:
             try:
-                self.container.kill()
+                if self.container.status == 'running':
+                    self.container.kill()
                 self.container.remove()
                 self.container = None
             except docker.errors.APIError:
+                pass
+            except Exception:
                 pass
 
         # Clean up reference container
         if self._reference_container:
             try:
-                self._reference_container.kill()
+                if self._reference_container.status == 'running':
+                    self._reference_container.kill()
                 self._reference_container.remove()
                 self._reference_container = None
             except docker.errors.APIError:
+                pass
+            except Exception:
                 pass
 
         # Clean up anonymous checkpoints
@@ -945,3 +973,25 @@ class ContainerManager:
             self.cleanup()
         except Exception:
             pass
+
+
+def _cleanup_all_containers():
+    """
+    Global cleanup function called at exit to ensure all containers are cleaned up.
+
+    This function is registered with atexit and will clean up any containers
+    that weren't properly cleaned up due to test interruptions or failures.
+    """
+    global _container_manager_registry
+
+    # Clean up any remaining container managers
+    managers_to_cleanup = list(_container_manager_registry)
+    if managers_to_cleanup:
+        print(f'\n⚠️  atexit: Cleaning up {len(managers_to_cleanup)} remaining ContainerManager instances...')
+
+        for manager in managers_to_cleanup:
+            try:
+                if hasattr(manager, 'cleanup') and not getattr(manager, '_cleaned_up', False):
+                    manager.cleanup()
+            except Exception:
+                pass

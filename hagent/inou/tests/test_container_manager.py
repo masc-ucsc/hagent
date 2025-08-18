@@ -14,6 +14,29 @@ from hagent.inou.container_manager import ContainerManager
 from hagent.inou.path_manager import PathManager
 
 
+@pytest.fixture
+def container_manager_with_cleanup():
+    """
+    Pytest fixture that creates a ContainerManager and ensures cleanup.
+    Use this for tests that actually create containers to prevent docker container leaks.
+    """
+    managers = []
+
+    def create_manager(*args, **kwargs):
+        manager = ContainerManager(*args, **kwargs)
+        managers.append(manager)
+        return manager
+
+    yield create_manager
+
+    # Cleanup all created managers
+    for manager in managers:
+        try:
+            manager.cleanup()
+        except Exception as e:
+            print(f'Warning: Failed to cleanup container manager: {e}')
+
+
 @pytest.fixture(scope='session')
 def setup_local_directory():
     """
@@ -35,10 +58,7 @@ def setup_local_directory():
 
     # Setup repo directory with git clone if it doesn't exist or is empty
     if not repo_dir.exists() or not any(repo_dir.iterdir()):
-        print(f'Setting up {repo_dir} with simplechisel repository...')
-        if repo_dir.exists():
-            # Remove empty directory
-            repo_dir.rmdir()
+        print(f'Setting up {repo_dir} with simplechisel repository... WARNING. THIS CAN CREATE A RACY CONDITION')
 
         # Clone the repository
         try:

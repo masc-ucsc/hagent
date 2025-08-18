@@ -8,7 +8,8 @@ PathManager, and FileTracker by providing a unified interface.
 
 import os
 import pytest
-import tempfile
+import uuid
+import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,11 +21,13 @@ class TestRunner:
 
     def setup_method(self):
         """Setup test environment before each test."""
-        # Create temporary directories for testing
-        self.test_dir = tempfile.mkdtemp()
-        self.repo_dir = Path(self.test_dir) / 'repo'
-        self.build_dir = Path(self.test_dir) / 'build'
-        self.cache_dir = Path(self.test_dir) / 'cache'
+        # Create unique directories for testing
+        test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+        self.test_dir = Path('output') / 'test_runner' / test_id
+        self.test_dir.mkdir(parents=True, exist_ok=True)
+        self.repo_dir = self.test_dir / 'repo'
+        self.build_dir = self.test_dir / 'build'
+        self.cache_dir = self.test_dir / 'cache'
 
         # Create directories
         self.repo_dir.mkdir(parents=True)
@@ -44,11 +47,7 @@ class TestRunner:
             if var in os.environ:
                 del os.environ[var]
 
-        # Clean up temporary directory
-        import shutil
-
-        if os.path.exists(self.test_dir):
-            shutil.rmtree(self.test_dir)
+        # Leave directories for inspection - they will be in output/
 
     def test_basic_local_execution(self):
         """Test Case 1: Basic local command execution without file tracking."""
@@ -291,10 +290,12 @@ class TestRunnerAdvancedUseCases:
 
     def setup_method(self):
         """Setup test environment."""
-        self.test_dir = tempfile.mkdtemp()
-        self.repo_dir = Path(self.test_dir) / 'repo'
-        self.build_dir = Path(self.test_dir) / 'build'
-        self.cache_dir = Path(self.test_dir) / 'cache'
+        test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+        self.test_dir = Path('output') / 'test_runner_advanced' / test_id
+        self.test_dir.mkdir(parents=True, exist_ok=True)
+        self.repo_dir = self.test_dir / 'repo'
+        self.build_dir = self.test_dir / 'build'
+        self.cache_dir = self.test_dir / 'cache'
 
         for dir_path in [self.repo_dir, self.build_dir, self.cache_dir]:
             dir_path.mkdir(parents=True)
@@ -310,10 +311,7 @@ class TestRunnerAdvancedUseCases:
             if var in os.environ:
                 del os.environ[var]
 
-        import shutil
-
-        if os.path.exists(self.test_dir):
-            shutil.rmtree(self.test_dir)
+        # Leave directories for inspection - they will be in output/
 
     def test_build_and_track_workflow(self):
         """Test Case: Simulate a build process with file tracking."""

@@ -1,16 +1,19 @@
 # test/test_memory.py
 
 import unittest
-import tempfile
-import shutil
+import uuid
+import datetime
+from pathlib import Path
 from hagent.tool.memory import FewShotMemory, Memory_shot
 
 
 class TestFewShotMemory(unittest.TestCase):
     def setUp(self):
-        # Use a temporary directory to avoid polluting the real DB
-        self.temp_dir = tempfile.mkdtemp()
-        self.memory = FewShotMemory(learn=True, db_path=self.temp_dir)
+        # Use a unique directory to avoid polluting the real DB
+        test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
+        self.temp_dir = Path('output') / 'test_memory' / test_id
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self.memory = FewShotMemory(learn=True, db_path=str(self.temp_dir))
 
         # Add related Verilog snippets
         self.memory.add(
@@ -32,7 +35,8 @@ class TestFewShotMemory(unittest.TestCase):
         self.memory.add(error_type='syntax_error3', fix=Memory_shot(question='potato;', answer='Anything match'))
 
     def tearDown(self):
-        shutil.rmtree(self.temp_dir)
+        # Leave directories for inspection - they will be in output/
+        pass
 
     def test_similar_snippet_retrieval(self):
         query_snippet = 'always @(posedge clk) begin if (!rst_n) q <= 0; else q <= d_in; end'
