@@ -41,10 +41,9 @@ def get_output_dir() -> str:
         # Fall back to legacy behavior if PathManager fails
         pass
 
-    # Final fallback: legacy HAGENT_OUTPUT behavior for backward compatibility
-    output_dir = os.environ.get('HAGENT_OUTPUT', 'output')
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    return output_dir
+    output_dir = Path.cwd() / 'output'
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return str(output_dir)
 
 
 def get_output_path(filename: str) -> str:
