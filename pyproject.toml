@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.13,<4.0"
 dependencies = [
     "pyyaml>=6.0.2",
-    "litellm>=1.60.0",
+    "litellm>=1.65.1,<1.70.4",
+    "openai>=1.68.2,<1.76.0",
     "diskcache>=5.6.3",
     "legacy-cgi>=2.6.2", # needed for litlellm with python 3.13 (soon to be fixed, I hope)
     "pyslang>=8.0.0",
