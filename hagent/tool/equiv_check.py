@@ -606,10 +606,33 @@ class Equiv_check:
     def write_temp_verilog(self, work_dir: str, verilog_code: str, label: str) -> str:
         """
         Write verilog_code to a temporary .v file in temporary directory.
+        For Docker mode, also copy the file to the container.
         Return the file path.
         """
-
         filename = os.path.join(work_dir, f'{label}.v')
+
+        if self.use_docker and self.container_manager:
+            # For Docker mode, create the file in the container directly
+            if self.path_manager:
+                cache_dir = self.path_manager.cache_dir
+                relative_path = os.path.relpath(work_dir, cache_dir)
+                container_work_dir = f'/code/workspace/cache/{relative_path}'
+            else:
+                container_work_dir = work_dir
+
+            container_filename = f'{container_work_dir}/{label}.v'
+
+            # Escape single quotes in verilog_code for heredoc
+            escaped_verilog = verilog_code.replace("'", "'\"'\"'")
+
+            # Create the file in the container
+            rc, _, err = self.container_manager.run(
+                f"mkdir -p {container_work_dir} && cat > {container_filename} << 'EOF'\n{escaped_verilog}\nEOF"
+            )
+            if rc != 0:
+                raise RuntimeError(f'Failed to create {label}.v in container: {err}')
+
+        # Also create the file locally for reference and compatibility
         with open(filename, 'w') as f:
             f.write(verilog_code)
         return filename

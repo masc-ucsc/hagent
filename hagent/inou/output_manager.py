@@ -28,9 +28,9 @@ def get_output_dir() -> str:
     """
     # First priority: HAGENT_OUTPUT_DIR if explicitly set
     if os.environ.get('HAGENT_OUTPUT_DIR'):
-        output_dir = os.environ['HAGENT_OUTPUT_DIR']
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-        return output_dir
+        output_dir = Path(os.environ['HAGENT_OUTPUT_DIR']).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return str(output_dir)
 
     # Second priority: Use PathManager for structured logs directory
     try:
@@ -43,7 +43,7 @@ def get_output_dir() -> str:
 
     output_dir = Path.cwd() / 'output'
     output_dir.mkdir(parents=True, exist_ok=True)
-    return str(output_dir)
+    return str(output_dir.resolve())
 
 
 def get_output_path(filename: str) -> str:
@@ -91,4 +91,4 @@ def get_output_path(filename: str) -> str:
         print('instead of get_output_path().', file=sys.stderr)
         sys.exit(1)
 
-    return os.path.join(get_output_dir(), filename)
+    return str((Path(get_output_dir()) / filename).resolve())

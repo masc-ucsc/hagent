@@ -52,7 +52,8 @@ class TestOutputManager:
                 del os.environ[var]
 
         result = get_output_dir()
-        assert result == 'output'
+        expected = str(Path.cwd() / 'output')
+        assert result == expected
 
     def test_get_output_dir_creates_directory(self):
         """Test that output directory is created automatically."""
@@ -79,7 +80,7 @@ class TestOutputManager:
                 del os.environ[var]
 
         result = get_output_path('test.txt')
-        expected = os.path.join('output', 'test.txt')
+        expected = str(Path.cwd() / 'output' / 'test.txt')
         assert result == expected
 
     def test_get_output_path_valid_relative_path(self):
@@ -90,7 +91,7 @@ class TestOutputManager:
                 del os.environ[var]
 
         result = get_output_path('subdir/test.txt')
-        expected = os.path.join('output', 'subdir', 'test.txt')
+        expected = str(Path.cwd() / 'output' / 'subdir' / 'test.txt')
         assert result == expected
 
     def test_get_output_path_with_hagent_output_dir(self):
@@ -140,7 +141,7 @@ class TestOutputManager:
                 del os.environ[var]
 
         result = get_output_path('./test.txt')
-        expected = os.path.join('output', '.', 'test.txt')
+        expected = str((Path.cwd() / 'output' / '.' / 'test.txt').resolve())
         assert result == expected
 
     @patch('sys.stderr')

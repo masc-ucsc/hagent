@@ -65,12 +65,9 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           TEMP: /tmp
           TMPDIR: /tmp
-          # Write coverage's SQLite DB to a temp dir to avoid workspace FS quirks
-          COVERAGE_FILE: /tmp/.coverage
         run: |
           # Clean up any existing coverage files to prevent database corruption
           rm -f .coverage*
-          rm -f /tmp/.coverage*
 
           # Ensure temp directories are writable
           sudo mkdir -p /tmp/pytest_temp
@@ -82,21 +79,13 @@ jobs:
           git clone --depth 1 https://github.com/masc-ucsc/simplechisel.git output/local/repo
 
           # Run tests with coverage, excluding slow tests by default
-          uv run pytest --cov --cov-branch --cov-report=xml:/tmp/coverage.xml -m "not slow"
-      - name: List coverage files
-        if: always()
-        run: |
-          ls -la /tmp/coverage.xml || echo "/tmp/coverage.xml not found"
-      - name: Copy coverage.xml to workspace (optional)
-        if: always()
-        run: |
-          cp -f /tmp/coverage.xml "${{ github.workspace }}/coverage.xml" || true
+          uv run pytest --cov --cov-branch --cov-report=xml:coverage.xml -m "not slow"
       - name: Upload coverage reports to Codecov
         if: always()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: /tmp/coverage.xml
+          files: coverage.xml
           fail_ci_if_error: false
           verbose: true
 
@@ -123,8 +112,6 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           TEMP: /tmp
           TMPDIR: /tmp
-          # Keep environment consistent with regular test job
-          COVERAGE_FILE: /tmp/.coverage
         run: |
           # Create and set permissions for temp directories
           sudo mkdir -p /tmp/pytest_temp
