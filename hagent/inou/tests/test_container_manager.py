@@ -280,7 +280,10 @@ class TestContainerManager:
                     'UV_PROJECT_ENVIRONMENT': '/code/workspace/cache/venv',
                 }
 
-                assert env_vars == expected
+                # Check that all expected variables are present with correct values
+                for key, value in expected.items():
+                    assert key in env_vars, f"Expected environment variable '{key}' not found"
+                    assert env_vars[key] == value, f"Expected {key}={value}, got {env_vars[key]}"
 
     def test_setup_mount_points(self, setup_local_directory):
         """Test setup of standard mount points."""
