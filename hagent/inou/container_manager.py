@@ -681,10 +681,14 @@ class ContainerManager:
             self.set_error(f'Failed to fix mounted directory permissions: {e}')
             return False
 
-    def setup(self) -> bool:
+    def setup(self, automount: bool = True) -> bool:
         """
         Create and start Docker container with new mount structure.
         Working directory is always /code/workspace/repo.
+
+        Args:
+            automount: If True (default), automatically mount repo, build, and cache directories.
+                      If False, create container with no automatic mounts.
 
         Returns:
             True if setup successful, False otherwise
@@ -722,9 +726,18 @@ class ContainerManager:
                 self.set_error(f"Image '{self.image}' is not available")
                 return False
 
-            # Setup mount points and environment
-            mount_objs = self._setup_mount_points()
-            env_vars = self._setup_container_environment()
+            # Setup mount points and environment based on automount setting
+            if automount:
+                mount_objs = self._setup_mount_points()
+                env_vars = self._setup_container_environment()
+            else:
+                mount_objs = []
+                env_vars = {
+                    'HAGENT_EXECUTION_MODE': 'docker',
+                    # Set LOCAL_USER_ID for the container's entrypoint script to use host UID
+                    'LOCAL_USER_ID': str(os.getuid()),
+                    'LOCAL_GROUP_ID': str(os.getgid()),
+                }
 
             # Create the container with security restrictions
             # Note: We start as root to allow LOCAL_USER_ID mechanism to work,
@@ -757,8 +770,8 @@ class ContainerManager:
                 self.set_error(f'Failed to create working directory: {self._workdir}')
                 return False
 
-            # Fix permissions for mounted directories to match container user
-            if not self._fix_mounted_directory_permissions():
+            # Fix permissions for mounted directories to match container user (only if automount is enabled)
+            if automount and not self._fix_mounted_directory_permissions():
                 return False
 
             # Check if bash exists in the container
