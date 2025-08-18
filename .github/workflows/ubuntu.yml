@@ -76,7 +76,7 @@ jobs:
           sudo chmod 777 /tmp/pytest_temp
           
           # Run tests with coverage, excluding slow tests by default
-          uv run pytest --cov --cov-branch --cov-report=xml -m "not slow"
+          uv run pytest --cov --cov-branch --cov-report=xml:${{ github.workspace }}/coverage.xml -m "not slow"
       - name: List coverage files
         if: always()
         run: |
