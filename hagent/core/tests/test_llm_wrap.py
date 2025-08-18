@@ -97,7 +97,7 @@ def test_missing_env_var(monkeypatch):
     # Should return empty result since check_env_keys returns False
     result = lw.inference({}, 'use_prompt1', n=1)
     assert result == []
-    assert 'Environment' in lw.last_error
+    assert 'environment' in lw.last_error.lower()
 
 
 if __name__ == '__main__':  # pragma: no cover

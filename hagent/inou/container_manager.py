@@ -267,8 +267,23 @@ class ContainerManager:
             'HAGENT_BUILD_DIR': '/code/workspace/build',
             'HAGENT_CACHE_DIR': '/code/workspace/cache',
             'UV_PROJECT_ENVIRONMENT': '/code/workspace/cache/venv',
+            # Set LOCAL_USER_ID for the container's entrypoint script to use host UID
+            'LOCAL_USER_ID': str(os.getuid()),
+            'LOCAL_GROUP_ID': str(os.getgid()),
         }
         return env_vars
+
+    def _get_security_options(self) -> List[str]:
+        """
+        Get security options to restrict container capabilities and prevent privilege escalation.
+
+        Returns:
+            List of security options to apply to the container
+        """
+        return [
+            'no-new-privileges:true',  # Prevent processes from gaining additional privileges
+            'apparmor:docker-default',  # Use default AppArmor profile if available
+        ]
 
     def _setup_mount_points(self) -> List[docker.types.Mount]:
         """Setup standard mount points based on path manager."""
@@ -374,6 +389,9 @@ class ContainerManager:
             'HAGENT_EXECUTION_MODE': 'docker',
             'HAGENT_CACHE_DIR': '/code/workspace/cache',
             'UV_PROJECT_ENVIRONMENT': '/code/workspace/cache/venv',
+            # Set LOCAL_USER_ID for the container's entrypoint script to use host UID
+            'LOCAL_USER_ID': str(os.getuid()),
+            'LOCAL_GROUP_ID': str(os.getgid()),
         }
 
         # Optional mounts - only mount if the path is a real host directory
@@ -452,7 +470,14 @@ class ContainerManager:
                 mount_obj = docker.types.Mount(target=container_path, source=abs_host_path, type='bind')
                 mount_objs.append(mount_obj)
 
-            # Create the container
+            # Add LOCAL_USER_ID to environment if not already present
+            if 'LOCAL_USER_ID' not in env_vars:
+                env_vars['LOCAL_USER_ID'] = str(os.getuid())
+                env_vars['LOCAL_GROUP_ID'] = str(os.getgid())
+
+            # Create the container with security restrictions
+            # Note: We start as root to allow LOCAL_USER_ID mechanism to work,
+            # but with restricted capabilities and no-new-privileges
             container = self.client.containers.create(
                 self.image,
                 command='tail -f /dev/null',  # Keep container running
@@ -460,6 +485,14 @@ class ContainerManager:
                 environment=env_vars,
                 working_dir=working_dir,
                 detach=True,
+                user='root',  # Start as root to allow LOCAL_USER_ID switching
+                # Security options to prevent privilege escalation
+                security_opt=self._get_security_options(),
+                # Drop dangerous capabilities, keep minimal ones for user switching
+                cap_drop=['NET_ADMIN', 'NET_RAW', 'SYS_ADMIN', 'SYS_TIME', 'SYS_MODULE'],
+                cap_add=['SETUID', 'SETGID', 'DAC_OVERRIDE', 'CHOWN', 'FOWNER'],  # For user switching and file ops
+                # Prevent new privileges after initial setup
+                read_only=False,  # We need write access to mounted volumes
             )
 
             container.start()
@@ -591,7 +624,9 @@ class ContainerManager:
             mount_objs = self._setup_mount_points()
             env_vars = self._setup_container_environment()
 
-            # Create the container
+            # Create the container with security restrictions
+            # Note: We start as root to allow LOCAL_USER_ID mechanism to work,
+            # but with restricted capabilities and no-new-privileges
             self.container = self.client.containers.create(
                 self.image,
                 command='tail -f /dev/null',  # Keep container running
@@ -599,6 +634,14 @@ class ContainerManager:
                 environment=env_vars,
                 working_dir=self._workdir,
                 detach=True,
+                user='root',  # Start as root to allow LOCAL_USER_ID switching
+                # Security options to prevent privilege escalation
+                security_opt=self._get_security_options(),
+                # Drop dangerous capabilities, keep minimal ones for user switching
+                cap_drop=['NET_ADMIN', 'NET_RAW', 'SYS_ADMIN', 'SYS_TIME', 'SYS_MODULE'],
+                cap_add=['SETUID', 'SETGID', 'DAC_OVERRIDE', 'CHOWN', 'FOWNER'],  # For user switching and file ops
+                # Prevent new privileges after initial setup
+                read_only=False,  # We need write access to mounted volumes
             )
             self.container.start()
 
