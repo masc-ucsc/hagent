@@ -312,3 +312,24 @@ log_file = get_output_path('test_results.log')   # Full path for output files
 
 This system eliminates manual path configuration while providing clean organization and cross-mode compatibility.
 
+### Path Resolution Convention
+
+**IMPORTANT**: HAgent internally always operates with fully resolved absolute paths that handle symlinks properly. When developing new components or modifying existing path-handling code:
+
+- **Always use `Path(...).resolve()`** when converting paths to strings for storage or comparison
+- **Never use relative paths** for internal operations - convert to absolute resolved paths immediately
+- **Follow existing patterns** in the codebase that use `.resolve()` consistently (see PathManager, file_tracker, executor modules)
+
+Example pattern:
+```python
+# CORRECT: Use resolve() to get fully resolved absolute path
+output_dir = Path(user_input_dir).resolve()
+return str(output_dir)
+
+# INCORRECT: Raw path without resolution
+output_dir = user_input_dir
+return output_dir  # May contain unresolved symlinks or be relative
+```
+
+This ensures consistent behavior across different environments, proper symlink handling, and eliminates path comparison issues between relative and absolute paths.
+

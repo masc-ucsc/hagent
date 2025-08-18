@@ -133,12 +133,12 @@ class TestExecutorContainerOperations:
         # Note: In the new API, we use container_manager for file operations
         temp_file_content = 'potato'
 
-        rc, out, err = executor.run(f'id')
-        print(f"id result rc:{rc} out:{out} err:{err}")
+        rc, out, err = executor.run('id')
+        print(f'id result rc:{rc} out:{out} err:{err}')
         assert rc == 0
 
-        rc, out, err = executor.run(f'ls -ald')
-        print(f"ls result rc:{rc} out:{out} err:{err}")
+        rc, out, err = executor.run('ls -ald')
+        print(f'ls result rc:{rc} out:{out} err:{err}')
         assert rc == 0
 
         # Create the test output directory in container and write content to a file there
