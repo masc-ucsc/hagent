@@ -76,18 +76,17 @@ jobs:
           sudo chmod 777 /tmp/pytest_temp
           
           # Run tests with coverage, excluding slow tests by default
-          uv run pytest --cov --cov-branch --cov-report=xml:${{ github.workspace }}/coverage.xml -m "not slow"
+          uv run pytest --cov --cov-branch --cov-report=xml:/tmp/coverage.xml -m "not slow"
       - name: List coverage files
         if: always()
         run: |
-          find . -name "coverage.xml" -type f
-          ls -la coverage.xml || echo "coverage.xml not found in root"
+          ls -la /tmp/coverage.xml || echo "/tmp/coverage.xml not found"
       - name: Upload coverage reports to Codecov
         if: always()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
+          files: /tmp/coverage.xml
           fail_ci_if_error: false
           verbose: true
 
