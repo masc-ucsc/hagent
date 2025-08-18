@@ -39,33 +39,45 @@ def _validate_mount_path(host_path: str) -> Tuple[bool, str]:
         abs_path = os.path.realpath(os.path.abspath(host_path))
 
         # Get the hagent repository root directory based on this file's location
-        # This file is at hagent/inou/container_manager.py, so go up 2 levels
+        # This file is at hagent/inou/container_manager.py, so go up 3 levels to get to repo root
+        # /path/to/hagent-repo/hagent/inou/container_manager.py -> /path/to/hagent-repo
         current_file = os.path.realpath(__file__)
-        hagent_root = os.path.dirname(os.path.dirname(current_file))
+        hagent_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+
+        # Log mount validation attempts for debugging
+        print(f'🔍 MOUNT VALIDATION: {host_path} -> {abs_path}')
+        print(f'🔍 HAGENT ROOT: {hagent_root}')
 
         # Check if we're trying to mount the hagent repo root
         if abs_path == hagent_root:
-            return False, f'SAFETY ERROR: Cannot mount hagent repository root directory: {abs_path}'
+            error_msg = f'SAFETY ERROR: Cannot mount hagent repository root directory: {abs_path}'
+            print(f'🚨 {error_msg}')
+            return False, error_msg
 
         # Check if we're trying to mount any directory inside the hagent repository
         if abs_path.startswith(hagent_root + os.sep):
             # Allow mounting directories inside ./output
             output_dir = os.path.realpath(os.path.join(hagent_root, 'output'))
             if abs_path.startswith(output_dir + os.sep) or abs_path == output_dir:
+                print(f'✅ ALLOWING OUTPUT MOUNT: {abs_path}')
                 return True, ''
 
             # Disallow any other directory inside the hagent repo
             relative_path = os.path.relpath(abs_path, hagent_root)
-            return (
-                False,
-                f'SAFETY ERROR: Cannot mount directory inside hagent repository (except ./output): {relative_path} -> {abs_path}',
+            error_msg = (
+                f'SAFETY ERROR: Cannot mount directory inside hagent repository (except ./output): {relative_path} -> {abs_path}'
             )
+            print(f'🚨 {error_msg}')
+            return (False, error_msg)
 
         # Allow mounting directories outside the hagent repo entirely
+        print(f'✅ ALLOWING EXTERNAL MOUNT: {abs_path}')
         return True, ''
 
     except Exception as e:
-        return False, f'SAFETY ERROR: Failed to validate mount path {host_path}: {e}'
+        error_msg = f'SAFETY ERROR: Failed to validate mount path {host_path}: {e}'
+        print(f'🚨 {error_msg}')
+        return False, error_msg
 
 
 class ContainerManager:
