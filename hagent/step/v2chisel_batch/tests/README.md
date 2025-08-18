@@ -8,7 +8,8 @@ To run a quick test from the hagent root directory:
 
 ```bash
 # Set up environment variables (required for LLM)
-export AWS_BEARER_TOKEN_BEDROCK=<your-token>
+export AWS_ACCESS_KEY_ID=<your-access-key-id>
+export AWS_SECRET_ACCESS_KEY=<your-secret-access-key>
 export AWS_DEFAULT_REGION=us-east-1
 
 # Run the test
@@ -40,7 +41,7 @@ The test should:
 - Check that `hagent/step/v2chisel_batch/tests/test_bug_list.yaml` exists
 
 ### "LLM authentication error"
-- Set your AWS_BEARER_TOKEN_BEDROCK environment variable
+- Set your AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables
 - Ensure AWS_DEFAULT_REGION is set (defaults to us-east-1)
 
 ### "No module matches found"

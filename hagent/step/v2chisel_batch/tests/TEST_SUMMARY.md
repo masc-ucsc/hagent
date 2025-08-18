@@ -18,7 +18,7 @@ Running `bash hagent/step/v2chisel_batch/tests/run_test.sh` produces:
 - ✅ Output generation (test_output.yaml created)
 
 ### ⚠️ Expected Issues (Without AWS Credentials)
-- ❌ LLM authentication (requires AWS_BEARER_TOKEN_BEDROCK)
+- ❌ LLM authentication (requires AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
 
 ## 📁 Files Created
 
@@ -39,7 +39,8 @@ From the hagent root directory:
 
 ```bash
 # Set credentials (if available)
-export AWS_BEARER_TOKEN_BEDROCK=<token>
+export AWS_ACCESS_KEY_ID=<access-key-id>
+export AWS_SECRET_ACCESS_KEY=<secret-access-key>
 export AWS_DEFAULT_REGION=us-east-1
 
 # Run test

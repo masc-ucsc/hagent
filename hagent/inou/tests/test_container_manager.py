@@ -632,7 +632,9 @@ class TestContainerManager:
     def test_cleanup(self):
         """Test container cleanup."""
         mock_container = MagicMock()
+        mock_container.status = 'running'  # Set status to running so kill() gets called
         mock_ref_container = MagicMock()
+        mock_ref_container.status = 'running'  # Set status to running so kill() gets called
 
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):

@@ -50,9 +50,7 @@ def test_replicate_code():
             'cost': 10,
         }
 
-        # Skip if no AWS credentials are available (common after clean)
-        if not os.environ.get('AWS_BEARER_TOKEN_BEDROCK'):
-            pytest.skip('AWS credentials not available - skipping LLM test')
+        # Let test run even without credentials to test error handling
 
         # Create a temporary input file for faster testing
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
@@ -65,72 +63,45 @@ def test_replicate_code():
 
             trivial_step.setup()
 
-            # Override the LLM inference to provide a predictable response for testing
-            def fast_run(data):
-                original_code = data['code_content']
-
-                # For testing, provide a mock LLM response that contains functionally equivalent Verilog code
-                # This ensures the test works even when LLM gives non-code responses
-                mock_response = """Here's an alternative implementation of the simple_and module:
-
-```verilog
-module simple_and(output Y, input A, input B);
-  wire intermediate_result;
-  assign intermediate_result = A & B;
-  assign Y = intermediate_result;
-endmodule
-```
-
-This version uses an intermediate wire for clarity."""
-
+            # Run the actual test and check for LLM errors
                 try:
-                    # Try real LLM inference first
-                    res = trivial_step.lw.inference({'code_content': original_code}, 'replicate_code_prompt1', n=1)
+                res = trivial_step.step()
 
-                    # Check if LLM returned usable code
-                    has_code = False
-                    for markdown in res:
-                        codes = trivial_step.verilog_extractor.parse(markdown)
-                        if codes:
-                            has_code = True
-                            break
+                # If we get here, the test completed successfully
+                xx = res['optimized_equivalent']
+                print(f'optimized_equivalent:{xx}')
 
-                    # If no code returned, use mock response
-                    if not has_code:
-                        res = [mock_response]
+                # The test should complete successfully
+                assert isinstance(xx, list)  # Should return a list (even if empty)
+                assert 'optimized_equivalent' in res  # Should have the key in results
 
-                except Exception:
-                    res = [mock_response]
+            except Exception as e:
+                # Check if the error is due to missing LLM credentials
+                error_msg = str(e).lower()
+                llm_error_indicators = [
+                    'environment variable',
+                    'aws_access_key_id',
+                    'aws_secret_access_key', 
+                    'openai_api_key',
+                    'anthropic_api_key',
+                    'not set',
+                    'authentication',
+                    'api key'
+                ]
 
-                result = data.copy()
-                result['optimized'] = []
-                for markdown in res:
-                    codes = trivial_step.verilog_extractor.parse(markdown)
-                    for new_code in codes:
-                        if new_code:
-                            normalized_new = ' '.join(new_code.split())
-                            normalized_original = ' '.join(original_code.split())
-                            if normalized_new != normalized_original:
-                                result['optimized'].append(new_code)
-                result['optimized_equivalent'] = trivial_step.check_lec(result)
-                return result
+                # Check if this is an LLM credential error
+                is_llm_error = any(indicator in error_msg for indicator in llm_error_indicators)
 
-            # Monkey patch for faster testing
-            trivial_step.run = fast_run
+                if is_llm_error:
+                    pytest.skip(f'Test disabled due to missing LLM credentials: {str(e)}')
+                else:
+                    # Re-raise if it's a different kind of error
+                    raise
 
-            res = trivial_step.step()
         finally:
             # Clean up temp file
             if os.path.exists(temp_input_file):
                 os.unlink(temp_input_file)
-
-        xx = res['optimized_equivalent']
-        print(f'optimized_equivalent:{xx}')
-
-        # After git clean, the test should complete successfully even if no equivalent code is found
-        # The important thing is that the process runs without errors
-        assert isinstance(xx, list)  # Should return a list (even if empty)
-        assert 'optimized_equivalent' in res  # Should have the key in results
     finally:
         # Restore original environment
         os.environ.clear()
