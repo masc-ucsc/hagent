@@ -24,6 +24,50 @@ _container_manager_registry: weakref.WeakSet = weakref.WeakSet()
 _cleanup_registered = False
 
 
+def _validate_mount_path(host_path: str) -> Tuple[bool, str]:
+    """
+    Validate that a host path is safe to mount and won't damage the hagent repository.
+
+    Args:
+        host_path: The host path to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    try:
+        # Get the absolute path and resolve any symlinks
+        abs_path = os.path.realpath(os.path.abspath(host_path))
+
+        # Get the hagent repository root directory based on this file's location
+        # This file is at hagent/inou/container_manager.py, so go up 2 levels
+        current_file = os.path.realpath(__file__)
+        hagent_root = os.path.dirname(os.path.dirname(current_file))
+
+        # Check if we're trying to mount the hagent repo root
+        if abs_path == hagent_root:
+            return False, f'SAFETY ERROR: Cannot mount hagent repository root directory: {abs_path}'
+
+        # Check if we're trying to mount any directory inside the hagent repository
+        if abs_path.startswith(hagent_root + os.sep):
+            # Allow mounting directories inside ./output
+            output_dir = os.path.realpath(os.path.join(hagent_root, 'output'))
+            if abs_path.startswith(output_dir + os.sep) or abs_path == output_dir:
+                return True, ''
+
+            # Disallow any other directory inside the hagent repo
+            relative_path = os.path.relpath(abs_path, hagent_root)
+            return (
+                False,
+                f'SAFETY ERROR: Cannot mount directory inside hagent repository (except ./output): {relative_path} -> {abs_path}',
+            )
+
+        # Allow mounting directories outside the hagent repo entirely
+        return True, ''
+
+    except Exception as e:
+        return False, f'SAFETY ERROR: Failed to validate mount path {host_path}: {e}'
+
+
 class ContainerManager:
     """
     Manages Docker container lifecycle including setup, execution, and cleanup.
@@ -301,6 +345,12 @@ class ContainerManager:
 
         # Only mount cache directory if it's a real host path (not a container path)
         if not cache_dir_path.startswith('/code/workspace/'):
+            # Validate the mount path for safety
+            is_valid, error_msg = _validate_mount_path(cache_dir_path)
+            if not is_valid:
+                self.set_error(f'Cache directory mount validation failed: {error_msg}')
+                return []
+
             # Ensure cache directory exists before mounting
             os.makedirs(cache_dir_path, exist_ok=True)
             # Resolve symlinks (important on macOS where /var -> /private/var)
@@ -319,6 +369,12 @@ class ContainerManager:
                 repo_dir_path = None
 
         if repo_dir_path and not repo_dir_path.startswith('/code/workspace/'):
+            # Validate the mount path for safety
+            is_valid, error_msg = _validate_mount_path(repo_dir_path)
+            if not is_valid:
+                self.set_error(f'Repo directory mount validation failed: {error_msg}')
+                return []
+
             # Ensure repo directory exists before mounting
             os.makedirs(repo_dir_path, exist_ok=True)
             # Resolve symlinks (important on macOS where /var -> /private/var)
@@ -336,6 +392,12 @@ class ContainerManager:
                 build_dir_path = None
 
         if build_dir_path and not build_dir_path.startswith('/code/workspace/'):
+            # Validate the mount path for safety
+            is_valid, error_msg = _validate_mount_path(build_dir_path)
+            if not is_valid:
+                self.set_error(f'Build directory mount validation failed: {error_msg}')
+                return []
+
             # Ensure build directory exists before mounting
             os.makedirs(build_dir_path, exist_ok=True)
             # Resolve symlinks (important on macOS where /var -> /private/var)
@@ -346,6 +408,12 @@ class ContainerManager:
         # Add any additional mounts registered via add_mount()
         for mount_config in self._mounts:
             source_path = os.path.abspath(mount_config['source'])
+            # Validate the mount path for safety
+            is_valid, error_msg = _validate_mount_path(source_path)
+            if not is_valid:
+                self.set_error(f'Additional mount validation failed: {error_msg}')
+                return []
+
             # Ensure additional mount source exists
             os.makedirs(source_path, exist_ok=True)
             # Resolve symlinks (important on macOS where /var -> /private/var)
@@ -396,15 +464,30 @@ class ContainerManager:
 
         # Optional mounts - only mount if the path is a real host directory
         if repo_dir and not str(repo_dir).startswith('/code/workspace/'):
+            # Validate the mount path for safety
+            is_valid, error_msg = _validate_mount_path(str(repo_dir))
+            if not is_valid:
+                self.set_error(f'Repo directory mount validation failed: {error_msg}')
+                return None
             mounts.append(f'{repo_dir}:/code/workspace/repo')
             env_vars['HAGENT_REPO_DIR'] = '/code/workspace/repo'
 
         if build_dir and not str(build_dir).startswith('/code/workspace/'):
+            # Validate the mount path for safety
+            is_valid, error_msg = _validate_mount_path(str(build_dir))
+            if not is_valid:
+                self.set_error(f'Build directory mount validation failed: {error_msg}')
+                return None
             mounts.append(f'{build_dir}:/code/workspace/build')
             env_vars['HAGENT_BUILD_DIR'] = '/code/workspace/build'
 
         # Mount cache directory only if it's a real host directory
         if cache_dir and not str(cache_dir).startswith('/code/workspace/'):
+            # Validate the mount path for safety
+            is_valid, error_msg = _validate_mount_path(str(cache_dir))
+            if not is_valid:
+                self.set_error(f'Cache directory mount validation failed: {error_msg}')
+                return None
             mounts.append(f'{cache_dir}:/code/workspace/cache')
 
         # Always set the environment variables for container paths
@@ -463,6 +546,13 @@ class ContainerManager:
             for mount_str in mounts:
                 host_path, container_path = mount_str.split(':')
                 abs_host_path = os.path.abspath(host_path)
+
+                # Validate the mount path for safety
+                is_valid, error_msg = _validate_mount_path(abs_host_path)
+                if not is_valid:
+                    self.set_error(f'Mount validation failed for {mount_str}: {error_msg}')
+                    return None
+
                 # Ensure host directory exists before mounting
                 os.makedirs(abs_host_path, exist_ok=True)
                 # Resolve symlinks (important on macOS where /var -> /private/var)
