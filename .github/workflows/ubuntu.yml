@@ -64,9 +64,12 @@ jobs:
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           TEMP: /tmp
           TMPDIR: /tmp
+          # Write coverage's SQLite DB to a temp dir to avoid workspace FS quirks
+          COVERAGE_FILE: /tmp/.coverage
         run: |
           # Clean up any existing coverage files to prevent database corruption
           rm -f .coverage*
+          rm -f /tmp/.coverage*
           
           # Ensure temp directories are writable
           sudo mkdir -p /tmp/pytest_temp
@@ -110,6 +113,8 @@ jobs:
           AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           TEMP: /tmp
           TMPDIR: /tmp
+          # Keep environment consistent with regular test job
+          COVERAGE_FILE: /tmp/.coverage
         run: |
           # Create and set permissions for temp directories
           sudo mkdir -p /tmp/pytest_temp
@@ -117,4 +122,3 @@ jobs:
           
           # Run only slow tests with extended timeout
           uv run pytest -m "slow" --tb=short --maxfail=3 -v
-
