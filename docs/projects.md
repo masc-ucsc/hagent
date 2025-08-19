@@ -8,7 +8,7 @@
 ```
 brew install docker
 brew install colima
-colima start --vm-type=vz --vz-rosetta
+colima start --mount-type virtiofs --vm-type=vz --vz-rosetta
 # brew services start colima
 ```
 

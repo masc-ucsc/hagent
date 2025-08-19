@@ -41,7 +41,7 @@ class TestOutputManager:
             os.environ['HAGENT_OUTPUT_DIR'] = test_dir
 
             result = get_output_dir()
-            assert result == test_dir
+            assert result == str(Path(test_dir).resolve())
             assert Path(test_dir).exists()
 
     def test_get_output_dir_default(self):
@@ -69,7 +69,7 @@ class TestOutputManager:
             assert not Path(test_output).exists()
 
             result = get_output_dir()
-            assert result == test_output
+            assert result == str(Path(test_output).resolve())
             assert Path(test_output).exists()
 
     def test_get_output_path_valid_filename(self):
@@ -106,7 +106,7 @@ class TestOutputManager:
             os.environ['HAGENT_OUTPUT_DIR'] = test_dir
 
             result = get_output_path('test.txt')
-            expected = os.path.join(test_dir, 'test.txt')
+            expected = str(Path(test_dir, 'test.txt').resolve())
             assert result == expected
 
     def test_get_output_path_absolute_unix_path_fails(self):
