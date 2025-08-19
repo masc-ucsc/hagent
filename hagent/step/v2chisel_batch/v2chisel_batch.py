@@ -26,6 +26,7 @@ from hagent.core.step import Step
 from hagent.core.llm_template import LLM_template
 from hagent.core.llm_wrap import LLM_wrap
 from hagent.tool.module_finder import Module_finder
+from hagent.tool.docker_diff_applier import DockerDiffApplier
 
 
 class V2chisel_batch(Step):
@@ -56,13 +57,13 @@ class V2chisel_batch(Step):
         # Allow override from input_data while keeping generic structure
         final_llm_config = {**llm_config, **self.input_data.get('llm', {})}
 
-        # Only pass overwrite_conf if we have config to override
+        # Use same pattern as working examples - pass LLM config directly
         if final_llm_config:
             self.lw = LLM_wrap(
                 name='v2chisel_batch',
                 log_file='v2chisel_batch.log',
                 conf_file=conf_file,
-                overwrite_conf={'llm': final_llm_config},
+                overwrite_conf=final_llm_config,
             )
         else:
             self.lw = LLM_wrap(name='v2chisel_batch', log_file='v2chisel_batch.log', conf_file=conf_file)
@@ -111,6 +112,7 @@ class V2chisel_batch(Step):
                     grep_cmd = [
                         'docker',
                         'exec',
+                        '-u', 'user',  # Run as user to match file permissions
                         container_name,
                         'find',
                         pattern,
@@ -137,6 +139,7 @@ class V2chisel_batch(Step):
                         grep_cmd = [
                             'docker',
                             'exec',
+                            '-u', 'user',  # Run as user to match file permissions
                             container_name,
                             'find',
                             pattern,
@@ -197,7 +200,7 @@ class V2chisel_batch(Step):
         all_chisel_files = []
 
         # Check if Docker container specified
-        docker_container = self.input_data.get('docker_container', 'musing_sammet')
+        docker_container = self.input_data.get('docker_container', 'hagent')
         docker_patterns = self.input_data.get('docker_patterns', ['/code/workspace/repo'])
 
         # Search in Docker first
@@ -485,6 +488,10 @@ class V2chisel_batch(Step):
             # Call LLM
             response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
 
+            # Check for LLM errors first
+            if self.lw.last_error:
+                return {'success': False, 'error': f'LLM error: {self.lw.last_error}'}
+                
             if not response_list or not response_list[0].strip():
                 return {'success': False, 'error': 'LLM returned empty response'}
 
@@ -507,14 +514,193 @@ class V2chisel_batch(Step):
 
             print(f'     ✅ LLM generated diff: {len(generated_diff)} characters')
             if self.debug:
-                print('     📋 Generated diff preview (first 200 chars):')
-                print(f'        {generated_diff[:200]}...')
+                print('     📋 COMPLETE Generated diff:')
+                print('=' * 80)
+                print(generated_diff)
+                print('=' * 80)
 
             return {'success': True, 'chisel_diff': generated_diff, 'prompt_used': prompt_key, 'attempt': attempt}
 
         except Exception as e:
             print(f'     ❌ LLM call failed: {e}')
             return {'success': False, 'error': str(e)}
+
+    def _apply_chisel_diff(self, chisel_diff: str, docker_container: str) -> dict:
+        """Apply generated Chisel diff to Docker container"""
+        print('🔧 [APPLIER] Starting diff application...')
+        
+        try:
+            applier = DockerDiffApplier(docker_container)
+            success = applier.apply_diff_to_container(chisel_diff, dry_run=False)
+            
+            if success:
+                print('✅ [APPLIER] Successfully applied Chisel diff to container')
+                return {'success': True}
+            else:
+                print('❌ [APPLIER] Failed to apply Chisel diff')
+                return {'success': False, 'error': 'Diff application failed - could not find removal lines'}
+        except Exception as e:
+            error_msg = str(e)
+            print(f'❌ [APPLIER] Error applying diff: {error_msg}')
+            return {'success': False, 'error': error_msg}
+
+    def _compile_xiangshan(self, docker_container: str) -> dict:
+        """Compile Xiangshan code in Docker container"""
+        print('🏗️  [COMPILE] Starting Xiangshan compilation...')
+        
+        try:
+            import subprocess
+            
+            # Run the Xiangshan compilation command - first compile, then generate verilog if needed
+            cmd = ['docker', 'exec', docker_container, 'bash', '-c', 
+                   'cd /code/workspace/repo && mill -i xiangshan.compile']
+            
+            print('     📝 Running: mill -i xiangshan.compile')
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)  # 10 min timeout
+            
+            if result.returncode == 0:
+                print('✅ [COMPILE] Xiangshan compilation successful')
+                return {'success': True, 'output': result.stdout}
+            else:
+                print('❌ [COMPILE] Xiangshan compilation failed')
+                print(f'     📋 stderr: {result.stderr[:500]}...')  # Show first 500 chars
+                return {'success': False, 'error': result.stderr, 'stdout': result.stdout}
+                
+        except subprocess.TimeoutExpired:
+            error_msg = 'Compilation timeout (10 minutes)'
+            print(f'❌ [COMPILE] {error_msg}')
+            return {'success': False, 'error': error_msg}
+        except Exception as e:
+            error_msg = f'Compilation error: {str(e)}'
+            print(f'❌ [COMPILE] {error_msg}')
+            return {'success': False, 'error': error_msg}
+
+    def _retry_llm_with_error(self, verilog_diff: str, chisel_hints: str, 
+                             previous_chisel_diff: str, error_message: str, attempt: int) -> dict:
+        """Retry LLM call with error feedback"""
+        print(f'🔄 [LLM] Retrying with error feedback (attempt {attempt})...')
+        
+        # Use the compile_error prompt template for retry
+        template_data = {
+            'verilog_diff': verilog_diff,
+            'chisel_hints': chisel_hints,
+            'previous_chisel_diff': previous_chisel_diff,
+            'compile_error': error_message
+        }
+        
+        try:
+            prompt_key = 'prompt_compile_error'
+            
+            # Get the prompt configuration (same pattern as _call_llm_for_chisel_diff)
+            full_config = self.template_config.template_dict.get('v2chisel_batch', {})
+            if prompt_key not in full_config:
+                return {'success': False, 'error': f'Prompt {prompt_key} not found in config'}
+
+            prompt_section = full_config[prompt_key]
+            prompt_template = LLM_template(prompt_section)
+
+            # Update LLM wrapper with new template
+            self.lw.chat_template = prompt_template
+            self.lw.name = f'v2chisel_batch_retry_attempt_{attempt}'
+            
+            print(f'     🎯 Using prompt: {prompt_key}')
+            print(f'     📝 Template data keys: {list(template_data.keys())}')
+            
+            # Call LLM
+            response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
+
+            # Check for LLM errors first
+            if self.lw.last_error:
+                return {'success': False, 'error': f'LLM error: {self.lw.last_error}'}
+                
+            if not response_list or not response_list[0].strip():
+                return {'success': False, 'error': 'LLM returned empty response'}
+
+            generated_diff = response_list[0].strip()
+            
+            if generated_diff is None:
+                return {'success': False, 'error': 'LLM returned None'}
+            
+            # Clean up the generated diff
+            if '```' in generated_diff:
+                lines = generated_diff.split('\n')
+                cleaned_lines = []
+                in_code_block = False
+                
+                for line in lines:
+                    if line.strip().startswith('```'):
+                        in_code_block = not in_code_block
+                        continue
+                    if in_code_block or not line.strip().startswith('```'):
+                        cleaned_lines.append(line)
+                
+                generated_diff = '\n'.join(cleaned_lines).strip()
+            
+            print(f'     ✅ LLM retry generated diff: {len(generated_diff)} characters')
+            return {'success': True, 'chisel_diff': generated_diff, 'prompt_used': prompt_key, 'attempt': attempt}
+            
+        except Exception as e:
+            print(f'     ❌ LLM retry failed: {e}')
+            return {'success': False, 'error': str(e)}
+
+    def _extract_code_from_hits(self, hits: list, docker_container: str) -> str:
+        """Extract actual Chisel code content from module_finder hits"""
+        print('🔍 [HINTS] Extracting actual code content from hits...')
+        
+        all_code_hints = []
+        
+        for i, hit in enumerate(hits[:5]):  # Top 5 hits to avoid too much context
+            try:
+                file_path = hit.file_name
+                
+                import subprocess
+                
+                # Handle Docker vs local paths
+                if file_path.startswith('docker:'):
+                    # Parse docker path: docker:container_name:file_path
+                    parts = file_path.split(':', 2)
+                    actual_file_path = parts[2]
+                    
+                    # Read from Docker container
+                    cmd = ['docker', 'exec', docker_container, 'sed', '-n', 
+                           f'{hit.start_line},{hit.end_line}p', actual_file_path]
+                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                    code_content = result.stdout.strip()
+                else:
+                    # Local file - read directly
+                    try:
+                        with open(file_path, 'r') as f:
+                            lines = f.readlines()
+                            # Extract specific lines (1-indexed)
+                            start_idx = max(0, hit.start_line - 1)
+                            end_idx = min(len(lines), hit.end_line)
+                            selected_lines = lines[start_idx:end_idx]
+                            code_content = ''.join(selected_lines).strip()
+                    except Exception as local_error:
+                        print(f'     ❌ Failed to read local file {file_path}: {local_error}')
+                        continue
+                
+                if code_content:
+                    hint_block = f"""
+// ========== HIT {i+1}: {hit.module_name} (confidence: {hit.confidence:.2f}) ==========
+// File: {actual_file_path}
+// Lines: {hit.start_line}-{hit.end_line}
+{code_content}
+// ========== END HIT {i+1} ==========
+"""
+                    all_code_hints.append(hint_block)
+                    print(f'     ✅ Extracted {len(code_content)} chars from {hit.module_name}')
+                else:
+                    print(f'     ⚠️  No content found for {hit.module_name}')
+                    
+            except Exception as e:
+                print(f'     ❌ Failed to extract code from {hit.module_name}: {e}')
+                continue
+        
+        combined_hints = '\n'.join(all_code_hints)
+        print(f'✅ [HINTS] Generated {len(combined_hints)} characters of actual code hints')
+        
+        return combined_hints
 
     def _process_single_bug(
         self, bug_idx: int, bug_entry: dict, local_files: list, docker_container: str, docker_patterns: list
@@ -630,12 +816,14 @@ class V2chisel_batch(Step):
         hints_source = ''
 
         if hits and len(hits) > 0 and max(hit.confidence for hit in hits) >= 0.5:
-            # Use module_finder results
+            # Use module_finder results - extract actual code content
             hints_source = 'module_finder'
-            # Format module_finder hits as hints (you can customize this format)
-            final_hints = f'// Module finder results for {module_name}\n'
-            for i, hit in enumerate(hits[:3]):  # Top 3 hits
-                final_hints += f'// Hit {i + 1}: {hit.module_name} in {hit.file_name} (lines {hit.start_line}-{hit.end_line}, confidence: {hit.confidence:.2f})\n'
+            final_hints = f'// Module finder results for {module_name}\n\n'
+            
+            # Extract actual Chisel code from the hits
+            code_hints = self._extract_code_from_hits(hits, docker_container)
+            final_hints += code_hints
+            
             print(f'✅ Using module_finder hints: {len(hits)} hits')
 
         elif metadata_hints.strip():
@@ -652,22 +840,78 @@ class V2chisel_batch(Step):
 
         print(f'📝 Final hints source: {hints_source}')
 
-        # STEP 3: Call LLM to generate Chisel diff
+        # STEP 3: LLM + Applier + Compiler retry loop
         llm_result = {}
+        applier_result = {}
+        compile_result = {}
         generated_chisel_diff = ''
+        max_retries = 3
+        current_attempt = 1
 
         if final_hints.strip():
             print('🤖 [LLM] Starting LLM call for Chisel diff generation...')
-            llm_result = self._call_llm_for_chisel_diff(verilog_diff=unified_diff, chisel_hints=final_hints, attempt=1)
+            
+            # DEBUG: Print the exact query being sent to LLM
+            print('🔍 [DEBUG] VERILOG_DIFF being sent to LLM:')
+            print('-' * 40)
+            print(unified_diff)
+            print('-' * 40)
+            
+            print('🔍 [DEBUG] CHISEL_HINTS being sent to LLM:')
+            print('=' * 80)
+            print(final_hints)
+            print('=' * 80)
+            print(f'🔍 [DEBUG] CHISEL_HINTS length: {len(final_hints)} characters')
+            
+            llm_result = self._call_llm_for_chisel_diff(verilog_diff=unified_diff, chisel_hints=final_hints, attempt=current_attempt)
 
-            if llm_result['success']:
+            # Retry loop for LLM + Applier + Compiler
+            while current_attempt <= max_retries:
+                if not llm_result['success']:
+                    print(f'❌ [LLM] Failed to generate Chisel diff: {llm_result.get("error", "Unknown error")}')
+                    break
+                
                 generated_chisel_diff = llm_result['chisel_diff']
-                print('✅ [LLM] Successfully generated Chisel diff')
-            else:
-                print(f'❌ [LLM] Failed to generate Chisel diff: {llm_result.get("error", "Unknown error")}')
+                print(f'✅ [LLM] Successfully generated Chisel diff (attempt {current_attempt})')
+                
+                # Try to apply the diff
+                applier_result = self._apply_chisel_diff(generated_chisel_diff, docker_container)
+                
+                if applier_result['success']:
+                    print('✅ [APPLIER] Diff applied successfully, proceeding to compilation...')
+                    
+                    # Try to compile
+                    compile_result = self._compile_xiangshan(docker_container)
+                    
+                    if compile_result['success']:
+                        print('🎉 [SUCCESS] Complete pipeline successful!')
+                        break
+                    else:
+                        print(f'❌ [COMPILE] Compilation failed: {compile_result.get("error", "Unknown error")}')
+                        # TODO: In future, we could retry with compilation error feedback
+                        break
+                else:
+                    # Applier failed - retry with error feedback
+                    print(f'❌ [APPLIER] Failed: {applier_result.get("error", "Unknown error")}')
+                    
+                    if current_attempt < max_retries:
+                        print(f'🔄 [RETRY] Attempting retry {current_attempt + 1}/{max_retries}...')
+                        llm_result = self._retry_llm_with_error(
+                            verilog_diff=unified_diff,
+                            chisel_hints=final_hints,
+                            previous_chisel_diff=generated_chisel_diff,
+                            error_message=applier_result.get('error', 'Unknown applier error'),
+                            attempt=current_attempt + 1
+                        )
+                        current_attempt += 1
+                    else:
+                        print(f'❌ [FINAL] Maximum retries ({max_retries}) reached')
+                        break
         else:
             print('⚠️ [LLM] Skipping LLM call - no hints available')
             llm_result = {'success': False, 'error': 'No hints available for LLM'}
+            applier_result = {'success': False, 'error': 'No LLM output to apply'}
+            compile_result = {'success': False, 'error': 'No diff applied to compile'}
 
         # Return results for this bug
         result = {
@@ -695,6 +939,14 @@ class V2chisel_batch(Step):
             'generated_chisel_diff': generated_chisel_diff,
             'llm_prompt_used': llm_result.get('prompt_used', ''),
             'llm_error': llm_result.get('error', '') if not llm_result.get('success', False) else '',
+            'applier_success': applier_result.get('success', False),
+            'applier_error': applier_result.get('error', '') if not applier_result.get('success', False) else '',
+            'compile_success': compile_result.get('success', False),
+            'compile_error': compile_result.get('error', '') if not compile_result.get('success', False) else '',
+            'total_attempts': current_attempt,
+            'pipeline_success': (llm_result.get('success', False) and 
+                               applier_result.get('success', False) and 
+                               compile_result.get('success', False)),
         }
 
         return result
@@ -729,7 +981,7 @@ class V2chisel_batch(Step):
         print(f'\n🔄 Processing {len(bugs)} bugs...')
         results = []
 
-        docker_container = self.input_data.get('docker_container', 'musing_sammet')
+        docker_container = self.input_data.get('docker_container', 'hagent')
         docker_patterns = self.input_data.get('docker_patterns', ['/code/workspace/repo'])
 
         for i, bug_entry in enumerate(bugs):

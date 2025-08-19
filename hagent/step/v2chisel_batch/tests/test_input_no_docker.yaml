@@ -12,5 +12,6 @@ chisel_patterns:
 # LLM configuration (optional override)
 llm:
   model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
+  aws_region_name: "us-west-2"
   temperature: 0.1
   max_tokens: 1024
