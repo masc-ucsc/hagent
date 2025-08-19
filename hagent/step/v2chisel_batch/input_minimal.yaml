@@ -2,7 +2,7 @@
 bug_list_file: "bug_lists_unified.yaml"
 
 # Docker configuration
-docker_container: "musing_sammet"
+docker_container: "hagent"
 docker_patterns:
   - "/code/workspace/repo"
 
@@ -11,7 +11,7 @@ chisel_patterns:
   - "./tmp/src/main/scala/*/*.scala"                    # Demo files
 
 # LLM configuration (optional override - will use default from config if not specified)
-# llm:
-#   model: "bedrock/meta.llama3-3-70b-instruct-v1:0"    # Your supervisor's required model
-#   temperature: 0.1                                    # Optional: control randomness
-#   max_tokens: 2048                                    # Optional: response length limit
+v2chisel_batch:
+  llm:
+    model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
+    aws_region_name: "us-east-1"
