@@ -382,6 +382,14 @@ To see the results, upload the perfetto.json to https://ui.perfetto.dev/
 
 If you use OSX and colima, you may get a "docker-crediential-desktop not installed" issue. More likely, you need to delete the "credStore" entry from your config.json at `~/.docker/config.json`
 
+If you run colima, you need to use virtiofs as mount point, and 32GB for XiangShan. This may require to reinstall colima:
+```
+# brew install colima
+rm -rf ~/.colima
+colima start --mount-type virtiofs --vm-type=vz --vz-rosetta --memory 32
+# brew services start colima
+```
+
 Try in the command line that you can do: (Fix this before, or it will not work)
 ```bash
 docker pull ubuntu:latest

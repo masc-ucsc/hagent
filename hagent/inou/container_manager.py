@@ -137,8 +137,52 @@ class ContainerManager:
         """Get current error message following Tool pattern."""
         return self.error_message
 
+    def _check_colima_mount_type(self) -> None:
+        """Check if Colima is using a supported mount type (virtiofs or 9p)."""
+        import platform
+        import subprocess
+
+        # Only check on macOS where Colima is commonly used
+        if platform.system() != 'Darwin':
+            return
+
+        try:
+            # Check if colima command exists
+            result = subprocess.run(['which', 'colima'], capture_output=True, text=True)
+            if result.returncode != 0:
+                return  # Colima not installed, probably using Docker Desktop
+
+            # Check colima status to get mount type
+            result = subprocess.run(['colima', 'status'], capture_output=True, text=True)
+            if result.returncode != 0:
+                return  # Colima not running
+
+            status_output = result.stdout
+
+            # Look for mount type in output
+            if 'mountType: sshfs' in status_output:
+                error_msg = (
+                    '⚠️  COLIMA MOUNT TYPE WARNING ⚠️\n\n'
+                    "Colima is using 'sshfs' mount type, which can cause issues with I/O intensive operations.\n"
+                    "For better performance and reliability, please switch to 'virtiofs' or '9p':\n\n"
+                    '  colima stop\n'
+                    '  colima start --mount-type virtiofs\n\n'
+                    'Or if virtiofs is not supported:\n'
+                    '  colima start --mount-type 9p\n\n'
+                    'See the README for more details on Colima configuration.'
+                )
+                print(error_msg)
+                # Don't fail here, just warn - let user decide
+
+        except Exception:
+            # If we can't check Colima status, just continue
+            pass
+
     def _initialize_docker_client(self) -> None:
         """Initialize Docker client with cross-platform support."""
+        # Check Colima mount type on macOS
+        self._check_colima_mount_type()
+
         # First, try the standard docker.from_env()
         first_error = None
         try:

@@ -55,7 +55,7 @@ class FooModule extends Module {
 
 
 def test_generate_verilog_success(tmp_path):
-    return # FIXME: DISSABLE TEST
+    return  # FIXME: DISSABLE TEST
 
     # Create a fake sbt environment
     sbt_dir = tmp_path / 'fake_sbt_dir'

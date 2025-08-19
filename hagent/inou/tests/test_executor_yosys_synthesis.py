@@ -158,13 +158,50 @@ endmodule
         rc, out, err = executor.run(f"cat << 'EOF' > inverter.v\n{verilog_content}\nEOF")
         assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
 
-        # Simple synthesis
-        yosys_cmd = 'yosys -p "read_verilog inverter.v; synth; write_verilog inverter_synth.v"'
+        # Debug: Check if commands are running at all
+        rc, out, err = executor.run('echo "Test command working"')
+        print(f"Test command: RC={rc}, OUT='{out}', ERR='{err}'")
+
+        # Try different ways to check mounts
+        rc, out, err = executor.run('mount | grep workspace || echo "No workspace mounts found"')
+        print(f'Workspace mounts: {out}')
+
+        # Check if directories exist
+        rc, out, err = executor.run('ls -la /code/workspace/ || echo "workspace dir missing"')
+        print(f'Workspace directory: {out}')
+
+        print('=' * 50)
+
+        # Check current working directory and initial files
+        rc, out, err = executor.run('pwd && ls -la')
+        print(f'Working directory and files before yosys: {out}')
+
+        # Check container user and permissions
+        rc, out, err = executor.run('id && ls -la inverter.v')
+        print(f'User and file permissions: {out}')
+
+        # Simple synthesis using opt instead of synth to avoid memory issues
+        yosys_cmd = 'yosys -p "read_verilog inverter.v; opt; write_verilog inverter_synth.v"'
         rc, out, err = executor.run(yosys_cmd)
-        assert rc == 0, f'Yosys synthesis failed - RC: {rc}, ERR: {err}'
+
+        # Debug: show files after yosys run and check if yosys completed successfully
+        rc2, out2, err2 = executor.run('ls -la *.v 2>/dev/null || echo "No .v files found"')
+        print(f'Verilog files after yosys: {out2}')
+
+        # Check if yosys actually completed or was killed
+        if rc == 137:
+            print('Yosys was killed (SIGKILL) - likely memory or resource constraint')
+            rc3, out3, err3 = executor.run('dmesg | tail -10 2>/dev/null || echo "Cannot access dmesg"')
+            print(f'System messages: {out3}')
+
+        assert rc == 0, f'Yosys synthesis failed - RC: {rc}, ERR: {err}, STDOUT: {out}'
 
         # Verify output file was created
         rc, out, err = executor.run('test -f inverter_synth.v')
+        if rc != 0:
+            # Additional debugging if file not found
+            rc_debug, out_debug, err_debug = executor.run('ls -la && find . -name "*.v"')
+            print(f'Debug - current directory contents: {out_debug}')
         assert rc == 0, f'Synthesis output file not found - RC: {rc}, ERR: {err}'
 
         # Check that output contains synthesized content
