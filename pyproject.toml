@@ -33,6 +33,7 @@ dependencies = [
     "pydoc-markdown>=4.8.2",
     "fastapi>=0.116.1",
     "apscheduler>=3.11.0",
+    "mcp>=1.13.0",
 ]
 
 [project.optional-dependencies]
