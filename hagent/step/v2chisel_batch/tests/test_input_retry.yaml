@@ -1,0 +1,19 @@
+# Test input for v2chisel_batch retry mechanism
+bug_list_file: "hagent/step/v2chisel_batch/tests/test_bug_list_retry.yaml"
+
+# Docker configuration
+docker_container: "musing_sammet"
+docker_patterns:
+  - "/code/workspace/repo"
+
+# Local patterns (fallback)
+chisel_patterns:
+  - "./tmp/src/main/scala/*/*.scala"
+
+# LLM configuration
+v2chisel_batch:
+  llm:
+    model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
+    aws_region_name: "us-east-1"
+    max_tokens: 2048
+    temperature: 0.1
