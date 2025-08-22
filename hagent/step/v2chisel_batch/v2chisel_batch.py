@@ -27,6 +27,7 @@ from hagent.core.llm_template import LLM_template
 from hagent.core.llm_wrap import LLM_wrap
 from hagent.tool.module_finder import Module_finder
 from hagent.tool.docker_diff_applier import DockerDiffApplier
+from hagent.tool.equiv_check import Equiv_check
 
 
 class V2chisel_batch(Step):
@@ -99,15 +100,15 @@ class V2chisel_batch(Step):
         """Find Chisel files inside Docker container with smart filtering"""
         import subprocess
 
-        print(f'[V2chisel_batch] Searching inside Docker container: {container_name}')
+        # print(f'[V2chisel_batch] Searching inside Docker container: {container_name}')
         docker_files = []
 
         for pattern in docker_patterns:
-            print(f'  🐳 Docker pattern: {pattern}')
+            # print(f'  🐳 Docker pattern: {pattern}')
             try:
                 # OPTIMIZATION: Search for files containing the module name first
                 if module_name:
-                    print(f'  🔍 Pre-filtering for module: {module_name}')
+                    # print(f'  🔍 Pre-filtering for module: {module_name}')
                     # Use grep to find files containing the module name (much faster)
                     grep_cmd = [
                         'docker',
@@ -130,11 +131,11 @@ class V2chisel_batch(Step):
                     result = subprocess.run(grep_cmd, capture_output=True, text=True)
                     files = [f.strip() for f in result.stdout.split('\n') if f.strip()]
 
-                    print(f'     Pre-filtered to: {len(files)} files matching "{module_name}"')
+                    # print(f'     Pre-filtered to: {len(files)} files matching "{module_name}"')
 
                     # If no matches with exact name, try broader search
                     if not files and len(module_name) > 3:
-                        print('  🔍 Trying broader search with partial name...')
+                        # print('  🔍 Trying broader search with partial name...')
                         partial_name = module_name[:4] if len(module_name) > 4 else module_name
                         grep_cmd = [
                             'docker',
@@ -156,7 +157,7 @@ class V2chisel_batch(Step):
                         ]
                         result = subprocess.run(grep_cmd, capture_output=True, text=True)
                         files = [f.strip() for f in result.stdout.split('\n') if f.strip()][:20]  # Limit to 20 files
-                        print(f'     Broader search found: {len(files)} files')
+                        # print(f'     Broader search found: {len(files)} files')
                 else:
                     # Fallback: get all files (but limit to reasonable number)
                     cmd = ['docker', 'exec', container_name, 'find', pattern, '-name', '*.scala', '-type', 'f']
@@ -164,27 +165,67 @@ class V2chisel_batch(Step):
                     all_files = [f.strip() for f in result.stdout.split('\n') if f.strip()]
                     # Limit to first 100 files to avoid performance issues
                     files = all_files[:100]
-                    print(f'     Found: {len(all_files)} files, limited to: {len(files)} for performance')
+                    # print(f'     Found: {len(all_files)} files, limited to: {len(files)} for performance')
 
-                if files:
-                    for f in files[:3]:  # Show first 3
-                        print(f'     - {f}')
-                    if len(files) > 3:
-                        print(f'     ... and {len(files) - 3} more')
+                # if files:
+                #     for f in files[:3]:  # Show first 3
+                #         print(f'     - {f}')
+                #     if len(files) > 3:
+                #         print(f'     ... and {len(files) - 3} more')
 
                 # Add docker: prefix to distinguish from local files
                 docker_files.extend([f'docker:{container_name}:{f}' for f in files])
 
             except subprocess.CalledProcessError as e:
-                print(f'     ❌ Docker command failed: {e}')
+                # print(f'     ❌ Docker command failed: {e}')
+                pass
             except Exception as e:
-                print(f'     ❌ Error: {e}')
+                # print(f'     ❌ Error: {e}')
+                pass
 
         return docker_files
 
     def _find_chisel_files_docker(self, container_name: str, docker_patterns: list) -> list:
         """Legacy method - use filtered version instead"""
         return self._find_chisel_files_docker_filtered(container_name, docker_patterns)
+    
+    def _find_verilog_files_in_docker(self, container_name: str, module_name: str) -> str:
+        """Find actual Verilog files in Docker container to provide better module context"""
+        import subprocess
+        
+        try:
+            # Search for Verilog files in the build directory
+            cmd = ['docker', 'exec', '-u', 'user', container_name, 'find', '/code/workspace/build', '-name', '*.sv', '-type', 'f']
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            verilog_files = [f.strip() for f in result.stdout.strip().split('\n') if f.strip()]
+            
+            print(f'Found {len(verilog_files)} Verilog files in Docker container')
+            
+            # Look for files that might match the module name
+            matching_files = []
+            for vfile in verilog_files:
+                if module_name.lower() in vfile.lower():
+                    matching_files.append(vfile)
+            
+            if matching_files:
+                print(f'Found {len(matching_files)} Verilog files matching "{module_name}":')
+                for mf in matching_files[:3]:  # Show first 3
+                    print(f'  - {mf}')
+                    
+                # Read content from the first matching file to get module context
+                try:
+                    content_cmd = ['docker', 'exec', '-u', 'user', container_name, 'head', '-20', matching_files[0]]
+                    content_result = subprocess.run(content_cmd, capture_output=True, text=True, check=True)
+                    return content_result.stdout
+                except:
+                    pass
+            else:
+                print(f'No Verilog files found matching "{module_name}"')
+                
+        except subprocess.CalledProcessError as e:
+            print(f'❌ Failed to search Verilog files in Docker: {e}')
+        
+        return ""
 
     def _find_chisel_files(self, patterns=None) -> list:
         """Find Chisel source files using glob patterns (supports multiple patterns and Docker)"""
@@ -195,7 +236,7 @@ class V2chisel_batch(Step):
         elif isinstance(patterns, str):
             patterns = [patterns]
 
-        print(f'[V2chisel_batch] Searching for Chisel files with {len(patterns)} pattern(s):')
+        # print(f'[V2chisel_batch] Searching for Chisel files with {len(patterns)} pattern(s):')
 
         all_chisel_files = []
 
@@ -213,7 +254,7 @@ class V2chisel_batch(Step):
             if pattern.startswith('docker:'):
                 continue  # Skip docker patterns in local search
 
-            print(f'  📁 Local pattern: {pattern}')
+            # print(f'  📁 Local pattern: {pattern}')
             files = glob.glob(pattern, recursive=True)
             print(f'     Found: {len(files)} files')
 
@@ -285,7 +326,7 @@ class V2chisel_batch(Step):
                     self.temp_to_original[temp_path] = file_path
 
                 except Exception as e:
-                    print(f'     ⚠️  Failed to read Docker file {file_path}: {e}')
+                    # print(f'     ⚠️  Failed to read Docker file {file_path}: {e}')
                     continue
             else:
                 # Local file - use as is
@@ -310,7 +351,7 @@ class V2chisel_batch(Step):
         import subprocess
         import re
 
-        print(f'🔍 [METADATA FALLBACK] Parsing RTL metadata for: {verilog_file}')
+        # print(f'🔍 [METADATA FALLBACK] Parsing RTL metadata for: {verilog_file}')
 
         # Find the RTL file in build_debug
         rtl_path = f'/code/workspace/build/build_dbg/rtl/{verilog_file}'
@@ -321,7 +362,7 @@ class V2chisel_batch(Step):
             result = subprocess.run(check_cmd, capture_output=True)
 
             if result.returncode != 0:
-                print(f'     ❌ RTL file not found: {rtl_path}')
+                # print(f'     ❌ RTL file not found: {rtl_path}')
                 return {'success': False, 'error': 'RTL file not found'}
 
             # Read RTL file content
@@ -346,7 +387,7 @@ class V2chisel_batch(Step):
                 file_mappings[full_path].append(int(line_num))
 
             # Show summary
-            print(f'     📁 Mapped to {len(file_mappings)} Chisel files:')
+            # print(f'     📁 Mapped to {len(file_mappings)} Chisel files:')
             for file_path, lines in list(file_mappings.items())[:3]:
                 unique_lines = sorted(set(lines))
                 print(f'       - {file_path}: {len(unique_lines)} lines')
@@ -364,7 +405,7 @@ class V2chisel_batch(Step):
         """Extract actual Chisel code hints from metadata mappings"""
         import subprocess
 
-        print(f'🔧 [METADATA FALLBACK] Extracting hints from {len(file_mappings)} files...')
+        # print(f'🔧 [METADATA FALLBACK] Extracting hints from {len(file_mappings)} files...')
 
         all_hints = []
 
@@ -404,7 +445,7 @@ class V2chisel_batch(Step):
                 continue
 
         hints_text = '\n'.join(all_hints)
-        print(f'     📝 Generated {len(hints_text)} characters of hints')
+        # print(f'     📝 Generated {len(hints_text)} characters of hints')
 
         return hints_text
 
@@ -423,10 +464,10 @@ class V2chisel_batch(Step):
         hints = self._extract_hints_from_metadata(docker_container, metadata_result['file_mappings'])
 
         if hints.strip():
-            print('     ✅ [METADATA FALLBACK] Generated hints successfully')
+            # print('     ✅ [METADATA FALLBACK] Generated hints successfully')
             return hints
         else:
-            print('     ❌ [METADATA FALLBACK] No hints generated')
+            # print('     ❌ [METADATA FALLBACK] No hints generated')
             return ''
 
     def _call_llm_for_chisel_diff(
@@ -439,7 +480,7 @@ class V2chisel_batch(Step):
         attempt_history: str = '',
     ) -> dict:
         """Call LLM to generate Chisel diff based on Verilog diff and hints"""
-        print(f'🤖 [LLM] Calling LLM (attempt {attempt})...')
+        # print(f'🤖 [LLM] Calling LLM (attempt {attempt})...')
 
         # Choose prompt based on attempt and error type
         if attempt == 1:
@@ -482,8 +523,8 @@ class V2chisel_batch(Step):
             self.lw.chat_template = prompt_template
             self.lw.name = f'v2chisel_batch_attempt_{attempt}'
 
-            print(f'     🎯 Using prompt: {prompt_key}')
-            print(f'     📝 Template data keys: {list(template_data.keys())}')
+            # print(f'     🎯 Using prompt: {prompt_key}')
+            # print(f'     📝 Template data keys: {list(template_data.keys())}')
 
             # Call LLM
             response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
@@ -512,73 +553,691 @@ class V2chisel_batch(Step):
 
                 generated_diff = '\n'.join(cleaned_lines).strip()
 
-            print(f'     ✅ LLM generated diff: {len(generated_diff)} characters')
-            if self.debug:
-                print('     📋 COMPLETE Generated diff:')
-                print('=' * 80)
-                print(generated_diff)
-                print('=' * 80)
+            # print(f'     ✅ LLM generated diff: {len(generated_diff)} characters')
+            # if self.debug:
+            #     print('     📋 COMPLETE Generated diff:')
+            #     print('=' * 80)
+            #     print(generated_diff)
+            #     print('=' * 80)
 
             return {'success': True, 'chisel_diff': generated_diff, 'prompt_used': prompt_key, 'attempt': attempt}
 
         except Exception as e:
-            print(f'     ❌ LLM call failed: {e}')
+            # print(f'     ❌ LLM call failed: {e}')
             return {'success': False, 'error': str(e)}
 
+    def _create_master_backup(self, docker_container: str, chisel_diff: str) -> dict:
+        """Create MASTER backup of original files at the start of bug processing - this is the ONLY backup we keep"""
+        print('💾 [MASTER_BACKUP] Creating master backup of original files...')
+        
+        try:
+            import subprocess
+            import re
+            import time
+            
+            # Parse the diff to find files that will be modified throughout ALL iterations
+            files_to_backup = set()
+            diff_lines = chisel_diff.split('\n')
+            
+            for line in diff_lines:
+                # Look for unified diff file headers: --- a/path/file.scala or +++ b/path/file.scala
+                if line.startswith('---') or line.startswith('+++'):
+                    # Extract file path
+                    match = re.search(r'[ab]/(.*\.scala)', line)
+                    if match:
+                        file_path = match.group(1)
+                        # Convert relative path to absolute path in container
+                        if not file_path.startswith('/code/workspace/repo/'):
+                            file_path = f'/code/workspace/repo/{file_path}'
+                        files_to_backup.add(file_path)
+            
+            if not files_to_backup:
+                print('     ⚠️  No Scala files found in diff - skipping master backup')
+                return {'success': True, 'files_backed_up': [], 'backup_id': None}
+            
+            # Create MASTER backup directory (this will persist for the entire bug processing)
+            backup_id = f'master_backup_{int(time.time())}'
+            backup_dir = f'/tmp/chisel_master_backup_{backup_id}'
+            
+            # Create backup directory in container
+            mkdir_cmd = ['docker', 'exec', docker_container, 'mkdir', '-p', backup_dir]
+            subprocess.run(mkdir_cmd, check=True)
+            
+            backed_up_files = []
+            for file_path in files_to_backup:
+                # Check if file exists before backing up
+                check_cmd = ['docker', 'exec', docker_container, 'test', '-f', file_path]
+                check_result = subprocess.run(check_cmd, capture_output=True)
+                
+                if check_result.returncode == 0:
+                    # File exists - back it up to MASTER backup
+                    backup_file_path = f'{backup_dir}/{file_path.replace("/", "_")}.original'
+                    cp_cmd = ['docker', 'exec', docker_container, 'cp', file_path, backup_file_path]
+                    cp_result = subprocess.run(cp_cmd, capture_output=True, text=True)
+                    
+                    if cp_result.returncode == 0:
+                        backed_up_files.append({
+                            'original_path': file_path,
+                            'backup_path': backup_file_path
+                        })
+                        print(f'     ✅ Master backup created: {file_path}')
+                    else:
+                        print(f'     ❌ Failed to create master backup for {file_path}: {cp_result.stderr}')
+                else:
+                    print(f'     ⚠️  File does not exist (new file?): {file_path}')
+            
+            print(f'💾 [MASTER_BACKUP] Created master backup with ID: {backup_id} ({len(backed_up_files)} files)')
+            print(f'     🔒 This backup will be used for ALL restore operations until LEC success')
+            return {
+                'success': True,
+                'backup_id': backup_id,
+                'backup_dir': backup_dir,
+                'files_backed_up': backed_up_files,
+                'is_master_backup': True
+            }
+            
+        except Exception as e:
+            error_msg = f'Master backup creation failed: {str(e)}'
+            print(f'❌ [MASTER_BACKUP] {error_msg}')
+            return {'success': False, 'error': error_msg}
+
+    def _create_file_backup(self, docker_container: str, chisel_diff: str) -> dict:
+        """Create backup of files that will be modified by the diff"""
+        print('💾 [BACKUP] Creating file backup before applying diff...')
+        
+        try:
+            import subprocess
+            import re
+            import time
+            
+            # Parse the diff to find files that will be modified
+            files_to_backup = set()
+            diff_lines = chisel_diff.split('\n')
+            
+            for line in diff_lines:
+                # Look for unified diff file headers: --- a/path/file.scala or +++ b/path/file.scala
+                if line.startswith('---') or line.startswith('+++'):
+                    # Extract file path
+                    match = re.search(r'[ab]/(.*\.scala)', line)
+                    if match:
+                        file_path = match.group(1)
+                        # Convert relative path to absolute path in container
+                        if not file_path.startswith('/code/workspace/repo/'):
+                            file_path = f'/code/workspace/repo/{file_path}'
+                        files_to_backup.add(file_path)
+            
+            if not files_to_backup:
+                print('     ⚠️  No Scala files found in diff - skipping backup')
+                return {'success': True, 'files_backed_up': [], 'backup_id': None}
+            
+            # Create unique backup directory with timestamp
+            backup_id = f'backup_{int(time.time())}'
+            backup_dir = f'/tmp/chisel_backup_{backup_id}'
+            
+            # Create backup directory in container
+            mkdir_cmd = ['docker', 'exec', docker_container, 'mkdir', '-p', backup_dir]
+            subprocess.run(mkdir_cmd, check=True)
+            
+            backed_up_files = []
+            for file_path in files_to_backup:
+                # Check if file exists before backing up
+                check_cmd = ['docker', 'exec', docker_container, 'test', '-f', file_path]
+                check_result = subprocess.run(check_cmd, capture_output=True)
+                
+                if check_result.returncode == 0:
+                    # File exists - back it up
+                    backup_file_path = f'{backup_dir}/{file_path.replace("/", "_")}.backup'
+                    cp_cmd = ['docker', 'exec', docker_container, 'cp', file_path, backup_file_path]
+                    cp_result = subprocess.run(cp_cmd, capture_output=True, text=True)
+                    
+                    if cp_result.returncode == 0:
+                        backed_up_files.append({
+                            'original_path': file_path,
+                            'backup_path': backup_file_path
+                        })
+                        print(f'     ✅ Backed up: {file_path}')
+                    else:
+                        print(f'     ❌ Failed to backup {file_path}: {cp_result.stderr}')
+                else:
+                    print(f'     ⚠️  File does not exist (new file?): {file_path}')
+            
+            print(f'💾 [BACKUP] Created backup with ID: {backup_id} ({len(backed_up_files)} files)')
+            return {
+                'success': True,
+                'backup_id': backup_id,
+                'backup_dir': backup_dir,
+                'files_backed_up': backed_up_files
+            }
+            
+        except Exception as e:
+            error_msg = f'Backup creation failed: {str(e)}'
+            print(f'❌ [BACKUP] {error_msg}')
+            return {'success': False, 'error': error_msg}
+
+    def _restore_to_original(self, docker_container: str, master_backup_info: dict, reason: str = 'failure') -> dict:
+        """Restore files to ORIGINAL pristine state from master backup"""
+        if not master_backup_info or not master_backup_info.get('success') or not master_backup_info.get('files_backed_up'):
+            return {'success': True, 'message': 'No master backup to restore from'}
+        
+        print(f'🔄 [RESTORE_TO_ORIGINAL] Restoring to pristine state due to: {reason}')
+        print(f'     🔒 Using master backup: {master_backup_info["backup_id"]}')
+        
+        try:
+            import subprocess
+            
+            restored_files = []
+            for file_info in master_backup_info['files_backed_up']:
+                original_path = file_info['original_path']
+                backup_path = file_info['backup_path']
+                
+                # Restore the file from MASTER backup (original state)
+                cp_cmd = ['docker', 'exec', docker_container, 'cp', backup_path, original_path]
+                cp_result = subprocess.run(cp_cmd, capture_output=True, text=True)
+                
+                if cp_result.returncode == 0:
+                    restored_files.append(original_path)
+                    print(f'     ✅ Restored to original: {original_path}')
+                else:
+                    print(f'     ❌ Failed to restore {original_path}: {cp_result.stderr}')
+            
+            print(f'🔄 [RESTORE_TO_ORIGINAL] Restored {len(restored_files)} files to pristine state')
+            return {'success': True, 'restored_files': restored_files, 'restore_reason': reason}
+            
+        except Exception as e:
+            error_msg = f'Restore to original failed: {str(e)}'
+            print(f'❌ [RESTORE_TO_ORIGINAL] {error_msg}')
+            return {'success': False, 'error': error_msg}
+
+    def _restore_from_backup(self, docker_container: str, backup_info: dict) -> dict:
+        """Restore files from backup after failed compilation"""
+        if not backup_info or not backup_info.get('success') or not backup_info.get('files_backed_up'):
+            return {'success': True, 'message': 'No backup to restore'}
+        
+        print(f'🔄 [RESTORE] Restoring from backup: {backup_info["backup_id"]}')
+        
+        try:
+            import subprocess
+            
+            restored_files = []
+            for file_info in backup_info['files_backed_up']:
+                original_path = file_info['original_path']
+                backup_path = file_info['backup_path']
+                
+                # Restore the file
+                cp_cmd = ['docker', 'exec', docker_container, 'cp', backup_path, original_path]
+                cp_result = subprocess.run(cp_cmd, capture_output=True, text=True)
+                
+                if cp_result.returncode == 0:
+                    restored_files.append(original_path)
+                    print(f'     ✅ Restored: {original_path}')
+                else:
+                    print(f'     ❌ Failed to restore {original_path}: {cp_result.stderr}')
+            
+            print(f'🔄 [RESTORE] Restored {len(restored_files)} files successfully')
+            return {'success': True, 'restored_files': restored_files}
+            
+        except Exception as e:
+            error_msg = f'Restore failed: {str(e)}'
+            print(f'❌ [RESTORE] {error_msg}')
+            return {'success': False, 'error': error_msg}
+
+    def _cleanup_master_backup(self, docker_container: str, master_backup_info: dict) -> None:
+        """Clean up master backup directory ONLY after successful LEC (full pipeline success)"""
+        if not master_backup_info or not master_backup_info.get('success') or not master_backup_info.get('backup_dir'):
+            return
+        
+        try:
+            import subprocess
+            backup_dir = master_backup_info['backup_dir']
+            rm_cmd = ['docker', 'exec', docker_container, 'rm', '-rf', backup_dir]
+            subprocess.run(rm_cmd, capture_output=True)
+            print(f'🗑️  [CLEANUP] Removed master backup: {master_backup_info["backup_id"]} (LLM changes accepted)')
+        except Exception as e:
+            print(f'⚠️  [CLEANUP] Failed to remove master backup: {e}')
+
+    def _cleanup_backup(self, docker_container: str, backup_info: dict) -> None:
+        """Clean up backup directory after successful compilation"""
+        if not backup_info or not backup_info.get('success') or not backup_info.get('backup_dir'):
+            return
+        
+        try:
+            import subprocess
+            backup_dir = backup_info['backup_dir']
+            rm_cmd = ['docker', 'exec', docker_container, 'rm', '-rf', backup_dir]
+            subprocess.run(rm_cmd, capture_output=True)
+            print(f'🗑️  [CLEANUP] Removed backup: {backup_info["backup_id"]}')
+        except Exception as e:
+            print(f'⚠️  [CLEANUP] Failed to remove backup: {e}')
+
     def _apply_chisel_diff(self, chisel_diff: str, docker_container: str) -> dict:
-        """Apply generated Chisel diff to Docker container"""
-        print('🔧 [APPLIER] Starting diff application...')
+        """Apply generated Chisel diff to Docker container with backup support"""
+        # print('🔧 [APPLIER] Starting diff application...')
         
         try:
             applier = DockerDiffApplier(docker_container)
             success = applier.apply_diff_to_container(chisel_diff, dry_run=False)
             
             if success:
-                print('✅ [APPLIER] Successfully applied Chisel diff to container')
+                # print('✅ [APPLIER] Successfully applied Chisel diff to container')
                 return {'success': True}
             else:
-                print('❌ [APPLIER] Failed to apply Chisel diff')
+                # print('❌ [APPLIER] Failed to apply Chisel diff')
                 return {'success': False, 'error': 'Diff application failed - could not find removal lines'}
         except Exception as e:
             error_msg = str(e)
-            print(f'❌ [APPLIER] Error applying diff: {error_msg}')
+            # print(f'❌ [APPLIER] Error applying diff: {error_msg}')
             return {'success': False, 'error': error_msg}
 
-    def _compile_xiangshan(self, docker_container: str) -> dict:
-        """Compile Xiangshan code in Docker container"""
-        print('🏗️  [COMPILE] Starting Xiangshan compilation...')
+    def _ensure_main_object_exists(self, docker_container: str, module_name: str = None) -> dict:
+        """Ensure a Main object exists for Verilog generation"""
+        print('🔍 [MAIN_CHECK] Checking for Main object...')
         
         try:
             import subprocess
             
-            # Run the Xiangshan compilation command - first compile, then generate verilog if needed
-            cmd = ['docker', 'exec', docker_container, 'bash', '-c', 
-                   'cd /code/workspace/repo && mill -i xiangshan.compile']
+            # Check if Main.scala or similar already exists
+            find_cmd = ['docker', 'exec', docker_container, 'find', '/code/workspace/repo/src', 
+                       '-name', '*.scala', '-exec', 'grep', '-l', 'object Main', '{}', ';']
             
-            print('     📝 Running: mill -i xiangshan.compile')
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)  # 10 min timeout
+            result = subprocess.run(find_cmd, capture_output=True, text=True)
             
-            if result.returncode == 0:
-                print('✅ [COMPILE] Xiangshan compilation successful')
-                return {'success': True, 'output': result.stdout}
+            if result.returncode == 0 and result.stdout.strip():
+                print('✅ [MAIN_CHECK] Main object already exists')
+                existing_files = result.stdout.strip().split('\n')
+                return {'success': True, 'main_exists': True, 'files': existing_files}
+            
+            # Main object doesn't exist - create one
+            print('🔧 [MAIN_CHECK] Creating Main object for Verilog generation...')
+            
+            # Determine the top module based on module_name or use generic approach
+            if module_name:
+                top_module = module_name
             else:
-                print('❌ [COMPILE] Xiangshan compilation failed')
-                print(f'     📋 stderr: {result.stderr[:500]}...')  # Show first 500 chars
-                return {'success': False, 'error': result.stderr, 'stdout': result.stdout}
+                # Try to find the top module from existing code
+                grep_cmd = ['docker', 'exec', docker_container, 'grep', '-r', '-l', 
+                           'class.*extends.*Module', '/code/workspace/repo/src']
+                grep_result = subprocess.run(grep_cmd, capture_output=True, text=True)
+                
+                if grep_result.returncode == 0 and grep_result.stdout.strip():
+                    # Use a generic approach
+                    top_module = 'Top'  # Default
+                else:
+                    top_module = 'Top'  # Fallback
+            
+            # Create Main.scala content
+            main_content = f'''package object MainGen extends App {{
+    import chisel3._
+    import chisel3.stage.ChiselStage
+    import circt.stage._
+    
+    // Auto-generated Main object for Verilog generation
+    // You may need to adjust the Top module and config based on your design
+    
+    ChiselStage.emitSystemVerilogFile(
+      new {top_module}(), // Adjust this to your actual top module
+      firtoolOpts = Array(
+        "-disable-all-randomization",
+        "--lowering-options=disallowPackedArrays,disallowLocalVariables"
+      )
+    )
+}}
+'''
+            
+            # Write the Main.scala file
+            main_file_path = '/code/workspace/repo/src/main/scala/MainGen.scala'
+            
+            # Create the file using docker exec
+            write_cmd = ['docker', 'exec', docker_container, 'bash', '-c', 
+                        f'echo "{main_content}" > {main_file_path}']
+            
+            write_result = subprocess.run(write_cmd, capture_output=True, text=True)
+            
+            if write_result.returncode == 0:
+                print('✅ [MAIN_CHECK] Main object created successfully')
+                return {'success': True, 'main_exists': False, 'created_file': main_file_path, 'top_module': top_module}
+            else:
+                return {'success': False, 'error': f'Failed to create Main object: {write_result.stderr}'}
+                
+        except Exception as e:
+            return {'success': False, 'error': f'Main object check error: {str(e)}'}
+
+    def _generate_verilog_from_chisel(self, docker_container: str, module_name: str) -> dict:
+        """Generate Verilog from Chisel code after compilation"""
+        print('🔧 [VERILOG_GEN] Generating Verilog from compiled Chisel...')
+        
+        # First ensure Main object exists
+        main_check_result = self._ensure_main_object_exists(docker_container, module_name)
+        if not main_check_result['success']:
+            print(f'⚠️  [VERILOG_GEN] Warning: Could not ensure Main object exists: {main_check_result["error"]}')
+        
+        try:
+            import subprocess
+            
+            # Try different Verilog generation commands based on the project
+            # Updated to work with both sbt (with login shell) and mill
+            generation_commands = [
+                # SBT commands (using login shell like successful compilation)
+                {'cmd': 'cd /code/workspace/repo && sbt "runMain Main"', 'use_login_shell': True},
+                {'cmd': f'cd /code/workspace/repo && sbt "runMain {module_name}"', 'use_login_shell': True},
+                {'cmd': f'cd /code/workspace/repo && sbt "runMain dinocpu.{module_name}"', 'use_login_shell': True},
+                {'cmd': f'cd /code/workspace/repo && sbt "runMain xiangshan.{module_name}"', 'use_login_shell': True},
+                {'cmd': 'cd /code/workspace/repo && sbt "runMain MainGen"', 'use_login_shell': True},
+                # Mill commands (fallback)
+                {'cmd': 'cd /code/workspace/repo && ./mill root.runMain Main', 'use_login_shell': False},
+                {'cmd': 'cd /code/workspace/repo && ./mill root.runMain MainGen', 'use_login_shell': False},
+                {'cmd': f'cd /code/workspace/repo && ./mill root.runMain {module_name}', 'use_login_shell': False},
+                {'cmd': f'cd /code/workspace/repo && ./mill root.runMain dinocpu.{module_name}', 'use_login_shell': False},
+                {'cmd': f'cd /code/workspace/repo && ./mill root.runMain xiangshan.{module_name}', 'use_login_shell': False}
+            ]
+            
+            tooling_errors = []
+            for i, gen_cmd_info in enumerate(generation_commands):
+                gen_cmd_str = gen_cmd_info['cmd']
+                use_login_shell = gen_cmd_info['use_login_shell']
+                
+                print(f'     📝 Trying generation command {i+1}: {gen_cmd_str.split("&&")[-1].strip()}')
+                
+                if use_login_shell:
+                    cmd = ['docker', 'exec', '-u', 'user', docker_container, 'bash', '-l', '-c', gen_cmd_str]
+                else:
+                    cmd = ['docker', 'exec', '-u', 'user', docker_container, 'bash', '-c', gen_cmd_str]
+                    
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 min timeout
+                
+                if result.returncode == 0:
+                    print('✅ [VERILOG_GEN] Verilog generation successful')
+                    return {'success': True, 'output': result.stdout, 'command_used': gen_cmd_str, 'tooling_issue': False}
+                else:
+                    error_msg = result.stderr
+                    print(f'     ❌ Command {i+1} failed: {error_msg[:200]}...')
+                    
+                    # Classify the error type - expanded to catch more tooling issues
+                    is_tooling_error = any(keyword in error_msg.lower() for keyword in [
+                        # Command/file not found issues
+                        'command not found', 'no such file', 'file not found', 'permission denied',
+                        # Main class/object issues (these are tooling, not Chisel diff issues)
+                        'could not find or load main class', 'class not found', 'classnotfoundexception',
+                        'main method not found', 'no main manifest attribute', 'main class',
+                        # Build tool specific errors (VERY CLEAR tooling issues)
+                        'no build file', 'build.mill', 'build.sc', 'mill project', 'sbt project',
+                        'mill', 'sbt', 'build failed', 'compilation failed',
+                        # Import/dependency issues (often tooling related)
+                        'object chiselstage is not a member', 'package chisel3.stage',
+                        'import chisel3.stage', 'chiselstage', 'firtoolOpts',
+                        # General tooling indicators
+                        'java.lang.', 'scala.', 'at java.', 'caused by:', 'exception in thread'
+                    ])
+                    
+                    tooling_errors.append({
+                        'command': gen_cmd_str,
+                        'error': error_msg,
+                        'is_tooling_error': is_tooling_error
+                    })
+                    continue
+            
+            # All generation commands failed - determine if it's a tooling issue
+            # If ALL commands failed with tooling errors, or if we have multiple different types of
+            # tooling errors, it's almost certainly a tooling/config issue, not a Chisel diff issue
+            all_tooling_errors = all(err['is_tooling_error'] for err in tooling_errors)
+            mostly_tooling_errors = sum(1 for err in tooling_errors if err['is_tooling_error']) >= len(tooling_errors) * 0.7
+            
+            # Determine if it's a tooling issue - be more aggressive about detecting tooling problems
+            # ANY of these conditions indicates tooling issue:
+            # 1. ALL errors are tooling errors
+            # 2. At least 50% are tooling errors (was 70%, too strict)
+            # 3. ANY error contains critical tooling indicators
+            critical_tooling_indicators = [
+                'no build file', 'build.mill', 'build.sc',
+                'could not find or load main class', 'main class'
+            ]
+            has_critical_tooling_error = any(
+                any(indicator in err['error'].lower() for indicator in critical_tooling_indicators)
+                for err in tooling_errors
+            )
+            
+            is_tooling_failure = (all_tooling_errors or 
+                                mostly_tooling_errors or  # 70% still applies
+                                (sum(1 for err in tooling_errors if err['is_tooling_error']) >= len(tooling_errors) * 0.5) or  # NEW: 50% threshold
+                                has_critical_tooling_error)  # NEW: Critical indicators
+            
+            tooling_count = sum(1 for err in tooling_errors if err['is_tooling_error'])
+            print(f'     🔍 Tooling error analysis: {tooling_count}/{len(tooling_errors)} commands had tooling errors')
+            
+            if is_tooling_failure:
+                print('     🔧 This appears to be a tooling/configuration issue')
+                if has_critical_tooling_error:
+                    print('     🎯 CRITICAL tooling error detected (build file, main class, etc.)')
+                elif all_tooling_errors:
+                    print('     📊 ALL commands failed with tooling errors')
+                elif mostly_tooling_errors:
+                    print('     📊 70%+ commands failed with tooling errors')
+                elif tooling_count >= len(tooling_errors) * 0.5:
+                    print('     📊 50%+ commands failed with tooling errors')
+            else:
+                print('     🤖 This might be related to the Chisel diff generated by LLM')
+                print('     🕰 Hint: If you see build file or main class errors above, this classification might be wrong')
+            
+            return {
+                'success': False, 
+                'error': 'All Verilog generation commands failed', 
+                'last_stderr': result.stderr if 'result' in locals() else 'No stderr available',
+                'tooling_issue': is_tooling_failure,
+                'error_details': tooling_errors,
+                'tooling_analysis': {
+                    'total_commands': len(tooling_errors),
+                    'tooling_errors': tooling_count,
+                    'tooling_percentage': (tooling_count / len(tooling_errors) * 100) if tooling_errors else 0,
+                    'has_critical_tooling_error': has_critical_tooling_error,
+                    'classified_as_tooling': is_tooling_failure,
+                    'classification_reason': (
+                        'critical_tooling_error' if has_critical_tooling_error else
+                        'all_tooling_errors' if all_tooling_errors else
+                        'mostly_tooling_errors_70' if mostly_tooling_errors else
+                        'mostly_tooling_errors_50' if tooling_count >= len(tooling_errors) * 0.5 else
+                        'insufficient_tooling_indicators'
+                    )
+                }
+            }
+            
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'error': 'Verilog generation timeout (5 minutes)', 'tooling_issue': True}
+        except Exception as e:
+            return {'success': False, 'error': f'Verilog generation error: {str(e)}', 'tooling_issue': True}
+
+    def _verify_module_names_consistency(self, docker_container: str, original_verilog_content: str, 
+                                       regenerated_verilog_path: str) -> dict:
+        """Verify that module names match between original and regenerated Verilog"""
+        print('🔍 [MODULE_CHECK] Verifying module name consistency...')
+        
+        try:
+            import subprocess
+            import re
+            
+            # Extract module name from original Verilog
+            original_module_pattern = r'module\s+(\w+)\s*[\(;]'
+            original_matches = re.findall(original_module_pattern, original_verilog_content)
+            
+            if not original_matches:
+                return {'success': False, 'error': 'Could not find module name in original Verilog'}
+            
+            original_module = original_matches[0]
+            print(f'     📋 Original module name: {original_module}')
+            
+            # Read regenerated Verilog from Docker
+            read_cmd = ['docker', 'exec', docker_container, 'cat', regenerated_verilog_path]
+            read_result = subprocess.run(read_cmd, capture_output=True, text=True)
+            
+            if read_result.returncode != 0:
+                return {'success': False, 'error': f'Could not read regenerated Verilog: {read_result.stderr}'}
+            
+            regenerated_content = read_result.stdout
+            regenerated_matches = re.findall(original_module_pattern, regenerated_content)
+            
+            if not regenerated_matches:
+                return {'success': False, 'error': 'Could not find module name in regenerated Verilog'}
+            
+            regenerated_module = regenerated_matches[0]
+            print(f'     📋 Regenerated module name: {regenerated_module}')
+            
+            if original_module == regenerated_module:
+                print('✅ [MODULE_CHECK] Module names match')
+                return {'success': True, 'original_module': original_module, 'regenerated_module': regenerated_module, 'match': True}
+            else:
+                print('⚠️  [MODULE_CHECK] Module names do not match')
+                return {'success': True, 'original_module': original_module, 'regenerated_module': regenerated_module, 'match': False}
+                
+        except Exception as e:
+            return {'success': False, 'error': f'Module name verification error: {str(e)}'}
+
+    def _compile_xiangshan(self, docker_container: str, force_compile: bool = True) -> dict:
+        """Compile Chisel code in Docker container with enhanced verification"""
+        print('🏗️  [COMPILE] Starting compilation...')
+        
+        try:
+            import subprocess
+            
+            # Method 1: Try SBT with login shell (this is what works for you manually)
+            print('     📝 Running: sbt compile (with login shell)')
+            sbt_cmd = ['docker', 'exec', '-u', 'user', docker_container, 'bash', '-l', '-c', 
+                      'cd /code/workspace/repo && sbt compile']
+            
+            sbt_result = subprocess.run(sbt_cmd, capture_output=True, text=True, timeout=600)  # 10 min timeout
+            
+            if sbt_result.returncode == 0:
+                print('✅ [COMPILE] Compilation successful using sbt')
+                return {'success': True, 'output': sbt_result.stdout, 'compilation_method': 'sbt'}
+            else:
+                print(f'     ⚠️  SBT compilation failed: {sbt_result.stderr[:200]}...')
+            
+            # Method 2: Try mill as fallback
+            print('     📝 Running: ./mill root.compile (fallback)')
+            mill_cmd = ['docker', 'exec', '-u', 'user', docker_container, 'bash', '-c', 
+                       'cd /code/workspace/repo && ./mill clean && ./mill root.compile']
+            
+            mill_result = subprocess.run(mill_cmd, capture_output=True, text=True, timeout=600)
+            
+            if mill_result.returncode == 0:
+                print('✅ [COMPILE] Compilation successful using mill')
+                return {'success': True, 'output': mill_result.stdout, 'compilation_method': 'mill'}
+            else:
+                print(f'     ⚠️  Mill compilation also failed: {mill_result.stderr[:200]}...')
+            
+            # Both failed
+            print('❌ [COMPILE] Both sbt and mill compilation failed')
+            return {
+                'success': False, 
+                'error': f'SBT failed: {sbt_result.stderr}\nMill failed: {mill_result.stderr}', 
+                'stdout': f'SBT stdout: {sbt_result.stdout}\nMill stdout: {mill_result.stdout}',
+                'compilation_method': 'both_failed'
+            }
                 
         except subprocess.TimeoutExpired:
             error_msg = 'Compilation timeout (10 minutes)'
             print(f'❌ [COMPILE] {error_msg}')
-            return {'success': False, 'error': error_msg}
+            return {'success': False, 'error': error_msg, 'compilation_method': 'timeout'}
         except Exception as e:
             error_msg = f'Compilation error: {str(e)}'
             print(f'❌ [COMPILE] {error_msg}')
-            return {'success': False, 'error': error_msg}
+            return {'success': False, 'error': error_msg, 'compilation_method': 'exception'}
+
+    def _run_lec_check(self, docker_container: str, original_verilog_content: str, module_name: str, 
+                      regenerated_verilog_path: str = None) -> dict:
+        """Run Logical Equivalence Check between original and regenerated Verilog with module name verification"""
+        print('🔍 [LEC] Starting Logical Equivalence Check with module verification...')
+        
+        try:
+            import subprocess
+            import os
+            
+            # If regenerated Verilog path not provided, try to find it
+            if not regenerated_verilog_path:
+                # Find the regenerated Verilog file
+                find_cmd = ['docker', 'exec', docker_container, 'find', '/code/workspace', 
+                           '-name', f'{module_name}.sv', '-type', 'f']
+                find_result = subprocess.run(find_cmd, capture_output=True, text=True)
+                
+                if find_result.returncode != 0 or not find_result.stdout.strip():
+                    return {'success': False, 'error': f'Could not find regenerated {module_name}.sv'}
+                
+                # Use the first found file
+                regenerated_verilog_path = find_result.stdout.strip().split('\n')[0]
+            
+            # Verify module name consistency before running LEC
+            module_check_result = self._verify_module_names_consistency(
+                docker_container, original_verilog_content, regenerated_verilog_path)
+            
+            if not module_check_result['success']:
+                return {'success': False, 'error': f'Module verification failed: {module_check_result["error"]}'}
+            
+            if not module_check_result['match']:
+                warning_msg = (f'Module name mismatch: original="{module_check_result["original_module"]}" '
+                             f'vs regenerated="{module_check_result["regenerated_module"]}"')
+                print(f'     ⚠️  [LEC] {warning_msg}')
+                # Continue with LEC using the original module name for compatibility
+                lec_module_name = module_check_result['original_module']
+            else:
+                lec_module_name = module_name
+            
+            # Read regenerated Verilog from container
+            read_cmd = ['docker', 'exec', docker_container, 'cat', regenerated_verilog_path]
+            read_result = subprocess.run(read_cmd, capture_output=True, text=True)
+            
+            if read_result.returncode != 0:
+                return {'success': False, 'error': f'Failed to read regenerated Verilog: {read_result.stderr}'}
+            
+            new_verilog = read_result.stdout
+            
+            # Setup and run equivalence check
+            print('     🔍 Running equivalence check...')
+            equiv_checker = Equiv_check()
+            
+            if not equiv_checker.setup():
+                return {'success': False, 'error': f'LEC setup failed: {equiv_checker.get_error()}'}
+            
+            # Run the equivalence check with verified module name
+            result = equiv_checker.check_equivalence(
+                gold_code=original_verilog_content, 
+                gate_code=new_verilog, 
+                desired_top=lec_module_name
+            )
+            
+            lec_result = {
+                'module_check': module_check_result,
+                'lec_module_name': lec_module_name,
+                'regenerated_verilog_path': regenerated_verilog_path
+            }
+            
+            if result is True:
+                print('✅ [LEC] Designs are logically equivalent')
+                lec_result.update({'success': True, 'equivalent': True, 'message': 'Designs are logically equivalent'})
+                return lec_result
+            elif result is False:
+                counterexample = equiv_checker.get_counterexample()
+                print('❌ [LEC] Designs are NOT equivalent')
+                if counterexample:
+                    print(f'     📋 Counterexample: {counterexample[:200]}...')
+                lec_result.update({
+                    'success': True, 
+                    'equivalent': False, 
+                    'message': 'Designs are not equivalent',
+                    'counterexample': counterexample
+                })
+                return lec_result
+            else:  # result is None
+                error_msg = equiv_checker.get_error()
+                print('⚠️  [LEC] Equivalence check inconclusive')
+                lec_result.update({'success': True, 'equivalent': None, 'message': f'Inconclusive: {error_msg}'})
+                return lec_result
+                
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'error': 'LEC timeout'}
+        except Exception as e:
+            return {'success': False, 'error': f'LEC error: {str(e)}'}
 
     def _retry_llm_with_error(self, verilog_diff: str, chisel_hints: str, 
                              previous_chisel_diff: str, error_message: str, attempt: int) -> dict:
         """Retry LLM call with error feedback"""
-        print(f'🔄 [LLM] Retrying with error feedback (attempt {attempt})...')
+        # print(f'🔄 [LLM] Retrying with error feedback (attempt {attempt})...')
         
         # Use the compile_error prompt template for retry
         template_data = {
@@ -603,8 +1262,8 @@ class V2chisel_batch(Step):
             self.lw.chat_template = prompt_template
             self.lw.name = f'v2chisel_batch_retry_attempt_{attempt}'
             
-            print(f'     🎯 Using prompt: {prompt_key}')
-            print(f'     📝 Template data keys: {list(template_data.keys())}')
+            # print(f'     🎯 Using prompt: {prompt_key}')
+            # print(f'     📝 Template data keys: {list(template_data.keys())}')
             
             # Call LLM
             response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
@@ -645,7 +1304,7 @@ class V2chisel_batch(Step):
 
     def _extract_code_from_hits(self, hits: list, docker_container: str) -> str:
         """Extract actual Chisel code content from module_finder hits"""
-        print('🔍 [HINTS] Extracting actual code content from hits...')
+        # print('🔍 [HINTS] Extracting actual code content from hits...')
         
         all_code_hints = []
         
@@ -668,6 +1327,7 @@ class V2chisel_batch(Step):
                     code_content = result.stdout.strip()
                 else:
                     # Local file - read directly
+                    actual_file_path = file_path
                     try:
                         with open(file_path, 'r') as f:
                             lines = f.readlines()
@@ -681,9 +1341,15 @@ class V2chisel_batch(Step):
                         continue
                 
                 if code_content:
+                    # Convert Docker absolute path to repository-relative path
+                    if file_path.startswith('docker:') and actual_file_path.startswith('/code/workspace/repo/'):
+                        relative_path = actual_file_path[len('/code/workspace/repo/'):]
+                    else:
+                        relative_path = actual_file_path
+                    
                     hint_block = f"""
 // ========== HIT {i+1}: {hit.module_name} (confidence: {hit.confidence:.2f}) ==========
-// File: {actual_file_path}
+// File: {relative_path}
 // Lines: {hit.start_line}-{hit.end_line}
 {code_content}
 // ========== END HIT {i+1} ==========
@@ -698,7 +1364,7 @@ class V2chisel_batch(Step):
                 continue
         
         combined_hints = '\n'.join(all_code_hints)
-        print(f'✅ [HINTS] Generated {len(combined_hints)} characters of actual code hints')
+        # print(f'✅ [HINTS] Generated {len(combined_hints)} characters of actual code hints')
         
         return combined_hints
 
@@ -714,7 +1380,7 @@ class V2chisel_batch(Step):
         file_name = bug_entry.get('file', 'unknown')
         unified_diff = bug_entry.get('unified_diff', '')
 
-        print(f'📁 Verilog file: {file_name}')
+        # print(f'📁 Verilog file: {file_name}')
         print('📝 Diff preview (first 3 lines):')
 
         diff_lines = unified_diff.strip().split('\n')
@@ -726,29 +1392,33 @@ class V2chisel_batch(Step):
         # Extract module name from file name (remove .sv extension)
         module_name = os.path.splitext(file_name)[0] if file_name else None
 
-        print(f'🔍 Extracted module name: {module_name}')
+        print(f'Processing module: {module_name}')
+        print(f'Docker container: {docker_container}')
 
         # OPTIMIZATION: Search Docker files specific to this module
-        print(f'🐳 Searching Docker for module: {module_name}')
+        # print(f'🐳 Searching Docker for module: {module_name}')
         docker_files = self._find_chisel_files_docker_filtered(docker_container, docker_patterns, module_name)
 
         # Combine local and filtered Docker files
         all_files = local_files + docker_files
-        print(f'📁 Total files for this bug: {len(all_files)} (local: {len(local_files)}, docker: {len(docker_files)})')
+        # print(f'📁 Total files for this bug: {len(all_files)} (local: {len(local_files)}, docker: {len(docker_files)})')
 
         # Prepare files for module_finder (handle Docker files)
-        print('🔧 Preparing files for module_finder...')
+        # print('🔧 Preparing files for module_finder...')
         prepared_files = self._prepare_files_for_module_finder(all_files)
-        print(f'✅ Prepared {len(prepared_files)} files (including {len(getattr(self, "temp_files", []))} temp files)')
+        # print(f'✅ Prepared {len(prepared_files)} files (including {len(getattr(self, "temp_files", []))} temp files)')
 
+        # Search for actual Verilog files in Docker to improve module context
+        verilog_context = self._find_verilog_files_in_docker(docker_container, module_name)
+        
         # Call module_finder
-        print('🚀 Calling module_finder...')
+        # print('🚀 Calling module_finder...')
         try:
             hits = self.module_finder.find_modules(
                 scala_files=prepared_files, verilog_module=module_name, verilog_diff=unified_diff
             )
 
-            print(f'✅ Module_finder returned {len(hits)} hits')
+            # print(f'✅ Module_finder returned {len(hits)} hits')
 
             # Map temp file paths back to original Docker paths
             mapped_hits = []
@@ -766,25 +1436,26 @@ class V2chisel_batch(Step):
 
             # Display results
             if mapped_hits:
-                print('📋 Module finder results:')
-                for i, hit in enumerate(mapped_hits[:3]):  # Show top 3 hits
-                    confidence_bar = '█' * int(hit.confidence * 10) + '░' * (10 - int(hit.confidence * 10))
-                    confidence_emoji = '🟢' if hit.confidence >= 0.8 else '🟡' if hit.confidence >= 0.5 else '🔴'
-                    print(f'  [{i + 1}] {confidence_emoji} {hit.module_name} ({hit.confidence:.2f}) [{confidence_bar}]')
-
-                    # Show if it's a Docker file
-                    if hit.file_name.startswith('docker:'):
-                        container_info = hit.file_name.split(':')[1]
-                        file_path = hit.file_name.split(':', 2)[2]
-                        print(f'      🐳 Container: {container_info}')
-                        print(f'      📁 File: {file_path}')
-                    else:
-                        print(f'      📁 File: {hit.file_name}')
-
-                    print(f'      📍 Lines: {hit.start_line}-{hit.end_line}')
-
-                if len(mapped_hits) > 3:
-                    print(f'      ... and {len(mapped_hits) - 3} more hits')
+                # print('📋 Module finder results:')
+                # for i, hit in enumerate(mapped_hits[:3]):  # Show top 3 hits
+                #     confidence_bar = '█' * int(hit.confidence * 10) + '░' * (10 - int(hit.confidence * 10))
+                #     confidence_emoji = '🟢' if hit.confidence >= 0.8 else '🟡' if hit.confidence >= 0.5 else '🔴'
+                #     print(f'  [{i + 1}] {confidence_emoji} {hit.module_name} ({hit.confidence:.2f}) [{confidence_bar}]')
+                # 
+                #     # Show if it's a Docker file
+                #     if hit.file_name.startswith('docker:'):
+                #         container_info = hit.file_name.split(':')[1]
+                #         file_path = hit.file_name.split(':', 2)[2]
+                #         print(f'      🐳 Container: {container_info}')
+                #         print(f'      📁 File: {file_path}')
+                #     else:
+                #         print(f'      📁 File: {hit.file_name}')
+                # 
+                #     print(f'      📍 Lines: {hit.start_line}-{hit.end_line}')
+                # 
+                # if len(mapped_hits) > 3:
+                #     print(f'      ... and {len(mapped_hits) - 3} more hits')
+                pass  # Module finder results commented out
             else:
                 print('❌ No module matches found')
 
@@ -820,27 +1491,43 @@ class V2chisel_batch(Step):
             hints_source = 'module_finder'
             final_hints = f'// Module finder results for {module_name}\n\n'
             
+            # Print hint files and paths
+            print('Hint files:')
+            for i, hit in enumerate(hits[:5]):  # Show first 5 hits
+                if hit.file_name.startswith('docker:'):
+                    file_path = hit.file_name.split(':', 2)[2]
+                    print(f'  [{i+1}] {file_path} (lines {hit.start_line}-{hit.end_line}, confidence: {hit.confidence:.2f})')
+                else:
+                    print(f'  [{i+1}] {hit.file_name} (lines {hit.start_line}-{hit.end_line}, confidence: {hit.confidence:.2f})')
+            
             # Extract actual Chisel code from the hits
             code_hints = self._extract_code_from_hits(hits, docker_container)
             final_hints += code_hints
             
-            print(f'✅ Using module_finder hints: {len(hits)} hits')
+            # print(f'✅ Using module_finder hints: {len(hits)} hits')
 
         elif metadata_hints.strip():
             # Use metadata fallback
             hints_source = 'metadata_fallback'
             final_hints = metadata_hints
-            print(f'✅ Using metadata fallback hints: {len(metadata_hints)} characters')
+            # print(f'✅ Using metadata fallback hints: {len(metadata_hints)} characters')
 
         else:
             # No hints available
             hints_source = 'none'
             final_hints = f'// No hints found for {module_name} via module_finder or metadata fallback'
-            print(f'❌ No hints available for {module_name}')
+            # print(f'❌ No hints available for {module_name}')
 
-        print(f'📝 Final hints source: {hints_source}')
+        # print(f'📝 Final hints source: {hints_source}')
 
-        # STEP 3: LLM + Applier + Compiler retry loop
+        # STEP 3: Create MASTER backup before starting any LLM attempts
+        print('💾 [MASTER_BACKUP] Creating master backup of original files before LLM processing...')
+        master_backup_info = self._create_master_backup(docker_container, unified_diff)
+        if not master_backup_info['success']:
+            print(f'❌ MASTER_BACKUP: Failed - {master_backup_info.get("error", "Unknown error")}')
+            print('     ⚠️  Continuing without backup (risky!)')
+
+        # STEP 4: LLM + Applier + Compiler retry loop WITH ORIGINAL RESTORE
         llm_result = {}
         applier_result = {}
         compile_result = {}
@@ -852,16 +1539,16 @@ class V2chisel_batch(Step):
             print('🤖 [LLM] Starting LLM call for Chisel diff generation...')
             
             # DEBUG: Print the exact query being sent to LLM
-            print('🔍 [DEBUG] VERILOG_DIFF being sent to LLM:')
-            print('-' * 40)
-            print(unified_diff)
-            print('-' * 40)
-            
-            print('🔍 [DEBUG] CHISEL_HINTS being sent to LLM:')
-            print('=' * 80)
-            print(final_hints)
-            print('=' * 80)
-            print(f'🔍 [DEBUG] CHISEL_HINTS length: {len(final_hints)} characters')
+            # print('🔍 [DEBUG] VERILOG_DIFF being sent to LLM:')
+            # print('-' * 40)
+            # print(unified_diff)
+            # print('-' * 40)
+            # 
+            # print('🔍 [DEBUG] CHISEL_HINTS being sent to LLM:')
+            # print('=' * 80)
+            # print(final_hints)  # Comment out hints printing
+            # print('=' * 80)
+            # print(f'🔍 [DEBUG] CHISEL_HINTS length: {len(final_hints)} characters')
             
             llm_result = self._call_llm_for_chisel_diff(verilog_diff=unified_diff, chisel_hints=final_hints, attempt=current_attempt)
 
@@ -872,35 +1559,115 @@ class V2chisel_batch(Step):
                     break
                 
                 generated_chisel_diff = llm_result['chisel_diff']
-                print(f'✅ [LLM] Successfully generated Chisel diff (attempt {current_attempt})')
+                print(f'LLM Generated Chisel Diff (attempt {current_attempt}):')
+                print('=' * 50)
+                print(generated_chisel_diff)
+                print('=' * 50)
                 
-                # Try to apply the diff
+                # STEP 1: Apply the diff directly (we have master backup as safety net)
                 applier_result = self._apply_chisel_diff(generated_chisel_diff, docker_container)
                 
                 if applier_result['success']:
-                    print('✅ [APPLIER] Diff applied successfully, proceeding to compilation...')
+                    print('✅ APPLIER: Successfully applied diff')
                     
-                    # Try to compile
+                    # STEP 3: Try to compile
                     compile_result = self._compile_xiangshan(docker_container)
                     
                     if compile_result['success']:
-                        print('🎉 [SUCCESS] Complete pipeline successful!')
-                        break
+                        print('✅ COMPILATION: Success')
+                        
+                        # STEP 4: Try to generate Verilog from compiled Chisel
+                        verilog_gen_result = self._generate_verilog_from_chisel(docker_container, module_name)
+                        
+                        if verilog_gen_result['success']:
+                            print('✅ VERILOG_GENERATION: Success')
+                            
+                            # Run LEC check after successful compilation and Verilog generation
+                            # We'll create the original Verilog by applying the verilog_diff to a base Verilog
+                            # For now, skip LEC but the infrastructure is ready
+                            print('🔍 LEC: Infrastructure ready but skipped (original Verilog reconstruction needed)')
+                            # To enable LEC:
+                            # 1. Reconstruct original Verilog from base + unified_diff
+                            # 2. Call: lec_result = self._run_lec_check(docker_container, original_verilog_content, module_name)
+                            # 3. Handle LEC results and potentially retry with LEC error feedback
+                            
+                            # SUCCESS: Clean up MASTER backup since everything worked (LEC would be here)
+                            # For now, we consider Verilog generation success as pipeline success
+                            self._cleanup_master_backup(docker_container, master_backup_info)
+                            print('✅ PIPELINE: Complete pipeline successful!')
+                            break
+                        else:
+                            verilog_error = verilog_gen_result.get('error', 'Unknown error')
+                            is_tooling_issue = verilog_gen_result.get('tooling_issue', False)
+                            
+                            print(f'❌ VERILOG_GENERATION: Failed - {verilog_error}')
+                            
+                            # RESTORE: Verilog generation failed, restore to ORIGINAL state
+                            restore_result = self._restore_to_original(docker_container, master_backup_info, 'verilog_generation_failure')
+                            
+                            if is_tooling_issue:
+                                print('⚠️  This appears to be a tooling/configuration issue, not a Chisel diff problem')
+                                print('   Skipping LLM retry as the issue is not related to the generated diff')
+                                print('   Suggestions:')
+                                print('   - Ensure Main object exists with ChiselStage.emitSystemVerilogFile')
+                                print('   - Check mill/sbt configuration')
+                                print('   - Verify build dependencies')
+                                compile_result = {'success': False, 'error': f'Tooling issue: {verilog_error}', 'compilation_method': 'verilog_gen_tooling_failure'}
+                                break
+                            else:
+                                # This might be related to the Chisel diff - retry with LLM
+                                full_error_msg = f"Compilation succeeded but Verilog generation failed: {verilog_error}"
+                                if current_attempt < max_retries:
+                                    print(f'🔄 RETRY: Attempting retry {current_attempt + 1}/{max_retries} with Verilog generation error')
+                                    llm_result = self._retry_llm_with_error(
+                                        verilog_diff=unified_diff,
+                                        chisel_hints=final_hints,
+                                        previous_chisel_diff=generated_chisel_diff,
+                                        error_message=full_error_msg,
+                                        attempt=current_attempt + 1
+                                    )
+                                    current_attempt += 1
+                                else:
+                                    print(f'❌ [FINAL] Maximum retries ({max_retries}) reached')
+                                    break
                     else:
-                        print(f'❌ [COMPILE] Compilation failed: {compile_result.get("error", "Unknown error")}')
-                        # TODO: In future, we could retry with compilation error feedback
-                        break
+                        # Compilation failed - restore backup and retry with compilation error feedback
+                        compile_error_msg = compile_result.get('error', 'Unknown compilation error')
+                        print(f'❌ COMPILATION: Failed - {compile_error_msg}')
+                        
+                        # RESTORE: Compilation failed, restore to ORIGINAL state before retry
+                        restore_result = self._restore_to_original(docker_container, master_backup_info, 'compilation_failure')
+                        
+                        if current_attempt < max_retries:
+                            print(f'🔄 RETRY: Attempting retry {current_attempt + 1}/{max_retries} with compilation error')
+                            llm_result = self._retry_llm_with_error(
+                                verilog_diff=unified_diff,
+                                chisel_hints=final_hints,
+                                previous_chisel_diff=generated_chisel_diff,
+                                error_message=compile_error_msg,
+                                attempt=current_attempt + 1
+                            )
+                            current_attempt += 1
+                        else:
+                            print(f'❌ [FINAL] Maximum retries ({max_retries}) reached')
+                            break
                 else:
-                    # Applier failed - retry with error feedback
-                    print(f'❌ [APPLIER] Failed: {applier_result.get("error", "Unknown error")}')
+                    # Applier failed - no need to restore since diff wasn't applied
+                    error_msg = applier_result.get("error", "Unknown error")
+                    print(f'❌ APPLIER: Failed - {error_msg}')
+                    
+                    # Don't retry LLM for permission/file writing errors
+                    if "Permission denied" in error_msg or "docker cp" in error_msg or "chmod" in error_msg:
+                        print("⚠️ This is a Docker permission issue, not an LLM diff problem. Skipping LLM retry.")
+                        break
                     
                     if current_attempt < max_retries:
-                        print(f'🔄 [RETRY] Attempting retry {current_attempt + 1}/{max_retries}...')
+                        print(f'🔄 RETRY: Attempting retry {current_attempt + 1}/{max_retries}')
                         llm_result = self._retry_llm_with_error(
                             verilog_diff=unified_diff,
                             chisel_hints=final_hints,
                             previous_chisel_diff=generated_chisel_diff,
-                            error_message=applier_result.get('error', 'Unknown applier error'),
+                            error_message=error_msg,
                             attempt=current_attempt + 1
                         )
                         current_attempt += 1
@@ -908,10 +1675,32 @@ class V2chisel_batch(Step):
                         print(f'❌ [FINAL] Maximum retries ({max_retries}) reached')
                         break
         else:
-            print('⚠️ [LLM] Skipping LLM call - no hints available')
+            print('⚠️ LLM: Skipped - no hints available')
             llm_result = {'success': False, 'error': 'No hints available for LLM'}
             applier_result = {'success': False, 'error': 'No LLM output to apply'}
             compile_result = {'success': False, 'error': 'No diff applied to compile'}
+        
+        # FINAL CLEANUP: If we reach here without full success, ensure files are restored to original state
+        # Check if verilog_gen_result exists and was successful
+        verilog_success = False
+        if 'verilog_gen_result' in locals():
+            verilog_success = verilog_gen_result.get('success', False)
+        
+        pipeline_fully_successful = (llm_result.get('success', False) and 
+                                    applier_result.get('success', False) and 
+                                    compile_result.get('success', False) and
+                                    verilog_success)
+        
+        print(f'📊 [PIPELINE_CHECK] LLM: {llm_result.get("success", False)}, Applier: {applier_result.get("success", False)}, Compile: {compile_result.get("success", False)}, Verilog: {verilog_success}')
+        
+        if not pipeline_fully_successful and master_backup_info.get('success', False):
+            print('🔄 [FINAL_RESTORE] Pipeline not fully successful - restoring to original state')
+            print(f'     Reason: Full pipeline success = {pipeline_fully_successful}')
+            final_restore_result = self._restore_to_original(docker_container, master_backup_info, 'pipeline_incomplete_or_failed')
+            # Keep master backup for potential future runs - don't clean up yet
+        else:
+            print('✅ [FINAL_CHECK] Pipeline fully successful OR no master backup - keeping current state')
+            final_restore_result = {'success': True, 'message': 'No restore needed'}
 
         # Return results for this bug
         result = {
@@ -943,10 +1732,24 @@ class V2chisel_batch(Step):
             'applier_error': applier_result.get('error', '') if not applier_result.get('success', False) else '',
             'compile_success': compile_result.get('success', False),
             'compile_error': compile_result.get('error', '') if not compile_result.get('success', False) else '',
+            'compile_method': compile_result.get('compilation_method', ''),
+            'verilog_generation_attempted': 'verilog_gen_result' in locals() and current_attempt <= max_retries,
+            'verilog_generation_success': locals().get('verilog_gen_result', {}).get('success', False),
+            'verilog_generation_error': locals().get('verilog_gen_result', {}).get('error', ''),
+            'lec_attempted': False,  # Will be True when LEC is enabled
+            'lec_success': False,
+            'lec_equivalent': None,
+            'lec_error': '',
+            'master_backup_created': master_backup_info.get('success', False),
+            'master_backup_id': master_backup_info.get('backup_id', ''),
+            'files_backed_up': len(master_backup_info.get('files_backed_up', [])),
+            'restore_to_original_performed': locals().get('restore_result', {}).get('success', False) or locals().get('final_restore_result', {}).get('success', False),
+            'restore_reason': locals().get('restore_result', {}).get('restore_reason', '') or locals().get('final_restore_result', {}).get('restore_reason', ''),
             'total_attempts': current_attempt,
             'pipeline_success': (llm_result.get('success', False) and 
                                applier_result.get('success', False) and 
-                               compile_result.get('success', False)),
+                               compile_result.get('success', False) and
+                               locals().get('verilog_gen_result', {}).get('success', False)),
         }
 
         return result
@@ -955,9 +1758,15 @@ class V2chisel_batch(Step):
         """Main processing function - Step 1: Read bugs and call module_finder"""
         print('\n🚀 Starting V2chisel_batch processing...')
 
-        # Step 1: Load bug list (assume it's provided in input_data or use default)
-        bug_file = self.input_data.get('bug_list_file', 'bug_lists_unified.yaml')
-        bugs = self._load_bug_list(bug_file)
+        # Step 1: Load bug list (check input_data first, then external file)
+        if 'bugs' in self.input_data:
+            # Bugs defined directly in input file
+            bugs = self.input_data['bugs']
+            print(f'[V2chisel_batch] Using bugs from input_data: {len(bugs)} bugs')
+        else:
+            # Load from external bug list file
+            bug_file = self.input_data.get('bug_list_file', 'bug_lists_unified.yaml')
+            bugs = self._load_bug_list(bug_file)
 
         # Step 2: Get configuration (but don't search files yet - we'll do per-bug filtering)
         chisel_patterns = self.input_data.get('chisel_patterns', [self.chisel_source_pattern])
@@ -989,8 +1798,12 @@ class V2chisel_batch(Step):
                 bug_result = self._process_single_bug(i, bug_entry, local_files, docker_container, docker_patterns)
                 results.append(bug_result)
 
-                # Show progress
-                print(f'✅ Bug #{i + 1} processed successfully')
+                # Show progress based on actual pipeline success
+                pipeline_success = bug_result.get('pipeline_success', False)
+                if pipeline_success:
+                    print(f'✅ Bug #{i + 1} completed successfully (full pipeline success)')
+                else:
+                    print(f'⚠️  Bug #{i + 1} processed but failed (pipeline incomplete or failed)')
 
                 # Add small delay to see output clearly
                 if self.debug:
@@ -1018,29 +1831,34 @@ class V2chisel_batch(Step):
         metadata_fallbacks = sum(1 for r in results if r.get('hints_source') == 'metadata_fallback')
         no_hints = sum(1 for r in results if r.get('hints_source') == 'none')
 
-        # LLM statistics
+        # Pipeline statistics (TRUE success = full pipeline completion)
+        pipeline_successes = sum(1 for r in results if r.get('pipeline_success', False))
         llm_successes = sum(1 for r in results if r.get('llm_success', False))
         llm_attempts = sum(1 for r in results if r.get('has_hints', False))  # Only attempted where hints exist
 
         print('\n📊 V2CHISEL_BATCH COMPLETE SUMMARY:')
-        print(f'   📋 Total bugs processed: {total_bugs}')
-        print('   🔍 HINTS GENERATION:')
-        print(f'       Module_finder successes: {module_finder_successes}')
-        print(f'       Metadata fallbacks used: {metadata_fallbacks}')
-        print(f'       No hints available: {no_hints}')
-        print(f'       📈 Total with hints: {bugs_with_hints}/{total_bugs} ({bugs_with_hints / total_bugs * 100:.1f}%)')
-        print('   🤖 LLM CHISEL DIFF GENERATION:')
-        print(f'       LLM attempts made: {llm_attempts}')
-        print(f'       LLM successes: {llm_successes}')
-        print(f'       📈 LLM success rate: {llm_successes / llm_attempts * 100:.1f}%' if llm_attempts > 0 else '0.0%')
-        print('   🎯 PIPELINE STATUS:')
-        print(f'       ✅ Ready for next step: {llm_successes} bugs have Chisel diffs')
-        print(f'       ⚠️  Need attention: {total_bugs - llm_successes} bugs failed LLM generation')
+        # Summary stats commented out for cleaner output
+        # print(f'   📋 Total bugs processed: {total_bugs}')
+        # print('   🔍 HINTS GENERATION:')
+        # print(f'       Module_finder successes: {module_finder_successes}')
+        # print(f'       Metadata fallbacks used: {metadata_fallbacks}')
+        # print(f'       No hints available: {no_hints}')
+        # print(f'       📈 Total with hints: {bugs_with_hints}/{total_bugs} ({bugs_with_hints / total_bugs * 100:.1f}%)')
+        # print('   🤖 LLM CHISEL DIFF GENERATION:')
+        # print(f'       LLM attempts made: {llm_attempts}')
+        # print(f'       LLM successes: {llm_successes}')
+        # print(f'       📈 LLM success rate: {llm_successes / llm_attempts * 100:.1f}%' if llm_attempts > 0 else '0.0%')
+        # print('   🎯 PIPELINE STATUS:')
+        # print(f'       ✅ Ready for next step: {llm_successes} bugs have Chisel diffs')
+        # print(f'       ⚠️  Need attention: {total_bugs - llm_successes} bugs failed LLM generation')
+        print(f'Processed {total_bugs} bugs: {pipeline_successes} successful (full pipeline), {llm_successes} LLM successful')
 
         # Return results
         final_result = data.copy()
         final_result['v2chisel_batch_with_llm'] = {
             'total_bugs': total_bugs,
+            'pipeline_successes': pipeline_successes,
+            'pipeline_success_rate': pipeline_successes / total_bugs * 100 if total_bugs > 0 else 0.0,
             'module_finder_successes': module_finder_successes,
             'metadata_fallbacks': metadata_fallbacks,
             'bugs_with_hints': bugs_with_hints,
