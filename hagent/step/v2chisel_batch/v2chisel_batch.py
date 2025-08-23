@@ -914,20 +914,21 @@ class V2chisel_batch(Step):
             import subprocess
             
             # Try different Verilog generation commands based on the project
-            # Updated to work with both sbt (with login shell) and mill
+            # Prioritize DINO-specific commands first, then fallbacks
             generation_commands = [
-                # SBT commands (using login shell like successful compilation)
+                # DINO-specific SBT commands (HIGHEST PRIORITY - these work for DINO)
+                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.Main"', 'use_login_shell': True},
+                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"', 'use_login_shell': True},
+                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUDebug"', 'use_login_shell': True},
+                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.PipelinedDualIssueNoDebug"', 'use_login_shell': True},
+                # Generic SBT commands (fallback for other projects)
                 {'cmd': 'cd /code/workspace/repo && sbt "runMain Main"', 'use_login_shell': True},
                 {'cmd': f'cd /code/workspace/repo && sbt "runMain {module_name}"', 'use_login_shell': True},
                 {'cmd': f'cd /code/workspace/repo && sbt "runMain dinocpu.{module_name}"', 'use_login_shell': True},
                 {'cmd': f'cd /code/workspace/repo && sbt "runMain xiangshan.{module_name}"', 'use_login_shell': True},
-                {'cmd': 'cd /code/workspace/repo && sbt "runMain MainGen"', 'use_login_shell': True},
-                # Mill commands (fallback)
+                # Mill commands (only try if sbt project doesn't work)
                 {'cmd': 'cd /code/workspace/repo && ./mill root.runMain Main', 'use_login_shell': False},
-                {'cmd': 'cd /code/workspace/repo && ./mill root.runMain MainGen', 'use_login_shell': False},
-                {'cmd': f'cd /code/workspace/repo && ./mill root.runMain {module_name}', 'use_login_shell': False},
-                {'cmd': f'cd /code/workspace/repo && ./mill root.runMain dinocpu.{module_name}', 'use_login_shell': False},
-                {'cmd': f'cd /code/workspace/repo && ./mill root.runMain xiangshan.{module_name}', 'use_login_shell': False}
+                {'cmd': f'cd /code/workspace/repo && ./mill root.runMain {module_name}', 'use_login_shell': False}
             ]
             
             tooling_errors = []
