@@ -12,7 +12,7 @@ HAGENT_DOCKER=${HAGENT_DOCKER:-"mascucsc/hagent-simplechisel:2025.08"}
 BASE_DIR=${1:-$(pwd)}
 
 # Create directories
-mkdir -p "${BASE_DIR}/repo" "${BASE_DIR}/build" "${BASE_DIR}/cache"
+mkdir -p "${BASE_DIR}/repo" "${BASE_DIR}/build" "${BASE_DIR}/cache" "${BASE_DIR}/cache/mcp"
 
 # Path to the MCP server
 MCP_SERVER_PATH="${HAGENT_ROOT}/hagent/mcp/hagent-mcp-server.py"
@@ -64,6 +64,7 @@ echo "Directory structure created:"
 echo "- ${BASE_DIR}/repo  (for source code)"
 echo "- ${BASE_DIR}/build (for build outputs)"
 echo "- ${BASE_DIR}/cache (for cached files)"
+echo "- ${BASE_DIR}/cache/mcp (for MCP transaction logs)"
 echo
 echo "Generated files:"
 echo "- ${BASE_DIR}/hagent_server.sh (executable server launcher)"
