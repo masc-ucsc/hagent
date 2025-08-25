@@ -822,10 +822,11 @@ def run_with_logging(mcp_instance, transport='stdio'):
                                 response = create_jsonrpc_response(id, formatted_result)
                             else:
                                 raw_logger.error(f'TOOL ERROR: {name} - {error_message or "Tool execution failed"}')
-                                # Create proper JSON-RPC error response
+                                # Create proper JSON-RPC error response with detailed message visible to Gemini
                                 if error_message:
+                                    # Put the detailed error message in the main message field so Gemini sees it directly
                                     error_data = {'type': 'text', 'text': error_message}
-                                    error = create_jsonrpc_error(-32603, f'Tool execution error: {name}', error_data)
+                                    error = create_jsonrpc_error(-32603, error_message, error_data)
                                 else:
                                     error = create_jsonrpc_error(-32603, f'Tool execution error: {name}')
                                 response = create_jsonrpc_response(id, error=error)
