@@ -92,9 +92,172 @@ def get_command_info(hagent_root_dir: str = None) -> Dict[str, Dict[str, Any]]:
     return info
 
 
+def get_command_schemas_subprocess(hagent_root_dir: str = None) -> Dict[str, Dict[str, Any]]:
+    """
+    Get MCP schemas by calling each command's --schema option via subprocess.
+
+    Args:
+        hagent_root_dir: Optional path to hagent/ root directory. If None, auto-detect.
+
+    Returns:
+        Dictionary mapping command names to their MCP schemas
+    """
+    import subprocess
+    import json
+
+    if hagent_root_dir is None:
+        hagent_root_dir = get_hagent_root_dir()
+
+    schemas = {}
+
+    # Find all mcp_*.py files
+    pattern = os.path.join(hagent_root_dir, '**', 'mcp_*.py')
+    mcp_files = glob.glob(pattern, recursive=True)
+
+    for file_path in mcp_files:
+        try:
+            filename = os.path.basename(file_path)
+            cmd_name = filename[4:-3]  # Remove 'mcp_' prefix and '.py' suffix
+
+            # Call the command with --schema option
+            result = subprocess.run([sys.executable, file_path, '--schema'], capture_output=True, text=True, timeout=30)
+
+            if result.returncode == 0:
+                schema = json.loads(result.stdout)
+                schemas[cmd_name] = schema
+                print(f'Got schema via subprocess for {cmd_name}: {schema.get("name", "unnamed")}', file=sys.stderr)
+            else:
+                print(f'Error getting schema for {cmd_name}: {result.stderr}', file=sys.stderr)
+
+        except subprocess.TimeoutExpired:
+            print(f'Timeout getting schema for {cmd_name}', file=sys.stderr)
+        except json.JSONDecodeError as e:
+            print(f'JSON decode error for {cmd_name}: {e}', file=sys.stderr)
+        except Exception as e:
+            print(f'Error getting schema for {cmd_name}: {e}', file=sys.stderr)
+
+    return schemas
+
+
+def get_command_schemas(hagent_root_dir: str = None) -> Dict[str, Dict[str, Any]]:
+    """
+    Get MCP schemas for all discovered commands by calling their get_mcp_schema function.
+
+    Args:
+        hagent_root_dir: Optional path to hagent/ root directory. If None, auto-detect.
+
+    Returns:
+        Dictionary mapping command names to their MCP schemas
+    """
+    if hagent_root_dir is None:
+        hagent_root_dir = get_hagent_root_dir()
+
+    schemas = {}
+    commands = discover_mcp_commands(hagent_root_dir)
+
+    for cmd_name, module in commands.items():
+        try:
+            if hasattr(module, 'get_mcp_schema'):
+                schema = module.get_mcp_schema()
+                schemas[cmd_name] = schema
+                print(f'Got schema for {cmd_name}: {schema.get("name", "unnamed")}', file=sys.stderr)
+            else:
+                print(f'Warning: {cmd_name} missing get_mcp_schema function', file=sys.stderr)
+        except Exception as e:
+            print(f'Error getting schema for {cmd_name}: {e}', file=sys.stderr)
+
+    return schemas
+
+
+def get_command_capabilities(hagent_root_dir: str = None) -> Dict[str, Any]:
+    """
+    Get detailed capabilities for all MCP commands including available options.
+
+    For commands like mcp_build.py, this will call --list to get available profiles/APIs.
+
+    Args:
+        hagent_root_dir: Optional path to hagent/ root directory. If None, auto-detect.
+
+    Returns:
+        Dictionary with command capabilities and available options
+    """
+    if hagent_root_dir is None:
+        hagent_root_dir = get_hagent_root_dir()
+
+    capabilities = {}
+    commands = discover_mcp_commands(hagent_root_dir)
+
+    for cmd_name, module in commands.items():
+        try:
+            schema = module.get_mcp_schema() if hasattr(module, 'get_mcp_schema') else {}
+            capabilities[cmd_name] = {
+                'schema': schema,
+                'name': schema.get('name', f'hagent_{cmd_name}'),
+                'description': schema.get('description', ''),
+                'parameters': schema.get('inputSchema', {}).get('properties', {}),
+                'required': schema.get('inputSchema', {}).get('required', []),
+            }
+
+            # For build command, try to get available profiles/APIs
+            if cmd_name == 'build' and hasattr(module, 'mcp_execute'):
+                try:
+                    # Get list of profiles
+                    profiles_result = module.mcp_execute({'list': True})
+                    if profiles_result.get('success'):
+                        capabilities[cmd_name]['available_profiles'] = profiles_result.get('stdout', '')
+                except Exception as e:
+                    print(f'Could not get profiles for {cmd_name}: {e}', file=sys.stderr)
+
+        except Exception as e:
+            print(f'Error getting capabilities for {cmd_name}: {e}', file=sys.stderr)
+
+    return capabilities
+
+
 if __name__ == '__main__':
     # Simple test when run directly
+    import argparse
+
+    parser = argparse.ArgumentParser(description='HAgent MCP Command Discovery')
+    parser.add_argument('--schemas', action='store_true', help='Show detailed schemas for all commands')
+    parser.add_argument('--subprocess', action='store_true', help='Get schemas via subprocess --schema calls')
+    parser.add_argument('--capabilities', action='store_true', help='Show capabilities including available options')
+    args = parser.parse_args()
+
     hagent_root_dir = get_hagent_root_dir()
     print(f'Scanning for MCP commands in: {hagent_root_dir}')
-    commands = discover_mcp_commands()
-    print(f'Found {len(commands)} MCP commands: {list(commands.keys())}')
+
+    if args.schemas:
+        if args.subprocess:
+            schemas = get_command_schemas_subprocess()
+            print(f'Found {len(schemas)} MCP command schemas via subprocess:')
+        else:
+            schemas = get_command_schemas()
+            print(f'Found {len(schemas)} MCP command schemas:')
+
+        for cmd_name, schema in schemas.items():
+            print(f'\n=== {cmd_name} ===')
+            print(f'Name: {schema.get("name", "unnamed")}')
+            print(f'Description: {schema.get("description", "No description")}')
+            properties = schema.get('inputSchema', {}).get('properties', {})
+            if properties:
+                print('Parameters:')
+                for param_name, param_info in properties.items():
+                    print(f'  - {param_name}: {param_info.get("description", param_info.get("type", "unknown"))}')
+
+    elif args.capabilities:
+        capabilities = get_command_capabilities()
+        print(f'Found {len(capabilities)} MCP command capabilities:')
+        for cmd_name, cap in capabilities.items():
+            print(f'\n=== {cmd_name} ===')
+            print(f'Name: {cap.get("name", "unnamed")}')
+            print(f'Description: {cap.get("description", "No description")}')
+            if 'available_profiles' in cap:
+                print('Available Profiles:')
+                print(
+                    cap['available_profiles'][:500] + '...' if len(cap['available_profiles']) > 500 else cap['available_profiles']
+                )
+
+    else:
+        commands = discover_mcp_commands()
+        print(f'Found {len(commands)} MCP commands: {list(commands.keys())}')

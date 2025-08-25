@@ -13,6 +13,8 @@ import logging
 import json
 import datetime
 import subprocess
+import traceback
+import argparse
 from typing import Dict, Any
 from pathlib import Path
 from functools import wraps
@@ -27,16 +29,16 @@ from mcp.server.fastmcp import FastMCP
 # Import command discovery
 from hagent.mcp.command_discovery import discover_mcp_commands
 
+# Import output manager for proper log file placement
+from hagent.inou.output_manager import get_output_path
+
 
 # Transaction Logger
 class TransactionLogger:
     """Logger for MCP transactions that creates command-specific log files"""
 
-    def __init__(self, cache_dir: str = None):
-        """Initialize the transaction logger with the given cache directory"""
-        self.cache_dir = cache_dir or os.environ.get('HAGENT_CACHE_DIR', './cache')
-        self.log_dir = Path(self.cache_dir) / 'mcp'
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self):
+        """Initialize the transaction logger using output manager"""
         self.loggers = {}
 
     def get_logger(self, command_name: str) -> logging.Logger:
@@ -46,7 +48,7 @@ class TransactionLogger:
 
         # Clean command_name for use in filename
         safe_name = command_name.replace('.', '_')
-        log_file = self.log_dir / f'{safe_name}.log'
+        log_file = get_output_path(f'mcp/{safe_name}.log')
 
         # Create a new logger
         logger = logging.getLogger(f'hagent-mcp-{safe_name}')
@@ -56,6 +58,8 @@ class TransactionLogger:
         logger.handlers = []
 
         # Add file handler
+        # Ensure parent directory exists
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
         handler = logging.FileHandler(log_file)
         handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -80,10 +84,11 @@ class TransactionLogger:
 # Setup logging
 def setup_logging():
     """Setup logging for MCP server debugging"""
+    log_file = get_output_path('hagent_mcp_server.log')
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[logging.FileHandler('/tmp/hagent-mcp-server.log'), logging.StreamHandler(sys.stderr)],
+        handlers=[logging.FileHandler(log_file), logging.StreamHandler(sys.stderr)],
     )
     return logging.getLogger('hagent-mcp-server')
 
@@ -92,8 +97,7 @@ def setup_logging():
 logger = setup_logging()
 
 # Create transaction logger
-default_cache_dir = os.environ.get('HAGENT_CACHE_DIR', './cache')
-txn_logger = TransactionLogger(default_cache_dir)
+txn_logger = TransactionLogger()
 
 # Create FastMCP instance with request/response logging
 mcp = FastMCP('HAgentMCPServer')
@@ -171,16 +175,98 @@ def register_mcp_module_impl(module, mcp_instance):
 
         logger.info(f'Registering MCP module as tool: {tool_name}')
 
-        # Create a wrapper function that calls mcp_execute
+        # Create a wrapper function that calls mcp_execute with proper signature
+        # Extract the parameters from the schema to create a proper function signature
+        input_schema = schema.get('inputSchema', {})
+        properties = input_schema.get('properties', {})
+        required = input_schema.get('required', [])
+
         def tool_wrapper(**kwargs):
-            return module.mcp_execute(kwargs)
+            # Handle both old format (kwargs as single string) and new format (direct parameters)
+            if 'kwargs' in kwargs and len(kwargs) == 1:
+                # Old format: single kwargs parameter that might be a JSON string or space-separated args
+                kwargs_value = kwargs['kwargs']
+                if isinstance(kwargs_value, str):
+                    import json
+                    try:
+                        # Try JSON parsing first
+                        params = json.loads(kwargs_value)
+                    except json.JSONDecodeError:
+                        # If not JSON, try parsing as comma-separated key=value format
+                        if '=' in kwargs_value:
+                            params = {}
+                            # Parse key=value,key=value format
+                            pairs = kwargs_value.strip().split(',')
+                            for pair in pairs:
+                                if '=' in pair:
+                                    key, value = pair.split('=', 1)
+                                    params[key.strip()] = value.strip()
+                        else:
+                            # Try parsing as space-separated "name api" format
+                            parts = kwargs_value.strip().split()
+                            if len(parts) >= 2:
+                                params = {'name': parts[0], 'api': parts[1]}
+                                # Handle additional flags like dry_run
+                                if '--dry-run' in parts or 'dry-run' in parts:
+                                    params['dry_run'] = True
+                            elif len(parts) == 1:
+                                # Single argument, could be just name or api
+                                params = {'name': parts[0]}
+                            else:
+                                params = {}
+                else:
+                    params = kwargs_value if isinstance(kwargs_value, dict) else {}
+            else:
+                # New format: direct parameters
+                params = kwargs
+
+            # Handle parameter name mapping: 'profile' -> 'name' for backward compatibility
+            if 'profile' in params and 'name' not in params:
+                params['name'] = params.pop('profile')
+
+            # Call mcp_execute and ensure we return the structured output properly
+            result = module.mcp_execute(params)
+
+            # If result contains stdout/stderr, format it for better MCP client display
+            if isinstance(result, dict):
+                # Always format the output for MCP client, even if stdout/stderr are empty
+                output_parts = []
+
+                # Add execution status first
+                status = "SUCCESS" if result.get('success', False) else "FAILED"
+                exit_code = result.get('exit_code', 'unknown')
+                status_info = f"Execution Status: {status} (exit code: {exit_code})"
+
+                if result.get('stdout'):
+                    output_parts.append(f"STDOUT:\n{result['stdout']}")
+                if result.get('stderr'):
+                    output_parts.append(f"STDERR:\n{result['stderr']}")
+
+                # If we don't have captured output but the command failed, mention it
+                if not result.get('success', True) and not output_parts:
+                    output_parts.append("Note: Command failed but output was not captured. Check console for error details.")
+
+                if output_parts:
+                    combined_output = '\n\n'.join(output_parts)
+                    formatted_response = f"{status_info}\n\n{combined_output}"
+                else:
+                    formatted_response = status_info
+
+                # Always return structured output for better MCP client handling
+                return formatted_response
+
+            return result
 
         # Set function name and docstring
         tool_wrapper.__name__ = tool_name
         tool_wrapper.__doc__ = schema.get('description', f'HAgent MCP tool: {tool_name}')
 
-        # Register with FastMCP
-        mcp_instance.tool(name=tool_name)(tool_wrapper)
+        # Register with FastMCP using the proper schema
+        # We need to use the schema from get_mcp_schema instead of letting FastMCP auto-generate it
+        tool_decorator = mcp_instance.tool(name=tool_name, description=schema.get('description', f'HAgent MCP tool: {tool_name}'))
+
+        # Apply the decorator to register the tool
+        tool_decorator(tool_wrapper)
         return True
     except Exception as e:
         logger.error(f'Error registering MCP module: {e}')
@@ -421,28 +507,7 @@ def hagent_info() -> Dict[str, str]:
     return env_vars
 
 
-@mcp.tool(name='hagent.setup_environment')
-def setup_hagent_environment() -> Dict[str, Any]:
-    """
-    Setup HAgent environment variables with intelligent defaults
-
-    Returns:
-        Dictionary with environment setup results
-    """
-    try:
-        EnvironmentSetup.setup_environment()
-        return {
-            'success': True,
-            'environment': {
-                'HAGENT_ROOT': os.environ.get('HAGENT_ROOT', 'NOT_SET'),
-                'HAGENT_DOCKER': os.environ.get('HAGENT_DOCKER', 'NOT_SET'),
-                'HAGENT_REPO_DIR': os.environ.get('HAGENT_REPO_DIR', 'NOT_SET'),
-                'HAGENT_BUILD_DIR': os.environ.get('HAGENT_BUILD_DIR', 'NOT_SET'),
-                'HAGENT_CACHE_DIR': os.environ.get('HAGENT_CACHE_DIR', 'NOT_SET'),
-            },
-        }
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
+# Removed hagent.setup_environment - redundant with hagent.info
 
 
 # Setup environment when the module is imported
@@ -456,19 +521,18 @@ except Exception as e:
 
 
 # Create a raw_logger for all stdin/stdout regardless of command
-def setup_raw_logger(cache_dir):
+def setup_raw_logger():
     """Setup a logger for raw stdin/stdout traffic"""
-    log_dir = Path(cache_dir) / 'mcp'
-    log_dir.mkdir(parents=True, exist_ok=True)
-
     raw_logger = logging.getLogger('hagent-mcp-raw')
     raw_logger.setLevel(logging.DEBUG)
 
     # Clear any existing handlers
     raw_logger.handlers = []
 
-    # Add file handler
-    raw_log_file = log_dir / 'raw_io.log'
+    # Add file handler using output manager
+    raw_log_file = get_output_path('mcp/raw_mcp_io.log')
+    # Ensure parent directory exists
+    Path(raw_log_file).parent.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(raw_log_file)
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -487,11 +551,10 @@ def setup_raw_logger(cache_dir):
 # Custom implementation of FastMCP's run method with raw logging and JSON-RPC 2.0 support
 def run_with_logging(mcp_instance, transport='stdio'):
     """Run FastMCP with raw input/output logging and JSON-RPC 2.0 support"""
-    cache_dir = os.environ.get('HAGENT_CACHE_DIR', './cache')
-    raw_logger = setup_raw_logger(cache_dir)
+    raw_logger = setup_raw_logger()
 
     raw_logger.info('=== MCP SERVER STARTED ===')
-    raw_logger.info(f'Using cache directory: {cache_dir}')
+    raw_logger.info('Raw I/O logging enabled')
 
     # Prepare available tools (async to sync conversion)
     tools = None
@@ -559,14 +622,19 @@ def run_with_logging(mcp_instance, transport='stdio'):
                 raw_logger.info(f'PROCESSING METHOD: {method} (ID: {id}, JSON-RPC: {jsonrpc})')
 
                 try:
-                    # Handle initialize method for Gemini compatibility
+                    # Handle initialize method - match FastMCP's response format
                     if method == 'initialize':
                         raw_logger.info('Handling initialize request')
-                        # Return server capabilities
+                        # Return server capabilities matching FastMCP's format
                         result = {
-                            'serverInfo': {'name': 'hagent-mcp-server', 'version': '1.0.0'},
-                            'capabilities': {'roots': {'listChanged': True}},
-                            'serverName': 'HAgent MCP Server',
+                            'protocolVersion': '2025-06-18',
+                            'capabilities': {
+                                'experimental': {},
+                                'prompts': {'listChanged': False},
+                                'resources': {'subscribe': False, 'listChanged': False},
+                                'tools': {'listChanged': False},
+                            },
+                            'serverInfo': {'name': 'HAgentMCPServer', 'version': '1.13.0'},
                         }
                         response = create_jsonrpc_response(id, result)
 
@@ -574,8 +642,16 @@ def run_with_logging(mcp_instance, transport='stdio'):
                     elif method == 'tools/list':
                         raw_logger.info('Handling tools/list request')
 
+                        # Convert Tool objects to JSON-serializable dictionaries
+                        tools_json = []
+                        for tool in tools:
+                            tool_dict = {'name': tool.name, 'description': tool.description, 'inputSchema': tool.inputSchema}
+                            if hasattr(tool, 'outputSchema') and tool.outputSchema:
+                                tool_dict['outputSchema'] = tool.outputSchema
+                            tools_json.append(tool_dict)
+
                         # Convert to JSON-RPC 2.0 format
-                        result = {'tools': tools}
+                        result = {'tools': tools_json}
                         response = create_jsonrpc_response(id, result)
                         raw_logger.info(f'TOOLS LIST RESPONSE: {len(tools)} tools')
 
@@ -663,6 +739,17 @@ def run_with_logging(mcp_instance, transport='stdio'):
                             error = create_jsonrpc_error(-32602, f'Unknown root ID: {root_id}')
                             response = create_jsonrpc_response(id, error=error)
 
+                    # Handle MCP notification methods
+                    elif method == 'notifications/initialized':
+                        raw_logger.info('Handling notifications/initialized request')
+                        # This is a notification (no id), so no response needed
+                        response = None
+
+                    elif method == 'ping':
+                        raw_logger.info('Handling ping request')
+                        # Simple ping response
+                        response = create_jsonrpc_response(id, {})
+
                     # Handle JSON-RPC 2.0 specific methods
                     elif method == 'shutdown':
                         raw_logger.info('Handling shutdown request')
@@ -686,8 +773,8 @@ def run_with_logging(mcp_instance, transport='stdio'):
                         error = create_jsonrpc_error(-32601, f'Method not found: {method}')
                         response = create_jsonrpc_response(id, error=error)
 
-                    # Send response if ID is present (per JSON-RPC 2.0 spec)
-                    if id is not None:
+                    # Send response if ID is present and response is not None (per JSON-RPC 2.0 spec)
+                    if id is not None and response is not None:
                         response_json = json.dumps(response)
                         print(response_json, flush=True)
                         raw_logger.info(f'SENT RESPONSE: {response_json[:500]}{"..." if len(response_json) > 500 else ""}')
@@ -715,9 +802,19 @@ def run_with_logging(mcp_instance, transport='stdio'):
 
 
 if __name__ == '__main__':
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='HAgent MCP Server')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode with detailed logging and raw I/O logging')
+    args = parser.parse_args()
+
     # Run this file as an MCP stdio server
     logger.info('Starting HAgent MCP Server with FastMCP')
     print("HAgent MCP Server running with FastMCP. Use 'uv run python hagent-mcp-server.py'", file=sys.stderr)
 
-    # Use our custom run method with logging instead of mcp.run
-    run_with_logging(mcp, transport='stdio')
+    if args.debug:
+        print('Debug mode enabled - using custom logging', file=sys.stderr)
+        # Use our custom run method with logging for debug mode
+        run_with_logging(mcp, transport='stdio')
+    else:
+        # Use FastMCP's built-in run method (same as working trivial time server)
+        mcp.run(transport='stdio')

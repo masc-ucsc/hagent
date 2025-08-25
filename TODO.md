@@ -1,5 +1,13 @@
 -------
 
+Both gemini and claude code can use the mcp add name script, so we should remove the 
+
+hagent_mcp_conf.json
+
+and associated code for it
+
+-------
+
 In equiv_check.py, we do not need to have use_docker. If container_manger is not None, we are in use_docker mode
 
 -------
