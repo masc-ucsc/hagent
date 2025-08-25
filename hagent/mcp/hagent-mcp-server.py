@@ -7,30 +7,30 @@ This is a FastMCP-based server that exposes HAgent tools and utilities.
 
 from __future__ import annotations
 
-import sys
-import os
-import logging
-import json
-import datetime
-import subprocess
-import traceback
 import argparse
-from typing import Dict, Any
-from pathlib import Path
+import datetime
+import json
+import logging
+import os
+import subprocess
+import sys
+import traceback
 from functools import wraps
+from pathlib import Path
+from typing import Dict, Any
 
 # Add the hagent root to Python path for imports
 HAGENT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, HAGENT_ROOT)
 
 # Import FastMCP
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 # Import command discovery
-from hagent.mcp.command_discovery import discover_mcp_commands
+from hagent.mcp.command_discovery import discover_mcp_commands  # noqa: E402
 
 # Import output manager for proper log file placement
-from hagent.inou.output_manager import get_output_path
+from hagent.inou.output_manager import get_output_path  # noqa: E402
 
 
 # Transaction Logger
@@ -176,20 +176,16 @@ def register_mcp_module_impl(module, mcp_instance):
         logger.info(f'Registering MCP module as tool: {tool_name}')
 
         # Create a wrapper function that calls mcp_execute with proper signature
-        # Extract the parameters from the schema to create a proper function signature
-        input_schema = schema.get('inputSchema', {})
-        properties = input_schema.get('properties', {})
-        required = input_schema.get('required', [])
-
         def tool_wrapper(name: str = None, profile: str = None, api: str = None, dry_run: bool = False, **extra_kwargs):
             # Handle both structured parameters and legacy kwargs format
             params = {}
-            
+
             # Check if we got legacy kwargs format
             if 'kwargs' in extra_kwargs:
                 kwargs_value = extra_kwargs['kwargs']
                 if isinstance(kwargs_value, str):
                     import json
+
                     try:
                         # Try JSON parsing first
                         params = json.loads(kwargs_value)
@@ -240,27 +236,30 @@ def register_mcp_module_impl(module, mcp_instance):
             # Call mcp_execute and ensure we return the structured output properly
             result = module.mcp_execute(params)
 
-            # Check if the command failed and raise an appropriate MCP error
+            # Check if the command failed and mark it for error response
             if isinstance(result, dict) and not result.get('success', True):
                 # Format error information for better MCP client display
-                status = "FAILED"
+                status = 'FAILED'
                 exit_code = result.get('exit_code', 'unknown')
                 stderr_content = result.get('stderr', '')
                 stdout_content = result.get('stdout', '')
-                
+
                 # Look for specific error patterns that suggest file issues
                 error_suggestions = []
                 combined_output = stderr_content + stdout_content
-                
+
                 # Clean ANSI escape codes for better pattern matching
                 import re
+
                 ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
                 clean_output = ansi_escape.sub('', combined_output)
-                
+
                 if 'error]' in clean_output.lower() or 'Error:' in clean_output or 'error:' in clean_output.lower():
                     if 'scala' in clean_output.lower():
-                        error_suggestions.append("🔧 SUGGESTION: There appears to be a Scala compilation error. Please check and fix the Scala source files.")
-                    
+                        error_suggestions.append(
+                            '🔧 SUGGESTION: There appears to be a Scala compilation error. Please check and fix the Scala source files.'
+                        )
+
                     # Extract file references - look for .scala files with line numbers
                     file_matches = re.findall(r'(/[^:\s]+\.scala):(\d+):', clean_output)
                     if not file_matches:
@@ -268,29 +267,37 @@ def register_mcp_module_impl(module, mcp_instance):
                         scala_files = re.findall(r'/[^:\s]*\.scala', clean_output)
                         if scala_files:
                             unique_files = list(set(scala_files))
-                            error_suggestions.append(f"📁 FILES TO CHECK: {', '.join(unique_files[:3])}")
+                            error_suggestions.append(f'📁 FILES TO CHECK: {", ".join(unique_files[:3])}')
                     else:
-                        error_suggestions.append(f"📁 FILES TO CHECK: {', '.join([f'{f}:{l}' for f, l in file_matches[:3]])}")
-                    
+                        error_suggestions.append(
+                            f'📁 FILES TO CHECK: {", ".join([f"{f}:{line_num}" for f, line_num in file_matches[:3]])}'
+                        )
+
                     # Extract specific error messages
-                    error_lines = [line.strip() for line in clean_output.split('\n') 
-                                 if ('error]' in line.lower() or 'Error:' in line) and 'not found' in line]
+                    error_lines = [
+                        line.strip()
+                        for line in clean_output.split('\n')
+                        if ('error]' in line.lower() or 'Error:' in line) and 'not found' in line
+                    ]
                     if error_lines:
-                        error_suggestions.append(f"❌ ERROR: {error_lines[0][:100]}...")
-                
-                # Build error message
-                error_parts = [f"Command failed with exit code {exit_code}"]
+                        error_suggestions.append(f'❌ ERROR: {error_lines[0][:100]}...')
+
+                # Build formatted error response
+                error_parts = [f'❌ COMPILATION FAILED (exit code: {exit_code})']
                 if error_suggestions:
                     error_parts.extend(error_suggestions)
-                if stderr_content:
-                    error_parts.append(f"STDERR: {stderr_content[:500]}...")
-                if stdout_content:
-                    error_parts.append(f"STDOUT: {stdout_content[:500]}...")
-                
-                error_message = "\n\n".join(error_parts)
-                
-                # Raise an exception to indicate failure to MCP client
-                raise Exception(error_message)
+
+                # Add a concise summary of the error without full logs
+                if 'not found: value' in clean_output:
+                    error_summary = [line.strip() for line in clean_output.split('\n') if 'not found: value' in line]
+                    if error_summary:
+                        error_parts.append(f'🔍 SPECIFIC ERROR: {error_summary[0][:150]}...')
+
+                # Mark this as an error result that should generate JSON-RPC error in custom handler
+                formatted_error_response = '\n\n'.join(error_parts)
+
+                # Return a special error marker that our custom run_with_logging can detect
+                return {'_mcp_error': True, 'error_message': formatted_error_response}
 
             # If result contains stdout/stderr, format it for successful executions
             if isinstance(result, dict):
@@ -298,18 +305,18 @@ def register_mcp_module_impl(module, mcp_instance):
                 output_parts = []
 
                 # Add execution status first
-                status = "SUCCESS"
+                status = 'SUCCESS'
                 exit_code = result.get('exit_code', 0)
-                status_info = f"Execution Status: {status} (exit code: {exit_code})"
+                status_info = f'Execution Status: {status} (exit code: {exit_code})'
 
                 if result.get('stdout'):
-                    output_parts.append(f"STDOUT:\n{result['stdout']}")
+                    output_parts.append(f'STDOUT:\n{result["stdout"]}')
                 if result.get('stderr'):
-                    output_parts.append(f"STDERR:\n{result['stderr']}")
+                    output_parts.append(f'STDERR:\n{result["stderr"]}')
 
                 if output_parts:
                     combined_output = '\n\n'.join(output_parts)
-                    formatted_response = f"{status_info}\n\n{combined_output}"
+                    formatted_response = f'{status_info}\n\n{combined_output}'
                 else:
                     formatted_response = status_info
 
@@ -323,19 +330,14 @@ def register_mcp_module_impl(module, mcp_instance):
         tool_wrapper.__doc__ = schema.get('description', f'HAgent MCP tool: {tool_name}')
 
         # Register with FastMCP using the proper schema
-        def annotated_tool_wrapper(
-            name: str = None,
-            profile: str = None, 
-            api: str = None,
-            dry_run: bool = False
-        ):
+        def annotated_tool_wrapper(name: str = None, profile: str = None, api: str = None, dry_run: bool = False):
             """Tool wrapper with proper type annotations for FastMCP schema generation"""
             return tool_wrapper(name=name, profile=profile, api=api, dry_run=dry_run)
-        
+
         # Set proper metadata
         annotated_tool_wrapper.__name__ = tool_name
         annotated_tool_wrapper.__doc__ = schema.get('description', f'HAgent MCP tool: {tool_name}')
-        
+
         # Register with FastMCP - it will generate schema from the annotated function
         tool_decorator = mcp_instance.tool(name=tool_name, description=schema.get('description', f'HAgent MCP tool: {tool_name}'))
         tool_decorator(annotated_tool_wrapper)
@@ -750,11 +752,50 @@ def run_with_logging(mcp_instance, transport='stdio'):
                             else:
                                 tool_response = tool_response_coroutine
 
-                            # Check if the tool response indicates failure
+                            # Check if the tool response indicates failure or contains error marker
                             is_success = True
-                            if isinstance(tool_response, str):
+                            error_message = None
+
+                            # Check if the response contains our error marker (might be wrapped by FastMCP)
+                            response_content = None
+
+                            # Handle different response types from FastMCP
+                            if isinstance(tool_response, list) and tool_response:
+                                # Check if first item in list contains our error marker
+                                first_item = tool_response[0]
+                                if hasattr(first_item, 'text') and '"_mcp_error": true' in first_item.text:
+                                    try:
+                                        start_idx = first_item.text.find('{')
+                                        end_idx = first_item.text.rfind('}') + 1
+                                        if start_idx != -1 and end_idx > start_idx:
+                                            json_content = first_item.text[start_idx:end_idx]
+                                            response_content = json.loads(json_content)
+                                    except Exception:
+                                        pass
+                            elif isinstance(tool_response, str) and '"_mcp_error": true' in tool_response:
+                                # Parse the JSON content from the response string
+                                try:
+                                    start_idx = tool_response.find('{')
+                                    end_idx = tool_response.rfind('}') + 1
+                                    if start_idx != -1 and end_idx > start_idx:
+                                        json_content = tool_response[start_idx:end_idx]
+                                        response_content = json.loads(json_content)
+                                except Exception:
+                                    pass
+                            elif isinstance(tool_response, dict) and tool_response.get('_mcp_error'):
+                                response_content = tool_response
+
+                            if response_content and response_content.get('_mcp_error'):
+                                # This is our special error marker
+                                is_success = False
+                                error_message = response_content.get('error_message', 'Tool execution failed')
+                            elif isinstance(tool_response, str):
                                 # Check if the response contains failure indicators
-                                if 'FAILED' in tool_response or 'exit code: 1' in tool_response or 'Execution Status: FAILED' in tool_response:
+                                if (
+                                    'FAILED' in tool_response
+                                    or 'exit code: 1' in tool_response
+                                    or 'Execution Status: FAILED' in tool_response
+                                ):
                                     is_success = False
                             elif isinstance(tool_response, dict):
                                 # Check for explicit success/failure indicators in the response
@@ -775,14 +816,19 @@ def run_with_logging(mcp_instance, transport='stdio'):
                                 # Handle non-dict responses
                                 formatted_result = {'result': str(tool_response) if tool_response is not None else ''}
 
-                            # Report actual success/failure status
+                            # Generate appropriate JSON-RPC response
                             if is_success:
                                 raw_logger.info(f'TOOL RESPONSE SUCCESS: {name}')
                                 response = create_jsonrpc_response(id, formatted_result)
                             else:
-                                raw_logger.warning(f'TOOL RESPONSE FAILURE: {name}')
-                                # For failures, we can still return the result but the log should indicate failure
-                                response = create_jsonrpc_response(id, formatted_result)
+                                raw_logger.error(f'TOOL ERROR: {name} - {error_message or "Tool execution failed"}')
+                                # Create proper JSON-RPC error response
+                                if error_message:
+                                    error_data = {'type': 'text', 'text': error_message}
+                                    error = create_jsonrpc_error(-32603, f'Tool execution error: {name}', error_data)
+                                else:
+                                    error = create_jsonrpc_error(-32603, f'Tool execution error: {name}')
+                                response = create_jsonrpc_response(id, error=error)
                         except Exception as e:
                             raw_logger.error(f'TOOL ERROR: {name} - {str(e)}\n{traceback.format_exc()}')
                             error_data = {'type': 'text', 'text': str(e)}
@@ -868,7 +914,27 @@ def run_with_logging(mcp_instance, transport='stdio'):
                     if id is not None and response is not None:
                         response_json = json.dumps(response)
                         print(response_json, flush=True)
-                        raw_logger.info(f'SENT RESPONSE: {response_json[:500]}{"..." if len(response_json) > 500 else ""}')
+                        # Format response for better readability in logs
+                        try:
+                            parsed_response = json.loads(response_json)
+                            if 'result' in parsed_response and 'result' in parsed_response['result']:
+                                content = parsed_response['result']['result']
+                                if isinstance(content, str) and '\\n' in content:
+                                    # Replace \n with actual newlines for better readability
+                                    readable_content = content.replace('\\n', '\n').replace('\\t', '\t')
+                                    raw_logger.info(
+                                        f'SENT RESPONSE (formatted):\n{readable_content[:800]}{"..." if len(readable_content) > 800 else ""}'
+                                    )
+                                else:
+                                    raw_logger.info(
+                                        f'SENT RESPONSE: {response_json[:500]}{"..." if len(response_json) > 500 else ""}'
+                                    )
+                            else:
+                                raw_logger.info(
+                                    f'SENT RESPONSE: {response_json[:500]}{"..." if len(response_json) > 500 else ""}'
+                                )
+                        except Exception:
+                            raw_logger.info(f'SENT RESPONSE: {response_json[:500]}{"..." if len(response_json) > 500 else ""}')
 
                 except Exception as e:
                     raw_logger.error(f'PROCESSING ERROR: {str(e)}\n{traceback.format_exc()}')
@@ -883,7 +949,7 @@ def run_with_logging(mcp_instance, transport='stdio'):
                     error = create_jsonrpc_error(-32603, f'Critical error: {str(outer_e)}')
                     response = create_jsonrpc_response(None, error=error)
                     print(json.dumps(response), flush=True)
-                except:
+                except Exception:
                     error = create_jsonrpc_error(-32603, 'Unknown critical error')
                     response = create_jsonrpc_response(None, error=error)
                     print(json.dumps(response), flush=True)
