@@ -181,11 +181,13 @@ def register_mcp_module_impl(module, mcp_instance):
         properties = input_schema.get('properties', {})
         required = input_schema.get('required', [])
 
-        def tool_wrapper(**kwargs):
-            # Handle both old format (kwargs as single string) and new format (direct parameters)
-            if 'kwargs' in kwargs and len(kwargs) == 1:
-                # Old format: single kwargs parameter that might be a JSON string or space-separated args
-                kwargs_value = kwargs['kwargs']
+        def tool_wrapper(name: str = None, profile: str = None, api: str = None, dry_run: bool = False, **extra_kwargs):
+            # Handle both structured parameters and legacy kwargs format
+            params = {}
+            
+            # Check if we got legacy kwargs format
+            if 'kwargs' in extra_kwargs:
+                kwargs_value = extra_kwargs['kwargs']
                 if isinstance(kwargs_value, str):
                     import json
                     try:
@@ -202,8 +204,9 @@ def register_mcp_module_impl(module, mcp_instance):
                                     key, value = pair.split('=', 1)
                                     params[key.strip()] = value.strip()
                         else:
-                            # Try parsing as space-separated "name api" format
-                            parts = kwargs_value.strip().split()
+                            # Try parsing as space-separated or dot-separated "name api" format
+                            # Handle both "gcd compile" and "gcd.compile" formats
+                            parts = kwargs_value.replace('.', ' ').strip().split()
                             if len(parts) >= 2:
                                 # First arg is name, second is api
                                 params = {'name': parts[0], 'api': parts[1]}
@@ -218,8 +221,17 @@ def register_mcp_module_impl(module, mcp_instance):
                 else:
                     params = kwargs_value if isinstance(kwargs_value, dict) else {}
             else:
-                # New format: direct parameters
-                params = kwargs
+                # Use structured parameters
+                if name is not None:
+                    params['name'] = name
+                if profile is not None:
+                    params['profile'] = profile
+                if api is not None:
+                    params['api'] = api
+                if dry_run:
+                    params['dry_run'] = dry_run
+                # Add any extra kwargs
+                params.update(extra_kwargs)
 
             # Handle parameter name mapping: 'profile' -> 'name' for backward compatibility
             if 'profile' in params and 'name' not in params:
@@ -311,11 +323,22 @@ def register_mcp_module_impl(module, mcp_instance):
         tool_wrapper.__doc__ = schema.get('description', f'HAgent MCP tool: {tool_name}')
 
         # Register with FastMCP using the proper schema
-        # We need to use the schema from get_mcp_schema instead of letting FastMCP auto-generate it
+        def annotated_tool_wrapper(
+            name: str = None,
+            profile: str = None, 
+            api: str = None,
+            dry_run: bool = False
+        ):
+            """Tool wrapper with proper type annotations for FastMCP schema generation"""
+            return tool_wrapper(name=name, profile=profile, api=api, dry_run=dry_run)
+        
+        # Set proper metadata
+        annotated_tool_wrapper.__name__ = tool_name
+        annotated_tool_wrapper.__doc__ = schema.get('description', f'HAgent MCP tool: {tool_name}')
+        
+        # Register with FastMCP - it will generate schema from the annotated function
         tool_decorator = mcp_instance.tool(name=tool_name, description=schema.get('description', f'HAgent MCP tool: {tool_name}'))
-
-        # Apply the decorator to register the tool
-        tool_decorator(tool_wrapper)
+        tool_decorator(annotated_tool_wrapper)
         return True
     except Exception as e:
         logger.error(f'Error registering MCP module: {e}')

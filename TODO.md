@@ -1,5 +1,11 @@
 -------
 
+The compile/lint should return a bit more structured output
+
+Maybe filter just the error messages, otherwise list files so that gemini can handle it faster, not to start to look for the file.
+
+-------
+
 Both gemini and claude code can use the mcp add name script, so we should remove the 
 
 hagent_mcp_conf.json
