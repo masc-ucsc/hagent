@@ -205,6 +205,7 @@ def register_mcp_module_impl(module, mcp_instance):
                             # Try parsing as space-separated "name api" format
                             parts = kwargs_value.strip().split()
                             if len(parts) >= 2:
+                                # First arg is name, second is api
                                 params = {'name': parts[0], 'api': parts[1]}
                                 # Handle additional flags like dry_run
                                 if '--dry-run' in parts or 'dry-run' in parts:
@@ -227,24 +228,72 @@ def register_mcp_module_impl(module, mcp_instance):
             # Call mcp_execute and ensure we return the structured output properly
             result = module.mcp_execute(params)
 
-            # If result contains stdout/stderr, format it for better MCP client display
+            # Check if the command failed and raise an appropriate MCP error
+            if isinstance(result, dict) and not result.get('success', True):
+                # Format error information for better MCP client display
+                status = "FAILED"
+                exit_code = result.get('exit_code', 'unknown')
+                stderr_content = result.get('stderr', '')
+                stdout_content = result.get('stdout', '')
+                
+                # Look for specific error patterns that suggest file issues
+                error_suggestions = []
+                combined_output = stderr_content + stdout_content
+                
+                # Clean ANSI escape codes for better pattern matching
+                import re
+                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                clean_output = ansi_escape.sub('', combined_output)
+                
+                if 'error]' in clean_output.lower() or 'Error:' in clean_output or 'error:' in clean_output.lower():
+                    if 'scala' in clean_output.lower():
+                        error_suggestions.append("🔧 SUGGESTION: There appears to be a Scala compilation error. Please check and fix the Scala source files.")
+                    
+                    # Extract file references - look for .scala files with line numbers
+                    file_matches = re.findall(r'(/[^:\s]+\.scala):(\d+):', clean_output)
+                    if not file_matches:
+                        # Try alternative pattern: just .scala files mentioned in error context
+                        scala_files = re.findall(r'/[^:\s]*\.scala', clean_output)
+                        if scala_files:
+                            unique_files = list(set(scala_files))
+                            error_suggestions.append(f"📁 FILES TO CHECK: {', '.join(unique_files[:3])}")
+                    else:
+                        error_suggestions.append(f"📁 FILES TO CHECK: {', '.join([f'{f}:{l}' for f, l in file_matches[:3]])}")
+                    
+                    # Extract specific error messages
+                    error_lines = [line.strip() for line in clean_output.split('\n') 
+                                 if ('error]' in line.lower() or 'Error:' in line) and 'not found' in line]
+                    if error_lines:
+                        error_suggestions.append(f"❌ ERROR: {error_lines[0][:100]}...")
+                
+                # Build error message
+                error_parts = [f"Command failed with exit code {exit_code}"]
+                if error_suggestions:
+                    error_parts.extend(error_suggestions)
+                if stderr_content:
+                    error_parts.append(f"STDERR: {stderr_content[:500]}...")
+                if stdout_content:
+                    error_parts.append(f"STDOUT: {stdout_content[:500]}...")
+                
+                error_message = "\n\n".join(error_parts)
+                
+                # Raise an exception to indicate failure to MCP client
+                raise Exception(error_message)
+
+            # If result contains stdout/stderr, format it for successful executions
             if isinstance(result, dict):
                 # Always format the output for MCP client, even if stdout/stderr are empty
                 output_parts = []
 
                 # Add execution status first
-                status = "SUCCESS" if result.get('success', False) else "FAILED"
-                exit_code = result.get('exit_code', 'unknown')
+                status = "SUCCESS"
+                exit_code = result.get('exit_code', 0)
                 status_info = f"Execution Status: {status} (exit code: {exit_code})"
 
                 if result.get('stdout'):
                     output_parts.append(f"STDOUT:\n{result['stdout']}")
                 if result.get('stderr'):
                     output_parts.append(f"STDERR:\n{result['stderr']}")
-
-                # If we don't have captured output but the command failed, mention it
-                if not result.get('success', True) and not output_parts:
-                    output_parts.append("Note: Command failed but output was not captured. Check console for error details.")
 
                 if output_parts:
                     combined_output = '\n\n'.join(output_parts)
@@ -678,6 +727,19 @@ def run_with_logging(mcp_instance, transport='stdio'):
                             else:
                                 tool_response = tool_response_coroutine
 
+                            # Check if the tool response indicates failure
+                            is_success = True
+                            if isinstance(tool_response, str):
+                                # Check if the response contains failure indicators
+                                if 'FAILED' in tool_response or 'exit code: 1' in tool_response or 'Execution Status: FAILED' in tool_response:
+                                    is_success = False
+                            elif isinstance(tool_response, dict):
+                                # Check for explicit success/failure indicators in the response
+                                if 'success' in tool_response and not tool_response['success']:
+                                    is_success = False
+                                elif 'exit_code' in tool_response and tool_response['exit_code'] != 0:
+                                    is_success = False
+
                             # Format response for better Gemini compatibility
                             if isinstance(tool_response, dict):
                                 # If there's a content field, keep it as is for Claude compatibility
@@ -690,8 +752,14 @@ def run_with_logging(mcp_instance, transport='stdio'):
                                 # Handle non-dict responses
                                 formatted_result = {'result': str(tool_response) if tool_response is not None else ''}
 
-                            raw_logger.info(f'TOOL RESPONSE SUCCESS: {name}')
-                            response = create_jsonrpc_response(id, formatted_result)
+                            # Report actual success/failure status
+                            if is_success:
+                                raw_logger.info(f'TOOL RESPONSE SUCCESS: {name}')
+                                response = create_jsonrpc_response(id, formatted_result)
+                            else:
+                                raw_logger.warning(f'TOOL RESPONSE FAILURE: {name}')
+                                # For failures, we can still return the result but the log should indicate failure
+                                response = create_jsonrpc_response(id, formatted_result)
                         except Exception as e:
                             raw_logger.error(f'TOOL ERROR: {name} - {str(e)}\n{traceback.format_exc()}')
                             error_data = {'type': 'text', 'text': str(e)}
