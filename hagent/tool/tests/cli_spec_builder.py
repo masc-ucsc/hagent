@@ -4,7 +4,7 @@
 #  --llm-conf hagent/step/sva_gen/spec_prompt.yaml \
 #  --include <rtl include dir path \
 #  --rtl <rtl path> \
-#  --top load_store_unit<top module> 
+#  --top load_store_unit<top module>
 
 #!/usr/bin/env python3
 import os
@@ -13,7 +13,7 @@ import yaml
 import argparse
 
 #
-#Import from the separate builder module
+# Import from the separate builder module
 from hagent.tool.spec_builder import RtlSpecBuilder, refine_spec_markdown
 
 
@@ -190,4 +190,3 @@ def main():
 if __name__ == '__main__':
     print('[DEBUG] Starting the script.')
     main()
-
