@@ -7,7 +7,6 @@ Provides access to HAgent profile-based build operations.
 """
 
 import sys
-import io
 from pathlib import Path
 from typing import Dict, Any
 
@@ -24,24 +23,105 @@ except ImportError:
 
 
 def get_mcp_schema() -> Dict[str, Any]:
-    """Return MCP tool schema for HAgent build command."""
+    """Return MCP tool schema for HAgent build command with dynamic profile/API information."""
+
+    # Try to get actual available profiles and APIs from the current environment
+    available_profiles = []
+    available_apis = []
+    profiles_description = ""
+
+    try:
+        # Use CLI directly to get profiles in current environment
+        import subprocess
+        import re
+        import os
+
+        # Set up environment for the subprocess call
+        env = os.environ.copy()
+        if 'HAGENT_EXECUTION_MODE' not in env:
+            env['HAGENT_EXECUTION_MODE'] = 'docker'
+
+        # Call the CLI with --list to get current profiles
+        result = subprocess.run(
+            [sys.executable, __file__, '--list'],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode == 0:
+            profiles_output = result.stdout
+            profiles_description = f"\n\nCurrent Available Profiles:\n{profiles_output}"
+
+            # Extract profile names (lines starting with "name: ")
+            profile_matches = re.findall(r'^name: (\w+)', profiles_output, re.MULTILINE)
+            available_profiles = profile_matches
+
+            # Extract API names (lines with "- api_name: description")
+            api_matches = re.findall(r'^\s*-\s*(\w+):', profiles_output, re.MULTILINE)
+            # Remove duplicates and keep unique APIs
+            available_apis = list(set(api_matches))
+
+        else:
+            # Fallback to static list if dynamic discovery fails
+            available_profiles = ['echo', 'gcd', 'singlecyclecpu_nd', 'singlecyclecpu_d', 'pipelined_d', 'pipelined_nd']
+            available_apis = ['compile', 'lint', 'synthesize', 'build_dir', 'repo_dir']
+            profiles_description = f"\n\nNote: Could not get current profiles (stderr: {result.stderr[:200]}). Use --list to see available profiles."
+
+    except Exception as e:
+        # Fallback to static list if any error occurs
+        available_profiles = ['echo', 'gcd', 'singlecyclecpu_nd', 'singlecyclecpu_d', 'pipelined_d', 'pipelined_nd']
+        available_apis = ['compile', 'lint', 'synthesize', 'build_dir', 'repo_dir']
+        profiles_description = f"\n\nNote: Could not get current profiles ({str(e)[:100]}). Use --list to see available profiles."
+
+
+    # Clean up the profiles description - extract just the profiles info without the CLI header
+    clean_description = profiles_description
+    if profiles_description and "Available profiles:" in profiles_description:
+        # Extract everything after "Available profiles:" line
+        lines = profiles_description.split('\n')
+        profile_start_idx = None
+        for i, line in enumerate(lines):
+            if "Available profiles:" in line:
+                profile_start_idx = i + 2  # Skip the "Available profiles:" and "----" lines
+                break
+        if profile_start_idx:
+            clean_description = '\n'.join(lines[profile_start_idx:]).strip()
+
+    # Use clean description or fallback
+    final_description = clean_description if clean_description and not clean_description.startswith("Note:") else "Unified interface for HAGENT_REPO build profiles"
+
     return {
         'name': 'hagent_build',
-        'description': 'Execute HAgent build profiles and APIs (compile, lint, synthesize, etc.)',
+        'description': final_description,
         'inputSchema': {
             'type': 'object',
             'properties': {
-                'config': {'type': 'string', 'description': 'Path to hagent.yaml configuration file'},
-                'list': {'type': 'boolean', 'description': 'List all available profiles', 'default': False},
-                'name': {'type': 'string', 'description': 'Exact profile name (unique, case-insensitive)'},
-                'profile': {'type': 'string', 'description': 'Substring match on profile description/title'},
-                'list_apis': {'type': 'boolean', 'description': 'List APIs for the selected profile', 'default': False},
-                'api': {'type': 'string', 'description': 'API to execute (compile, lint, synthesize, etc.)'},
-                'dry_run': {'type': 'boolean', 'description': 'Show what would be executed without running', 'default': False},
-                'extra_args': {
-                    'type': 'array',
-                    'items': {'type': 'string'},
-                    'description': 'Extra arguments to pass to the command',
+                'name': {
+                    'type': 'string',
+                    'description': 'Profile or target name (exact match, case-insensitive)',
+                    'enum': available_profiles,
+                } if available_profiles else {
+                    'type': 'string',
+                    'description': 'Profile or target name (exact match, case-insensitive)'
+                },
+                'profile': {
+                    'type': 'string',
+                    'description': 'Profile name or regex pattern to match in titles/descriptions',
+                },
+                'api': {
+                    'type': 'string',
+                    'description': 'API or command to execute',
+                    'enum': available_apis,
+                } if available_apis else {
+                    'type': 'string',
+                    'description': 'API or command to execute'
+                },
+                'dry_run': {
+                    'type': 'boolean',
+                    'description': 'Show what would be executed without running',
+                    'default': False
                 },
             },
             'required': [],
@@ -60,59 +140,74 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
         Dictionary with execution results in a structured format
     """
     try:
-        # Capture stdout and stderr to return structured results
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        stdout_buffer = io.StringIO()
-        stderr_buffer = io.StringIO()
+        # Build argument list from simplified MCP parameters
+        args = []
 
+        # Handle both exact name matching and profile regex matching
+        if params.get('name'):
+            args.extend(['--name', params['name']])
+        elif params.get('profile'):
+            # Profile parameter does regex matching on descriptions
+            # First try exact name match, if fails try title_query
+            args.extend(['--name', params['profile']])
+
+        if params.get('api'):
+            args.extend(['--api', params['api']])
+
+        if params.get('dry_run', False):
+            args.append('--dry-run')
+
+        # Run as subprocess to properly capture ALL output including SBT errors
+        import subprocess
+        import os
         try:
-            sys.stdout = stdout_buffer
-            sys.stderr = stderr_buffer
+            cli_args = [sys.executable, __file__] + args
 
-            # Build argument list from MCP parameters
-            args = []
+            process = subprocess.run(
+                cli_args,
+                capture_output=True,
+                text=True,
+                cwd=os.getcwd(),
+                env=os.environ.copy()
+            )
 
-            if params.get('config'):
-                args.extend(['--config', params['config']])
+            exit_code = process.returncode
+            stdout_output = process.stdout
+            stderr_output = process.stderr
 
-            if params.get('list', False):
-                args.append('--list')
+            # If exact name failed and we used profile parameter, try title_query for regex matching
+            if exit_code != 0 and params.get('profile') and 'exact_name or title_query' in stderr_output:
+                # Retry with title_query for profile regex matching
+                retry_args = []
+                if params.get('profile'):
+                    retry_args.extend(['--title-query', params['profile']])
+                if params.get('api'):
+                    retry_args.extend(['--api', params['api']])
+                if params.get('dry_run', False):
+                    retry_args.append('--dry-run')
 
-            if params.get('name'):
-                args.extend(['--name', params['name']])
+                retry_cli_args = [sys.executable, __file__] + retry_args
+                retry_process = subprocess.run(
+                    retry_cli_args,
+                    capture_output=True,
+                    text=True,
+                    cwd=os.getcwd(),
+                    env=os.environ.copy()
+                )
 
-            if params.get('profile'):
-                args.extend(['--profile', params['profile']])
+                # Use retry results if successful, otherwise keep original error
+                if retry_process.returncode == 0:
+                    exit_code = retry_process.returncode
+                    stdout_output = retry_process.stdout
+                    stderr_output = retry_process.stderr
+                else:
+                    # Combine both error messages for clarity
+                    stderr_output += f"\n\nAlso tried regex matching with --title-query:\n{retry_process.stderr}"
 
-            if params.get('list_apis', False):
-                args.append('--list-apis')
-
-            if params.get('api'):
-                args.extend(['--api', params['api']])
-
-            if params.get('dry_run', False):
-                args.append('--dry-run')
-
-            if params.get('extra_args'):
-                args.append('--')
-                args.extend(params['extra_args'])
-
-            # Temporarily replace sys.argv to simulate CLI call
-            original_argv = sys.argv
-            sys.argv = ['hagent-build'] + args
-
-            try:
-                exit_code = cli_main()
-            finally:
-                sys.argv = original_argv
-
-        finally:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-
-        stdout_output = stdout_buffer.getvalue()
-        stderr_output = stderr_buffer.getvalue()
+        except Exception as e:
+            exit_code = 1
+            stdout_output = ""
+            stderr_output = f"Error running command: {str(e)}"
 
         return {
             'success': exit_code == 0,
@@ -128,7 +223,24 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
 
 def main():
     """Standard CLI entry point maintaining backward compatibility."""
-    print('hagent-builder using conf.yaml configuration (delegating to shared implementation)')
+    import sys
+
+    # Check for --schema flag first before delegating to shared implementation
+    if len(sys.argv) > 1 and sys.argv[1] == '--schema':
+        import json
+
+        schema = get_mcp_schema()
+        print(json.dumps(schema, indent=2))
+        return 0
+
+    # If called from MCP without arguments, don't print the extra message
+    # The MCP server will handle parameter parsing via mcp_execute()
+    if len(sys.argv) == 1:
+        # No arguments provided - this is likely an MCP call that will be handled by mcp_execute
+        # Just delegate to cli_main without extra print
+        return cli_main()
+
+    print('Calling hagent.core.tests.cli_hagent_build')
     return cli_main()
 
 
