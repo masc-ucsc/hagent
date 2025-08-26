@@ -593,10 +593,6 @@ class V2chisel_batch(Step):
                             file_path = f'/code/workspace/repo/{file_path}'
                         files_to_backup.add(file_path)
 
-            if not files_to_backup:
-                print('     ⚠️  No Scala files found in diff - skipping master backup')
-                return {'success': True, 'files_backed_up': [], 'backup_id': None}
-
             # Create MASTER backup directory (this will persist for the entire bug processing)
             backup_id = f'master_backup_{int(time.time())}'
             backup_dir = f'/tmp/chisel_master_backup_{backup_id}'
@@ -606,6 +602,9 @@ class V2chisel_batch(Step):
             subprocess.run(mkdir_cmd, check=True)
 
             backed_up_files = []
+
+            if not files_to_backup:
+                print('     ⚠️  No Scala files found in diff - will create backup for original Verilog only')
             for file_path in files_to_backup:
                 # Check if file exists before backing up
                 check_cmd = ['docker', 'exec', docker_container, 'test', '-f', file_path]
@@ -628,9 +627,19 @@ class V2chisel_batch(Step):
             print(f'💾 [MASTER_BACKUP] Created master backup with ID: {backup_id} ({len(backed_up_files)} files)')
             print('     🔒 This backup will be used for ALL restore operations until LEC success')
 
-            # NEW: Generate and backup baseline Verilog from original (unmodified) Chisel code
-            print('⚡ [BASELINE] Generating baseline Verilog from original Chisel for LEC golden design...')
-            baseline_verilog_result = self._generate_baseline_verilog(docker_container, backup_id)
+            # NEW: Backup existing original Verilog files for LEC golden design
+            print('📁 [ORIGINAL_VERILOG] Backing up existing original Verilog files for LEC golden design...')
+            baseline_verilog_result = self._backup_existing_original_verilog(docker_container, backup_id)
+
+            # DEBUG: Show what we got from the backup process
+            print('🔍 [DEBUG] Original Verilog backup result:')
+            print(f'     Success: {baseline_verilog_result.get("success", False)}')
+            print(f'     Files found: {len(baseline_verilog_result.get("files", {}))}')
+            if baseline_verilog_result.get('files'):
+                for orig_path, backup_path in baseline_verilog_result.get('files', {}).items():
+                    print(f'       - {orig_path} -> {backup_path}')
+            if not baseline_verilog_result.get('success', False):
+                print(f'     Error: {baseline_verilog_result.get("error", "Unknown error")}')
 
             return {
                 'success': True,
@@ -719,6 +728,7 @@ class V2chisel_batch(Step):
 
         print(f'🔄 [RESTORE_TO_ORIGINAL] Restoring to pristine state due to: {reason}')
         print(f'     🔒 Using master backup: {master_backup_info["backup_id"]}')
+        print(f'     📁 Files to restore: {len(master_backup_info.get("files_backed_up", []))}')
 
         try:
             import subprocess
@@ -728,6 +738,13 @@ class V2chisel_batch(Step):
                 original_path = file_info['original_path']
                 backup_path = file_info['backup_path']
 
+                # DEBUG: Check if backup file exists
+                check_cmd = ['docker', 'exec', docker_container, 'test', '-f', backup_path]
+                check_result = subprocess.run(check_cmd, capture_output=True)
+                if check_result.returncode != 0:
+                    print(f'     ❌ Backup file does not exist: {backup_path}')
+                    continue
+
                 # Restore the file from MASTER backup (original state)
                 cp_cmd = ['docker', 'exec', docker_container, 'cp', backup_path, original_path]
                 cp_result = subprocess.run(cp_cmd, capture_output=True, text=True)
@@ -735,6 +752,13 @@ class V2chisel_batch(Step):
                 if cp_result.returncode == 0:
                     restored_files.append(original_path)
                     print(f'     ✅ Restored to original: {original_path}')
+
+                    # DEBUG: Verify restoration worked by showing first few lines
+                    verify_cmd = ['docker', 'exec', docker_container, 'head', '-3', original_path]
+                    verify_result = subprocess.run(verify_cmd, capture_output=True, text=True)
+                    if verify_result.returncode == 0:
+                        first_line = verify_result.stdout.split('\n')[0]
+                        print(f'          First line now: {first_line}')
                 else:
                     print(f'     ❌ Failed to restore {original_path}: {cp_result.stderr}')
 
@@ -925,10 +949,8 @@ class V2chisel_batch(Step):
         """Generate Verilog from Chisel code after compilation"""
         print('🔧 [VERILOG_GEN] Generating Verilog from compiled Chisel...')
 
-        # First ensure Main object exists
-        main_check_result = self._ensure_main_object_exists(docker_container, module_name)
-        if not main_check_result['success']:
-            print(f'⚠️  [VERILOG_GEN] Warning: Could not ensure Main object exists: {main_check_result["error"]}')
+        # For DINO project, skip Main object creation as it has its own main objects
+        print('⚠️  [VERILOG_GEN] Skipping MainGen.scala creation for DINO project (uses existing main objects)')
 
         try:
             import subprocess
@@ -1132,6 +1154,67 @@ class V2chisel_batch(Step):
             print(f'❌ [BASELINE] {error_msg}')
             return {'success': False, 'error': error_msg}
 
+    def _backup_existing_original_verilog(self, docker_container: str, backup_id: str) -> dict:
+        """Backup existing original Verilog files from /code/workspace/build/build_pipelined_d/ for LEC golden design"""
+        try:
+            import subprocess
+
+            print('📁 [ORIGINAL_VERILOG] Finding existing original Verilog files...')
+
+            # The corrected path to existing original Verilog files
+            original_verilog_path = '/code/workspace/build/build_pipelined_d'
+
+            # Find all .sv files in the original Verilog directory
+            find_cmd = ['docker', 'exec', docker_container, 'find', original_verilog_path, '-name', '*.sv', '-type', 'f']
+            find_result = subprocess.run(find_cmd, capture_output=True, text=True, timeout=30)
+
+            if find_result.returncode != 0 or not find_result.stdout.strip():
+                print(f'❌ [ORIGINAL_VERILOG] No original Verilog files found in {original_verilog_path}')
+                return {'success': False, 'files': {}, 'error': f'No original Verilog files found in {original_verilog_path}'}
+
+            original_verilog_files = [f.strip() for f in find_result.stdout.strip().split('\n') if f.strip()]
+            print(f'📁 [ORIGINAL_VERILOG] Found {len(original_verilog_files)} original Verilog files:')
+            for vf in original_verilog_files:
+                print(f'     - {vf}')
+
+            # Create backup directory for original Verilog
+            backup_dir = f'/tmp/original_verilog_backup_{backup_id}'
+            mkdir_cmd = ['docker', 'exec', docker_container, 'mkdir', '-p', backup_dir]
+            subprocess.run(mkdir_cmd, check=True)
+
+            # Backup each original Verilog file
+            backed_up_files = {}
+            for verilog_file in original_verilog_files:
+                filename = verilog_file.split('/')[-1]  # Extract filename
+                backup_path = f'{backup_dir}/{filename}'
+
+                # Copy original to backup location
+                cp_cmd = ['docker', 'exec', docker_container, 'cp', verilog_file, backup_path]
+                cp_result = subprocess.run(cp_cmd, capture_output=True)
+
+                if cp_result.returncode == 0:
+                    backed_up_files[verilog_file] = backup_path  # container_path -> backup_path
+                    print(f'     ✅ Backed up original Verilog: {filename}')
+                else:
+                    print(f'     ❌ Failed to backup {filename}')
+
+            if backed_up_files:
+                print(f'✅ [ORIGINAL_VERILOG] Successfully backed up {len(backed_up_files)} original Verilog files')
+                return {
+                    'success': True,
+                    'files': backed_up_files,
+                    'backup_dir': backup_dir,
+                    'original_path': original_verilog_path,
+                }
+            else:
+                print('❌ [ORIGINAL_VERILOG] No original Verilog files were successfully backed up')
+                return {'success': False, 'files': {}, 'error': 'No files were successfully backed up'}
+
+        except Exception as e:
+            error_msg = f'Original Verilog backup failed: {str(e)}'
+            print(f'❌ [ORIGINAL_VERILOG] {error_msg}')
+            return {'success': False, 'files': {}, 'error': error_msg}
+
     def _find_and_backup_verilog_files(self, docker_container: str, backup_id: str) -> dict:
         """Find generated Verilog files and back them up for later use in golden design creation"""
         try:
@@ -1191,6 +1274,15 @@ class V2chisel_batch(Step):
 
             print('🎯 [GOLDEN] Creating golden design from baseline + verilog_diff...')
 
+            # DEBUG: Show what we received in master_backup
+            print('🔍 [DEBUG] Master backup contents:')
+            print(f'     Keys: {list(master_backup.keys())}')
+            print(f'     baseline_verilog_success: {master_backup.get("baseline_verilog_success", False)}')
+            print(f'     original_verilog_files: {len(master_backup.get("original_verilog_files", {}))} files')
+            if master_backup.get('original_verilog_files'):
+                for orig, backup in master_backup.get('original_verilog_files', {}).items():
+                    print(f'       - {orig} -> {backup}')
+
             # Ensure we have baseline Verilog files
             baseline_verilog = master_backup.get('original_verilog_files', {})
             if not baseline_verilog:
@@ -1219,8 +1311,8 @@ class V2chisel_batch(Step):
                 filename = container_path.split('/')[-1]
                 golden_path = f'{golden_dir}/{filename}'
 
-                # Copy from backup to golden directory
-                copy_cmd = ['docker', 'cp', backup_path, f'{docker_container}:{golden_path}']
+                # Copy from backup to golden directory (use docker exec cp for intra-container copy)
+                copy_cmd = ['docker', 'exec', docker_container, 'cp', backup_path, golden_path]
                 copy_result = subprocess.run(copy_cmd, capture_output=True, text=True)
 
                 if copy_result.returncode == 0:
@@ -1243,22 +1335,22 @@ class V2chisel_batch(Step):
                 applier = DockerDiffApplier(docker_container)
 
                 # Apply the unified diff to files in the golden directory
-                diff_result = applier.apply_unified_diff(verilog_diff, base_path=golden_dir)
+                diff_success = applier.apply_diff_to_container(verilog_diff, dry_run=False)
 
-                if diff_result.get('success', False):
+                if diff_success:
                     print('✅ [GOLDEN] Successfully applied verilog_diff to golden design')
                     return {
                         'success': True,
                         'golden_files': copied_files,
                         'diff_applied': True,
                         'golden_directory': golden_dir,
-                        'files_modified': diff_result.get('files_modified', []),
-                        'applier_output': diff_result.get('output', ''),
+                        'files_modified': [],  # DockerDiffApplier doesn't return file list
+                        'applier_output': 'Diff applied successfully',
                     }
                 else:
-                    error_msg = diff_result.get('error', 'Unknown diff application error')
+                    error_msg = 'Diff application failed - check docker_diff_applier output'
                     print(f'❌ [GOLDEN] Failed to apply verilog_diff: {error_msg}')
-                    return {'success': False, 'error': f'Diff application failed: {error_msg}'}
+                    return {'success': False, 'error': error_msg}
 
             except ImportError as e:
                 error_msg = f'Could not import DockerDiffApplier: {str(e)}'
@@ -1271,17 +1363,15 @@ class V2chisel_batch(Step):
             return {'success': False, 'error': error_msg}
 
     def _run_lec(self, docker_container: str) -> dict:
-        """Run Logic Equivalence Check between golden design and gate design"""
+        """Run Logic Equivalence Check between golden design and gate design using cli_equiv_check.py"""
         try:
             import subprocess
+            import os
 
-            print('🔍 [LEC] Running Logic Equivalence Check...')
+            print('🔍 [LEC] Running Logic Equivalence Check with cli_equiv_check.py...')
 
-            # Check if both golden and gate designs exist
+            # Task 1: Collect all golden design files (multiple .sv files)
             golden_dir = '/code/workspace/repo/lec_golden'
-            gate_paths = ['/code/workspace/repo/generated', '/code/workspace/repo', '/code/workspace/build']
-
-            # Find golden design files
             golden_check_cmd = ['docker', 'exec', docker_container, 'find', golden_dir, '-name', '*.sv', '-type', 'f']
             golden_result = subprocess.run(golden_check_cmd, capture_output=True, text=True, timeout=30)
 
@@ -1289,9 +1379,12 @@ class V2chisel_batch(Step):
                 return {'success': False, 'error': 'No golden design files found for LEC'}
 
             golden_files = [f.strip() for f in golden_result.stdout.strip().split('\n') if f.strip()]
-            print(f'📁 [LEC] Found {len(golden_files)} golden design files')
+            print(f'📁 [LEC] Task 1 Complete - Found {len(golden_files)} golden design files:')
+            for gf in golden_files:
+                print(f'     - {gf}')
 
-            # Find gate design files (newly generated Verilog)
+            # Task 2: Collect all gate design files
+            gate_paths = ['/code/workspace/repo/generated', '/code/workspace/repo', '/code/workspace/build']
             gate_files = []
             for gate_path in gate_paths:
                 try:
@@ -1310,45 +1403,159 @@ class V2chisel_batch(Step):
             if not gate_files:
                 return {'success': False, 'error': 'No gate design files found for LEC'}
 
-            print(f'📁 [LEC] Found {len(gate_files)} gate design files')
+            print(f'📁 [LEC] Task 2 Complete - Found {len(gate_files)} gate design files:')
+            for gf in gate_files[:5]:  # Show first 5
+                print(f'     - {gf}')
+            if len(gate_files) > 5:
+                print(f'     ... and {len(gate_files) - 5} more')
 
-            # For now, we'll do a simple comparison to verify both designs exist
-            # In a full implementation, this would use equiv_check.py for actual LEC
-            try:
-                from hagent.tool.equiv_check import Equiv_check
+            # Task 3: Use cli_equiv_check.py approach with multiple -r flags for reference files
+            print('🔧 [LEC] Task 3 - Running cli_equiv_check.py with multiple reference files...')
 
-                Equiv_check()
+            # Copy files from Docker container to host for LEC analysis
+            temp_golden_dir = '/tmp/lec_golden'
+            temp_gate_dir = '/tmp/lec_gate'
 
-                # This is a simplified LEC - in practice, you'd need to match corresponding files
-                # and run proper equivalence checking for each module
-                print('🔧 [LEC] Running equivalence check using Yosys...')
+            # Create temporary directories
+            os.makedirs(temp_golden_dir, exist_ok=True)
+            os.makedirs(temp_gate_dir, exist_ok=True)
 
-                # For demonstration, we'll just verify both designs exist and are accessible
-                lec_success = len(golden_files) > 0 and len(gate_files) > 0
-
-                if lec_success:
-                    print('✅ [LEC] Logic Equivalence Check passed (basic validation)')
-                    return {
-                        'success': True,
-                        'golden_files': golden_files,
-                        'gate_files': gate_files,
-                        'lec_method': 'basic_validation',
-                        'details': 'Both golden and gate designs found and accessible',
-                    }
+            # Copy golden files from container to host
+            copied_golden_files = []
+            for golden_file in golden_files:
+                filename = os.path.basename(golden_file)
+                host_path = os.path.join(temp_golden_dir, filename)
+                copy_cmd = ['docker', 'cp', f'{docker_container}:{golden_file}', host_path]
+                copy_result = subprocess.run(copy_cmd, capture_output=True, text=True)
+                if copy_result.returncode == 0:
+                    copied_golden_files.append(host_path)
+                    print(f'     ✅ Copied golden: {filename}')
                 else:
-                    return {'success': False, 'error': 'LEC validation failed - missing design files'}
+                    print(f'     ❌ Failed to copy golden: {filename}')
 
-            except ImportError:
-                # Fallback: Basic file existence check if equiv_check is not available
-                print('⚠️  [LEC] Equiv_check not available, using basic file validation')
+            # Copy gate files from container to host
+            copied_gate_files = []
+            for gate_file in gate_files[: len(copied_golden_files)]:  # Match number of files
+                filename = os.path.basename(gate_file)
+                host_path = os.path.join(temp_gate_dir, filename)
+                copy_cmd = ['docker', 'cp', f'{docker_container}:{gate_file}', host_path]
+                copy_result = subprocess.run(copy_cmd, capture_output=True, text=True)
+                if copy_result.returncode == 0:
+                    copied_gate_files.append(host_path)
+                    print(f'     ✅ Copied gate: {filename}')
+                else:
+                    print(f'     ❌ Failed to copy gate: {filename}')
+
+            if not copied_golden_files or not copied_gate_files:
+                return {'success': False, 'error': 'Failed to copy files for LEC analysis'}
+
+            # Task 4: Build cli_equiv_check.py command with multiple -r flags
+            cli_equiv_check_path = 'hagent/tool/tests/cli_equiv_check.py'
+
+            # Build command: uv run python + multiple -r flags for golden files, -i for gate files
+            lec_cmd = ['uv', 'run', 'python', cli_equiv_check_path]
+
+            # Add multiple reference files (golden design)
+            for golden_file in copied_golden_files:
+                lec_cmd.extend(['-r', golden_file])
+
+            # Add implementation files (gate design)
+            for gate_file in copied_gate_files:
+                lec_cmd.extend(['-i', gate_file])
+
+            # Detect top module for DINO project - PipelinedDualIssueCPU is the main CPU module
+            top_module = 'PipelinedDualIssueCPU'
+            lec_cmd.extend(['--top', top_module])
+
+            # Add verbose flag
+            lec_cmd.append('--verbose')
+
+            # DEBUG: Check that all files exist before running LEC
+            print('🔍 [LEC] Verifying files exist before LEC command:')
+            all_files_exist = True
+            for golden_file in copied_golden_files:
+                if os.path.exists(golden_file):
+                    print(f'     ✅ Golden exists: {golden_file}')
+                else:
+                    print(f'     ❌ Golden MISSING: {golden_file}')
+                    all_files_exist = False
+            for gate_file in copied_gate_files:
+                if os.path.exists(gate_file):
+                    print(f'     ✅ Gate exists: {gate_file}')
+                else:
+                    print(f'     ❌ Gate MISSING: {gate_file}')
+                    all_files_exist = False
+
+            if not all_files_exist:
+                return {'success': False, 'error': 'Some LEC files are missing - file copying failed'}
+
+            print('🚀 [LEC] Executing LEC command:')
+            print(f'     {" ".join(lec_cmd)}')
+
+            # Execute the LEC check
+            lec_result = subprocess.run(lec_cmd, capture_output=True, text=True, timeout=300)
+
+            print(f'📊 [LEC] LEC Exit Code: {lec_result.returncode}')
+            if lec_result.stdout:
+                print('📋 [LEC] LEC Output:')
+                print(lec_result.stdout)
+            if lec_result.stderr:
+                print('⚠️  [LEC] LEC Errors:')
+                print(lec_result.stderr)
+
+            # Always print both stdout and stderr for debugging
+            print('🐛 [DEBUG] Complete LEC output:')
+            print('--- STDOUT ---')
+            print(lec_result.stdout or '(no stdout)')
+            print('--- STDERR ---')
+            print(lec_result.stderr or '(no stderr)')
+            print('--- END DEBUG ---')
+
+            # Clean up temporary files
+            try:
+                subprocess.run(['rm', '-rf', temp_golden_dir, temp_gate_dir], capture_output=True)
+            except Exception:
+                pass
+
+            # Task 4 Complete - Analyze results
+            if lec_result.returncode == 0:
+                print('✅ [LEC] Task 4 Complete - Logic Equivalence Check PASSED!')
                 return {
                     'success': True,
+                    'lec_passed': True,
                     'golden_files': golden_files,
                     'gate_files': gate_files,
-                    'lec_method': 'file_validation',
-                    'details': 'Both designs exist - full LEC tool not available',
+                    'lec_method': 'cli_equiv_check_multiple_files',
+                    'lec_output': lec_result.stdout,
+                    'command_used': ' '.join(lec_cmd),
+                }
+            elif lec_result.returncode == 1:
+                print('❌ [LEC] Task 4 Complete - Logic Equivalence Check FAILED!')
+                return {
+                    'success': True,
+                    'lec_passed': False,
+                    'golden_files': golden_files,
+                    'gate_files': gate_files,
+                    'lec_method': 'cli_equiv_check_multiple_files',
+                    'lec_output': lec_result.stdout,
+                    'lec_error': lec_result.stderr,
+                    'command_used': ' '.join(lec_cmd),
+                }
+            else:
+                print('⚠️  [LEC] Task 4 Complete - Logic Equivalence Check INCONCLUSIVE!')
+                return {
+                    'success': True,
+                    'lec_passed': None,
+                    'golden_files': golden_files,
+                    'gate_files': gate_files,
+                    'lec_method': 'cli_equiv_check_multiple_files',
+                    'lec_output': lec_result.stdout,
+                    'lec_error': lec_result.stderr,
+                    'command_used': ' '.join(lec_cmd),
                 }
 
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'error': 'LEC timeout (300s exceeded)'}
         except Exception as e:
             error_msg = f'LEC execution failed: {str(e)}'
             print(f'❌ [LEC] {error_msg}')
@@ -1437,7 +1644,23 @@ class V2chisel_batch(Step):
                 print('✅ [COMPILE] Compilation successful using sbt')
                 return {'success': True, 'output': sbt_result.stdout, 'compilation_method': 'sbt'}
             else:
-                print(f'     ⚠️  SBT compilation failed: {sbt_result.stderr[:200]}...')
+                # SBT failed - check if it's a real compilation error vs build system issue
+                sbt_error = sbt_result.stderr + sbt_result.stdout  # Combine both outputs
+                if (
+                    'expected class or object definition' in sbt_error
+                    or 'Compilation failed' in sbt_error
+                    or 'errors found' in sbt_error
+                ):
+                    # This is a real Scala compilation error - return it immediately
+                    print('❌ [COMPILE] Real SBT compilation error detected - returning detailed error')
+                    return {
+                        'success': False,
+                        'error': f'SBT compilation failed:\n{sbt_error}',
+                        'compilation_method': 'sbt_detailed_error',
+                    }
+                else:
+                    # This might be a build system issue - try fallbacks
+                    print(f'     ⚠️  SBT compilation failed: {sbt_result.stderr[:200]}...')
 
             # Method 2: Try mill as fallback
             print('     📝 Running: ./mill root.compile (fallback)')
@@ -1585,10 +1808,27 @@ class V2chisel_batch(Step):
             return {'success': False, 'error': f'LEC error: {str(e)}'}
 
     def _retry_llm_with_error(
-        self, verilog_diff: str, chisel_hints: str, previous_chisel_diff: str, error_message: str, attempt: int
+        self,
+        verilog_diff: str,
+        chisel_hints: str,
+        previous_chisel_diff: str,
+        error_message: str,
+        attempt: int,
+        previous_attempts: list = None,
     ) -> dict:
         """Retry LLM call with error feedback"""
         # print(f'🔄 [LLM] Retrying with error feedback (attempt {attempt})...')
+
+        # Format previous attempts for context
+        if previous_attempts is None:
+            previous_attempts = []
+
+        attempts_context = ''
+        if previous_attempts:
+            attempts_context = 'Previous failed attempts:\n'
+            for i, prev_attempt in enumerate(previous_attempts, 1):
+                attempts_context += f'Attempt {i}: {prev_attempt["diff"]} -> Error: {prev_attempt["error"]}\n'
+            attempts_context += f'\nThis is attempt {attempt}. Please generate a DIFFERENT approach.\n'
 
         # Use the compile_error prompt template for retry
         template_data = {
@@ -1596,6 +1836,7 @@ class V2chisel_batch(Step):
             'chisel_hints': chisel_hints,
             'previous_chisel_diff': previous_chisel_diff,
             'compile_error': error_message,
+            'previous_attempts': attempts_context,
         }
 
         try:
@@ -1886,6 +2127,7 @@ class V2chisel_batch(Step):
         generated_chisel_diff = ''
         max_retries = 3
         current_attempt = 1
+        previous_attempts = []  # Track previous failed attempts for LLM context
 
         if final_hints.strip():
             print('🤖 [LLM] Starting LLM call for Chisel diff generation...')
@@ -2013,6 +2255,9 @@ class V2chisel_batch(Step):
                                 # This might be related to the Chisel diff - retry with LLM
                                 full_error_msg = f'Compilation succeeded but Verilog generation failed: {verilog_error}'
                                 if current_attempt < max_retries:
+                                    # Record this failed attempt
+                                    previous_attempts.append({'diff': generated_chisel_diff, 'error': full_error_msg})
+
                                     print(
                                         f'🔄 RETRY: Attempting retry {current_attempt + 1}/{max_retries} with Verilog generation error'
                                     )
@@ -2022,6 +2267,7 @@ class V2chisel_batch(Step):
                                         previous_chisel_diff=generated_chisel_diff,
                                         error_message=full_error_msg,
                                         attempt=current_attempt + 1,
+                                        previous_attempts=previous_attempts,
                                     )
                                     current_attempt += 1
                                 else:
@@ -2032,10 +2278,19 @@ class V2chisel_batch(Step):
                         compile_error_msg = compile_result.get('error', 'Unknown compilation error')
                         print(f'❌ COMPILATION: Failed - {compile_error_msg}')
 
+                        # DEBUG: Print detailed compilation error
+                        print('🔍 [DEBUG] Full compilation error details:')
+                        print('=' * 60)
+                        print(compile_error_msg)
+                        print('=' * 60)
+
                         # RESTORE: Compilation failed, restore to ORIGINAL state before retry
                         restore_result = self._restore_to_original(docker_container, master_backup_info, 'compilation_failure')
 
                         if current_attempt < max_retries:
+                            # Record this failed attempt
+                            previous_attempts.append({'diff': generated_chisel_diff, 'error': compile_error_msg})
+
                             print(f'🔄 RETRY: Attempting retry {current_attempt + 1}/{max_retries} with compilation error')
                             llm_result = self._retry_llm_with_error(
                                 verilog_diff=unified_diff,
@@ -2043,15 +2298,19 @@ class V2chisel_batch(Step):
                                 previous_chisel_diff=generated_chisel_diff,
                                 error_message=compile_error_msg,
                                 attempt=current_attempt + 1,
+                                previous_attempts=previous_attempts,
                             )
                             current_attempt += 1
                         else:
                             print(f'❌ [FINAL] Maximum retries ({max_retries}) reached')
                             break
                 else:
-                    # Applier failed - no need to restore since diff wasn't applied
+                    # Applier failed - MUST restore since diff might have been partially applied
                     error_msg = applier_result.get('error', 'Unknown error')
                     print(f'❌ APPLIER: Failed - {error_msg}')
+
+                    # RESTORE: Applier failed, restore to ORIGINAL state before retry
+                    restore_result = self._restore_to_original(docker_container, master_backup_info, 'applier_failure')
 
                     # Don't retry LLM for permission/file writing errors
                     if 'Permission denied' in error_msg or 'docker cp' in error_msg or 'chmod' in error_msg:
@@ -2059,6 +2318,9 @@ class V2chisel_batch(Step):
                         break
 
                     if current_attempt < max_retries:
+                        # Record this failed attempt
+                        previous_attempts.append({'diff': generated_chisel_diff, 'error': error_msg})
+
                         print(f'🔄 RETRY: Attempting retry {current_attempt + 1}/{max_retries}')
                         llm_result = self._retry_llm_with_error(
                             verilog_diff=unified_diff,
@@ -2066,6 +2328,7 @@ class V2chisel_batch(Step):
                             previous_chisel_diff=generated_chisel_diff,
                             error_message=error_msg,
                             attempt=current_attempt + 1,
+                            previous_attempts=previous_attempts,
                         )
                         current_attempt += 1
                     else:
