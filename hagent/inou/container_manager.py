@@ -887,11 +887,12 @@ class ContainerManager:
                     wrapped_command = f'source /etc/profile 2>/dev/null || true; {wrapped_command}'
                 shell_command = ['/bin/sh', '-c', wrapped_command]
 
-            # Get the user to run as (if image has a default user)
+            # Set execution parameters
             exec_kwargs = {'workdir': workdir, 'demux': True}
-            image_user = self._get_image_user()
-            if image_user:
-                exec_kwargs['user'] = image_user
+
+            # Important: Don't specify a user - let the container use the user it was switched to
+            # by the entrypoint script (via LOCAL_USER_ID). Specifying a user here would override
+            # the user switching that happened during container startup.
 
             if quiet:
                 # Capture all output
@@ -910,8 +911,7 @@ class ContainerManager:
                     'stdout': True,
                     'stderr': True,
                 }
-                if image_user:
-                    exec_create_kwargs['user'] = image_user
+                # Don't specify user - let container use the user it was switched to
 
                 exec_id = self.client.api.exec_create(**exec_create_kwargs)['Id']
                 stream = self.client.api.exec_start(exec_id, stream=True, demux=True)
