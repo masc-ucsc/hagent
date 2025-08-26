@@ -21,3 +21,4 @@ run
 outputs
 .coverage.*
 .testmondata*
+setup_run

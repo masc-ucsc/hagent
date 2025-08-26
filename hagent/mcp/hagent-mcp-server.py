@@ -329,18 +329,73 @@ def register_mcp_module_impl(module, mcp_instance):
         tool_wrapper.__name__ = tool_name
         tool_wrapper.__doc__ = schema.get('description', f'HAgent MCP tool: {tool_name}')
 
-        # Register with FastMCP using the proper schema
-        def annotated_tool_wrapper(name: str = None, profile: str = None, api: str = None, dry_run: bool = False):
-            """Tool wrapper with proper type annotations for FastMCP schema generation"""
-            return tool_wrapper(name=name, profile=profile, api=api, dry_run=dry_run)
+        # Register with FastMCP using dynamic function signature from custom schema
+        # Create function with dynamic parameters based on the custom schema
+        input_schema = schema.get('inputSchema', {})
+        properties = input_schema.get('properties', {})
 
-        # Set proper metadata
-        annotated_tool_wrapper.__name__ = tool_name
-        annotated_tool_wrapper.__doc__ = schema.get('description', f'HAgent MCP tool: {tool_name}')
+        # Build function signature dynamically from schema properties
+        import inspect
+        from typing import Optional
 
-        # Register with FastMCP - it will generate schema from the annotated function
+        # Create parameter annotations based on schema properties
+        sig_params = []
+        annotations = {}
+
+        for prop_name, prop_info in properties.items():
+            param_type = str  # Default type
+            default_value = prop_info.get('default', None)
+
+            # Handle different JSON Schema types
+            if prop_info.get('type') == 'boolean':
+                param_type = bool
+                if default_value is None:
+                    default_value = False
+            elif prop_info.get('type') == 'integer':
+                param_type = int
+            elif prop_info.get('type') == 'number':
+                param_type = float
+
+            # Make parameter optional if not in required list
+            required_props = input_schema.get('required', [])
+            if prop_name not in required_props:
+                param_type = Optional[param_type]
+                if default_value is None:
+                    default_value = None
+
+            # Create parameter
+            param = inspect.Parameter(prop_name, inspect.Parameter.KEYWORD_ONLY, default=default_value, annotation=param_type)
+            sig_params.append(param)
+            annotations[prop_name] = param_type
+
+        # Create function with dynamic signature
+        def create_dynamic_wrapper():
+            def dynamic_wrapper(**kwargs):
+                return tool_wrapper(**kwargs)
+
+            # Set the signature
+            dynamic_wrapper.__signature__ = inspect.Signature(sig_params)
+            dynamic_wrapper.__annotations__ = annotations
+            dynamic_wrapper.__name__ = tool_name
+            dynamic_wrapper.__doc__ = schema.get('description', f'HAgent MCP tool: {tool_name}')
+
+            return dynamic_wrapper
+
+        annotated_tool_wrapper = create_dynamic_wrapper()
+
+        # Register with FastMCP using the annotated wrapper
         tool_decorator = mcp_instance.tool(name=tool_name, description=schema.get('description', f'HAgent MCP tool: {tool_name}'))
         tool_decorator(annotated_tool_wrapper)
+
+        # Post-process: Override the inputSchema with the original custom schema
+        if tool_name in mcp_instance._tool_manager._tools:
+            tool_obj = mcp_instance._tool_manager._tools[tool_name]
+            # Override the parameters to use the original schema directly
+            custom_input_schema = schema.get('inputSchema', {})
+            if custom_input_schema and hasattr(tool_obj, 'parameters'):
+                # Directly set the parameters to match the custom schema
+                tool_obj.parameters = custom_input_schema
+
         return True
     except Exception as e:
         logger.error(f'Error registering MCP module: {e}')

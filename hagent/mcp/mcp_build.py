@@ -38,8 +38,6 @@ def get_mcp_schema() -> Dict[str, Any]:
 
         # Set up environment for the subprocess call
         env = os.environ.copy()
-        if 'HAGENT_EXECUTION_MODE' not in env:
-            env['HAGENT_EXECUTION_MODE'] = 'docker'
 
         # Call the CLI with --list to get current profiles
         result = subprocess.run([sys.executable, __file__, '--list'], env=env, capture_output=True, text=True, timeout=30)
@@ -58,18 +56,10 @@ def get_mcp_schema() -> Dict[str, Any]:
             available_apis = list(set(api_matches))
 
         else:
-            # Fallback to static list if dynamic discovery fails
-            available_profiles = ['echo', 'gcd', 'singlecyclecpu_nd', 'singlecyclecpu_d', 'pipelined_d', 'pipelined_nd']
-            available_apis = ['compile', 'lint', 'synthesize', 'build_dir', 'repo_dir']
-            profiles_description = (
-                f'\n\nNote: Could not get current profiles (stderr: {result.stderr[:200]}). Use --list to see available profiles.'
-            )
+            profiles_description = f'ERROR: Invalid environment setup. {result.stderr}'
 
     except Exception as e:
-        # Fallback to static list if any error occurs
-        available_profiles = ['echo', 'gcd', 'singlecyclecpu_nd', 'singlecyclecpu_d', 'pipelined_d', 'pipelined_nd']
-        available_apis = ['compile', 'lint', 'synthesize', 'build_dir', 'repo_dir']
-        profiles_description = f'\n\nNote: Could not get current profiles ({str(e)[:100]}). Use --list to see available profiles.'
+        profiles_description = f'ERROR: Invalid environment setup. {str(e)}'
 
     # Clean up the profiles description - extract just the profiles info without the CLI header
     clean_description = profiles_description

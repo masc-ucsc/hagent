@@ -3,6 +3,8 @@
 # Setup script for SimpleChisel MCP server
 # Creates the necessary directory structure and configuration files
 # for running the HAgent MCP server with SimpleChisel
+#
+# Optimization: Uses cached template in .cache/setup_simplechisel_mcp for faster setup
 
 # Set default values
 HAGENT_ROOT=${HAGENT_ROOT:-$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}")")" && pwd)}
@@ -11,8 +13,70 @@ HAGENT_DOCKER=${HAGENT_DOCKER:-"mascucsc/hagent-simplechisel:2025.08"}
 # Use current directory as base directory unless specified
 BASE_DIR=${1:-$(pwd)}
 
-# Create directories
-mkdir -p "${BASE_DIR}/repo" "${BASE_DIR}/build" "${BASE_DIR}/cache" "${BASE_DIR}/cache/mcp"
+# Cache directory for template (shared across all setups)
+CACHE_TEMPLATE_DIR="${HAGENT_ROOT}/.cache/setup_simplechisel_mcp"
+
+# Function to create the initial template
+create_template() {
+  echo "Creating cached template at ${CACHE_TEMPLATE_DIR}..."
+  mkdir -p "${CACHE_TEMPLATE_DIR}"
+  
+  # Create directories in template
+  mkdir -p "${CACHE_TEMPLATE_DIR}/repo" "${CACHE_TEMPLATE_DIR}/build" "${CACHE_TEMPLATE_DIR}/cache" "${CACHE_TEMPLATE_DIR}/cache/mcp" "${CACHE_TEMPLATE_DIR}/logs"
+
+  # Copy sample project if potato directory exists
+  POTATO_DIR="/Users/renau/tmp/potato"
+  if [[ -d "${POTATO_DIR}/repo" ]]; then
+    echo "Copying sample project from ${POTATO_DIR}/repo to template"
+    # Copy the essential files needed for the gcd project
+    cp -r "${POTATO_DIR}/repo/src" "${CACHE_TEMPLATE_DIR}/repo/" 2>/dev/null || true
+    cp "${POTATO_DIR}/repo/hagent.yaml" "${CACHE_TEMPLATE_DIR}/repo/" 2>/dev/null || true
+    cp "${POTATO_DIR}/repo/build.sbt" "${CACHE_TEMPLATE_DIR}/repo/" 2>/dev/null || true
+    cp "${POTATO_DIR}/repo/project" "${CACHE_TEMPLATE_DIR}/repo/" -r 2>/dev/null || true
+    # Note: Not copying .git and target directories to keep it clean
+  else
+    # Create minimal repo structure if no potato directory exists
+    echo "No potato directory found, creating minimal repo structure"
+    cat > "${CACHE_TEMPLATE_DIR}/repo/hagent.yaml" <<EOF
+profiles:
+  echo:
+    title: Just print HAGENT_ environment variables
+    apis:
+      build_dir:
+        description: Echo HAGENT_BUILD_DIR
+        cmd: echo "HAGENT_BUILD_DIR=\${HAGENT_BUILD_DIR}"
+      repo_dir:
+        description: Echo HAGENT_REPO_DIR
+        cmd: echo "HAGENT_REPO_DIR=\${HAGENT_REPO_DIR}"
+EOF
+  fi
+  
+  echo "Template created successfully"
+}
+
+# Check if template exists, create if not
+if [[ ! -d "${CACHE_TEMPLATE_DIR}" ]]; then
+  create_template
+else
+  echo "Using cached template at ${CACHE_TEMPLATE_DIR}"
+fi
+
+# Copy template to target directory (fast operation)
+# Resolve absolute paths to avoid copying to self
+BASE_DIR_ABS=$(cd "${BASE_DIR}" && pwd)
+CACHE_TEMPLATE_DIR_ABS=$(dirname "${CACHE_TEMPLATE_DIR}")
+
+if [[ "${BASE_DIR_ABS}" != "${CACHE_TEMPLATE_DIR_ABS}" ]]; then
+  echo "Copying template to ${BASE_DIR}..."
+  cp -a "${CACHE_TEMPLATE_DIR}/repo" "${BASE_DIR}/" 2>/dev/null || mkdir -p "${BASE_DIR}/repo"
+  cp -a "${CACHE_TEMPLATE_DIR}/build" "${BASE_DIR}/" 2>/dev/null || mkdir -p "${BASE_DIR}/build"
+  cp -a "${CACHE_TEMPLATE_DIR}/cache" "${BASE_DIR}/" 2>/dev/null || mkdir -p "${BASE_DIR}/cache"
+  cp -a "${CACHE_TEMPLATE_DIR}/logs" "${BASE_DIR}/" 2>/dev/null || mkdir -p "${BASE_DIR}/logs"
+  # Ensure mcp directory exists
+  mkdir -p "${BASE_DIR}/cache/mcp"
+else
+  echo "Skipping copy - target directory is same as cache parent directory"
+fi
 
 # Path to the MCP server
 MCP_SERVER_PATH="${HAGENT_ROOT}/hagent/mcp/hagent-mcp-server.py"
@@ -43,27 +107,6 @@ EOF
 # Make the script executable
 chmod +x "${BASE_DIR}/hagent_server.sh"
 
-# Create Claude MCP config file
-cat >"${BASE_DIR}/hagent_mcp_conf.json" <<EOF
-{
-  "mcpServers": {
-    "hagent": {
-      "command": "uv",
-      "args": ["run", "python", "${MCP_SERVER_PATH}"],
-      "env": {
-        "UV_PROJECT": "${HAGENT_ROOT}",
-        "HAGENT_ROOT": "${HAGENT_ROOT}",
-        "HAGENT_DOCKER": "${HAGENT_DOCKER}",
-        "HAGENT_EXECUTION_MODE": "docker",
-        "HAGENT_REPO_DIR": "${BASE_DIR}/repo",
-        "HAGENT_BUILD_DIR": "${BASE_DIR}/build",
-        "HAGENT_CACHE_DIR": "${BASE_DIR}/cache"
-      }
-    }
-  }
-}
-EOF
-
 echo
 echo "Setup complete!"
 echo
@@ -75,19 +118,11 @@ echo "- ${BASE_DIR}/cache/mcp (for MCP transaction logs)"
 echo
 echo "Generated files:"
 echo "- ${BASE_DIR}/hagent_server.sh (executable server launcher)"
-echo "- ${BASE_DIR}/hagent_mcp_conf.json (Claude MCP configuration)"
 echo
 echo "To use with Gemini:"
 echo "  gemini add hagent ${BASE_DIR}/hagent_server.sh"
 echo
-echo "To use with Claude:"
-echo "  claude --mcp-config ${BASE_DIR}/hagent_mcp_conf.json"
-echo
-echo "For permanent Claude setup:"
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  echo "  cp ${BASE_DIR}/hagent_mcp_conf.json ~/Library/Application\\ Support/Claude/claude_desktop_config.json"
-else
-  echo "  cp ${BASE_DIR}/hagent_mcp_conf.json ~/.config/claude/claude_desktop_config.json"
-fi
+echo "To test manually:"
+echo "  ${BASE_DIR}/hagent_server.sh"
 echo
 
