@@ -186,7 +186,10 @@ class PathManager:
         for path in PathManager.possible_config_paths():
             if path and os.path.exists(path):
                 return str(Path(path).resolve())
-        raise FileNotFoundError('No hagent.yaml found in search paths')
+        repo_dir = os.environ.get('HAGENT_REPO_DIR')
+        if repo_dir:
+            raise FileNotFoundError(f'No hagent.yaml found in HAGENT_REPO_DIR set to {repo_dir} paths')
+        raise FileNotFoundError('No hagent.yaml found, try to set HAGENT_REPO_DIR')
 
     @property
     def repo_dir(self) -> Path:

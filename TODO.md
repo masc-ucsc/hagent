@@ -1,5 +1,34 @@
 -------
 
+Input/output schema and parameters field in the fastmcp 
+
+The compile errors/messages could be structured as an output schema.
+
+What are the parameters?
+
+-------
+
+The current @hagent/mcp/hagent-mcp-server.py is a fastmcp server that registers multiple mcp tools like @hagent/mcp/mcp_build.py
+
+The current mcp_build.py schema is not respected and hagent-mcp-server rewrites it in a different way. For example, it provides a 
+very short title instead of a longer description.
+
+When I run:
+```
+export UV_PROJECT="/Users/renau/projs/hagent"
+export HAGENT_ROOT="/Users/renau/projs/hagent"
+export HAGENT_DOCKER="mascucsc/hagent-simplechisel:2025.08"
+export HAGENT_REPO_DIR="/Users/renau/tmp/potato/repo"
+export HAGENT_BUILD_DIR="/Users/renau/tmp/potato/build"
+export HAGENT_CACHE_DIR="/Users/renau/tmp/potato/cache"
+export HAGENT_OUTPUT_DIR=/Users/renau/tmp/potato/log
+export HAGENT_EXECUTION_MODE="docker"
+
+(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}'; echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'; echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}') | uv run python ./hagent/mcp/hagent-mcp-server.py | jq '.result.tools[] | select(.name == "hagent.build")'
+```
+
+----
+
 The compile/lint should return a bit more structured output
 
 Maybe filter just the error messages, otherwise list files so that gemini can handle it faster, not to start to look for the file.
