@@ -344,6 +344,23 @@ class ContainerManager:
         except Exception:
             return {}
 
+    def _wait_for_container_ready(self, timeout: int = 10) -> bool:
+        """Wait for container to be ready for exec commands after start()."""
+        import time
+
+        for attempt in range(timeout * 10):  # 100ms intervals
+            try:
+                self.container.reload()
+                if self.container.status == 'running':
+                    # Try a simple exec to verify it's ready
+                    self.container.exec_run('true')
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.1)
+
+        return False
+
     def _validate_workspace_directory(self) -> bool:
         """Validate that /code/workspace/ directory exists in the container."""
         try:
@@ -643,6 +660,20 @@ class ContainerManager:
 
             container.start()
 
+            # Wait for container to be ready for exec commands
+            # Temporarily store the container to use the existing wait method
+            original_container = self.container
+            self.container = container
+            try:
+                container_ready = self._wait_for_container_ready()
+            finally:
+                self.container = original_container
+
+            if not container_ready:
+                self.set_error('Container failed to start properly')
+                container.remove(force=True)
+                return None
+
             # Validate container workspace structure
             if not self._validate_container_workspace(container):
                 container.remove(force=True)
@@ -803,6 +834,11 @@ class ContainerManager:
                 read_only=False,  # We need write access to mounted volumes
             )
             self.container.start()
+
+            # Wait for container to be ready for exec commands
+            if not self._wait_for_container_ready():
+                self.set_error('Container failed to start properly')
+                return False
 
             # Validate /code/workspace/ directory exists
             if not self._validate_workspace_directory():
