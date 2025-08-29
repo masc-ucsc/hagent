@@ -402,6 +402,8 @@ For docker/colima, you need to have enough memory. In OSX colima, the default is
  docker run --rm busybox cat /proc/meminfo | grep MemTotal
 ```
 
+Sometimes you need to cleanup left over dockers, run ./cleanup.sh
+
 #### Docker Container Management
 
 HAgent uses a modernized container management system that automatically handles Docker setup and execution. Key features include:
