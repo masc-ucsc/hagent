@@ -266,6 +266,15 @@ class Equiv_check:
         # Find matching top modules
         module_pairs = self._find_matching_tops(gold_code, gate_code, desired_top)
 
+        # DEBUG: Show what modules were actually found in each design
+        print('🔍 [DEBUG] Module pairs found for comparison:')
+        for i, (gold_top, gate_top) in enumerate(module_pairs):
+            print(f'     Pair {i + 1}: {gold_top} (golden) ↔ {gate_top} (gate)')
+        if not module_pairs:
+            print('     ❌ No module pairs found!')
+        else:
+            print(f'     Total pairs to check: {len(module_pairs)}')
+
         # 2) Write each design to a temp file
         #
         # Create a subdirectory for working files

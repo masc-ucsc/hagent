@@ -15,6 +15,7 @@ import os
 import sys
 import argparse
 import glob
+import re
 from pathlib import Path
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
@@ -959,10 +960,15 @@ class V2chisel_batch(Step):
             # Prioritize DINO-specific commands first, then fallbacks
             generation_commands = [
                 # DINO-specific SBT commands (HIGHEST PRIORITY - these work for DINO)
-                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.Main"', 'use_login_shell': True},
+                # SingleCycleCPU first to match the desired CPU type
                 {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"', 'use_login_shell': True},
-                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUDebug"', 'use_login_shell': True},
+                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.Main"', 'use_login_shell': True},
+                {
+                    'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.pipelined.PipelinedDualIssueNoDebug"',
+                    'use_login_shell': True,
+                },
                 {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.PipelinedDualIssueNoDebug"', 'use_login_shell': True},
+                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUDebug"', 'use_login_shell': True},
                 # Generic SBT commands (fallback for other projects)
                 {'cmd': 'cd /code/workspace/repo && sbt "runMain Main"', 'use_login_shell': True},
                 {'cmd': f'cd /code/workspace/repo && sbt "runMain {module_name}"', 'use_login_shell': True},
@@ -988,11 +994,22 @@ class V2chisel_batch(Step):
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 min timeout
 
                 if result.returncode == 0:
-                    print('✅ [VERILOG_GEN] Verilog generation successful')
+                    print(f'✅ [VERILOG_GEN] Verilog generation successful with command {i + 1}')
+                    print(f'     Successful command: {gen_cmd_str.split("&&")[-1].strip()}')
+
+                    # Warn if we're not using the expected SingleCycleCPU command
+                    if 'SingleCycleCPUNoDebug' not in gen_cmd_str:
+                        print('⚠️  WARNING: Expected SingleCycleCPUNoDebug but used different command!')
+                        print('           This may generate wrong CPU type for LEC comparison')
                     return {'success': True, 'output': result.stdout, 'command_used': gen_cmd_str, 'tooling_issue': False}
                 else:
                     error_msg = result.stderr
                     print(f'     ❌ Command {i + 1} failed: {error_msg[:200]}...')
+
+                    # Extra debug for SingleCycleCPUNoDebug failures
+                    if 'SingleCycleCPUNoDebug' in gen_cmd_str:
+                        print('     ⚠️  CRITICAL: SingleCycleCPUNoDebug failed! This should generate SingleCycleCPU')
+                        print(f'     Error details: {error_msg[:300]}')
 
                     # Classify the error type - expanded to catch more tooling issues
                     is_tooling_error = any(
@@ -1155,14 +1172,14 @@ class V2chisel_batch(Step):
             return {'success': False, 'error': error_msg}
 
     def _backup_existing_original_verilog(self, docker_container: str, backup_id: str) -> dict:
-        """Backup existing original Verilog files from /code/workspace/build/build_pipelined_d/ for LEC golden design"""
+        """Backup existing original Verilog files from /code/workspace/build/build_singlecyclecpu_nd/ for LEC golden design"""
         try:
             import subprocess
 
             print('📁 [ORIGINAL_VERILOG] Finding existing original Verilog files...')
 
-            # The corrected path to existing original Verilog files
-            original_verilog_path = '/code/workspace/build/build_pipelined_d'
+            # The corrected path to existing original Verilog files - use singlecyclecpu_nd to match SingleCycleCPUNoDebug
+            original_verilog_path = '/code/workspace/build/build_singlecyclecpu_nd'
 
             # Find all .sv files in the original Verilog directory
             find_cmd = ['docker', 'exec', docker_container, 'find', original_verilog_path, '-name', '*.sv', '-type', 'f']
@@ -1332,7 +1349,17 @@ class V2chisel_batch(Step):
             try:
                 from hagent.tool.docker_diff_applier import DockerDiffApplier
 
+                # Create a custom applier that targets the golden directory specifically
                 applier = DockerDiffApplier(docker_container)
+
+                # Override the file search to target golden directory only
+                original_find_method = applier.find_file_in_container
+
+                def golden_find_file(filename, base_path='/code/workspace/repo/lec_golden'):
+                    """Find files only in the golden directory"""
+                    return original_find_method(filename, base_path)
+
+                applier.find_file_in_container = golden_find_file
 
                 # Apply the unified diff to files in the golden directory
                 diff_success = applier.apply_diff_to_container(verilog_diff, dry_run=False)
@@ -1395,10 +1422,56 @@ class V2chisel_batch(Step):
                         found_gate_files = [f.strip() for f in gate_result.stdout.strip().split('\n') if f.strip()]
                         # Filter out golden design files from gate design files
                         filtered_gate_files = [f for f in found_gate_files if not f.startswith(golden_dir)]
-                        gate_files.extend(filtered_gate_files)
+
+                        # CRITICAL: Filter out PipelinedDualIssueCPU files to avoid module redefinition
+                        # Only include SingleCycleCPU-related files and exclude pipelined CPU files
+                        singlecpu_gate_files = []
+                        for f in filtered_gate_files:
+                            filename = os.path.basename(f)
+                            # Exclude PipelinedDualIssue files and pipelined-specific modules
+                            if any(pattern in filename for pattern in ['PipelinedDualIssue', 'DualIssue', 'StageReg', 'GCD']):
+                                continue
+                            # Include SingleCycleCPU and basic modules
+                            if any(
+                                pattern in filename
+                                for pattern in [
+                                    'SingleCycleCPU',
+                                    'Control',
+                                    'ALU',
+                                    'RegisterFile',
+                                    'NextPC',
+                                    'ImmediateGenerator',
+                                ]
+                            ):
+                                singlecpu_gate_files.append(f)
+
+                        gate_files.extend(singlecpu_gate_files)
+
+                        if len(filtered_gate_files) != len(singlecpu_gate_files):
+                            print(
+                                f'     🔧 [FILTER] Filtered out {len(filtered_gate_files) - len(singlecpu_gate_files)} pipelined CPU files to avoid module redefinition'
+                            )
 
                 except Exception:
                     continue
+
+            # CRITICAL: Deduplicate gate files by filename to avoid module redefinition
+            # Same files may exist in multiple directories (build_singlecyclecpu_d, build_singlecyclecpu_nd, etc.)
+            original_count = len(gate_files)
+            seen_filenames = set()
+            deduplicated_gate_files = []
+
+            for gate_file in gate_files:
+                filename = os.path.basename(gate_file)
+                if filename not in seen_filenames:
+                    seen_filenames.add(filename)
+                    deduplicated_gate_files.append(gate_file)
+                else:
+                    print(f'     🗑️  [DEDUP] Skipping duplicate: {gate_file}')
+
+            gate_files = deduplicated_gate_files
+            if original_count != len(gate_files):
+                print(f'     ✅ [DEDUP] Deduplicated from {original_count} to {len(gate_files)} gate files')
 
             if not gate_files:
                 return {'success': False, 'error': 'No gate design files found for LEC'}
@@ -1435,7 +1508,7 @@ class V2chisel_batch(Step):
 
             # Copy gate files from container to host
             copied_gate_files = []
-            for gate_file in gate_files[: len(copied_golden_files)]:  # Match number of files
+            for gate_file in gate_files:  # Copy all gate files
                 filename = os.path.basename(gate_file)
                 host_path = os.path.join(temp_gate_dir, filename)
                 copy_cmd = ['docker', 'cp', f'{docker_container}:{gate_file}', host_path]
@@ -1463,9 +1536,71 @@ class V2chisel_batch(Step):
             for gate_file in copied_gate_files:
                 lec_cmd.extend(['-i', gate_file])
 
-            # Detect top module for DINO project - PipelinedDualIssueCPU is the main CPU module
-            top_module = 'PipelinedDualIssueCPU'
+            # Dynamically detect top module based on what's actually in the designs
+            # Look for CPU files in both golden and gate
+            golden_cpu_files = [f for f in copied_golden_files if 'CPU.sv' in os.path.basename(f)]
+            gate_cpu_files = [f for f in copied_gate_files if 'CPU.sv' in os.path.basename(f)]
+
+            top_module = None
+            if golden_cpu_files and gate_cpu_files:
+                golden_cpu_name = os.path.basename(golden_cpu_files[0]).replace('.sv', '')
+                gate_cpu_name = os.path.basename(gate_cpu_files[0]).replace('.sv', '')
+
+                print(f'🔍 [DEBUG] Found CPU modules: golden={golden_cpu_name}, gate={gate_cpu_name}')
+
+            # DEBUG: Check actual module content in files to see if they match the filenames
+            print(
+                f'📝 [DEBUG] Attempting to check module content. Golden CPU files: {len(golden_cpu_files)}, Gate CPU files: {len(gate_cpu_files)}'
+            )
+            if golden_cpu_files and gate_cpu_files:
+                print('🔎 [DEBUG] Checking actual module content in files...')
+                print(f'     Golden file: {golden_cpu_files[0]}')
+                print(f'     Gate file: {gate_cpu_files[0]}')
+                try:
+                    # Read a small portion of each CPU file to see actual module names
+                    with open(golden_cpu_files[0], 'r') as f:
+                        golden_content = f.read(500)  # First 500 chars
+                        golden_module_match = re.search(r'module\s+(\w+)', golden_content)
+                        if golden_module_match:
+                            actual_golden_module = golden_module_match.group(1)
+                            print(f'     Golden file content has module: {actual_golden_module}')
+                        else:
+                            print('     Golden file: No module declaration found in first 500 chars')
+
+                    with open(gate_cpu_files[0], 'r') as f:
+                        gate_content = f.read(500)  # First 500 chars
+                        gate_module_match = re.search(r'module\s+(\w+)', gate_content)
+                        if gate_module_match:
+                            actual_gate_module = gate_module_match.group(1)
+                            print(f'     Gate file content has module: {actual_gate_module}')
+
+                            # Check if filename matches actual content
+                            if actual_gate_module != gate_cpu_name:
+                                print(
+                                    f'❌ [ERROR] Gate file mismatch: filename suggests {gate_cpu_name} but content has {actual_gate_module}'
+                                )
+                                print('           This explains why LEC detects wrong module type!')
+                        else:
+                            print('     Gate file: No module declaration found in first 500 chars')
+                except Exception as e:
+                    print(f'     ⚠️  Could not read file content: {e}')
+
+                if golden_cpu_name == gate_cpu_name:
+                    top_module = golden_cpu_name
+                    print(f'✅ [GOOD] CPU types match: {top_module}')
+                else:
+                    print(f'❌ [ERROR] CPU type mismatch: golden={golden_cpu_name} vs gate={gate_cpu_name}')
+                    return {
+                        'success': False,
+                        'error': f'CPU type mismatch: golden has {golden_cpu_name} but gate has {gate_cpu_name}',
+                    }
+            else:
+                # Fallback to hardcoded value
+                top_module = 'SingleCycleCPU'
+                print(f'⚠️  [WARNING] Could not detect CPU files, using fallback: {top_module}')
+
             lec_cmd.extend(['--top', top_module])
+            print(f'🎯 [LEC] Using top module: {top_module}')
 
             # Add verbose flag
             lec_cmd.append('--verbose')
@@ -1488,6 +1623,45 @@ class V2chisel_batch(Step):
 
             if not all_files_exist:
                 return {'success': False, 'error': 'Some LEC files are missing - file copying failed'}
+
+            # DEBUG: Show which files are being compared and identify potential duplicates:
+            print('🔍 [DEBUG] Files being compared in LEC:')
+            print(f'     Golden files ({len(copied_golden_files)}):')
+            golden_basenames = set()
+            for gf in copied_golden_files:
+                basename = os.path.basename(gf)
+                print(f'       - {basename}')
+                golden_basenames.add(basename)
+            print(f'     Gate files ({len(copied_gate_files)}):')
+            gate_basenames = set()
+            for gf in copied_gate_files:
+                basename = os.path.basename(gf)
+                print(f'       - {basename}')
+                gate_basenames.add(basename)
+
+            # Check for duplicate filenames (which cause module redefinition)
+            duplicates = golden_basenames.intersection(gate_basenames)
+            if duplicates:
+                print(f'⚠️  [WARNING] Duplicate files detected (will cause module redefinition): {sorted(duplicates)}')
+                print('     This is likely why LEC fails with "Re-definition of module" errors')
+            else:
+                print('✅ [GOOD] No duplicate filenames detected between golden and gate designs')
+
+            # DEBUG: Check what top modules are actually available in each design
+            print('🔍 [DEBUG] Checking actual top modules in designs:')
+
+            # Check a few key files to see what CPU type they contain
+            test_files = [f for f in copied_golden_files if 'CPU.sv' in os.path.basename(f)][:1]
+            if test_files:
+                print(f'     Golden design CPU file: {os.path.basename(test_files[0])}')
+            else:
+                print('     Golden design: No *CPU.sv file found')
+
+            test_files = [f for f in copied_gate_files if 'CPU.sv' in os.path.basename(f)][:1]
+            if test_files:
+                print(f'     Gate design CPU file: {os.path.basename(test_files[0])}')
+            else:
+                print('     Gate design: No *CPU.sv file found')
 
             print('🚀 [LEC] Executing LEC command:')
             print(f'     {" ".join(lec_cmd)}')
@@ -1531,20 +1705,34 @@ class V2chisel_batch(Step):
                 }
             elif lec_result.returncode == 1:
                 print('❌ [LEC] Task 4 Complete - Logic Equivalence Check FAILED!')
-                return {
-                    'success': True,
-                    'lec_passed': False,
-                    'golden_files': golden_files,
-                    'gate_files': gate_files,
-                    'lec_method': 'cli_equiv_check_multiple_files',
-                    'lec_output': lec_result.stdout,
-                    'lec_error': lec_result.stderr,
-                    'command_used': ' '.join(lec_cmd),
-                }
+                # Check if it's a syntax/redefinition error vs actual equivalence failure
+                if 'Re-definition of module' in str(lec_result.stderr):
+                    error_msg = f'Verilog syntax error: {lec_result.stderr}'
+                    print('⚠️  [LEC] Module redefinition detected - this is a setup issue, not equivalence failure')
+                    return {
+                        'success': False,  # This is a critical error that should stop the pipeline
+                        'error': error_msg,
+                        'lec_passed': False,
+                        'lec_method': 'cli_equiv_check_multiple_files',
+                        'command_used': ' '.join(lec_cmd),
+                    }
+                else:
+                    # Actual equivalence failure - pipeline can continue but LEC failed
+                    return {
+                        'success': True,
+                        'lec_passed': False,
+                        'golden_files': golden_files,
+                        'gate_files': gate_files,
+                        'lec_method': 'cli_equiv_check_multiple_files',
+                        'lec_output': lec_result.stdout,
+                        'lec_error': lec_result.stderr,
+                        'command_used': ' '.join(lec_cmd),
+                    }
             else:
                 print('⚠️  [LEC] Task 4 Complete - Logic Equivalence Check INCONCLUSIVE!')
                 return {
-                    'success': True,
+                    'success': False,  # Inconclusive should also be treated as a pipeline failure
+                    'error': f'LEC inconclusive with exit code {lec_result.returncode}: {lec_result.stderr}',
                     'lec_passed': None,
                     'golden_files': golden_files,
                     'gate_files': gate_files,
