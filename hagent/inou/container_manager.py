@@ -361,21 +361,6 @@ class ContainerManager:
 
         return False
 
-    def _validate_workspace_directory(self) -> bool:
-        """Validate that /code/workspace/ directory exists in the container."""
-        try:
-            result = self.container.exec_run('test -d /code/workspace')
-            if result.exit_code != 0:
-                self.set_error(
-                    'Container image does not have /code/workspace/ directory. '
-                    'This is required for the new HAgent container structure.'
-                )
-                return False
-            return True
-        except Exception as e:
-            self.set_error(f'Failed to validate /code/workspace/ directory: {e}')
-            return False
-
     def _setup_container_environment(self) -> Dict[str, str]:
         """Setup HAGENT_* environment variables inside container."""
         env_vars = {
@@ -699,6 +684,9 @@ class ContainerManager:
         """Validate that container has required /code/workspace/ structure."""
         try:
             result = container.exec_run('test -d /code/workspace')
+            print("XXXXX")
+            res = container.exec_run('ls -ald /')
+            print(f"HERE:{res.stdout}")
             if result.exit_code != 0:
                 self.set_error(
                     'Container image does not have /code/workspace/ directory. '
@@ -841,7 +829,7 @@ class ContainerManager:
                 return False
 
             # Validate /code/workspace/ directory exists
-            if not self._validate_workspace_directory():
+            if not self._validate_container_workspace(self.container):
                 return False
 
             # Ensure working directory exists
