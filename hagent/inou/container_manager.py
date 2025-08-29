@@ -348,17 +348,42 @@ class ContainerManager:
         """Wait for container to be ready for exec commands after start()."""
         import time
 
+        last_status = None
+        last_error = None
+        
         for attempt in range(timeout * 10):  # 100ms intervals
             try:
                 self.container.reload()
+                last_status = self.container.status
+                
                 if self.container.status == 'running':
                     # Try a simple exec to verify it's ready
                     self.container.exec_run('true')
                     return True
-            except Exception:
-                pass
+                elif self.container.status in ['exited', 'dead']:
+                    # Container failed to start or crashed
+                    break
+            except Exception as e:
+                last_error = str(e)
             time.sleep(0.1)
 
+        # Provide detailed error information
+        error_parts = [f'Container failed to become ready within {timeout} seconds']
+        if last_status:
+            error_parts.append(f'Final status: {last_status}')
+        if last_error:
+            error_parts.append(f'Last error: {last_error}')
+            
+        # If container exited, get its logs for debugging
+        if last_status in ['exited', 'dead']:
+            try:
+                logs = self.container.logs(tail=50).decode('utf-8', errors='replace')
+                if logs.strip():
+                    error_parts.append(f'Container logs: {logs}')
+            except Exception:
+                pass
+        
+        self.set_error('. '.join(error_parts))
         return False
 
     def _setup_container_environment(self) -> Dict[str, str]:
