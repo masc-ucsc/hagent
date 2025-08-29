@@ -226,6 +226,8 @@ uv run ruff check hagent
 uv run pytest -v
 ```
 
+Or better, run `push_check.sh` before each github push.
+
 If you want to work on this project, reach out Jose Renau. Most steps and pipes have a different
 code owner.
 

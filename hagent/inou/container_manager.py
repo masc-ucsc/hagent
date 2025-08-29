@@ -185,25 +185,39 @@ def _validate_mount_path(host_path: str) -> Tuple[bool, str]:
 
         # Check if we're trying to mount the hagent repo root
         if abs_path == hagent_root:
-            error_msg = f'SAFETY ERROR: Cannot mount hagent repository root directory: {abs_path}'
-            print(f'🚨 {error_msg}')
+            error_msg = (
+                f'\n'
+                f'🚨🚨🚨 CRITICAL SAFETY ERROR 🚨🚨🚨\n'
+                f'Cannot mount hagent repository root directory!\n'
+                f'This would overwrite the hagent source code.\n'
+                f'Path: {abs_path}\n'
+                f'🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨\n'
+            )
+            print(error_msg)
             return False, error_msg
 
-        # Check if we're trying to mount any directory inside the hagent repository
+        # Check if we're trying to mount a top-level directory inside the hagent repository
         if abs_path.startswith(hagent_root + os.sep):
-            # Allow mounting directories inside ./output
-            output_dir = os.path.realpath(os.path.join(hagent_root, 'output'))
-            if abs_path.startswith(output_dir + os.sep) or abs_path == output_dir:
-                print(f'✅ ALLOWING OUTPUT MOUNT: {abs_path}')
-                return True, ''
-
-            # Disallow any other directory inside the hagent repo
             relative_path = os.path.relpath(abs_path, hagent_root)
-            error_msg = (
-                f'SAFETY ERROR: Cannot mount directory inside hagent repository (except ./output): {relative_path} -> {abs_path}'
-            )
-            print(f'🚨 {error_msg}')
-            return (False, error_msg)
+            path_parts = relative_path.split(os.sep)
+            
+            # Only reject if it's a direct child of hagent root (one level under)
+            if len(path_parts) == 1:
+                error_msg = (
+                    f'\n'
+                    f'🚨🚨🚨 CRITICAL SAFETY ERROR 🚨🚨🚨\n'
+                    f'Cannot mount top-level hagent directory!\n'
+                    f'This would overwrite hagent source code.\n'
+                    f'Directory: {relative_path}\n'
+                    f'Full path: {abs_path}\n'
+                    f'🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨\n'
+                )
+                print(error_msg)
+                return False, error_msg
+            
+            # Allow mounting subdirectories (2+ levels deep)
+            print(f'✅ ALLOWING SUBDIRECTORY MOUNT: {relative_path} -> {abs_path}')
+            return True, ''
 
         # Allow mounting directories outside the hagent repo entirely
         print(f'✅ ALLOWING EXTERNAL MOUNT: {abs_path}')
@@ -1323,6 +1337,52 @@ class ContainerManager:
             return result.exit_code == 0
         except Exception as e:
             print(f"Failed to create directory '{dir_path}': {e}", file=sys.stderr)
+            return False
+
+    def create_file(self, container_path: str, content: str, encoding: str = 'utf-8') -> bool:
+        """
+        Create a file in the container with the given content.
+
+        This method handles proper escaping and avoids shell injection issues
+        by using base64 encoding to transfer the content.
+
+        Args:
+            container_path: Absolute path where the file should be created in the container
+            content: Content to write to the file
+            encoding: Text encoding to use for the original content (default: utf-8)
+
+        Returns:
+            True if file was created successfully, False otherwise
+        """
+        if not self.container:
+            self.set_error('Container not set up. Call setup() first.')
+            return False
+
+        try:
+            # Ensure the parent directory exists
+            parent_dir = os.path.dirname(container_path)
+            if not self._ensure_container_directory(parent_dir):
+                self.set_error(f'Failed to create parent directory: {parent_dir}')
+                return False
+
+            # Use base64 encoding to avoid shell escaping issues
+            import base64
+
+            encoded_content = base64.b64encode(content.encode(encoding)).decode('ascii')
+
+            # Create the file using python to decode and write the content
+            cmd = f"python3 -c \"import base64; open('{container_path}', 'wb').write(base64.b64decode('{encoded_content}'))\""
+            result = self.container.exec_run(cmd)
+
+            if result.exit_code != 0:
+                error_msg = result.output.decode('utf-8', errors='replace') if result.output else 'Unknown error'
+                self.set_error(f'Failed to create file {container_path}: {error_msg}')
+                return False
+
+            return True
+
+        except Exception as e:
+            self.set_error(f'Exception while creating file {container_path}: {e}')
             return False
 
     def __enter__(self):

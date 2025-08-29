@@ -1288,56 +1288,56 @@ class V2chisel_batch(Step):
         """Ensure Chisel code is pristine and clean build cache"""
         try:
             import subprocess
-            
+
             print('🔄 [BASELINE] Ensuring Chisel code is pristine and cleaning build cache...')
-            
+
             # Step 1: Restore any modified Chisel files using git checkout
             restore_cmd = [
-                'docker', 'exec', docker_container, 'bash', '-c',
-                'cd /code/workspace/repo && git checkout -- . 2>/dev/null || true'
+                'docker',
+                'exec',
+                docker_container,
+                'bash',
+                '-c',
+                'cd /code/workspace/repo && git checkout -- . 2>/dev/null || true',
             ]
             subprocess.run(restore_cmd, capture_output=True, text=True)
             print('✅ [BASELINE] Chisel code restored to pristine state')
-            
-            # Step 2: Clean SBT build cache 
-            clean_cmd = [
-                'docker', 'exec', docker_container, 'bash', '-l', '-c',
-                'cd /code/workspace/repo && sbt clean'
-            ]
+
+            # Step 2: Clean SBT build cache
+            clean_cmd = ['docker', 'exec', docker_container, 'bash', '-l', '-c', 'cd /code/workspace/repo && sbt clean']
             print('🧹 [BASELINE] Cleaning SBT build cache...')
             clean_result = subprocess.run(clean_cmd, capture_output=True, text=True, timeout=60)
-            
+
             if clean_result.returncode == 0:
                 print('✅ [BASELINE] SBT build cache cleaned')
             else:
                 print(f'⚠️  [BASELINE] SBT clean had issues: {clean_result.stderr}')
-            
+
             # Step 3: Remove target directories and compilation caches
             cleanup_cmd = [
-                'docker', 'exec', docker_container, 'bash', '-c',
-                'cd /code/workspace/repo && rm -rf target/ project/target/ build/ .bloop/ .metals/ || true'
+                'docker',
+                'exec',
+                docker_container,
+                'bash',
+                '-c',
+                'cd /code/workspace/repo && rm -rf target/ project/target/ build/ .bloop/ .metals/ || true',
             ]
             print('🗑️ [BASELINE] Removing target directories and compilation caches...')
             subprocess.run(cleanup_cmd, capture_output=True, text=True)
             print('✅ [BASELINE] Removed compilation artifacts')
-            
+
             # Step 4: Remove any existing golden directory to prevent conflicts
-            rm_golden_cmd = [
-                'docker', 'exec', docker_container, 'rm', '-rf', '/code/workspace/repo/lec_golden'
-            ]
+            rm_golden_cmd = ['docker', 'exec', docker_container, 'rm', '-rf', '/code/workspace/repo/lec_golden']
             subprocess.run(rm_golden_cmd, capture_output=True, text=True)
             print('✅ [BASELINE] Removed any existing golden directory')
-            
+
             # Step 5: Clean all build directories
-            build_cleanup_cmd = [
-                'docker', 'exec', docker_container, 'bash', '-c',
-                'cd /code/workspace && rm -rf build/* || true'
-            ]
+            build_cleanup_cmd = ['docker', 'exec', docker_container, 'bash', '-c', 'cd /code/workspace && rm -rf build/* || true']
             subprocess.run(build_cleanup_cmd, capture_output=True, text=True)
             print('✅ [BASELINE] Cleaned all build directories for fresh generation')
-            
+
             return {'success': True}
-            
+
         except Exception as e:
             error_msg = f'Failed to ensure pristine state: {str(e)}'
             print(f'❌ [BASELINE] {error_msg}')
@@ -1347,59 +1347,71 @@ class V2chisel_batch(Step):
         """Generate fresh baseline Verilog from pristine Chisel code"""
         try:
             import subprocess
-            
+
             print('🏭 [BASELINE] Generating fresh baseline Verilog from pristine Chisel...')
-            
+
             # Generate ONLY SingleCycleCPU to match what the gate design will be
             # Use login shell to ensure sbt is in PATH (same as other sbt commands)
             verilog_cmd = [
-                'docker', 'exec', docker_container, 'bash', '-l', '-c',
-                'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"'
+                'docker',
+                'exec',
+                docker_container,
+                'bash',
+                '-l',
+                '-c',
+                'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"',
             ]
-            
+
             print('🔧 [BASELINE] Running: sbt "runMain dinocpu.SingleCycleCPUNoDebug"')
             verilog_result = subprocess.run(verilog_cmd, capture_output=True, text=True, timeout=300)
-            
+
             if verilog_result.returncode == 0:
                 print('✅ [BASELINE] Fresh baseline Verilog generated successfully')
                 print('     Command used: sbt "runMain dinocpu.SingleCycleCPUNoDebug"')
-                
+
                 # Create target directory and copy generated files from build_singlecyclecpu_d to build_singlecyclecpu_nd
                 # so they're available in the location the backup method expects
-                mkdir_cmd = [
-                    'docker', 'exec', docker_container, 'mkdir', '-p', '/code/workspace/build/build_singlecyclecpu_nd'
-                ]
+                mkdir_cmd = ['docker', 'exec', docker_container, 'mkdir', '-p', '/code/workspace/build/build_singlecyclecpu_nd']
                 subprocess.run(mkdir_cmd, capture_output=True, text=True)
-                
+
                 copy_cmd = [
-                    'docker', 'exec', docker_container, 'bash', '-c',
-                    'cp -r /code/workspace/build/build_singlecyclecpu_d/* /code/workspace/build/build_singlecyclecpu_nd/'
+                    'docker',
+                    'exec',
+                    docker_container,
+                    'bash',
+                    '-c',
+                    'cp -r /code/workspace/build/build_singlecyclecpu_d/* /code/workspace/build/build_singlecyclecpu_nd/',
                 ]
                 copy_result = subprocess.run(copy_cmd, capture_output=True, text=True)
-                
+
                 if copy_result.returncode == 0:
                     print('✅ [BASELINE] Copied baseline files to expected location')
                 else:
                     print(f'⚠️  [BASELINE] Copy had issues: {copy_result.stderr}')
-                
+
                 # DEBUG: Check what opcode is actually in the generated baseline
                 debug_cmd = [
-                    'docker', 'exec', docker_container, 'grep', '-n', '_signals_T_132',
-                    '/code/workspace/build/build_singlecyclecpu_nd/Control.sv'
+                    'docker',
+                    'exec',
+                    docker_container,
+                    'grep',
+                    '-n',
+                    '_signals_T_132',
+                    '/code/workspace/build/build_singlecyclecpu_nd/Control.sv',
                 ]
                 debug_result = subprocess.run(debug_cmd, capture_output=True, text=True)
                 if debug_result.returncode == 0:
                     print(f'🔍 [BASELINE] Baseline contains: {debug_result.stdout.strip()}')
                 else:
                     print(f'🔍 [BASELINE] Could not find _signals_T_132 in baseline: {debug_result.stderr}')
-                
+
                 return {'success': True}
-                
+
             else:
                 error_msg = f'Fresh baseline Verilog generation failed: {verilog_result.stderr}'
                 print(f'❌ [BASELINE] {error_msg}')
                 return {'success': False, 'error': error_msg}
-                
+
         except Exception as e:
             error_msg = f'Fresh baseline generation failed: {str(e)}'
             print(f'❌ [BASELINE] {error_msg}')
@@ -2516,7 +2528,7 @@ class V2chisel_batch(Step):
                                         # LEC had errors or was inconclusive
                                         lec_error = lec_result.get('error', 'LEC failed or was inconclusive')
                                         print(f'❌ LEC: {lec_error}')
-                                    
+
                                     print('   Restoring to original state since LEC did not confirm equivalence')
 
                                     # RESTORE: LEC failed to confirm equivalence, restore to ORIGINAL state
@@ -2682,7 +2694,9 @@ class V2chisel_batch(Step):
         )
 
         if not pipeline_fully_successful and master_backup_info.get('success', False):
-            print('🔄 [FINAL_RESTORE] Pipeline not fully successful OR LEC did not confirm equivalence - restoring to original state')
+            print(
+                '🔄 [FINAL_RESTORE] Pipeline not fully successful OR LEC did not confirm equivalence - restoring to original state'
+            )
             print(f'     Reason: Full pipeline success (including LEC pass) = {pipeline_fully_successful}')
             final_restore_result = self._restore_to_original(
                 docker_container, master_backup_info, 'pipeline_incomplete_or_failed'
@@ -2795,7 +2809,7 @@ class V2chisel_batch(Step):
         if not pristine_result['success']:
             print(f'❌ [BASELINE] Failed to ensure pristine state: {pristine_result.get("error", "Unknown error")}')
             print('⚠️  [BASELINE] Continuing anyway, but results may be inconsistent')
-        
+
         baseline_result = self._generate_fresh_baseline_verilog(docker_container)
         if not baseline_result['success']:
             print(f'❌ [BASELINE] Failed to generate fresh baseline: {baseline_result.get("error", "Unknown error")}')
