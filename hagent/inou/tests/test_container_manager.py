@@ -14,6 +14,17 @@ from hagent.inou.container_manager import ContainerManager
 from hagent.inou.path_manager import PathManager
 
 
+@pytest.fixture(autouse=True)
+def reset_docker_state():
+    """Reset global Docker state before each test."""
+    import hagent.inou.container_manager as cm
+
+    cm._docker_workspace_validated = False
+    yield
+    # Reset again after test
+    cm._docker_workspace_validated = False
+
+
 @pytest.fixture
 def container_manager_with_cleanup():
     """
@@ -235,36 +246,43 @@ class TestContainerManager:
                 assert user2 == 'testuser'
                 mock_client.images.get.assert_called_once()
 
-    def test_validate_container_workspace_success(self):
-        """Test container workspace validation success."""
+    def test_docker_workspace_validation_success(self):
+        """Test Docker workspace validation success using new centralized approach."""
         mock_container = MagicMock()
-        mock_container.exec_run.return_value = MagicMock(exit_code=0)
+        # Mock successful exec_run calls for all workspace directories
+        mock_container.exec_run.side_effect = [
+            MagicMock(exit_code=0),  # /code/workspace
+            MagicMock(exit_code=0),  # /code/workspace/repo
+            MagicMock(exit_code=0),  # /code/workspace/build
+            MagicMock(exit_code=0),  # /code/workspace/cache
+        ]
         mock_container.reload.return_value = None
         mock_container.status = 'running'
+        mock_container.attrs = {'State': {'Status': 'running', 'Health': None}}
 
-        with patch('hagent.inou.container_manager.PathManager'):
-            with patch.object(ContainerManager, '_initialize_docker_client'):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
+        from hagent.inou.container_manager import _validate_docker_workspace
 
-                result = manager._validate_container_workspace(mock_container)
+        with patch.dict('os.environ', {'HAGENT_EXECUTION_MODE': 'docker'}):
+            result = _validate_docker_workspace(mock_container)
+            assert result is True
 
-                assert result is True
-                mock_container.exec_run.assert_called_once_with('test -d /code/workspace')
-
-    def test_validate_container_workspace_failure(self):
-        """Test container workspace validation failure."""
+    def test_docker_workspace_validation_failure(self):
+        """Test Docker workspace validation failure using new centralized approach."""
         mock_container = MagicMock()
-        mock_container.exec_run.return_value = MagicMock(exit_code=1)
+        # Mock failure on second directory check
+        mock_container.exec_run.side_effect = [
+            MagicMock(exit_code=0),  # /code/workspace exists
+            MagicMock(exit_code=1),  # /code/workspace/repo fails
+        ]
         mock_container.reload.return_value = None
         mock_container.status = 'running'
+        mock_container.attrs = {'State': {'Status': 'running', 'Health': None}}
 
-        with patch('hagent.inou.container_manager.PathManager'):
-            with patch.object(ContainerManager, '_initialize_docker_client'):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
+        from hagent.inou.container_manager import _validate_docker_workspace
 
-                result = manager._validate_container_workspace(mock_container)
-                assert result is False, 'Should return False on validation failure'
-                assert 'does not have /code/workspace/ directory' in manager.get_error()
+        with patch.dict('os.environ', {'HAGENT_EXECUTION_MODE': 'docker'}):
+            result = _validate_docker_workspace(mock_container)
+            assert result is False
 
     def test_setup_container_environment(self):
         """Test container environment variable setup."""
@@ -435,53 +453,62 @@ class TestContainerManager:
         """Test setup when image needs to be pulled."""
         local_dirs = setup_local_directory
 
-        # Create a real PathManager with test environment
+        # Keep the environment variables patched for the entire test
         with patch.dict('os.environ', {'HAGENT_EXECUTION_MODE': 'docker', 'HAGENT_CACHE_DIR': str(local_dirs['cache_dir'])}):
             mock_pm = PathManager()
 
-        mock_client = MagicMock()
-        from docker.errors import ImageNotFound
+            mock_client = MagicMock()
+            from docker.errors import ImageNotFound
 
-        mock_client.images.get.side_effect = [
-            ImageNotFound('ImageNotFound'),  # First call fails
-            MagicMock(),  # After pull succeeds
-        ]
-        mock_container = MagicMock()
-        # Mock UID/GID output for permission fixing
-        uid_result = MagicMock(exit_code=0)
-        uid_result.output.decode.return_value = '9001'
-        gid_result = MagicMock(exit_code=0)
-        gid_result.output.decode.return_value = '9001'
+            mock_client.images.get.side_effect = [
+                ImageNotFound('ImageNotFound'),  # First call fails
+                MagicMock(),  # After pull succeeds
+            ]
+            mock_container = MagicMock()
+            # Mock UID/GID output for permission fixing
+            uid_result = MagicMock(exit_code=0)
+            uid_result.output.decode.return_value = '9001'
+            gid_result = MagicMock(exit_code=0)
+            gid_result.output.decode.return_value = '9001'
 
-        mock_container.exec_run.side_effect = [
-            MagicMock(exit_code=0),  # container ready test ('true')
-            MagicMock(exit_code=0),  # workspace validation
-            MagicMock(exit_code=0),  # mkdir workdir
-            uid_result,  # id -u for permission fix
-            gid_result,  # id -g for permission fix
-            MagicMock(exit_code=0),  # test -d /code/workspace/repo
-            MagicMock(exit_code=0),  # chown repo directory
-            MagicMock(exit_code=0),  # test -d /code/workspace/build
-            MagicMock(exit_code=0),  # chown build directory
-            MagicMock(exit_code=0),  # test -d /code/workspace/cache
-            MagicMock(exit_code=0),  # chown cache directory
-            MagicMock(exit_code=1),  # bash test fails
-        ]
-        mock_container.reload.return_value = None
-        mock_container.status = 'running'
-        mock_container.start.return_value = None
-        mock_client.containers.create.return_value = mock_container
+            # Update the mock side effects to match the new simplified architecture
+            # The new architecture has workspace validation built into the setup process
+            mock_container.exec_run.side_effect = [
+                # Docker workspace validation (4 calls)
+                MagicMock(exit_code=0),  # /code/workspace
+                MagicMock(exit_code=0),  # /code/workspace/repo
+                MagicMock(exit_code=0),  # /code/workspace/build
+                MagicMock(exit_code=0),  # /code/workspace/cache
+                # Working directory creation
+                MagicMock(exit_code=0),  # mkdir workdir
+                # Permission fixing
+                uid_result,  # id -u for permission fix
+                gid_result,  # id -g for permission fix
+                MagicMock(exit_code=0),  # test -d /code/workspace/repo
+                MagicMock(exit_code=0),  # chown repo directory
+                MagicMock(exit_code=0),  # test -d /code/workspace/build
+                MagicMock(exit_code=0),  # chown build directory
+                MagicMock(exit_code=0),  # test -d /code/workspace/cache
+                MagicMock(exit_code=0),  # chown cache directory
+                # Bash test
+                MagicMock(exit_code=1),  # bash test fails
+            ]
+            mock_container.reload.return_value = None
+            mock_container.status = 'running'
+            mock_container.attrs = {'State': {'Status': 'running', 'Health': None}}
+            mock_container.start.return_value = None
+            mock_client.containers.create.return_value = mock_container
 
-        with patch.object(ContainerManager, '_initialize_docker_client'):
-            with patch.object(ContainerManager, '_pull_image_with_progress') as mock_pull:
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
-                manager.client = mock_client
+            with patch.object(ContainerManager, '_initialize_docker_client'):
+                with patch.object(ContainerManager, '_pull_image_with_progress') as mock_pull:
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
+                    manager.client = mock_client
 
-                result = manager.setup()
+                    result = manager.setup()
 
-                assert result is True
-                assert manager._has_bash is False  # bash test failed
-                mock_pull.assert_called_once_with('mascucsc/hagent-simplechisel:2025.08')
+                    assert result is True
+                    assert manager._has_bash is False  # bash test failed
+                    mock_pull.assert_called_once_with('mascucsc/hagent-simplechisel:2025.08')
 
     def test_setup_pull_credential_error(self, setup_local_directory):
         """Test setup with credential error during pull."""

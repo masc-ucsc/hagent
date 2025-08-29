@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from .path_manager import PathManager
+from .container_manager import is_docker_mode
 
 
 def get_output_dir() -> str:
@@ -36,7 +37,19 @@ def get_output_dir() -> str:
     try:
         if os.environ.get('HAGENT_EXECUTION_MODE'):
             path_manager = PathManager(validate_env=True)
-            return path_manager.get_log_dir()
+            log_dir = path_manager.get_log_dir()
+
+            # In Docker mode, use local output directory for host-side file operations
+            if is_docker_mode():
+                print(f'🔍 DEBUG: Docker mode - using local output dir instead of container path: {log_dir}')
+                output_dir = Path.cwd() / 'output'
+                output_dir.mkdir(parents=True, exist_ok=True)
+                return str(output_dir.resolve())
+
+            # Native mode - use PathManager directory
+            output_dir = Path(log_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            return str(output_dir.resolve())
     except (SystemExit, Exception):
         # Fall back to legacy behavior if PathManager fails
         pass

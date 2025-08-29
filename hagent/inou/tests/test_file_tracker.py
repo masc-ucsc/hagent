@@ -13,6 +13,35 @@ import pytest
 from hagent.inou.file_tracker import FileTracker
 
 
+@pytest.fixture(autouse=True)
+def reset_docker_state():
+    """Reset global Docker state and environment variables before each test."""
+    import hagent.inou.container_manager as cm
+    import os
+
+    # Store original environment
+    original_env = {}
+    hagent_vars = [k for k in os.environ.keys() if k.startswith('HAGENT_')]
+    for key in hagent_vars:
+        original_env[key] = os.environ[key]
+
+    # Reset global state
+    cm._docker_workspace_validated = False
+
+    yield
+
+    # Restore environment variables
+    current_hagent_vars = [k for k in os.environ.keys() if k.startswith('HAGENT_')]
+    for key in current_hagent_vars:
+        if key not in original_env:
+            del os.environ[key]
+    for key, value in original_env.items():
+        os.environ[key] = value
+
+    # Reset global state again
+    cm._docker_workspace_validated = False
+
+
 class TestFileTrackerInitialization:
     """Test FileTracker initialization and validation."""
 
