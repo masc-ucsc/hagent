@@ -235,32 +235,34 @@ class TestContainerManager:
                 assert user2 == 'testuser'
                 mock_client.images.get.assert_called_once()
 
-    def test_validate_workspace_directory_success(self):
-        """Test workspace directory validation success."""
+    def test_validate_container_workspace_success(self):
+        """Test container workspace validation success."""
         mock_container = MagicMock()
         mock_container.exec_run.return_value = MagicMock(exit_code=0)
+        mock_container.reload.return_value = None
+        mock_container.status = 'running'
 
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
-                manager.container = mock_container
 
-                result = manager._validate_workspace_directory()
+                result = manager._validate_container_workspace(mock_container)
 
                 assert result is True
                 mock_container.exec_run.assert_called_once_with('test -d /code/workspace')
 
-    def test_validate_workspace_directory_failure(self):
-        """Test workspace directory validation failure."""
+    def test_validate_container_workspace_failure(self):
+        """Test container workspace validation failure."""
         mock_container = MagicMock()
         mock_container.exec_run.return_value = MagicMock(exit_code=1)
+        mock_container.reload.return_value = None
+        mock_container.status = 'running'
 
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
-                manager.container = mock_container
 
-                result = manager._validate_workspace_directory()
+                result = manager._validate_container_workspace(mock_container)
                 assert result is False, 'Should return False on validation failure'
                 assert 'does not have /code/workspace/ directory' in manager.get_error()
 
@@ -397,6 +399,7 @@ class TestContainerManager:
         gid_result.output.decode.return_value = '9001'
 
         mock_container.exec_run.side_effect = [
+            MagicMock(exit_code=0),  # container ready test ('true')
             MagicMock(exit_code=0),  # workspace validation
             MagicMock(exit_code=0),  # mkdir workdir
             uid_result,  # id -u for permission fix
@@ -409,6 +412,9 @@ class TestContainerManager:
             MagicMock(exit_code=0),  # chown cache directory
             MagicMock(exit_code=0),  # bash test
         ]
+        mock_container.reload.return_value = None
+        mock_container.status = 'running'
+        mock_container.start.return_value = None
         mock_client.containers.create.return_value = mock_container
 
         with patch.object(ContainerManager, '_initialize_docker_client'):
@@ -448,6 +454,7 @@ class TestContainerManager:
         gid_result.output.decode.return_value = '9001'
 
         mock_container.exec_run.side_effect = [
+            MagicMock(exit_code=0),  # container ready test ('true')
             MagicMock(exit_code=0),  # workspace validation
             MagicMock(exit_code=0),  # mkdir workdir
             uid_result,  # id -u for permission fix
@@ -460,6 +467,9 @@ class TestContainerManager:
             MagicMock(exit_code=0),  # chown cache directory
             MagicMock(exit_code=1),  # bash test fails
         ]
+        mock_container.reload.return_value = None
+        mock_container.status = 'running'
+        mock_container.start.return_value = None
         mock_client.containers.create.return_value = mock_container
 
         with patch.object(ContainerManager, '_initialize_docker_client'):
