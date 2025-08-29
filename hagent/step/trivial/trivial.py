@@ -14,7 +14,7 @@ class Trivial(Step):
     def setup(self):
         super().setup()  # superclass
         if os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
-            self.runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.08')
+            self.runner = Runner(docker_image='mascucsc/hagent-builder:2025.08')
         else:
             self.runner = Runner()
 
@@ -43,6 +43,11 @@ class Trivial(Step):
         data_copy['yosys_path_ret'] = str(ret)
         data_copy['yosys_path_out'] = out
         data_copy['yosys_path_err'] = err
+
+        ret, out, err = self.runner.run(command="ls -al", cwd="/code/workspace/repo")
+        data_copy['ls_ret'] = str(ret)
+        data_copy['ls_out'] = out
+        data_copy['ls_err'] = err
 
         # Simply return the input data without modification
         return data_copy

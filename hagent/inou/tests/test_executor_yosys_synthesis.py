@@ -129,7 +129,7 @@ endmodule
 
     def test_yosys_available(self, yosys_executor):
         """Test that Yosys is available in the container."""
-        executor, _ = yosys_executor
+        executor, container_manager = yosys_executor
 
         # Check if yosys is available
         rc, out, err = executor.run('which yosys')
@@ -143,7 +143,7 @@ endmodule
 
     def test_simple_verilog_synthesis(self, yosys_executor, verilog_files):
         """Test basic Verilog synthesis with Yosys."""
-        executor, _ = yosys_executor
+        executor, container_manager = yosys_executor
 
         # Skip if yosys not available
         rc, _, _ = executor.run('which yosys')
@@ -155,8 +155,10 @@ endmodule
 
         # Create simple Verilog file in container
         verilog_content = verilog_files['inverter.v']
-        rc, out, err = executor.run(f"cat << 'EOF' > inverter.v\n{verilog_content}\nEOF")
-        assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
+        working_dir = container_manager._workdir
+        assert container_manager.create_file(f'{working_dir}/inverter.v', verilog_content), (
+            f'Failed to create Verilog file: {container_manager.get_error()}'
+        )
 
         # Debug: Check if commands are running at all
         rc, out, err = executor.run('echo "Test command working"')
@@ -211,7 +213,7 @@ endmodule
 
     def test_synthesis_with_statistics(self, yosys_executor, verilog_files):
         """Test synthesis with statistics reporting."""
-        executor, _ = yosys_executor
+        executor, container_manager = yosys_executor
 
         # Skip if yosys not available
         rc, _, _ = executor.run('which yosys')
@@ -223,8 +225,10 @@ endmodule
 
         # Create Verilog file
         verilog_content = verilog_files['and_gate.v']
-        rc, out, err = executor.run(f"cat << 'EOF' > and_gate.v\n{verilog_content}\nEOF")
-        assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
+        working_dir = container_manager._workdir
+        assert container_manager.create_file(f'{working_dir}/and_gate.v', verilog_content), (
+            f'Failed to create Verilog file: {container_manager.get_error()}'
+        )
 
         # Synthesis with statistics
         yosys_cmd = 'yosys -p "read_verilog and_gate.v; synth; stat"'
@@ -236,7 +240,7 @@ endmodule
 
     def test_synthesis_to_json(self, yosys_executor, verilog_files):
         """Test synthesis with JSON output format."""
-        executor, _ = yosys_executor
+        executor, container_manager = yosys_executor
 
         # Skip if yosys not available
         rc, _, _ = executor.run('which yosys')
@@ -248,8 +252,10 @@ endmodule
 
         # Create Verilog file
         verilog_content = verilog_files['inverter.v']
-        rc, out, err = executor.run(f"cat << 'EOF' > inverter.v\n{verilog_content}\nEOF")
-        assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
+        working_dir = container_manager._workdir
+        assert container_manager.create_file(f'{working_dir}/inverter.v', verilog_content), (
+            f'Failed to create Verilog file: {container_manager.get_error()}'
+        )
 
         # Synthesis to JSON
         yosys_cmd = 'yosys -p "read_verilog inverter.v; synth; write_json inverter.json"'
@@ -267,7 +273,7 @@ endmodule
 
     def test_synthesis_error_handling(self, yosys_executor):
         """Test error handling for invalid Verilog synthesis."""
-        executor, _ = yosys_executor
+        executor, container_manager = yosys_executor
 
         # Skip if yosys not available
         rc, _, _ = executor.run('which yosys')
@@ -283,8 +289,10 @@ module broken_module(
   invalid syntax here
   missing endmodule
 """
-        rc, out, err = executor.run(f"cat << 'EOF' > broken.v\n{invalid_verilog}\nEOF")
-        assert rc == 0, f'Failed to create invalid Verilog file - RC: {rc}, ERR: {err}'
+        working_dir = container_manager._workdir
+        assert container_manager.create_file(f'{working_dir}/broken.v', invalid_verilog), (
+            f'Failed to create invalid Verilog file: {container_manager.get_error()}'
+        )
 
         # Try to synthesize invalid file
         yosys_cmd = 'yosys -p "read_verilog broken.v; synth"'
@@ -299,7 +307,7 @@ module broken_module(
 
     def test_multiple_file_synthesis(self, yosys_executor, verilog_files):
         """Test synthesis with multiple Verilog files."""
-        executor, _ = yosys_executor
+        executor, container_manager = yosys_executor
 
         # Skip if yosys not available
         rc, _, _ = executor.run('which yosys')
@@ -310,9 +318,11 @@ module broken_module(
         executor.run('rm -f *.v *.json')
 
         # Create multiple Verilog files
+        working_dir = container_manager._workdir
         for filename, content in verilog_files.items():
-            rc, out, err = executor.run(f"cat << 'EOF' > {filename}\n{content}\nEOF")
-            assert rc == 0, f'Failed to create {filename} - RC: {rc}, ERR: {err}'
+            assert container_manager.create_file(f'{working_dir}/{filename}', content), (
+                f'Failed to create {filename}: {container_manager.get_error()}'
+            )
 
         # Synthesis with multiple files
         yosys_cmd = 'yosys -p "read_verilog *.v; synth; write_verilog combined_synth.v"'
@@ -329,7 +339,7 @@ module broken_module(
 
     def test_synthesis_with_technology_mapping(self, yosys_executor, verilog_files):
         """Test synthesis with technology mapping."""
-        executor, _ = yosys_executor
+        executor, container_manager = yosys_executor
 
         # Skip if yosys not available
         rc, _, _ = executor.run('which yosys')
@@ -341,8 +351,10 @@ module broken_module(
 
         # Create Verilog file
         verilog_content = verilog_files['counter.v']
-        rc, out, err = executor.run(f"cat << 'EOF' > counter.v\n{verilog_content}\nEOF")
-        assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
+        working_dir = container_manager._workdir
+        assert container_manager.create_file(f'{working_dir}/counter.v', verilog_content), (
+            f'Failed to create Verilog file: {container_manager.get_error()}'
+        )
 
         # Synthesis with technology mapping (using basic cell library)
         yosys_cmd = 'yosys -p "read_verilog counter.v; synth; dfflibmap -liberty /dev/null; abc; write_verilog counter_mapped.v"'
@@ -357,7 +369,7 @@ module broken_module(
 
     def test_yosys_script_execution(self, yosys_executor, verilog_files):
         """Test execution of Yosys scripts."""
-        executor, _ = yosys_executor
+        executor, container_manager = yosys_executor
 
         # Skip if yosys not available
         rc, _, _ = executor.run('which yosys')
@@ -369,8 +381,10 @@ module broken_module(
 
         # Create Verilog file
         verilog_content = verilog_files['and_gate.v']
-        rc, out, err = executor.run(f"cat << 'EOF' > and_gate.v\n{verilog_content}\nEOF")
-        assert rc == 0, f'Failed to create Verilog file - RC: {rc}, ERR: {err}'
+        working_dir = container_manager._workdir
+        assert container_manager.create_file(f'{working_dir}/and_gate.v', verilog_content), (
+            f'Failed to create Verilog file: {container_manager.get_error()}'
+        )
 
         # Create Yosys script
         yosys_script = """
@@ -379,8 +393,10 @@ synth
 stat
 write_verilog and_gate_script.v
 """
-        rc, out, err = executor.run(f"cat << 'EOF' > synth.ys\n{yosys_script}\nEOF")
-        assert rc == 0, f'Failed to create Yosys script - RC: {rc}, ERR: {err}'
+        working_dir = container_manager._workdir
+        assert container_manager.create_file(f'{working_dir}/synth.ys', yosys_script), (
+            f'Failed to create Yosys script: {container_manager.get_error()}'
+        )
 
         # Execute script
         rc, out, err = executor.run('yosys -s synth.ys')

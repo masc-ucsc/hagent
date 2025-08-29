@@ -54,6 +54,10 @@ class Equiv_check:
 
         Returns True if Yosys is available (locally or via Docker), False otherwise.
         """
+        # Check if HAGENT_EXECUTION_MODE is set to docker - if so, skip local yosys and use Docker
+        if os.environ.get('HAGENT_EXECUTION_MODE', '').lower() == 'docker' and yosys_path is None:
+            return self.setup_docker_fallback()
+
         command = [yosys_path, '-V'] if yosys_path else ['yosys', '-V']
 
         try:
@@ -237,12 +241,9 @@ class Equiv_check:
         ]
 
         for filename, content in files_to_create:
-            # Use heredoc to write file content in Docker container
-            escaped_content = content.replace("'", "'\"'\"'")  # Escape single quotes for heredoc
-            cmd = f"mkdir -p {container_work_dir} && cat > {filename} << 'EOF'\n{escaped_content}\nEOF"
-            rc, out, err = self.container_manager.run(cmd)
-            if rc != 0:
-                print(f'Warning: Failed to create {filename} in Docker: {err}', file=sys.stderr)
+            # Use the new create_file API to avoid escaping issues
+            if not self.container_manager.create_file(filename, content):
+                print(f'Warning: Failed to create {filename} in Docker: {self.container_manager.get_error()}', file=sys.stderr)
 
     def check_equivalence(self, gold_code: str, gate_code: str, desired_top: str = '') -> Optional[bool]:
         """
@@ -631,15 +632,9 @@ class Equiv_check:
 
             container_filename = f'{container_work_dir}/{label}.v'
 
-            # Escape single quotes in verilog_code for heredoc
-            escaped_verilog = verilog_code.replace("'", "'\"'\"'")
-
-            # Create the file in the container
-            rc, _, err = self.container_manager.run(
-                f"mkdir -p {container_work_dir} && cat > {container_filename} << 'EOF'\n{escaped_verilog}\nEOF"
-            )
-            if rc != 0:
-                raise RuntimeError(f'Failed to create {label}.v in container: {err}')
+            # Use the new create_file API to avoid shell escaping issues
+            if not self.container_manager.create_file(container_filename, verilog_code):
+                raise RuntimeError(f'Failed to create {label}.v in container: {self.container_manager.get_error()}')
 
         # Also create the file locally for reference and compatibility
         with open(filename, 'w') as f:
@@ -693,14 +688,12 @@ class Equiv_check:
             relative_gate = os.path.basename(gate_v_filename)
             cmd[0] = f'read_verilog -sv {relative_gold}'
             cmd[4] = f'read_verilog -sv {relative_gate}'
-            full_cmd = ';\n'.join(cmd)
+            full_cmd = ';\n'.join(cmd) + '\n'
 
-            # Create the script in the container
-            rc, _, err = self.container_manager.run(
-                f"mkdir -p {container_work_dir} && cat > {container_script_path} << 'EOF'\n{full_cmd}\nEOF"
-            )
-            if rc != 0:
-                return rc, '', f'Failed to create script in container: {err}'
+            # Create the script in the container using the new create_file API
+            if not self.container_manager.create_file(container_script_path, full_cmd):
+                error_msg = self.container_manager.get_error()
+                return 1, '', f'Failed to create script in container: {error_msg}'
 
             # Run Yosys from within container_work_dir
             yosys_cmd = f'cd {container_work_dir} && yosys -s {script_name}'
@@ -709,7 +702,7 @@ class Equiv_check:
             # For local execution, create script file locally
             filename = os.path.join(work_dir, 'check.s')
             with open(filename, 'w') as f:
-                f.write(full_cmd)
+                f.write(full_cmd + '\n')
             return self.run_yosys_command(f'yosys -s {filename}')
 
     def run_yosys_command(self, command: str) -> Tuple[int, str, str]:
