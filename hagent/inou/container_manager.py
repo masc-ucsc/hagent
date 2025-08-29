@@ -709,9 +709,6 @@ class ContainerManager:
         """Validate that container has required /code/workspace/ structure."""
         try:
             result = container.exec_run('test -d /code/workspace')
-            print("XXXXX")
-            res = container.exec_run('ls -ald /')
-            print(f"HERE:{res.stdout}")
             if result.exit_code != 0:
                 self.set_error(
                     'Container image does not have /code/workspace/ directory. '
@@ -850,7 +847,6 @@ class ContainerManager:
 
             # Wait for container to be ready for exec commands
             if not self._wait_for_container_ready():
-                self.set_error('Container failed to start properly')
                 return False
 
             # Validate /code/workspace/ directory exists
