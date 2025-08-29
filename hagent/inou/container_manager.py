@@ -350,12 +350,12 @@ class ContainerManager:
 
         last_status = None
         last_error = None
-        
+
         for attempt in range(timeout * 10):  # 100ms intervals
             try:
                 self.container.reload()
                 last_status = self.container.status
-                
+
                 if self.container.status == 'running':
                     # Try a simple exec to verify it's ready
                     self.container.exec_run('true')
@@ -373,7 +373,7 @@ class ContainerManager:
             error_parts.append(f'Final status: {last_status}')
         if last_error:
             error_parts.append(f'Last error: {last_error}')
-            
+
         # If container exited, get its logs for debugging
         if last_status in ['exited', 'dead']:
             try:
@@ -382,7 +382,7 @@ class ContainerManager:
                     error_parts.append(f'Container logs: {logs}')
             except Exception:
                 pass
-        
+
         self.set_error('. '.join(error_parts))
         return False
 
@@ -394,10 +394,18 @@ class ContainerManager:
             'HAGENT_BUILD_DIR': '/code/workspace/build',
             'HAGENT_CACHE_DIR': '/code/workspace/cache',
             'UV_PROJECT_ENVIRONMENT': '/code/workspace/cache/venv',
-            # Set LOCAL_USER_ID for the container's entrypoint script to use host UID
-            'LOCAL_USER_ID': str(os.getuid()),
-            'LOCAL_GROUP_ID': str(os.getgid()),
         }
+
+        # Only set LOCAL_USER_ID if it's different from common container UIDs (1000, 1001)
+        # This prevents conflicts when the container already has a user with that UID
+        host_uid = os.getuid()
+        host_gid = os.getgid()
+
+        # Skip setting LOCAL_USER_ID for common container UIDs to avoid conflicts
+        if host_uid not in [1000, 1001]:
+            env_vars['LOCAL_USER_ID'] = str(host_uid)
+            env_vars['LOCAL_GROUP_ID'] = str(host_gid)
+
         return env_vars
 
     def _get_security_options(self) -> List[str]:
@@ -540,10 +548,14 @@ class ContainerManager:
             'HAGENT_EXECUTION_MODE': 'docker',
             'HAGENT_CACHE_DIR': '/code/workspace/cache',
             'UV_PROJECT_ENVIRONMENT': '/code/workspace/cache/venv',
-            # Set LOCAL_USER_ID for the container's entrypoint script to use host UID
-            'LOCAL_USER_ID': str(os.getuid()),
-            'LOCAL_GROUP_ID': str(os.getgid()),
         }
+
+        # Only set LOCAL_USER_ID if it's different from common container UIDs (1000, 1001)
+        host_uid = os.getuid()
+        host_gid = os.getgid()
+        if host_uid not in [1000, 1001]:
+            env_vars['LOCAL_USER_ID'] = str(host_uid)
+            env_vars['LOCAL_GROUP_ID'] = str(host_gid)
 
         # Optional mounts - only mount if the path is a real host directory
         if repo_dir and not str(repo_dir).startswith('/code/workspace/'):
@@ -645,8 +657,12 @@ class ContainerManager:
 
             # Add LOCAL_USER_ID to environment if not already present
             if 'LOCAL_USER_ID' not in env_vars:
-                env_vars['LOCAL_USER_ID'] = str(os.getuid())
-                env_vars['LOCAL_GROUP_ID'] = str(os.getgid())
+                host_uid = os.getuid()
+                host_gid = os.getgid()
+                # Only set if different from common container UIDs to avoid conflicts
+                if host_uid not in [1000, 1001]:
+                    env_vars['LOCAL_USER_ID'] = str(host_uid)
+                    env_vars['LOCAL_GROUP_ID'] = str(host_gid)
 
             # Create the container with security restrictions
             # Note: We start as root to allow LOCAL_USER_ID mechanism to work,
@@ -718,7 +734,7 @@ class ContainerManager:
                 except Exception:
                     self.set_error(f'Container not running (status: {container.status})')
                 return False
-                
+
             result = container.exec_run('test -d /code/workspace')
             if result.exit_code != 0:
                 self.set_error(
@@ -830,10 +846,13 @@ class ContainerManager:
                 mount_objs = []
                 env_vars = {
                     'HAGENT_EXECUTION_MODE': 'docker',
-                    # Set LOCAL_USER_ID for the container's entrypoint script to use host UID
-                    'LOCAL_USER_ID': str(os.getuid()),
-                    'LOCAL_GROUP_ID': str(os.getgid()),
                 }
+                # Only set LOCAL_USER_ID if different from common container UIDs to avoid conflicts
+                host_uid = os.getuid()
+                host_gid = os.getgid()
+                if host_uid not in [1000, 1001]:
+                    env_vars['LOCAL_USER_ID'] = str(host_uid)
+                    env_vars['LOCAL_GROUP_ID'] = str(host_gid)
 
             # Create the container with security restrictions
             # Note: We start as root to allow LOCAL_USER_ID mechanism to work,
