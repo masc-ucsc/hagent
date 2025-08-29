@@ -708,6 +708,17 @@ class ContainerManager:
     def _validate_container_workspace(self, container) -> bool:
         """Validate that container has required /code/workspace/ structure."""
         try:
+            # Check container status first
+            container.reload()
+            if container.status != 'running':
+                # Get container logs to understand why it stopped
+                try:
+                    logs = container.logs(tail=20).decode('utf-8', errors='replace')
+                    self.set_error(f'Container not running (status: {container.status}). Logs: {logs}')
+                except Exception:
+                    self.set_error(f'Container not running (status: {container.status})')
+                return False
+                
             result = container.exec_run('test -d /code/workspace')
             if result.exit_code != 0:
                 self.set_error(
