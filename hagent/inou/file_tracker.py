@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional, Set, List, Dict, Any
 
 from .path_manager import PathManager
+from .container_manager import is_docker_mode, is_docker_workspace_ready
 
 
 class FileTracker:
@@ -89,7 +90,17 @@ class FileTracker:
         """
         repo_dir = Path(self.path_manager.repo_dir)
 
-        # Check if directory exists
+        print(f'🔍 DEBUG: FileTracker checking repo_dir: {repo_dir}')
+
+        # In Docker mode with container paths, check if workspace is ready
+        if is_docker_mode() and str(repo_dir).startswith('/code/workspace/'):
+            print('🔍 DEBUG: Docker mode with container paths - checking workspace readiness')
+            if not is_docker_workspace_ready():
+                self.logger.error('Docker workspace not ready - ensure ContainerManager.setup() was called first')
+                return False
+            return True
+
+        # For all other cases (native mode or Docker with host-mounted paths), check if directory exists on host
         if not repo_dir.exists():
             self.logger.error(f'Repository directory does not exist: {repo_dir}')
             return False
@@ -182,6 +193,16 @@ class FileTracker:
         Returns:
             Stash hash if snapshot created, None if no changes to snapshot
         """
+        print('🔍 DEBUG: _create_baseline_snapshot')
+
+        # In Docker mode with container paths, skip baseline snapshot creation for now
+        # Git operations in Docker require container-aware execution
+        repo_dir = str(self.path_manager.repo_dir)
+        if is_docker_mode() and repo_dir.startswith('/code/workspace/'):
+            print('🔍 DEBUG: Docker mode with container paths - skipping baseline snapshot creation')
+            self.logger.info('Skipping baseline snapshot creation in Docker mode with container paths')
+            return None
+
         try:
             # Check if there are any changes to stash (tracked, staged, and untracked)
             # First check tracked files for modifications

@@ -14,6 +14,7 @@ import sys
 import time
 import atexit
 import weakref
+import random
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple, Any
 
@@ -22,6 +23,140 @@ from .path_manager import PathManager
 # Global registry to track ContainerManager instances for cleanup
 _container_manager_registry: weakref.WeakSet = weakref.WeakSet()
 _cleanup_registered = False
+
+# Global state to track if we're in validated Docker mode
+_docker_workspace_validated = False
+
+
+class ContainerNotReady(Exception):
+    """Exception raised when container fails to become ready within timeout."""
+
+    pass
+
+
+def is_docker_workspace_ready() -> bool:
+    """
+    Check if Docker workspace has been validated and is ready.
+
+    Returns:
+        True if running in Docker mode with validated workspace, False otherwise
+    """
+    return _docker_workspace_validated
+
+
+def is_docker_mode() -> bool:
+    """
+    Check if we're running in Docker execution mode.
+
+    Returns:
+        True if HAGENT_EXECUTION_MODE=docker, False otherwise
+    """
+    return os.environ.get('HAGENT_EXECUTION_MODE', 'native') == 'docker'
+
+
+def _default_ready_predicate(container: 'docker.models.containers.Container') -> bool:
+    """
+    Default readiness check: container is running AND (no Health section OR healthy).
+    """
+    container.reload()  # refresh attrs/status from engine
+    state = container.attrs.get('State', {})
+    if state.get('Status') != 'running':
+        return False
+    health = state.get('Health')
+    return (health is None) or (health.get('Status') == 'healthy')
+
+
+def _validate_docker_workspace(container: 'docker.models.containers.Container') -> bool:
+    """
+    Comprehensive Docker workspace validation. This is the single place where we check
+    that all required workspace directories exist and are accessible.
+
+    Returns:
+        True if workspace is ready, False otherwise
+    """
+    global _docker_workspace_validated
+
+    if not _default_ready_predicate(container):
+        print('🔍 DEBUG: Container not ready (basic check failed)')
+        return False
+
+    # Check that required workspace directories are available
+    required_dirs = ['/code/workspace', '/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache']
+    print(f'🔍 DEBUG: Validating Docker workspace directories: {required_dirs}')
+
+    for dir_path in required_dirs:
+        try:
+            result = container.exec_run(f'test -d {dir_path}')
+            print(f'🔍 DEBUG: {dir_path} exists: {result.exit_code == 0} (exit_code={result.exit_code})')
+            if result.exit_code != 0:
+                # Get more detailed info about what exists
+                ls_result = container.exec_run(f'ls -la {os.path.dirname(dir_path)}')
+                if ls_result.exit_code == 0:
+                    print(f'🔍 DEBUG: Contents of {os.path.dirname(dir_path)}:')
+                    print(ls_result.output.decode('utf-8', errors='replace'))
+                return False
+        except Exception as e:
+            print(f'🔍 DEBUG: Exception checking {dir_path}: {e}')
+            return False
+
+    # Mark Docker workspace as validated globally
+    _docker_workspace_validated = True
+    print('🔍 DEBUG: Docker workspace fully validated and ready!')
+    return True
+
+
+def setup_docker_workspace(
+    container: 'docker.models.containers.Container',
+    timeout_s: float = 30.0,
+    poll_interval_s: float = 0.25,
+) -> None:
+    """
+    Complete Docker container setup with workspace validation.
+    This is the single entry point for Docker readiness - once this succeeds,
+    the workspace is guaranteed to be available.
+
+    Args:
+        container: Docker container to validate
+        timeout_s: Maximum time to wait in seconds
+        poll_interval_s: How often to check readiness
+
+    Raises:
+        ContainerNotReady: If container doesn't become ready within timeout
+    """
+    assert timeout_s > 0, 'timeout_s must be positive'
+    assert poll_interval_s > 0, 'poll_interval_s must be positive'
+
+    deadline = time.monotonic() + timeout_s
+    last_err: Optional[str] = None
+
+    print(f'🔍 DEBUG: Setting up Docker workspace (timeout={timeout_s}s)')
+
+    while time.monotonic() < deadline:
+        try:
+            if _validate_docker_workspace(container):
+                print('🔍 DEBUG: Docker workspace setup complete!')
+                return
+        except Exception as e:  # validation may raise while container initializes
+            last_err = repr(e)
+        # small jitter to avoid thundering herd and align with healthcheck interval
+        time.sleep(poll_interval_s + random.uniform(0, poll_interval_s * 0.2))
+
+    # On failure, include brief state snapshot for diagnostics
+    container.reload()
+    state = container.attrs.get('State', {})
+
+    # Get container logs for debugging
+    logs = ''
+    try:
+        logs = container.logs(tail=20).decode('utf-8', errors='replace')
+    except Exception:
+        pass
+
+    raise ContainerNotReady(
+        f'Docker workspace not ready within {timeout_s:.1f}s. '
+        f'Status={state.get("Status")}, Health={state.get("Health", {}).get("Status")}, '
+        f'Last error={last_err}. Container logs: {logs}'
+    )
 
 
 def _validate_mount_path(host_path: str) -> Tuple[bool, str]:
@@ -344,47 +479,32 @@ class ContainerManager:
         except Exception:
             return {}
 
-    def _wait_for_container_ready(self, timeout: int = 10) -> bool:
-        """Wait for container to be ready for exec commands after start()."""
-        import time
+    def _setup_docker_workspace_if_needed(self, timeout: int = 30) -> bool:
+        """
+        Setup Docker workspace if running in Docker mode.
+        This is the single point where Docker workspace validation happens.
 
-        last_status = None
-        last_error = None
+        Args:
+            timeout: Maximum seconds to wait for workspace setup
 
-        for attempt in range(timeout * 10):  # 100ms intervals
-            try:
-                self.container.reload()
-                last_status = self.container.status
+        Returns:
+            True if workspace is ready (or not needed), False on error
+        """
+        if not is_docker_mode():
+            print('🔍 DEBUG: Native mode - no Docker workspace setup needed')
+            return True
 
-                if self.container.status == 'running':
-                    # Try a simple exec to verify it's ready
-                    self.container.exec_run('true')
-                    return True
-                elif self.container.status in ['exited', 'dead']:
-                    # Container failed to start or crashed
-                    break
-            except Exception as e:
-                last_error = str(e)
-            time.sleep(0.1)
+        if is_docker_workspace_ready():
+            print('🔍 DEBUG: Docker workspace already validated')
+            return True
 
-        # Provide detailed error information
-        error_parts = [f'Container failed to become ready within {timeout} seconds']
-        if last_status:
-            error_parts.append(f'Final status: {last_status}')
-        if last_error:
-            error_parts.append(f'Last error: {last_error}')
-
-        # If container exited, get its logs for debugging
-        if last_status in ['exited', 'dead']:
-            try:
-                logs = self.container.logs(tail=50).decode('utf-8', errors='replace')
-                if logs.strip():
-                    error_parts.append(f'Container logs: {logs}')
-            except Exception:
-                pass
-
-        self.set_error('. '.join(error_parts))
-        return False
+        try:
+            print('🔍 DEBUG: Setting up Docker workspace...')
+            setup_docker_workspace(container=self.container, timeout_s=float(timeout), poll_interval_s=0.1)
+            return True
+        except ContainerNotReady as e:
+            self.set_error(str(e))
+            return False
 
     def _setup_container_environment(self) -> Dict[str, str]:
         """Setup HAGENT_* environment variables inside container."""
@@ -427,6 +547,7 @@ class ContainerManager:
         # Always mount cache directory - ensure it exists first
         # Use environment variable directly if available, otherwise use path_manager
         cache_dir_path = os.environ.get('HAGENT_CACHE_DIR')
+
         if not cache_dir_path:
             try:
                 cache_dir_path = str(self.path_manager.cache_dir)
@@ -452,6 +573,7 @@ class ContainerManager:
 
         # Mount repo directory if available
         repo_dir_path = os.environ.get('HAGENT_REPO_DIR')
+
         if not repo_dir_path:
             try:
                 repo_dir_path = str(self.path_manager.repo_dir)
@@ -469,8 +591,8 @@ class ContainerManager:
             # Ensure repo directory exists before mounting
             os.makedirs(repo_dir_path, exist_ok=True)
             # Resolve symlinks (important on macOS where /var -> /private/var)
-            repo_dir_path = os.path.realpath(repo_dir_path)
-            repo_mount = docker.types.Mount(target='/code/workspace/repo', source=repo_dir_path, type='bind')
+            resolved_repo_path = os.path.realpath(repo_dir_path)
+            repo_mount = docker.types.Mount(target='/code/workspace/repo', source=resolved_repo_path, type='bind')
             mount_objs.append(repo_mount)
 
         # Mount build directory if available
@@ -686,22 +808,11 @@ class ContainerManager:
 
             container.start()
 
-            # Wait for container to be ready for exec commands
-            # Temporarily store the container to use the existing wait method
-            original_container = self.container
-            self.container = container
+            # Setup Docker workspace if needed
             try:
-                container_ready = self._wait_for_container_ready()
-            finally:
-                self.container = original_container
-
-            if not container_ready:
-                self.set_error('Container failed to start properly')
-                container.remove(force=True)
-                return None
-
-            # Validate container workspace structure
-            if not self._validate_container_workspace(container):
+                setup_docker_workspace(container=container, timeout_s=30.0, poll_interval_s=0.1)
+            except ContainerNotReady as e:
+                self.set_error(f'Container failed to start properly: {e}')
                 container.remove(force=True)
                 return None
 
@@ -720,32 +831,6 @@ class ContainerManager:
         except Exception as e:
             self.set_error(f'Failed to create container: {e}')
             return None
-
-    def _validate_container_workspace(self, container) -> bool:
-        """Validate that container has required /code/workspace/ structure."""
-        try:
-            # Check container status first
-            container.reload()
-            if container.status != 'running':
-                # Get container logs to understand why it stopped
-                try:
-                    logs = container.logs(tail=20).decode('utf-8', errors='replace')
-                    self.set_error(f'Container not running (status: {container.status}). Logs: {logs}')
-                except Exception:
-                    self.set_error(f'Container not running (status: {container.status})')
-                return False
-
-            result = container.exec_run('test -d /code/workspace')
-            if result.exit_code != 0:
-                self.set_error(
-                    'Container image does not have /code/workspace/ directory. '
-                    'This is required for the new HAgent container structure.'
-                )
-                return False
-            return True
-        except Exception as e:
-            self.set_error(f'Failed to validate /code/workspace/ directory: {e}')
-            return False
 
     def _fix_mounted_directory_permissions(self) -> bool:
         """
@@ -805,6 +890,9 @@ class ContainerManager:
         Returns:
             True if setup successful, False otherwise
         """
+        print(f'🔍 DEBUG: Starting container setup (automount={automount})')
+        print(f'🔍 DEBUG: Image: {self.image}')
+        print(f'🔍 DEBUG: Working directory: {self._workdir}')
 
         # Clean up existing container
         if self.container:
@@ -840,9 +928,11 @@ class ContainerManager:
 
             # Setup mount points and environment based on automount setting
             if automount:
+                print('🔍 DEBUG: Setting up mounts and environment (automount=True)')
                 mount_objs = self._setup_mount_points()
                 env_vars = self._setup_container_environment()
             else:
+                print('🔍 DEBUG: No automount - minimal setup')
                 mount_objs = []
                 env_vars = {
                     'HAGENT_EXECUTION_MODE': 'docker',
@@ -853,6 +943,8 @@ class ContainerManager:
                 if host_uid not in [1000, 1001]:
                     env_vars['LOCAL_USER_ID'] = str(host_uid)
                     env_vars['LOCAL_GROUP_ID'] = str(host_gid)
+
+            print(f'🔍 DEBUG: Environment vars: {env_vars}')
 
             # Create the container with security restrictions
             # Note: We start as root to allow LOCAL_USER_ID mechanism to work,
@@ -873,14 +965,12 @@ class ContainerManager:
                 # Prevent new privileges after initial setup
                 read_only=False,  # We need write access to mounted volumes
             )
+            print(f'🔍 DEBUG: Container created successfully: {self.container.short_id}')
             self.container.start()
+            print('🔍 DEBUG: Container started, waiting for readiness...')
 
-            # Wait for container to be ready for exec commands
-            if not self._wait_for_container_ready():
-                return False
-
-            # Validate /code/workspace/ directory exists
-            if not self._validate_container_workspace(self.container):
+            # Setup Docker workspace if needed (includes all validation)
+            if not self._setup_docker_workspace_if_needed(timeout=30):
                 return False
 
             # Ensure working directory exists
