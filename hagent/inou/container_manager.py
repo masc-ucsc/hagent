@@ -77,31 +77,28 @@ def _validate_docker_workspace(container: 'docker.models.containers.Container') 
     global _docker_workspace_validated
 
     if not _default_ready_predicate(container):
-        print('🔍 DEBUG: Container not ready (basic check failed)')
         return False
 
     # Check that required workspace directories are available
     required_dirs = ['/code/workspace', '/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache']
-    print(f'🔍 DEBUG: Validating Docker workspace directories: {required_dirs}')
 
     for dir_path in required_dirs:
         try:
             result = container.exec_run(f'test -d {dir_path}')
-            print(f'🔍 DEBUG: {dir_path} exists: {result.exit_code == 0} (exit_code={result.exit_code})')
             if result.exit_code != 0:
-                # Get more detailed info about what exists
+                # Get more detailed info about what exists for error reporting
                 ls_result = container.exec_run(f'ls -la {os.path.dirname(dir_path)}')
+                error_info = ''
                 if ls_result.exit_code == 0:
-                    print(f'🔍 DEBUG: Contents of {os.path.dirname(dir_path)}:')
-                    print(ls_result.output.decode('utf-8', errors='replace'))
+                    error_info = f' Contents of {os.path.dirname(dir_path)}: {ls_result.output.decode("utf-8", errors="replace")}'
+                print(f'Docker workspace validation failed: {dir_path} does not exist.{error_info}')
                 return False
         except Exception as e:
-            print(f'🔍 DEBUG: Exception checking {dir_path}: {e}')
+            print(f'Docker workspace validation failed for {dir_path}: {e}')
             return False
 
     # Mark Docker workspace as validated globally
     _docker_workspace_validated = True
-    print('🔍 DEBUG: Docker workspace fully validated and ready!')
     return True
 
 
@@ -129,12 +126,9 @@ def setup_docker_workspace(
     deadline = time.monotonic() + timeout_s
     last_err: Optional[str] = None
 
-    print(f'🔍 DEBUG: Setting up Docker workspace (timeout={timeout_s}s)')
-
     while time.monotonic() < deadline:
         try:
             if _validate_docker_workspace(container):
-                print('🔍 DEBUG: Docker workspace setup complete!')
                 return
         except Exception as e:  # validation may raise while container initializes
             last_err = repr(e)
@@ -200,7 +194,7 @@ def _validate_mount_path(host_path: str) -> Tuple[bool, str]:
         if abs_path.startswith(hagent_root + os.sep):
             relative_path = os.path.relpath(abs_path, hagent_root)
             path_parts = relative_path.split(os.sep)
-            
+
             # Only reject if it's a direct child of hagent root (one level under)
             if len(path_parts) == 1:
                 error_msg = (
@@ -214,7 +208,7 @@ def _validate_mount_path(host_path: str) -> Tuple[bool, str]:
                 )
                 print(error_msg)
                 return False, error_msg
-            
+
             # Allow mounting subdirectories (2+ levels deep)
             print(f'✅ ALLOWING SUBDIRECTORY MOUNT: {relative_path} -> {abs_path}')
             return True, ''
@@ -505,15 +499,12 @@ class ContainerManager:
             True if workspace is ready (or not needed), False on error
         """
         if not is_docker_mode():
-            print('🔍 DEBUG: Native mode - no Docker workspace setup needed')
             return True
 
         if is_docker_workspace_ready():
-            print('🔍 DEBUG: Docker workspace already validated')
             return True
 
         try:
-            print('🔍 DEBUG: Setting up Docker workspace...')
             setup_docker_workspace(container=self.container, timeout_s=float(timeout), poll_interval_s=0.1)
             return True
         except ContainerNotReady as e:
@@ -904,9 +895,6 @@ class ContainerManager:
         Returns:
             True if setup successful, False otherwise
         """
-        print(f'🔍 DEBUG: Starting container setup (automount={automount})')
-        print(f'🔍 DEBUG: Image: {self.image}')
-        print(f'🔍 DEBUG: Working directory: {self._workdir}')
 
         # Clean up existing container
         if self.container:
@@ -942,11 +930,9 @@ class ContainerManager:
 
             # Setup mount points and environment based on automount setting
             if automount:
-                print('🔍 DEBUG: Setting up mounts and environment (automount=True)')
                 mount_objs = self._setup_mount_points()
                 env_vars = self._setup_container_environment()
             else:
-                print('🔍 DEBUG: No automount - minimal setup')
                 mount_objs = []
                 env_vars = {
                     'HAGENT_EXECUTION_MODE': 'docker',
@@ -957,8 +943,6 @@ class ContainerManager:
                 if host_uid not in [1000, 1001]:
                     env_vars['LOCAL_USER_ID'] = str(host_uid)
                     env_vars['LOCAL_GROUP_ID'] = str(host_gid)
-
-            print(f'🔍 DEBUG: Environment vars: {env_vars}')
 
             # Create the container with security restrictions
             # Note: We start as root to allow LOCAL_USER_ID mechanism to work,
@@ -979,9 +963,7 @@ class ContainerManager:
                 # Prevent new privileges after initial setup
                 read_only=False,  # We need write access to mounted volumes
             )
-            print(f'🔍 DEBUG: Container created successfully: {self.container.short_id}')
             self.container.start()
-            print('🔍 DEBUG: Container started, waiting for readiness...')
 
             # Setup Docker workspace if needed (includes all validation)
             if not self._setup_docker_workspace_if_needed(timeout=30):
