@@ -44,7 +44,7 @@ class Trivial(Step):
         data_copy['yosys_path_out'] = out
         data_copy['yosys_path_err'] = err
 
-        ret, out, err = self.runner.run(command="ls -al", cwd="/code/workspace/repo")
+        ret, out, err = self.runner.run(command='ls -al', cwd='/code/workspace/repo')
         data_copy['ls_ret'] = str(ret)
         data_copy['ls_out'] = out
         data_copy['ls_err'] = err

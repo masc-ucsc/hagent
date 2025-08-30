@@ -6,33 +6,11 @@ This provides a shell-based execution strategy and preserves the original CLI in
 """
 
 import argparse
-import os
-import subprocess
 import sys
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 
 from hagent.core.hagent_build import HagentBuildCore
-
-
-class ShellExecutionStrategy:
-    """Execution strategy that runs commands directly in the shell using subprocess."""
-
-    def run(self, command: str, cwd: str, env: Dict[str, str], quiet: bool = False) -> Tuple[int, str, str]:
-        """
-        Execute command using subprocess.run.
-
-        Args:
-            command: The command to execute
-            cwd: Working directory for the command
-            env: Environment variables
-            quiet: Whether to run in quiet mode (currently ignored)
-
-        Returns:
-            Tuple of (exit_code, stdout, stderr)
-        """
-        result = subprocess.run(command, shell=True, cwd=cwd, env=env, capture_output=True, text=True)
-        return result.returncode, result.stdout or '', result.stderr or ''
+from hagent.inou.executor import create_executor
 
 
 class HagentBuilder:
@@ -44,10 +22,20 @@ class HagentBuilder:
     """
 
     def __init__(self, config_path: Optional[str] = None):
-        """Initialize with shell execution strategy."""
+        """Initialize with appropriate execution strategy based on HAGENT_EXECUTION_MODE."""
         if config_path is None:
             config_path = HagentBuildCore.find_config()
-        self.core = HagentBuildCore(config_path, ShellExecutionStrategy())
+
+        # Use factory to create appropriate executor based on HAGENT_EXECUTION_MODE
+        execution_strategy = create_executor()
+
+        # Setup the execution strategy
+        if not execution_strategy.setup():
+            raise RuntimeError(
+                f'Failed to setup execution strategy: {getattr(execution_strategy, "error_message", "Unknown error")}'
+            )
+
+        self.core = HagentBuildCore(config_path, execution_strategy)
 
         # Expose properties for backward compatibility
         self.config_path = self.core.config_path
@@ -102,56 +90,24 @@ class HagentBuilder:
             Exit code
         """
         try:
-            profile = self.core.select_profile(exact_name, title_query)
-            api = self.core.find_command_in_profile(profile, api_name)
-            if not api:
-                self.list_apis_for([profile])
-                raise ValueError(f"API '{api_name}' not found in profile '{profile.get('name')}'")
+            # Use the core's execution method which respects the execution strategy
+            exit_code, stdout, stderr = self.core.execute(
+                exact_name=exact_name,
+                title_query=title_query,
+                command_name=api_name,
+                extra_args=extra_args,
+                build_dir=self.build_base,
+                dry_run=dry_run,
+                quiet=False,
+            )
 
-            # Validate configuration before proceeding
-            self.core.validate_configuration(profile, self.build_base, dry_run)
+            # Print stdout and stderr if they contain anything
+            if stdout:
+                print(stdout, end='')
+            if stderr:
+                print(stderr, end='', file=sys.stderr)
 
-            env = self.core.setup_environment(profile, self.build_base)
-
-            # Compose command; replace simple placeholders
-            command = api['command']
-            if extra_args:
-                command = f'{command} {" ".join(extra_args)}'
-            command = command.replace('$HAGENT_BUILD_DIR', str(self.build_base)).replace('$HAGENT_REPO_DIR', str(self.repo_dir))
-
-            # Determine working directory
-            cwd = api.get('cwd', str(self.repo_dir))
-            cwd = cwd.replace('$HAGENT_BUILD_DIR', str(self.build_base)).replace('$HAGENT_REPO_DIR', str(self.repo_dir))
-            cwd_path = Path(cwd).resolve()
-
-            # Validate that the working directory exists
-            if not cwd_path.exists():
-                raise FileNotFoundError(f'Working directory does not exist: {cwd_path}')
-            if not cwd_path.is_dir():
-                raise NotADirectoryError(f'Working directory path is not a directory: {cwd_path}')
-
-            print(f'Command: {command}')
-            print(f'  Build directory: {self.build_base}')
-            print(f'  Profile name: {profile.get("name")}')
-            print(f'  Title: {HagentBuildCore.profile_title(profile) or "N/A"}')
-            print(f'  API: {api_name}')
-            print(f'  Working directory: {cwd_path}')
-
-            if dry_run:
-                # No filesystem writes in dry-run; do NOT create directories.
-                print('  [DRY RUN] Would execute the above command')
-                print('  Environment overrides:')
-                for k, v in sorted(env.items()):
-                    if k not in os.environ or os.environ[k] != v:
-                        print(f'    {k}={v}')
-                return 0
-
-            # Create build directory only for real runs.
-            self.build_base.mkdir(parents=True, exist_ok=True)
-
-            print('\n' + '=' * 60)
-            result = subprocess.run(command, shell=True, cwd=str(cwd_path), env=env)
-            return result.returncode
+            return exit_code
 
         except Exception as e:
             print(f'Error: {e}', file=sys.stderr)
