@@ -14,7 +14,7 @@ class Trivial(Step):
     def setup(self):
         super().setup()  # superclass
         if os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
-            self.runner = Runner(docker_image='mascucsc/hagent-builder:2025.08')
+            self.runner = Runner(docker_image='mascucsc/hagent-builder:2025.09')
         else:
             self.runner = Runner()
 
