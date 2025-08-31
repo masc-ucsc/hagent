@@ -328,36 +328,6 @@ class DockerExecutor:
             self.set_error(self.container_manager.get_error())
         return success
 
-    def execute_command(self, command, working_dir=None, **kwargs):
-        """
-        Execute command with automatic container setup.
-
-        This is the new standardized interface for Phase 5 & 6.
-
-        Args:
-            command: Command to execute
-            working_dir: Optional working directory
-            **kwargs: Additional arguments (env, quiet, etc.)
-
-        Returns:
-            Tuple of (exit_code, stdout, stderr)
-        """
-        if not self._container and self.container_manager:
-            # Create container with standardized setup
-            self._container = self.container_manager.create_container(
-                repo_dir=getattr(self.path_manager, 'repo_dir', None),
-                build_dir=getattr(self.path_manager, 'build_dir', None),
-                cache_dir=self.path_manager.cache_dir,
-            )
-
-            if not self._container:
-                return -1, '', f'Failed to create container: {self.container_manager.get_error()}'
-
-        # Translate host paths to container paths
-        container_command = self._translate_paths(command)
-        container_working_dir = self._translate_working_dir(working_dir)
-
-        return self._execute_in_container(container_command, container_working_dir, **kwargs)
 
     def _translate_paths(self, command):
         """Translate host paths in command to container paths."""
@@ -365,31 +335,7 @@ class DockerExecutor:
         # TODO: Implement path translation logic if needed
         return command
 
-    def _translate_working_dir(self, working_dir):
-        """Translate host working directory to container working directory."""
-        if not working_dir:
-            return '/code/workspace/repo'  # Default container working dir
 
-        # Simple translation - could be enhanced based on needs
-        if working_dir.startswith(str(self.path_manager.repo_dir)):
-            rel_path = os.path.relpath(working_dir, self.path_manager.repo_dir)
-            return f'/code/workspace/repo/{rel_path}'.replace('//', '/')
-        elif hasattr(self.path_manager, 'build_dir') and working_dir.startswith(str(self.path_manager.build_dir)):
-            rel_path = os.path.relpath(working_dir, self.path_manager.build_dir)
-            return f'/code/workspace/build/{rel_path}'.replace('//', '/')
-
-        # Default to repo if unable to translate
-        return '/code/workspace/repo'
-
-    def _execute_in_container(self, command, working_dir, **kwargs):
-        """Execute command in the container."""
-        if self.container_manager and self._container:
-            # Use container manager's run method
-            quiet = kwargs.get('quiet', False)
-            return self.container_manager.run(command, working_dir, quiet)
-        else:
-            # Fallback to old method
-            return self.run(command, working_dir or '/code/workspace/repo', kwargs.get('env', {}), kwargs.get('quiet', False))
 
     def run(
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
