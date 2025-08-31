@@ -329,12 +329,6 @@ class DockerExecutor:
             self.set_error(self.container_manager.get_error())
         return success
 
-    def _translate_paths(self, command):
-        """Translate host paths in command to container paths."""
-        # For now, return command as-is
-        # TODO: Implement path translation logic if needed
-        return command
-
     def run(
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
     ) -> Tuple[int, str, str]:

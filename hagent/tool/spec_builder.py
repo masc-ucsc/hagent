@@ -118,19 +118,6 @@ class RtlSpecBuilder:
         self._package_files: Dict[str, str] = {}
         self._module_deps: Dict[str, set] = defaultdict(set)
 
-    def top_ports_from_ast(self) -> List[Dict[str, str]]:
-        """
-        Return ports for the *top module only*, extracted strictly from the AST JSON.
-        No source fallbacks, no submodule traversal.
-        """
-        if not os.path.exists(self.out_json):
-            raise FileNotFoundError(f'AST JSON not found at {self.out_json}. Run generate_ast_from_slang(...) or run() first.')
-        ast_data = self.read_ast(self.out_json)
-        top_ast = self.find_top_module(ast_data, self.top_module)
-        if not top_ast:
-            raise RuntimeError(f"Top module '{self.top_module}' not found in AST.")
-        return self._extract_ports_from_ast(top_ast)
-
     def run(self) -> bool:
         print(f'[DEBUG] Running build flow for top={self.top_module}')
         all_files = self.collect_rtl_files()

@@ -281,10 +281,6 @@ class Runner:
         """Check if running in local execution mode."""
         return self.execution_mode == 'local'
 
-    def get_execution_mode(self) -> str:
-        """Get the current execution mode."""
-        return self.execution_mode
-
     def __enter__(self):
         """Context manager entry."""
         return self

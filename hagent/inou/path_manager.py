@@ -309,15 +309,3 @@ class PathManager:
     def logs_dir(self) -> Path:
         """Directory for log files."""
         return self.inou_dir / 'logs'
-
-    def _get_yaml_path(self, filename: str) -> Path:
-        """
-        Get path for step YAML files.
-
-        Args:
-            filename: Name of the YAML file
-
-        Returns:
-            Path to the YAML file in HAGENT_CACHE_DIR/inou/
-        """
-        return self.inou_dir / filename
