@@ -1,0 +1,534 @@
+"""
+Builder for HAgent - Unified YAML-based build system
+
+Provides a unified interface for managing YAML configurations, profiles,
+and build operations. Integrates with the Runner infrastructure for
+execution, file tracking, and path management.
+"""
+
+import os
+import sys
+import yaml
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+from .runner import Runner
+from .path_manager import PathManager
+
+
+class Builder:
+    """
+    Unified build system for HAgent.
+
+    Handles YAML configuration loading, profile management, environment setup,
+    and command execution through Runner integration. Provides both direct
+    execution and file tracking capabilities.
+    """
+
+    def __init__(self, config_path: Optional[str] = None, docker_image: Optional[str] = None):
+        """
+        Initialize Builder.
+
+        Args:
+            config_path: Path to the YAML configuration file (auto-discovered if None)
+            docker_image: Docker image for container execution (if needed)
+        """
+        self.config_path = config_path or self.find_config()
+        self.config = self._load_config()
+
+        # Initialize Runner if available, otherwise create a placeholder
+        self.runner = Runner(docker_image)
+        self.error_message = ''
+
+    @staticmethod
+    def possible_config_paths() -> List[str]:
+        """
+        Get list of possible configuration file paths in search order.
+
+        Returns:
+            List of potential configuration file paths to check
+        """
+        return PathManager.possible_config_paths()
+
+    @staticmethod
+    def find_config() -> str:
+        """
+        Locate hagent.yaml via the standard search path.
+
+        Returns:
+            Path to the first existing configuration file
+
+        Raises:
+            FileNotFoundError: If no configuration file is found
+        """
+        return PathManager.find_config()
+
+    def _load_config(self) -> dict:
+        """Load YAML configuration from file."""
+        with open(self.config_path, 'r') as f:
+            data = yaml.safe_load(f) or {}
+        assert isinstance(data, dict), 'Top-level YAML must be a mapping'
+        return data
+
+    def set_error(self, message: str) -> None:
+        """Set error message following Tool pattern."""
+        self.error_message = message
+
+    def get_error(self) -> str:
+        """Get current error message following Tool pattern."""
+        return self.error_message
+
+    def setup(self) -> bool:
+        """
+        Setup the execution environment.
+
+        Returns:
+            True if setup successful, False otherwise
+        """
+        if not self.runner:
+            self.set_error('Runner not initialized')
+            return False
+
+        success = self.runner.setup()
+        if not success:
+            self.set_error(f'Runner setup failed: {self.runner.get_error()}')
+        return success
+
+    # ---------------------------- helpers ----------------------------
+
+    @staticmethod
+    def profile_title(p: dict) -> str:
+        """Get profile title, preferring 'title' over 'description' for backward compatibility."""
+        return (p.get('title') or p.get('description') or '').strip()
+
+    def get_all_profiles(self) -> List[dict]:
+        """Get all profiles from configuration."""
+        profs = self.config.get('profiles', []) or []
+        assert isinstance(profs, list), "'profiles' must be a list"
+        return profs
+
+    def find_profile_by_name(self, name: str) -> List[dict]:
+        """Find profiles by exact name match (case-insensitive)."""
+        return [p for p in self.get_all_profiles() if (p.get('name') or '').lower() == name.lower()]
+
+    def find_profile_by_title(self, query: str) -> List[dict]:
+        """Find profiles by title substring match (case-insensitive)."""
+        q = (query or '').strip().lower()
+        return [p for p in self.get_all_profiles() if q in self.profile_title(p).lower()]
+
+    def get_profile_commands(self, profile: dict) -> List[dict]:
+        """Get all commands/APIs for a profile."""
+        return profile.get('apis', [])
+
+    def find_command_in_profile(self, profile: dict, command_name: str) -> Optional[dict]:
+        """Find a specific command/API within a profile."""
+        for api in self.get_profile_commands(profile):
+            if api.get('name') == command_name:
+                return api
+        return None
+
+    def get_memory_requirement(self, profile: dict) -> int:
+        """Get the memory requirement for a profile in GB."""
+        return profile.get('memory', 0)
+
+    # ---------------------------- environment setup ----------------------------
+
+    def setup_environment(self, profile: dict, build_dir: Optional[Path] = None) -> Dict[str, str]:
+        """
+        Setup environment variables for a profile.
+
+        Args:
+            profile: Profile configuration
+            build_dir: Build directory (defaults to PathManager's build_dir)
+
+        Returns:
+            Environment dictionary
+        """
+        # Get PathManager (either from Runner or create new one)
+        if self.runner:
+            path_manager = self.runner.path_manager
+        else:
+            path_manager = PathManager()
+
+        if build_dir is None:
+            build_dir = path_manager.build_dir
+
+        env = os.environ.copy()
+        cfg = profile.get('configuration', {})
+
+        if isinstance(cfg, dict):
+            for k, v in (cfg.get('environment') or {}).items():
+                # Allow $VAR expansion in YAML values
+                env[k] = os.path.expandvars(v)
+
+        # Use PathManager for consistent path handling
+        env['HAGENT_REPO_DIR'] = str(path_manager.repo_dir)
+        env['HAGENT_BUILD_DIR'] = str(build_dir)
+        env['HAGENT_CACHE_DIR'] = str(path_manager.cache_dir)
+        env['HAGENT_EXECUTION_MODE'] = path_manager.execution_mode
+        return env
+
+    # ---------------------------- track directive parsing ----------------------------
+
+    def parse_track_directive(self, directive: str, build_dir: Optional[Path] = None) -> Tuple[str, str, Optional[str]]:
+        """
+        Parse track_repo_dir() or track_build_dir() directives.
+
+        Args:
+            directive: The directive string (e.g., "track_repo_dir('src/main/scala', ext='.scala')")
+            build_dir: The build directory for this profile
+
+        Returns:
+            Tuple of (resolved_path, func_type, ext) where:
+            - resolved_path: Computed path
+            - func_type: "repo_dir", "build_dir", or "unknown"
+            - ext: The extension filter (if specified)
+        """
+        # Get PathManager (either from Runner or create new one)
+        if self.runner:
+            path_manager = self.runner.path_manager
+        else:
+            path_manager = PathManager()
+
+        if build_dir is None:
+            build_dir = path_manager.build_dir
+
+        if directive.startswith('track_repo_dir('):
+            func_type = 'repo_dir'
+            content = directive[15:-1]  # Remove "track_repo_dir(" and ")"
+        elif directive.startswith('track_build_dir('):
+            func_type = 'build_dir'
+            content = directive[16:-1]  # Remove "track_build_dir(" and ")"
+        else:
+            return directive, 'unknown', None
+
+        # Parse parameters
+        parts = [p.strip().strip('\'"') for p in content.split(',')]
+        path = parts[0]
+        ext = None
+
+        for part in parts[1:]:
+            if part.startswith('ext='):
+                ext = part[4:].strip('\'"')
+
+        # Compute paths
+        if func_type == 'repo_dir':
+            resolved_path = str((path_manager.repo_dir / path).resolve())
+        elif func_type == 'build_dir':
+            resolved_path = str((build_dir / path).resolve())
+        else:
+            resolved_path = path
+
+        return resolved_path, func_type, ext
+
+    def setup_file_tracking(self, profile: dict, build_dir: Optional[Path] = None) -> None:
+        """
+        Setup file tracking based on profile configuration.
+
+        Args:
+            profile: Profile configuration dictionary
+            build_dir: Build directory for this profile
+        """
+        # Only setup file tracking if Runner is available
+        if not self.runner:
+            return
+
+        if build_dir is None:
+            build_dir = self.runner.path_manager.build_dir
+
+        cfg = profile.get('configuration', {})
+        if not isinstance(cfg, dict):
+            return
+
+        # Parse source and output directives
+        for key in ['source', 'output']:
+            if key in cfg:
+                directive = cfg[key]
+                if isinstance(directive, str) and ('track_repo_dir(' in directive or 'track_build_dir(' in directive):
+                    resolved_path, func_type, ext = self.parse_track_directive(directive, build_dir)
+                    if func_type in ['repo_dir', 'build_dir']:
+                        # Use Runner's file tracking
+                        if Path(resolved_path).is_file():
+                            self.runner.track_file(resolved_path)
+                        else:
+                            self.runner.track_dir(resolved_path, ext)
+
+    def validate_configuration(self, profile: dict, build_dir: Optional[Path] = None, dry_run: bool = False) -> None:
+        """
+        Parse and validate track directives in the configuration.
+
+        Args:
+            profile: Profile configuration dictionary
+            build_dir: Build directory for this profile
+            dry_run: If True, skip parsing (currently unused)
+
+        Raises:
+            ValueError: If configuration directive syntax is invalid
+        """
+        if build_dir is None:
+            build_dir = self.runner.path_manager.build_dir
+
+        cfg = profile.get('configuration', {})
+        if not isinstance(cfg, dict):
+            return
+
+        # Parse source and output directives to validate syntax
+        for key in ['source', 'output']:
+            if key in cfg:
+                directive = cfg[key]
+                if isinstance(directive, str) and ('track_repo_dir(' in directive or 'track_build_dir(' in directive):
+                    try:
+                        # Extract the directory argument from the directive
+                        if directive.startswith('track_repo_dir('):
+                            content = directive[15:-1]  # Remove "track_repo_dir(" and ")"
+                            directory = content.split(',')[0].strip().strip('\'"')
+                        elif directive.startswith('track_build_dir('):
+                            content = directive[16:-1]  # Remove "track_build_dir(" and ")"
+                            directory = content.split(',')[0].strip().strip('\'"')
+                        else:
+                            continue
+
+                        # Validate syntax - directory argument should not be empty
+                        if not directory:
+                            raise ValueError(f'Empty directory argument in directive: {directive}')
+
+                    except (IndexError, ValueError) as e:
+                        raise ValueError(
+                            f"Configuration validation failed for {key} '{directive}': Invalid directive syntax: {e}"
+                        )
+
+    # ---------------------------- profile selection ----------------------------
+
+    def select_profile(self, exact_name: Optional[str] = None, title_query: Optional[str] = None) -> dict:
+        """
+        Select a profile based on name or title query.
+
+        Args:
+            exact_name: Exact profile name match
+            title_query: Title substring match
+
+        Returns:
+            Selected profile dictionary
+
+        Raises:
+            ValueError: If no profile found or multiple matches
+        """
+        if exact_name:
+            hits = self.find_profile_by_name(exact_name)
+            if not hits:
+                avail = ', '.join(p.get('name', '<unnamed>') for p in self.get_all_profiles())
+                raise ValueError(f"No profile matched name '{exact_name}'. Available names: {avail}")
+            if len(hits) > 1:
+                raise ValueError(
+                    f"Multiple profiles matched name '{exact_name}': " + ', '.join(p.get('name', '<unnamed>') for p in hits)
+                )
+            return hits[0]
+
+        if title_query:
+            hits = self.find_profile_by_title(title_query)
+            if not hits:
+                raise ValueError(
+                    f"No profile matched title query '{title_query}' in titles. "
+                    + 'Try exact name. Titles: '
+                    + '; '.join(f'[{p.get("name")}] {self.profile_title(p) or "N/A"}' for p in self.get_all_profiles())
+                )
+            if len(hits) > 1:
+                raise ValueError(
+                    f"Multiple profiles matched title query '{title_query}'. "
+                    + 'Disambiguate with exact name. Matches: '
+                    + '; '.join(f'[{p.get("name")}] {self.profile_title(p) or "N/A"}' for p in hits)
+                )
+            return hits[0]
+
+        raise ValueError('You must specify either exact_name or title_query.')
+
+    # ---------------------------- command execution ----------------------------
+
+    def execute_command(
+        self,
+        profile: dict,
+        command_name: str,
+        extra_args: Optional[List[str]] = None,
+        build_dir: Optional[Path] = None,
+        dry_run: bool = False,
+        quiet: bool = False,
+    ) -> Tuple[int, str, str]:
+        """
+        Execute a command from a profile.
+
+        Args:
+            profile: Profile configuration
+            command_name: Name of the command/API to execute
+            extra_args: Additional arguments to append to command
+            build_dir: Build directory
+            dry_run: If True, validate but don't execute
+            quiet: Whether to run in quiet mode
+
+        Returns:
+            Tuple of (exit_code, stdout, stderr)
+
+        Raises:
+            ValueError: If command not found
+        """
+        # For dry run, use PathManager directly to avoid Runner dependency
+        if dry_run:
+            path_manager = PathManager()
+            if build_dir is None:
+                build_dir = path_manager.build_dir
+        elif self.runner:
+            if build_dir is None:
+                build_dir = self.runner.path_manager.build_dir
+        else:
+            raise RuntimeError('Runner not available and not in dry run mode')
+
+        # Find the command
+        command_info = self.find_command_in_profile(profile, command_name)
+        if not command_info:
+            raise ValueError(f"Command '{command_name}' not found in profile '{profile.get('name')}'")
+
+        # Validate configuration before proceeding
+        self.validate_configuration(profile, build_dir, dry_run)
+
+        # Setup file tracking (only for non-dry runs with Runner)
+        if not dry_run and self.runner:
+            self.setup_file_tracking(profile, build_dir)
+
+        # Setup environment
+        env = self.setup_environment(profile, build_dir)
+
+        # Compose command; replace simple placeholders
+        command = command_info['command']
+        if extra_args:
+            command = f'{command} {" ".join(extra_args)}'
+
+        # For dry run, use PathManager directly
+        if dry_run:
+            path_manager = PathManager()
+            repo_dir = path_manager.repo_dir
+        else:
+            repo_dir = self.runner.path_manager.repo_dir
+
+        command = command.replace('$HAGENT_BUILD_DIR', str(build_dir)).replace('$HAGENT_REPO_DIR', str(repo_dir))
+
+        # Determine working directory
+        cwd = command_info.get('cwd', str(repo_dir))
+        cwd = cwd.replace('$HAGENT_BUILD_DIR', str(build_dir)).replace('$HAGENT_REPO_DIR', str(repo_dir))
+
+        if dry_run:
+            return 0, f'Would execute: {command} in {cwd}', ''
+
+        # Execute using Runner
+        if not self.runner:
+            raise RuntimeError('Runner not available for non-dry run execution')
+        return self.runner.run(command, cwd, env, quiet)
+
+    # ---------------------------- convenience methods ----------------------------
+
+    def execute(
+        self,
+        exact_name: Optional[str] = None,
+        title_query: Optional[str] = None,
+        command_name: str = '',
+        extra_args: Optional[List[str]] = None,
+        build_dir: Optional[Path] = None,
+        dry_run: bool = False,
+        quiet: bool = False,
+    ) -> Tuple[int, str, str]:
+        """
+        Convenience method to select profile and execute command in one call.
+
+        Args:
+            exact_name: Exact profile name match
+            title_query: Title substring match
+            command_name: Name of the command/API to execute
+            extra_args: Additional arguments to append to command
+            build_dir: Build directory
+            dry_run: If True, validate but don't execute
+            quiet: Whether to run in quiet mode
+
+        Returns:
+            Tuple of (exit_code, stdout, stderr)
+        """
+        profile = self.select_profile(exact_name, title_query)
+        return self.execute_command(profile, command_name, extra_args, build_dir, dry_run, quiet)
+
+    # ---------------------------- listing methods ----------------------------
+
+    def list_profiles(self):
+        """List all available profiles."""
+        print('\nAvailable profiles:')
+        print('-' * 60)
+        for p in self.get_all_profiles():
+            print(f'\nname: {p.get("name", "<unnamed>")}')
+            print(f'  title: {self.profile_title(p) or "N/A"}')
+            print('  APIs:')
+            for api in p.get('apis', []):
+                print(f'    - {api.get("name", "<noname>")}: {api.get("description", "N/A")}')
+
+    def list_apis_for_profile(self, exact_name: Optional[str], title_query: Optional[str]):
+        """List APIs for given profile selection."""
+        if exact_name:
+            hits = self.find_profile_by_name(exact_name)
+            if not hits:
+                # Exact error text required by user.
+                avail = ', '.join(p.get('name', '<unnamed>') for p in self.get_all_profiles())
+                print(f"Error: No profile matched --name '{exact_name}'. Available names: {avail}", file=sys.stderr)
+                return False
+            if len(hits) > 1:
+                print(
+                    f"Error: --name '{exact_name}' matched multiple profiles: " + ', '.join(p.get('name') for p in hits),
+                    file=sys.stderr,
+                )
+                return False
+        elif title_query:
+            hits = self.find_profile_by_title(title_query)
+            if not hits:
+                print(f"Error: --profile '{title_query}' did not match any profile titles.", file=sys.stderr)
+                self.list_profiles()
+                return False
+            if len(hits) > 1:
+                print('Error: Multiple profiles matched --profile. Disambiguate with --name.\nMatches:', file=sys.stderr)
+                for p in hits:
+                    print(f'  {p.get("name")} : {self.profile_title(p) or "N/A"}', file=sys.stderr)
+                return False
+        else:
+            print('Error: list_apis_for_profile requires either exact_name or title_query.', file=sys.stderr)
+            return False
+
+        # List APIs for the matched profile
+        for p in hits:
+            print(f'\nAPIs for {p.get("name", "<unnamed>")} [{self.profile_title(p) or "N/A"}]:')
+            for api in p.get('apis', []):
+                line = f'  {api.get("name", "<noname>")}: {api.get("description", "N/A")}'
+                if 'command' in api:
+                    line += f'\n    Command: {api["command"]}'
+                print(line)
+
+        return True
+
+    def cleanup(self) -> None:
+        """
+        Clean up all resources including Runner.
+
+        This method is idempotent and safe to call multiple times.
+        """
+        if self.runner:
+            self.runner.cleanup()
+        self.error_message = ''
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensures cleanup."""
+        self.cleanup()
+        return False
+
+    def __del__(self) -> None:
+        """On destruction, ensures cleanup."""
+        try:
+            self.cleanup()
+        except Exception:
+            # Ignore any errors during destruction cleanup
+            pass
