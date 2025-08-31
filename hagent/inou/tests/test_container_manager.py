@@ -349,12 +349,12 @@ class TestContainerManager:
         # Create a real PathManager with test environment (missing build_dir)
         # Save original value
         original_build_dir = os.environ.get('HAGENT_BUILD_DIR')
-        
+
         try:
             # Clear HAGENT_BUILD_DIR temporarily
             if 'HAGENT_BUILD_DIR' in os.environ:
                 del os.environ['HAGENT_BUILD_DIR']
-                
+
             with patch.dict(
                 'os.environ',
                 {
@@ -373,7 +373,7 @@ class TestContainerManager:
                     with patch('docker.types.Mount') as mock_mount:
                         manager._setup_mount_points()
 
-                        # Should have 3 mounts (cache, repo, extra)  
+                        # Should have 3 mounts (cache, repo, extra)
                         assert mock_mount.call_count == 3
         finally:
             # Restore original value
