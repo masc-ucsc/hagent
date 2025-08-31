@@ -56,7 +56,9 @@ class TestMCPBuildDocker(unittest.TestCase):
         try:
             result = subprocess.run(
                 ['docker', 'images', 'mascucsc/hagent-simplechisel:2025.08', '--format', '{{.Repository}}:{{.Tag}}'],
-                capture_output=True, text=True, timeout=30
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if 'mascucsc/hagent-simplechisel:2025.08' not in result.stdout:
                 raise unittest.SkipTest('Required Docker image mascucsc/hagent-simplechisel:2025.08 not found')
@@ -102,12 +104,7 @@ class TestMCPBuildDocker(unittest.TestCase):
             self.fail(f'Setup script failed: {result.stderr}\nStdout: {result.stdout}')
 
         # Verify expected directory structure was created
-        expected_dirs = [
-            self.test_dir / 'repo',
-            self.test_dir / 'build',
-            self.test_dir / 'cache',
-            self.test_dir / 'logs'
-        ]
+        expected_dirs = [self.test_dir / 'repo', self.test_dir / 'build', self.test_dir / 'cache', self.test_dir / 'logs']
 
         for expected_dir in expected_dirs:
             if not expected_dir.exists():
@@ -127,7 +124,9 @@ class TestMCPBuildDocker(unittest.TestCase):
             # Find and remove containers using the test image
             result = subprocess.run(
                 ['docker', 'ps', '-a', '--filter', 'ancestor=mascucsc/hagent-simplechisel:2025.08', '--format', '{{.ID}}'],
-                capture_output=True, text=True, timeout=30
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if result.returncode == 0 and result.stdout.strip():
                 container_ids = result.stdout.strip().split('\n')
@@ -165,7 +164,7 @@ class TestMCPBuildDocker(unittest.TestCase):
                 text=True,
                 timeout=300,  # 5 minutes for compilation
                 env=test_env,
-                cwd=str(self.hagent_root)  # Run from hagent root for uv project
+                cwd=str(self.hagent_root),  # Run from hagent root for uv project
             )
         except subprocess.TimeoutExpired as e:
             self.fail(f'mcp_build.py timed out after 300 seconds. Partial output:\nStdout: {e.stdout}\nStderr: {e.stderr}')
@@ -197,9 +196,11 @@ class TestMCPBuildDocker(unittest.TestCase):
                 )
             else:
                 # Some other failure
-                self.fail(f'mcp_build.py failed with unexpected error (return code {result.returncode}):\n'
-                         f'Stdout: {result.stdout}\n'
-                         f'Stderr: {result.stderr}')
+                self.fail(
+                    f'mcp_build.py failed with unexpected error (return code {result.returncode}):\n'
+                    f'Stdout: {result.stdout}\n'
+                    f'Stderr: {result.stderr}'
+                )
 
         # If we get here, the compilation succeeded
         print('✓ mcp_build.py completed successfully')
@@ -241,7 +242,7 @@ class TestMCPBuildDocker(unittest.TestCase):
             text=True,
             timeout=30,
             env=test_env,
-            cwd=str(self.hagent_root)
+            cwd=str(self.hagent_root),
         )
 
         if result.returncode != 0:
@@ -250,6 +251,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         # Verify output is valid JSON
         try:
             import json
+
             schema = json.loads(result.stdout)
         except json.JSONDecodeError as e:
             self.fail(f'Invalid JSON output from --schema: {e}\nOutput: {result.stdout}')
@@ -288,7 +290,7 @@ class TestMCPBuildDocker(unittest.TestCase):
             text=True,
             timeout=30,
             env=test_env,
-            cwd=str(self.hagent_root)
+            cwd=str(self.hagent_root),
         )
 
         if result.returncode != 0:

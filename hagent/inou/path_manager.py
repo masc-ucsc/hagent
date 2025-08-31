@@ -321,11 +321,3 @@ class PathManager:
             Path to the YAML file in HAGENT_CACHE_DIR/inou/
         """
         return self.inou_dir / filename
-
-    def is_local_mode(self) -> bool:
-        """Check if running in local execution mode."""
-        return self.execution_mode == 'local'
-
-    def is_docker_mode(self) -> bool:
-        """Check if running in Docker execution mode."""
-        return self.execution_mode == 'docker'

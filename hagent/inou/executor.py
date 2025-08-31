@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple, Protocol
 
 from .path_manager import PathManager
+from .container_manager import is_docker_mode
 
 
 class ExecutionStrategy(Protocol):
@@ -328,14 +329,11 @@ class DockerExecutor:
             self.set_error(self.container_manager.get_error())
         return success
 
-
     def _translate_paths(self, command):
         """Translate host paths in command to container paths."""
         # For now, return command as-is
         # TODO: Implement path translation logic if needed
         return command
-
-
 
     def run(
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
@@ -395,7 +393,7 @@ class DockerExecutor:
         host_path_obj = Path(host_path).resolve()
 
         # Check if this is a known host path that should be translated
-        if self.path_manager.is_docker_mode():
+        if is_docker_mode():
             try:
                 # Try to translate repo_dir path
                 if host_path_obj == self.path_manager.repo_dir or self.path_manager.repo_dir in host_path_obj.parents:

@@ -95,8 +95,6 @@ class TestPathManagerIntegration:
                 tracker = FileTracker(path_manager)
 
                 assert tracker.path_manager.execution_mode == 'docker'
-                assert tracker.path_manager.is_docker_mode() is True
-                assert tracker.path_manager.is_local_mode() is False
 
     def test_file_tracker_with_path_manager_validation_error(self):
         """Test FileTracker behavior when PathManager validation fails."""
@@ -145,8 +143,6 @@ class TestGitRepositoryIntegration:
         mock_path_manager.repo_dir = self.repo_dir
         mock_path_manager.build_dir = self.temp_dir / 'build'
         mock_path_manager.cache_dir = self.temp_dir / 'cache'
-        mock_path_manager.is_local_mode.return_value = True
-        mock_path_manager.is_docker_mode.return_value = False
 
         # Create FileTracker
         tracker = FileTracker(mock_path_manager)

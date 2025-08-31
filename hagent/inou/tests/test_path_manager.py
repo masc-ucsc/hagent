@@ -234,24 +234,6 @@ class TestPathManager:
             expected = str(cache_dir / 'venv')
             assert Path(result).resolve() == Path(expected).resolve()
 
-    def test_is_local_mode(self):
-        """Test is_local_mode method."""
-        pm = PathManager(validate_env=False)
-        pm._execution_mode = 'local'
-        assert pm.is_local_mode() is True
-
-        pm._execution_mode = 'docker'
-        assert pm.is_local_mode() is False
-
-    def test_is_docker_mode(self):
-        """Test is_docker_mode method."""
-        pm = PathManager(validate_env=False)
-        pm._execution_mode = 'docker'
-        assert pm.is_docker_mode() is True
-
-        pm._execution_mode = 'local'
-        assert pm.is_docker_mode() is False
-
     def test_property_access_without_values_fails_fast(self):
         """Test that accessing properties without values causes fail-fast exit."""
         pm = PathManager(validate_env=False)
