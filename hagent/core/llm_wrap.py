@@ -207,18 +207,6 @@ class LLM_wrap:
         self.last_error = msg
         print(msg, file=sys.stderr)
 
-    def _clear_history(self):
-        """Clear the conversation history for this LLM wrapper instance.
-
-        Logs the history clearing event for tracing purposes.
-        """
-        self.chat_history.clear()
-        data = {}
-        data.update({'clear_history': True})
-        if self.last_error:
-            data['error'] = self.last_error
-        self._log_event(event_type=f'{self.name}:LLM_wrap._clear_history', data=data)
-
     def _log_event(self, event_type: str, data: Dict):
         def process_multiline_strings(obj):
             """

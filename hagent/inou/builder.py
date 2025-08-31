@@ -41,16 +41,6 @@ class Builder:
         self.error_message = ''
 
     @staticmethod
-    def _possible_config_paths() -> List[str]:
-        """
-        Get list of possible configuration file paths in search order.
-
-        Returns:
-            List of potential configuration file paths to check
-        """
-        return PathManager.possible_config_paths()
-
-    @staticmethod
     def _find_config() -> str:
         """
         Locate hagent.yaml via the standard search path.
@@ -126,10 +116,6 @@ class Builder:
             if api.get('name') == command_name:
                 return api
         return None
-
-    def get_memory_requirement(self, profile: dict) -> int:
-        """Get the memory requirement for a profile in GB."""
-        return profile.get('memory', 0)
 
     # ---------------------------- environment setup ----------------------------
 

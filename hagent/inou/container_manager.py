@@ -1055,25 +1055,6 @@ class ContainerManager:
         # Clean up anonymous checkpoints
         self._cleanup_anonymous_checkpoints()
 
-    def _get_reference_container(self) -> Optional['docker.models.containers.Container']:
-        """Get or create a reference container for comparing original files."""
-        if self._reference_container is None:
-            try:
-                # Create a fresh container from the same image
-                self._reference_container = self.client.containers.create(
-                    self.image,
-                    command='tail -f /dev/null',  # Keep it alive
-                    working_dir=self._workdir,
-                    detach=True,
-                    # Auto-remove container when it exits to prevent accumulation
-                    auto_remove=True,
-                )
-                self._reference_container.start()
-            except Exception as e:
-                self.set_error(f'Failed to create reference container: {e}')
-                return None
-        return self._reference_container
-
     def _validate_container_path(self, container_path: str) -> bool:
         """Validate that a container path exists in the repo."""
         try:

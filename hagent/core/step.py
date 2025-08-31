@@ -209,24 +209,6 @@ class Step(metaclass=TracerMetaClass):
         """
         raise NotImplementedError('Subclasses should implement this!')
 
-    def test(self, exp_file):
-        # Unit test that compares run output against an expected YAML file.
-        yaml_obj = YAML(typ='safe')
-        with open(exp_file, 'r') as f:
-            expected_output = yaml_obj.load(f)
-        assert expected_output is not None
-        assert expected_output != {}
-
-        self.input_data = self._read_input()
-        self.setup()
-        with self._temporary_env_vars():
-            result_data = self.run(self.input_data)
-        if result_data != expected_output:
-            print(f'input_data: {self.input_data}')
-            print(f'result_data: {result_data}')
-            print(f'expect_data: {expected_output}')
-        assert result_data == expected_output
-
     def error(self, msg: str):
         """Handle step errors by logging and writing error output.
 
