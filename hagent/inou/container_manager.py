@@ -786,8 +786,33 @@ class ContainerManager:
             if 'LOCAL_USER_ID' not in env_vars:
                 host_uid = os.getuid()
                 host_gid = os.getgid()
-                # Only set if different from common container UIDs to avoid conflicts
-                if host_uid not in [1000, 1001]:
+
+                # Check if the UID/GID already exist in the container to avoid conflicts
+                should_set_local_user_id = True
+                try:
+                    # Create a temporary container to check /etc/passwd and /etc/group
+                    temp_container = self.client.containers.create(self.image, command='true')
+                    temp_container.start()
+
+                    # Check if UID exists in /etc/passwd
+                    uid_check = temp_container.exec_run(['getent', 'passwd', str(host_uid)])
+                    if uid_check.exit_code == 0:
+                        should_set_local_user_id = False
+
+                    # Check if GID exists in /etc/group (only if UID check passed)
+                    if should_set_local_user_id:
+                        gid_check = temp_container.exec_run(['getent', 'group', str(host_gid)])
+                        if gid_check.exit_code == 0:
+                            should_set_local_user_id = False
+
+                    # Clean up temp container
+                    temp_container.remove(force=True)
+
+                except Exception as e:
+                    self.set_error(f'Failed to check container UID/GID conflicts: {e}')
+                    should_set_local_user_id = False
+
+                if should_set_local_user_id:
                     env_vars['LOCAL_USER_ID'] = str(host_uid)
                     env_vars['LOCAL_GROUP_ID'] = str(host_gid)
 
@@ -939,10 +964,35 @@ class ContainerManager:
                 env_vars = {
                     'HAGENT_EXECUTION_MODE': 'docker',
                 }
-                # Only set LOCAL_USER_ID if different from common container UIDs to avoid conflicts
+                # Check if the UID/GID already exist in the container to avoid conflicts
                 host_uid = os.getuid()
                 host_gid = os.getgid()
-                if host_uid not in [1000, 1001]:
+                should_set_local_user_id = True
+
+                try:
+                    # Create a temporary container to check /etc/passwd and /etc/group
+                    temp_container = self.client.containers.create(self.image, command='true')
+                    temp_container.start()
+
+                    # Check if UID exists in /etc/passwd
+                    uid_check = temp_container.exec_run(['getent', 'passwd', str(host_uid)])
+                    if uid_check.exit_code == 0:
+                        should_set_local_user_id = False
+
+                    # Check if GID exists in /etc/group (only if UID check passed)
+                    if should_set_local_user_id:
+                        gid_check = temp_container.exec_run(['getent', 'group', str(host_gid)])
+                        if gid_check.exit_code == 0:
+                            should_set_local_user_id = False
+
+                    # Clean up temp container
+                    temp_container.remove(force=True)
+
+                except Exception as e:
+                    self.set_error(f'Failed to check container UID/GID conflicts: {e}')
+                    should_set_local_user_id = False
+
+                if should_set_local_user_id:
                     env_vars['LOCAL_USER_ID'] = str(host_uid)
                     env_vars['LOCAL_GROUP_ID'] = str(host_gid)
 
@@ -1055,10 +1105,6 @@ class ContainerManager:
             # Set execution parameters
             exec_kwargs = {'workdir': workdir, 'demux': True}
 
-            # Important: Don't specify a user - let the container use the user it was switched to
-            # by the entrypoint script (via LOCAL_USER_ID). Specifying a user here would override
-            # the user switching that happened during container startup.
-
             if quiet:
                 # Capture all output
                 result = self.container.exec_run(shell_command, **exec_kwargs)
@@ -1076,7 +1122,6 @@ class ContainerManager:
                     'stdout': True,
                     'stderr': True,
                 }
-                # Don't specify user - let container use the user it was switched to
 
                 exec_id = self.client.api.exec_create(**exec_create_kwargs)['Id']
                 stream = self.client.api.exec_start(exec_id, stream=True, demux=True)

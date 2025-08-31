@@ -283,21 +283,17 @@ def main():
 
     builder = None
     try:
-        # Handle operations that don't require Docker first
-        if args.list or args.list_apis:
-            builder = Builder(config_path=args.config)
-            if args.list:
-                builder.list_profiles()
-                return 0
-        
         # For execution commands, require Docker
         docker_image = os.environ.get('HAGENT_DOCKER')
         if not docker_image:
             print('ERROR: mcp_builder needs a HAGENT_DOCKER specified to run tools')
             return 3
 
-        if not builder:  # Create builder with Docker if not already created
-            builder = Builder(config_path=args.config, docker_image=docker_image)
+        # Handle operations that don't require Docker first
+        builder = Builder(config_path=args.config, docker_image=docker_image)
+        if args.list:
+            builder.list_profiles()
+            return 0
 
         # Only setup for operations that require execution (not dry run, not list operations)
         if not args.dry_run and not args.list_apis and not builder.setup():
