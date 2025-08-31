@@ -1,5 +1,16 @@
 -------
 
+Clean up checks:
+
+
+- HAGENT_.*_DIR variables should be only in mcp or hagent/inou directory
+
+ rg HAGENT_ | grep _DIR | cut -d: -f1 | sort -u | grep -v test
+
+- /code/workspace/... should be only in mcp or hagent/inou directory
+
+
+-------
 Input/output schema and parameters field in the fastmcp 
 
 The compile errors/messages could be structured as an output schema.
