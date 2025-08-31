@@ -39,7 +39,7 @@ class Trivial(Tool):
         self.set_error(f'Used an invalid setup option: {some_path}')
         return False
 
-    def some_method_related_to_the_tool(self, arg: str) -> str:
+    def _some_method_related_to_the_tool(self, arg: str) -> str:
         """
         Example method that demonstrates tool functionality.
 

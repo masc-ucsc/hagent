@@ -25,7 +25,7 @@ class Diagnostic:
             self.loc = -1
             self.msg = main_msg.strip()  # Fallback to the entire line
 
-    def insert_comment(self, code: str, prefix: str) -> str:
+    def _insert_comment(self, code: str, prefix: str) -> str:
         """
         Inserts a multi-line comment into a string of code at a specific line number.
 
@@ -46,7 +46,7 @@ class Diagnostic:
         code_lines[self.loc - 1 : self.loc - 1] = commented_add_lines
         return ''.join(code_lines)
 
-    def remove_comment(self, code: str, prefix: str) -> str:
+    def _remove_comment(self, code: str, prefix: str) -> str:
         """
         Removes previously inserted comments.
         """

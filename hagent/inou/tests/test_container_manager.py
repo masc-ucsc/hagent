@@ -198,7 +198,7 @@ class TestContainerManager:
                         assert '/run/user/1000/docker.sock' in paths
 
     def test_get_docker_info_connected(self):
-        """Test get_docker_info when client is connected."""
+        """Test _get_docker_info when client is connected."""
         mock_client = MagicMock()
         mock_client.info.return_value = {'OSType': 'linux', 'Architecture': 'x86_64'}
         mock_client.version.return_value = {'Version': '20.10.0', 'ApiVersion': '1.41'}
@@ -208,20 +208,20 @@ class TestContainerManager:
                 manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
                 manager.client = mock_client
 
-                info = manager.get_docker_info()
+                info = manager._get_docker_info()
 
                 assert info['status'] == 'CONNECTED'
                 assert info['docker_version'] == '20.10.0'
                 assert info['platform'] == 'linux'
 
     def test_get_docker_info_not_connected(self):
-        """Test get_docker_info when client is not connected."""
+        """Test _get_docker_info when client is not connected."""
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
                 manager.client = None
 
-                info = manager.get_docker_info()
+                info = manager._get_docker_info()
 
                 assert info['status'] == 'ERROR'
                 assert 'Docker client not initialized' in info['message']
@@ -633,7 +633,8 @@ class TestContainerManager:
                     mock_container.remove.assert_called_once()
                     mock_ref_container.kill.assert_called_once()
                     mock_ref_container.remove.assert_called_once()
-                    mock_cleanup_checkpoints.assert_called_once()
+                    # cleanup may be called multiple times (explicit call + __del__)
+                    assert mock_cleanup_checkpoints.call_count >= 1
 
                     assert manager.container is None
                     assert manager._reference_container is None

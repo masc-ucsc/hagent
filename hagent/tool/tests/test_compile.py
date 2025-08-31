@@ -40,7 +40,7 @@ class test_diagnostics(unittest.TestCase):
         error_str = "src/main.c:2: error: 'x' undeclared"
         diag = Diagnostic(error_str)
 
-        commented_code = diag.insert_comment(code, '//')
+        commented_code = diag._insert_comment(code, '//')
         expected_code = """int main() {\n// FIXME_HINT: 'x' undeclared\n    int x;\n    return 0;\n}\n"""
         self.assertEqual(commented_code, expected_code)
 
@@ -49,7 +49,7 @@ class test_diagnostics(unittest.TestCase):
         error_str = "src/main.c:2: error: 'x' undeclared"
         diag = Diagnostic(error_str)
 
-        cleaned_code = diag.remove_comment(code, '//')
+        cleaned_code = diag._remove_comment(code, '//')
         expected_code = """int main() {\n    int x;\n    return 0;\n}\n"""
         self.assertEqual(cleaned_code, expected_code)
 
@@ -61,12 +61,12 @@ class test_diagnostics(unittest.TestCase):
 
         # Test with a line number that is out of range
         with self.assertRaises(ValueError):
-            diag.insert_comment(code, '//')
+            diag._insert_comment(code, '//')
 
         # Test with a negative line number
         diag.loc = -5
         with self.assertRaises(ValueError):
-            diag.insert_comment(code, '//')
+            diag._insert_comment(code, '//')
 
     def test_to_str_error(self):
         """Test to_str method with an error diagnostic."""

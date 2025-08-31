@@ -50,31 +50,31 @@ def test_llm_template_invalid_yaml():  # test when yaml contains invalid syntax
 
 def test_validate_template_direct():  # directly testing 'validate_template' method
     temp = LLM_template({})
-    error_message = temp.validate_template([])
+    error_message = temp._validate_template([])
     assert error_message == 'the list is empty.'
 
-    error_message = temp.validate_template([{'role': 'invalid'}])
+    error_message = temp._validate_template([{'role': 'invalid'}])
     assert error_message == "item at index 0 is missing the 'content' key."
 
-    error_message = temp.validate_template([{'content': 'hello'}])
+    error_message = temp._validate_template([{'content': 'hello'}])
     assert error_message == "item at index 0 is missing the 'role' key."
 
-    error_message = temp.validate_template([{'role': 'invalid', 'content': 'hello'}])
+    error_message = temp._validate_template([{'role': 'invalid', 'content': 'hello'}])
     assert error_message == "invalid role 'invalid' at index 0. Allowed roles are 'user', 'system', or 'assistant'."
 
-    error_message = temp.validate_template([{'role': 'user', 'content': 'hello'}, {'role': 'assistant', 'content': 'response'}])
+    error_message = temp._validate_template([{'role': 'user', 'content': 'hello'}, {'role': 'assistant', 'content': 'response'}])
     assert error_message == "the last item's role must be 'user'."
 
-    error_message = temp.validate_template(['string_item'])
+    error_message = temp._validate_template(['string_item'])
     assert error_message == 'item at index 0 is not a dictionary.'
 
-    error_message = temp.validate_template([{'role': 'user', 'content': 'hello'}, {'role': 'user', 'content': 'response'}])
+    error_message = temp._validate_template([{'role': 'user', 'content': 'hello'}, {'role': 'user', 'content': 'response'}])
     assert error_message is None
 
 
 def test_validate_template_unexpected_data():  # test validate_template with non-dict data
     temp = LLM_template({})
-    error_message = temp.validate_template([12345])
+    error_message = temp._validate_template([12345])
     assert error_message == 'item at index 0 is not a dictionary.'
 
 

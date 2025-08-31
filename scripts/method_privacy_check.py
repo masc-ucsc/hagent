@@ -48,6 +48,16 @@ DEFAULT_TEST_FILE_PATTERNS = [
     'tests.py',
 ]
 
+# Methods that are considered public API by convention in this repo and
+# should not be suggested to become private even if only used internally.
+PUBLIC_ALWAYS: Set[str] = {
+    'run',
+    'parse',
+    'setup',
+    'get_error',
+    'set_error',
+}
+
 
 def is_test_file(path: Path, test_globs: List[str]) -> bool:
     name = path.name
@@ -80,6 +90,7 @@ class MethodDef:
     private_like: bool
     dunder: bool
     decorators: Tuple[str, ...]
+    class_bases: Tuple[str, ...]
 
 
 class MethodCollector(ast.NodeVisitor):
@@ -87,8 +98,22 @@ class MethodCollector(ast.NodeVisitor):
         self.file = file
         self.methods: List[MethodDef] = []
 
+    def _base_to_name(self, b: ast.expr) -> str:
+        if isinstance(b, ast.Name):
+            return b.id
+        parts: List[str] = []
+        cur = b
+        while isinstance(cur, ast.Attribute):
+            parts.append(cur.attr)
+            cur = cur.value
+        if isinstance(cur, ast.Name):
+            parts.append(cur.id)
+        parts.reverse()
+        return '.'.join(parts) if parts else ''
+
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         cls = node.name
+        bases = tuple(self._base_to_name(b) for b in node.bases)
         for ch in node.body:
             if isinstance(ch, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 name = ch.name
@@ -109,23 +134,27 @@ class MethodCollector(ast.NodeVisitor):
                         private_like=private_like,
                         dunder=dunder,
                         decorators=tuple(decos),
+                        class_bases=bases,
                     )
                 )
         self.generic_visit(node)
 
 
 class CallCollector(ast.NodeVisitor):
-    """Collect (class_name, method_name) pairs called in this file.
+    """Collect (class_name, method_name, in_main_block) for calls in this file.
 
     Tracks very shallow var->ClassName maps within a function to resolve
-    obj.method() to ClassName.method.
+    obj.method() to ClassName.method. Also tracks whether a call happens
+    under an `if __name__ == "__main__":` guard to treat those usages as
+    CLI/public entrypoints.
     """
 
     def __init__(self, known_classes: Set[str]) -> None:
         self.known_classes = known_classes
         self.class_stack: List[str] = []
         self.var_class_map_stack: List[Dict[str, str]] = []
-        self.calls: List[Tuple[str, str]] = []
+        self.main_block_stack: List[bool] = []
+        self.calls: List[Tuple[str, str, bool]] = []
 
     def _map(self) -> Dict[str, str]:
         return self.var_class_map_stack[-1] if self.var_class_map_stack else {}
@@ -146,6 +175,40 @@ class CallCollector(ast.NodeVisitor):
         self.var_class_map_stack.pop()
 
     visit_AsyncFunctionDef = visit_FunctionDef
+
+    # --- main guard handling ---
+    def _is_main_guard(self, test: ast.expr) -> bool:
+        # Matches: if __name__ == "__main__":
+        if isinstance(test, ast.Compare):
+            # left == right
+            left = test.left
+            comps = test.comparators
+            if len(comps) != 1 or len(test.ops) != 1:
+                return False
+            op = test.ops[0]
+            right = comps[0]
+            def is_name_main(n: ast.AST) -> bool:
+                return isinstance(n, ast.Name) and n.id == '__name__'
+            def is_const_main(n: ast.AST) -> bool:
+                return isinstance(n, ast.Constant) and n.value == '__main__'
+            if isinstance(op, ast.Eq) and ((is_name_main(left) and is_const_main(right)) or (is_const_main(left) and is_name_main(right))):
+                return True
+        return False
+
+    def _in_main(self) -> bool:
+        return any(self.main_block_stack)
+
+    def visit_If(self, node: ast.If) -> None:
+        if self._is_main_guard(node.test):
+            # Traverse body under main flag, orelse without
+            self.main_block_stack.append(True)
+            for stmt in node.body:
+                self.visit(stmt)
+            self.main_block_stack.pop()
+            for stmt in node.orelse:
+                self.visit(stmt)
+        else:
+            self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if isinstance(node.target, ast.Name) and isinstance(node.annotation, ast.Name):
@@ -168,13 +231,13 @@ class CallCollector(ast.NodeVisitor):
             recv = f.value.id
             meth = f.attr
             if recv == 'self' and self.class_stack:
-                self.calls.append((self.class_stack[-1], meth))
+                self.calls.append((self.class_stack[-1], meth, self._in_main()))
             elif recv in self.known_classes:
-                self.calls.append((recv, meth))
+                self.calls.append((recv, meth, self._in_main()))
             else:
                 c = self._map().get(recv)
                 if c:
-                    self.calls.append((c, meth))
+                    self.calls.append((c, meth, self._in_main()))
         self.generic_visit(node)
 
 
@@ -202,6 +265,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Pass 2: collect non-test call sites per file
     calls_by_method: Dict[Tuple[str, str], Set[Path]] = {}
+    calls_in_main: Dict[Tuple[str, str], Set[Path]] = {}
     files_for_calls = list(iter_py_files(root, include_tests=False, test_globs=test_globs, exclude_dirs=DEFAULT_EXCLUDE_DIRS))
     for pf in files_for_calls:
         try:
@@ -214,16 +278,25 @@ def main(argv: Optional[List[str]] = None) -> int:
             continue
         cc = CallCollector(known_classes)
         cc.visit(tree)
-        for cls, meth in cc.calls:
-            calls_by_method.setdefault((cls, meth), set()).add(pf)
+        for cls, meth, in_main in cc.calls:
+            key = (cls, meth)
+            calls_by_method.setdefault(key, set()).add(pf)
+            if in_main:
+                calls_in_main.setdefault(key, set()).add(pf)
 
     # Analyze
     issues: List[str] = []
+
+    def _has_base_suffix(bases: Tuple[str, ...], suffix: str) -> bool:
+        return any(b.endswith(suffix) for b in bases)
 
     for m in methods:
         # Skip any methods defined in test files entirely; tests are free to
         # use private/public methods without policy constraints.
         if is_test_file(m.file, test_globs):
+            continue
+        # Skip methods on unittest.TestCase subclasses
+        if _has_base_suffix(m.class_bases, 'TestCase'):
             continue
         key = (m.class_name, m.method)
         callers: Set[Path] = calls_by_method.get(key, set())
@@ -232,6 +305,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             continue
         # Skip double-underscore methods entirely (e.g., __init__, __enter__)
         if m.method.startswith('__'):
+            continue
+        # Skip common visitor pattern methods
+        if m.method.startswith('visit_') or _has_base_suffix(m.class_bases, 'NodeVisitor'):
             continue
 
         # 1) Private-like method called from outside its defining file (non-test)
@@ -247,7 +323,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         # 2) Public method used only internally (same file) or by tests -> should be private
         else:
             cross_file_callers = [c for c in callers if c.resolve() != m.file.resolve()]
-            if not cross_file_callers:
+            # Treat calls from a __main__ guard in the same file as external/public usage
+            main_in_same_file = m.file.resolve() in {p.resolve() for p in calls_in_main.get(key, set())}
+            if not cross_file_callers and not main_in_same_file:
+                # Respect conventional public API names
+                if m.method in PUBLIC_ALWAYS:
+                    continue
                 issues.append(
                     f'PRIVACY: Public method appears internal-only: {m.file}:{m.lineno} {m.class_name}.{m.method}. '
                     f'Hint: Consider renaming to _{m.method} if not part of public API.'

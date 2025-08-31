@@ -108,7 +108,7 @@ class Step(metaclass=TracerMetaClass):
             print(f'Usage: {program_name} -o<output_yaml_file> <input_yaml_file>')
             sys.exit(1)
 
-    def read_input(self):
+    def _read_input(self):
         """Read and parse the input YAML file.
 
         Returns:
@@ -125,7 +125,7 @@ class Step(metaclass=TracerMetaClass):
 
         return data
 
-    def write_output(self, data):
+    def _write_output(self, data):
         """Write data to the output YAML file.
 
         Args:
@@ -138,7 +138,7 @@ class Step(metaclass=TracerMetaClass):
             yaml_obj.dump(processed_data, f)
 
     @contextlib.contextmanager
-    def temporary_env_vars(self):
+    def _temporary_env_vars(self):
         """
         Context manager to temporarily set environment variables from input_data.
         Expected format in YAML:
@@ -176,7 +176,7 @@ class Step(metaclass=TracerMetaClass):
             self.error('must call parse_arguments or set_io before setup')
 
         if self.input_file:
-            self.input_data = self.read_input()
+            self.input_data = self._read_input()
             env_vars = self.input_data.get('set_env_vars', {})
             if env_vars and not isinstance(env_vars, dict):
                 self.error('set_env_vars must be a map in yaml')
@@ -185,7 +185,7 @@ class Step(metaclass=TracerMetaClass):
             if isinstance(self.input_data, dict) and 'error' in self.input_data:
                 # Propagate error from input reading and exit
                 print('WARNING: error field in input yaml, just propagating')
-                self.write_output(self.input_data)
+                self._write_output(self.input_data)
                 sys.exit(4)
             if self.overwrite_conf:
                 self.input_data = dict_deep_merge(self.input_data, self.overwrite_conf)
@@ -217,9 +217,9 @@ class Step(metaclass=TracerMetaClass):
         assert expected_output is not None
         assert expected_output != {}
 
-        self.input_data = self.read_input()
+        self.input_data = self._read_input()
         self.setup()
-        with self.temporary_env_vars():
+        with self._temporary_env_vars():
             result_data = self.run(self.input_data)
         if result_data != expected_output:
             print(f'input_data: {self.input_data}')
@@ -239,10 +239,10 @@ class Step(metaclass=TracerMetaClass):
         output_data = self.input_data.copy() if self.input_data else {}
         output_data.update({'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} {msg}'})
         print(f'ERROR: {sys.argv[0]} : {msg}')
-        self.write_output(output_data)
+        self._write_output(output_data)
         raise ValueError(msg)
 
-    def augment_output_data(self, output_data: dict, start: float, elapsed: float, history: list):
+    def _augment_output_data(self, output_data: dict, start: float, elapsed: float, history: list):
         output_data['step'] = self.__class__.__name__
         output_data['tracing'] = {}
         output_data['tracing']['start'] = s_to_us(start)
@@ -279,7 +279,7 @@ class Step(metaclass=TracerMetaClass):
         output_data = {}
         try:
             # Set environment variables temporarily before running.
-            with self.temporary_env_vars():
+            with self._temporary_env_vars():
                 result_data = self.run(self.input_data)
             if result_data is None:
                 result_data = {}
@@ -314,6 +314,6 @@ class Step(metaclass=TracerMetaClass):
 
         elapsed = time.time() - start
         # Ensure that all relevant tracing attributes are accurate for this Step.
-        self.augment_output_data(output_data, start, elapsed, history)
-        self.write_output(output_data)
+        self._augment_output_data(output_data, start, elapsed, history)
+        self._write_output(output_data)
         return output_data

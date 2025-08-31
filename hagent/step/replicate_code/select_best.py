@@ -24,7 +24,7 @@ class Select_best(Step):
             print(f'[ERROR] Equiv_check setup failed: {err}')
             sys.exit(1)
 
-    def synthesize_module(self, code, mod_name, work_dir, liberty_file):
+    def _synthesize_module(self, code, mod_name, work_dir, liberty_file):
         """
         Synthesize the given Verilog module using Yosys and generate the netlist.
         Returns the netlist file path.
@@ -58,14 +58,14 @@ class Select_best(Step):
 
         return netlist_file
 
-    def update_best_version(self, best_time, current_time, result, code):
+    def _update_best_version(self, best_time, current_time, result, code):
         """Update the best version if the current arrival time is smaller."""
         if current_time < best_time:
             result['best_version'] = code
             return current_time
         return best_time
 
-    def analyze_timing(self, netlist_file, mod_name, work_dir, liberty_file):
+    def _analyze_timing(self, netlist_file, mod_name, work_dir, liberty_file):
         """
         Analyze timing using OpenSTA and generate a timing report.
         Returns the arrival time extracted from the report.
@@ -96,9 +96,9 @@ class Select_best(Step):
             print(f'Error analyzing timing for {mod_name} with OpenSTA')
             return float('inf')
 
-        return self.extract_arrival_time(timing_report)
+        return self._extract_arrival_time(timing_report)
 
-    def extract_arrival_time(self, report_path):
+    def _extract_arrival_time(self, report_path):
         """Extract the smallest arrival time from the timing report."""
         try:
             with open(report_path, 'r') as file:
@@ -137,10 +137,10 @@ class Select_best(Step):
             if not parsed_codes or not parsed_codes[0]:
                 continue
             code = parsed_codes[0]
-            netlist_file = self.synthesize_module(code, mod_name, work_dir, 'sky130_fd_sc_hd__ff_100C_1v95.lib')
+            netlist_file = self._synthesize_module(code, mod_name, work_dir, 'sky130_fd_sc_hd__ff_100C_1v95.lib')
             if netlist_file:
-                arrival_time = self.analyze_timing(netlist_file, mod_name, work_dir, 'sky130_fd_sc_hd__ff_100C_1v95.lib')
-                best_time = self.update_best_version(best_time, arrival_time, result, code)
+                arrival_time = self._analyze_timing(netlist_file, mod_name, work_dir, 'sky130_fd_sc_hd__ff_100C_1v95.lib')
+                best_time = self._update_best_version(best_time, arrival_time, result, code)
 
         print(f'Best version found with arrival time: {best_time:.2f}')
 

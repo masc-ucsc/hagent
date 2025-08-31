@@ -41,7 +41,7 @@ class TransactionLogger:
         """Initialize the transaction logger using output manager"""
         self.loggers = {}
 
-    def get_logger(self, command_name: str) -> logging.Logger:
+    def _get_logger(self, command_name: str) -> logging.Logger:
         """Get or create a logger for the specified command"""
         if command_name in self.loggers:
             return self.loggers[command_name]
@@ -70,9 +70,9 @@ class TransactionLogger:
         self.loggers[command_name] = logger
         return logger
 
-    def log_transaction(self, command_name: str, request: Any, response: Any):
+    def _log_transaction(self, command_name: str, request: Any, response: Any):
         """Log a transaction for the given command"""
-        logger = self.get_logger(command_name)
+        logger = self._get_logger(command_name)
         timestamp = datetime.datetime.now().isoformat()
 
         logger.info(f'--- TRANSACTION BEGIN [{timestamp}] ---')
@@ -114,11 +114,11 @@ def log_transactions(func):
 
         try:
             result = func(*args, **kwargs)
-            txn_logger.log_transaction(command_name, request, result)
+            txn_logger._log_transaction(command_name, request, result)
             return result
         except Exception as e:
             error_response = {'error': str(e), 'type': type(e).__name__}
-            txn_logger.log_transaction(command_name, request, error_response)
+            txn_logger._log_transaction(command_name, request, error_response)
             raise
 
     return wrapper
@@ -451,7 +451,7 @@ class EnvironmentSetup:
     """Environment setup utilities for HAgent"""
 
     @staticmethod
-    def setup_environment():
+    def _setup_environment():
         """Setup proper HAgent environment variables with intelligent defaults"""
         logger.info('Setting up HAgent environment variables')
 
@@ -621,7 +621,7 @@ def hagent_info() -> Dict[str, str]:
         Dictionary with environment variables and settings
     """
     # Ensure environment is set up
-    EnvironmentSetup.setup_environment()
+    EnvironmentSetup._setup_environment()
 
     # Get environment variables
     env_vars = {
@@ -642,7 +642,7 @@ def hagent_info() -> Dict[str, str]:
 # Setup environment when the module is imported
 try:
     # Set up environment when the module is imported
-    EnvironmentSetup.setup_environment()
+    EnvironmentSetup._setup_environment()
     logger.info('Environment automatically set up on import')
 except Exception as e:
     logger.error(f'Error setting up environment: {e}')

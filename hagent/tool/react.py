@@ -179,7 +179,7 @@ class React:
                 if iteration == 1:
                     delta, start_line, end_line = self.get_delta(current_text, diagnostics[0].loc)
                     try:
-                        annotated = diagnostics[0].insert_comment(delta, self._lang_prefix)
+                        annotated = diagnostics[0]._insert_comment(delta, self._lang_prefix)
                     except Exception as e:
                         self.error_message = f'Failed to insert diagnostic comment in delta: {e}'
                         self._log.append(iteration_log)
@@ -189,7 +189,7 @@ class React:
                     new_text = self.apply_patch(current_text, fixed_delta, start_line, end_line)
                 else:
                     try:
-                        annotated = diagnostics[0].insert_comment(current_text, self._lang_prefix)
+                        annotated = diagnostics[0]._insert_comment(current_text, self._lang_prefix)
                     except Exception as e:
                         self.error_message = f'Failed to insert diagnostic comment: {e}'
                         self._log.append(iteration_log)

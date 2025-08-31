@@ -13,8 +13,8 @@ def test_llm_wrap_caching():
 
     lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
-    jokes1 = lw.inference({}, 'use_prompt1', n=1)
-    jokes2 = lw.inference({}, 'use_prompt1', n=1)
+    jokes1 = lw._inference({}, 'use_prompt1', n=1)
+    jokes2 = lw._inference({}, 'use_prompt1', n=1)
 
     # Since caching is enabled, both responses should match.
     assert len(jokes1) == 1
@@ -27,7 +27,7 @@ def test_llm_wrap_n_diff():
 
     lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
-    res = lw.inference({}, 'use_prompt_random', n=3)
+    res = lw._inference({}, 'use_prompt_random', n=3)
     assert len(res) == 3
     print(res)
     assert res[0] != res[1]
@@ -40,7 +40,7 @@ def test_bad_config_file_nonexistent():
     lw = LLM_wrap('test_bad_config', non_existent_file, 'test_bad_config.log')
     assert 'unable to read conf_file' in lw.last_error
 
-    result = lw.inference({}, 'some_prompt', n=1)
+    result = lw._inference({}, 'some_prompt', n=1)
     # Expect empty result and an error about missing llm "model".
     assert 'unable to read conf_file' in lw.last_error
     assert result == []
@@ -52,7 +52,7 @@ def test_bad_prompt():
 
     lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
-    result = lw.inference({}, 'some_bad_prompt', n=1)
+    result = lw._inference({}, 'some_bad_prompt', n=1)
 
     assert 'unable to find' in lw.last_error
     assert result == []
@@ -67,7 +67,7 @@ def test_bad_config_file_bad_yaml():
         lw = LLM_wrap('test_bad_yaml', tmp_path, 'test_bad_yaml.log')
         assert 'specify llm section' in lw.last_error
 
-        result = lw.inference({}, 'some_prompt', n=1)
+        result = lw._inference({}, 'some_prompt', n=1)
         assert result == []
         assert 'specify llm section' in lw.last_error
     finally:
@@ -95,7 +95,7 @@ def test_missing_env_var(monkeypatch):
     lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
     # Should return empty result since check_env_keys returns False
-    result = lw.inference({}, 'use_prompt1', n=1)
+    result = lw._inference({}, 'use_prompt1', n=1)
     assert result == []
     assert 'environment' in lw.last_error.lower()
 

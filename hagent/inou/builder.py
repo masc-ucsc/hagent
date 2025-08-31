@@ -33,7 +33,7 @@ class Builder:
             config_path: Path to the YAML configuration file (auto-discovered if None)
             docker_image: Docker image for container execution (if needed)
         """
-        self.config_path = config_path or self.find_config()
+        self.config_path = config_path or self._find_config()
         self.config = self._load_config()
 
         # Initialize Runner if available, otherwise create a placeholder
@@ -41,7 +41,7 @@ class Builder:
         self.error_message = ''
 
     @staticmethod
-    def possible_config_paths() -> List[str]:
+    def _possible_config_paths() -> List[str]:
         """
         Get list of possible configuration file paths in search order.
 
@@ -51,7 +51,7 @@ class Builder:
         return PathManager.possible_config_paths()
 
     @staticmethod
-    def find_config() -> str:
+    def _find_config() -> str:
         """
         Locate hagent.yaml via the standard search path.
 
@@ -133,7 +133,7 @@ class Builder:
 
     # ---------------------------- environment setup ----------------------------
 
-    def setup_environment(self, profile: dict, build_dir: Optional[Path] = None) -> Dict[str, str]:
+    def _setup_environment(self, profile: dict, build_dir: Optional[Path] = None) -> Dict[str, str]:
         """
         Setup environment variables for a profile.
 
@@ -170,7 +170,7 @@ class Builder:
 
     # ---------------------------- track directive parsing ----------------------------
 
-    def parse_track_directive(self, directive: str, build_dir: Optional[Path] = None) -> Tuple[str, str, Optional[str]]:
+    def _parse_track_directive(self, directive: str, build_dir: Optional[Path] = None) -> Tuple[str, str, Optional[str]]:
         """
         Parse track_repo_dir() or track_build_dir() directives.
 
@@ -221,7 +221,7 @@ class Builder:
 
         return resolved_path, func_type, ext
 
-    def setup_file_tracking(self, profile: dict, build_dir: Optional[Path] = None) -> None:
+    def _setup_file_tracking(self, profile: dict, build_dir: Optional[Path] = None) -> None:
         """
         Setup file tracking based on profile configuration.
 
@@ -245,7 +245,7 @@ class Builder:
             if key in cfg:
                 directive = cfg[key]
                 if isinstance(directive, str) and ('track_repo_dir(' in directive or 'track_build_dir(' in directive):
-                    resolved_path, func_type, ext = self.parse_track_directive(directive, build_dir)
+                    resolved_path, func_type, ext = self._parse_track_directive(directive, build_dir)
                     if func_type in ['repo_dir', 'build_dir']:
                         # Use Runner's file tracking
                         if Path(resolved_path).is_file():
@@ -253,7 +253,7 @@ class Builder:
                         else:
                             self.runner.track_dir(resolved_path, ext)
 
-    def validate_configuration(self, profile: dict, build_dir: Optional[Path] = None, dry_run: bool = False) -> None:
+    def _validate_configuration(self, profile: dict, build_dir: Optional[Path] = None, dry_run: bool = False) -> None:
         """
         Parse and validate track directives in the configuration.
 
@@ -299,7 +299,7 @@ class Builder:
 
     # ---------------------------- profile selection ----------------------------
 
-    def select_profile(self, exact_name: Optional[str] = None, title_query: Optional[str] = None) -> dict:
+    def _select_profile(self, exact_name: Optional[str] = None, title_query: Optional[str] = None) -> dict:
         """
         Select a profile based on name or title query.
 
@@ -344,7 +344,7 @@ class Builder:
 
     # ---------------------------- command execution ----------------------------
 
-    def execute_command(
+    def _execute_command(
         self,
         profile: dict,
         command_name: str,
@@ -387,14 +387,14 @@ class Builder:
             raise ValueError(f"Command '{command_name}' not found in profile '{profile.get('name')}'")
 
         # Validate configuration before proceeding
-        self.validate_configuration(profile, build_dir, dry_run)
+        self._validate_configuration(profile, build_dir, dry_run)
 
         # Setup file tracking (only for non-dry runs with Runner)
         if not dry_run and self.runner:
-            self.setup_file_tracking(profile, build_dir)
+            self._setup_file_tracking(profile, build_dir)
 
         # Setup environment
-        env = self.setup_environment(profile, build_dir)
+        env = self._setup_environment(profile, build_dir)
 
         # Compose command; replace simple placeholders
         command = command_info['command']
@@ -449,8 +449,8 @@ class Builder:
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
-        profile = self.select_profile(exact_name, title_query)
-        return self.execute_command(profile, command_name, extra_args, build_dir, dry_run, quiet)
+        profile = self._select_profile(exact_name, title_query)
+        return self._execute_command(profile, command_name, extra_args, build_dir, dry_run, quiet)
 
     # ---------------------------- listing methods ----------------------------
 

@@ -85,6 +85,18 @@ else
   issues=$((issues+1))
 fi
 
+# 5) Coverage-guided: public methods with zero hits in coverage.xml
+if [ -f coverage.xml ]; then
+  section "Coverage: public methods with 0 hits"
+  if $PYTHON_RUN scripts/coverage_public_unused.py coverage.xml; then
+    note "No uncovered public methods found in coverage.xml."
+  else
+    issues=$((issues+1))
+  fi
+else
+  note "No coverage.xml found; skipping coverage-based hints."
+fi
+
 if [ "$issues" -ne 0 ]; then
   echo "\nOne or more checks reported issues."
   exit 1

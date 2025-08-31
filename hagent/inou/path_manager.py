@@ -290,7 +290,7 @@ class PathManager:
         build_cache = self.cache_dir / 'build'
         return str(build_cache)
 
-    def get_venv_dir(self) -> str:
+    def _get_venv_dir(self) -> str:
         """
         Get the UV virtual environment directory path.
 
@@ -310,7 +310,7 @@ class PathManager:
         """Directory for log files."""
         return self.inou_dir / 'logs'
 
-    def get_yaml_path(self, filename: str) -> Path:
+    def _get_yaml_path(self, filename: str) -> Path:
         """
         Get path for step YAML files.
 
