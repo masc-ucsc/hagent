@@ -809,6 +809,8 @@ class ContainerManager:
                 cap_add=['SETUID', 'SETGID', 'DAC_OVERRIDE', 'CHOWN', 'FOWNER'],  # For user switching and file ops
                 # Prevent new privileges after initial setup
                 read_only=False,  # We need write access to mounted volumes
+                # Auto-remove container when it exits to prevent accumulation
+                auto_remove=True,
             )
 
             container.start()
@@ -962,6 +964,8 @@ class ContainerManager:
                 cap_add=['SETUID', 'SETGID', 'DAC_OVERRIDE', 'CHOWN', 'FOWNER'],  # For user switching and file ops
                 # Prevent new privileges after initial setup
                 read_only=False,  # We need write access to mounted volumes
+                # Auto-remove container when it exits to prevent accumulation
+                auto_remove=True,
             )
             self.container.start()
 
@@ -1256,6 +1260,8 @@ class ContainerManager:
                     command='tail -f /dev/null',  # Keep it alive
                     working_dir=self._workdir,
                     detach=True,
+                    # Auto-remove container when it exits to prevent accumulation
+                    auto_remove=True,
                 )
                 self._reference_container.start()
             except Exception as e:
