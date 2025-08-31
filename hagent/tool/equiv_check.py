@@ -50,7 +50,7 @@ class Equiv_check:
         """
         Checks if Yosys is installed, accessible, and meets the minimum version 0.4.
         If yosys_path is provided, that binary is used; otherwise, the system PATH is used.
-        If local Yosys is not available, falls back to Docker with mascucsc/hagent-builder:2025.08.
+        If local Yosys is not available, falls back to Docker with mascucsc/hagent-builder:2025.09.
 
         Returns True if Yosys is available (locally or via Docker), False otherwise.
         """
@@ -103,14 +103,14 @@ class Equiv_check:
 
     def _setup_docker_fallback(self) -> bool:
         """
-        Sets up Docker fallback using ContainerManager with mascucsc/hagent-builder:2025.08 image.
+        Sets up Docker fallback using ContainerManager with mascucsc/hagent-builder:2025.09 image.
         Uses no mount points - files are copied in/out as needed.
 
         Returns True if Docker setup succeeds, False otherwise.
         """
         try:
             self.path_manager = PathManager()
-            self.container_manager = ContainerManager(image='mascucsc/hagent-builder:2025.08', path_manager=self.path_manager)
+            self.container_manager = ContainerManager(image='mascucsc/hagent-builder:2025.09', path_manager=self.path_manager)
 
             # Setup container with no automatic mounts for equiv_check operations
             if self.container_manager.setup(automount=False):

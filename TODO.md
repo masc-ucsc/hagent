@@ -1,14 +1,8 @@
 -------
 
-Clean up checks:
+If HAGENT_LLM_MODEL is set, it uses this LLM for all the queries.
 
-
-- HAGENT_.*_DIR variables should be only in mcp or hagent/inou directory
-
- rg HAGENT_ | grep _DIR | cut -d: -f1 | sort -u | grep -v test
-
-- /code/workspace/... should be only in mcp or hagent/inou directory
-
+Usuful when users do not have  the keys used for regression testing.
 
 -------
 Input/output schema and parameters field in the fastmcp 

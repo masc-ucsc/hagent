@@ -465,8 +465,8 @@ class EnvironmentSetup:
 
         # Setup HAGENT_DOCKER with default
         if 'HAGENT_DOCKER' not in os.environ:
-            os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-builder:2025.08'
-            logger.info('Set HAGENT_DOCKER=mascucsc/hagent-builder:2025.08')
+            os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-builder:2025.09'
+            logger.info('Set HAGENT_DOCKER=mascucsc/hagent-builder:2025.09')
 
         # Setup HAGENT_REPO_DIR with intelligent fallbacks
         if 'HAGENT_REPO_DIR' not in os.environ:
