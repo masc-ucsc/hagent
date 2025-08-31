@@ -36,12 +36,12 @@ def s_to_us(s: float) -> float:
 
 # https://docs.python.org/3/howto/logging-cookbook.html#implementing-structured-logging
 class Encoder(json.JSONEncoder):
-    def default(self, o):
+    def _default(self, o):
         if isinstance(o, set):
             return tuple(o)
         elif isinstance(o, str):
             return o.encode('unicode_escape').decode('ascii')
-        return super().default(o)
+        return super()._default(o)
 
 
 def read_yaml(input_file: Path) -> dict:
@@ -316,7 +316,7 @@ class Tracer:
             cls.id_steps[event.args['step_id']] = event
 
     @classmethod
-    def get_tree_repr(cls, dependencies: Tuple[set, set, set]) -> nx.DiGraph:
+    def _get_tree_repr(cls, dependencies: Tuple[set, set, set]) -> nx.DiGraph:
         """
         Generates a NetworkX graph object to represent steps and dependencies.
 
@@ -363,12 +363,12 @@ class Tracer:
         return cls.graph
 
     @classmethod
-    def get_step_from_yaml(cls, g: nx.DiGraph, yaml_path: Path):
+    def _get_step_from_yaml(cls, g: nx.DiGraph, yaml_path: Path):
         step_id = g.nodes[yaml_path]['id']
         return cls.id_steps[step_id]
 
     @classmethod
-    def add_flow_events(cls, dependencies: Tuple[set, set, set]):
+    def _add_flow_events(cls, dependencies: Tuple[set, set, set]):
         """
         Adds the Flow TraceEvents to provide relations between events.
 
@@ -379,7 +379,7 @@ class Tracer:
             - output files (output of a Step).
 
         """
-        g = cls.get_tree_repr(dependencies)
+        g = cls._get_tree_repr(dependencies)
         # Make an undirected copy of the digraph
         ug = g.to_undirected()
 
@@ -390,8 +390,8 @@ class Tracer:
             for edge in sg.edges():
                 flow_name = f'pipe_{pipe_id}_flow_{edge_id}'
                 start, end = edge
-                start_step = cls.get_step_from_yaml(sg, start)
-                end_step = cls.get_step_from_yaml(sg, end)
+                start_step = cls._get_step_from_yaml(sg, start)
+                end_step = cls._get_step_from_yaml(sg, end)
                 logger.debug('Marking Flow from %s -> %s', start_step.name, end_step.name)
                 Tracer.log(
                     TraceEvent(
@@ -419,7 +419,7 @@ class Tracer:
                 edge_id += 1
 
     @classmethod
-    def add_metadata(cls, asynchronous: bool):
+    def _add_metadata(cls, asynchronous: bool):
         """
         Adds metadata events to rename and prettify the Perfetto Trace.
         """
@@ -509,7 +509,7 @@ class Tracer:
         )
 
     @classmethod
-    def create_asynchronous_trace(cls, dependencies: Tuple[set, set, set], step_offset: int):
+    def _create_asynchronous_trace(cls, dependencies: Tuple[set, set, set], step_offset: int):
         """
         Creates an asynchronous trace from the recorded events.
 
@@ -532,7 +532,7 @@ class Tracer:
                          0 indicates that all Steps should be touching if displayed on a single track.
 
         """
-        g = cls.get_tree_repr(dependencies)
+        g = cls._get_tree_repr(dependencies)
 
         visited = set()
         for potential_root in g.nodes:
@@ -548,7 +548,7 @@ class Tracer:
                     layer = [layer]
                 for yaml_file in layer:
                     step_id = g.nodes[yaml_file]['id']
-                    step = cls.get_step_from_yaml(g, yaml_file)
+                    step = cls._get_step_from_yaml(g, yaml_file)
                     step.tid = step_id
                     orig_event_ts = step.ts
                     # If it is the first layer, we know that steps should be placed at timestamp 0.
@@ -562,7 +562,7 @@ class Tracer:
                             if dependency not in visited:
                                 dependency_unvisited = True
                                 break
-                            step_dependency = cls.get_step_from_yaml(g, dependency)
+                            step_dependency = cls._get_step_from_yaml(g, dependency)
                             dependency_timestamps.append(step_dependency.ts + step_dependency.dur + step_offset)
                         # If we have an unvisited dependency, that needs to be resolved before we can
                         # apply any timestamp change here. This Step will be revisited since the unvisited dependency
@@ -599,11 +599,11 @@ class Tracer:
             filename = get_output_path(filename)
         # Modify the TraceEvents to be fully parallelized.
         if asynchronous:
-            cls.create_asynchronous_trace(dependencies, step_offset)
+            cls._create_asynchronous_trace(dependencies, step_offset)
         # Add necessary metadata to visualize each event nicely.
-        cls.add_metadata(asynchronous)
+        cls._add_metadata(asynchronous)
         # Add Flow TraceEvents to depict how each step flows into the next.
-        cls.add_flow_events(dependencies)
+        cls._add_flow_events(dependencies)
 
         with open(filename, 'w+', encoding='utf-8') as f:
             json.dump({'traceEvents': [event.to_json() for event in cls.events]}, f, indent=2, default=str)

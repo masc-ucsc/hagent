@@ -62,7 +62,7 @@ class LLM_wrap:
         llm_args (dict): LLM-specific arguments from config
     """
 
-    def load_config(self) -> Dict:
+    def _load_config(self) -> Dict:
         """Load configuration from YAML file for this LLM wrapper instance.
 
         Performs case-insensitive lookup of configuration section by name.
@@ -96,7 +96,7 @@ class LLM_wrap:
 
         return {}
 
-    def check_env_keys(self, model: str) -> bool:
+    def _check_env_keys(self, model: str) -> bool:
         """Validate that required environment variables are set for the given model.
 
         Args:
@@ -179,7 +179,7 @@ class LLM_wrap:
         self.config = {}
 
         if os.path.exists(self.conf_file):
-            self.config = self.load_config()
+            self.config = self._load_config()
         elif self.conf_file:
             self._set_error(f'unable to read conf_file {conf_file}')
             return
@@ -207,7 +207,7 @@ class LLM_wrap:
         self.last_error = msg
         print(msg, file=sys.stderr)
 
-    def clear_history(self):
+    def _clear_history(self):
         """Clear the conversation history for this LLM wrapper instance.
 
         Logs the history clearing event for tracing purposes.
@@ -217,7 +217,7 @@ class LLM_wrap:
         data.update({'clear_history': True})
         if self.last_error:
             data['error'] = self.last_error
-        self._log_event(event_type=f'{self.name}:LLM_wrap.clear_history', data=data)
+        self._log_event(event_type=f'{self.name}:LLM_wrap._clear_history', data=data)
 
     def _log_event(self, event_type: str, data: Dict):
         def process_multiline_strings(obj):
@@ -306,7 +306,7 @@ class LLM_wrap:
             self._set_error('empty model name. No default model used')
             return []
 
-        if not self.check_env_keys(model):
+        if not self._check_env_keys(model):
             self._set_error(f'environment keys not set for {model}')
             return []
 
@@ -452,7 +452,7 @@ class LLM_wrap:
         self.responses.append(response)
         return answers
 
-    def inference(self, prompt_dict: Dict, prompt_index: str, n: int = 1, max_history: int = 0) -> List[str]:
+    def _inference(self, prompt_dict: Dict, prompt_index: str, n: int = 1, max_history: int = 0) -> List[str]:
         """Perform LLM inference with the given prompt and parameters.
 
         Args:

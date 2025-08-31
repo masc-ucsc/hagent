@@ -224,13 +224,13 @@ class TestPathManager:
             assert Path(result).resolve() == Path(expected).resolve()
 
     def test_get_venv_dir(self):
-        """Test get_venv_dir method."""
+        """Test _get_venv_dir method."""
         with tempfile.TemporaryDirectory() as temp_dir:
             cache_dir = Path(temp_dir) / 'cache'
             pm = PathManager(validate_env=False)
             pm._cache_dir = cache_dir.resolve()
 
-            result = pm.get_venv_dir()
+            result = pm._get_venv_dir()
             expected = str(cache_dir / 'venv')
             assert Path(result).resolve() == Path(expected).resolve()
 

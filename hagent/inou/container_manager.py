@@ -440,7 +440,7 @@ class ContainerManager:
         if pull_error:
             raise pull_error
 
-    def get_docker_info(self) -> Dict[str, str]:
+    def _get_docker_info(self) -> Dict[str, str]:
         """Get information about the Docker connection for debugging."""
         if self.client is None:
             return {'status': 'ERROR', 'message': 'Docker client not initialized'}
@@ -1055,7 +1055,7 @@ class ContainerManager:
         # Clean up anonymous checkpoints
         self._cleanup_anonymous_checkpoints()
 
-    def get_reference_container(self) -> Optional['docker.models.containers.Container']:
+    def _get_reference_container(self) -> Optional['docker.models.containers.Container']:
         """Get or create a reference container for comparing original files."""
         if self._reference_container is None:
             try:

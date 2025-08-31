@@ -18,17 +18,17 @@ class TestFuzzGrep(unittest.TestCase):
 
     def test_preprocess_and_extract(self):
         text = 'Hello_World123'
-        self.assertEqual(self.tool.preprocess(text), 'helloworld')
-        words = self.tool.extract_words('This_is a test123')
+        self.assertEqual(self.tool._preprocess(text), 'helloworld')
+        words = self.tool._extract_words('This_is a test123')
         self.assertIn('This_is', words)
         self.assertIn('test123', words)
 
     def test_line_matches(self):
         line = 'This line has Example_3 string and _test_4 value.'
-        self.assertTrue(self.tool.line_matches(line, ['example', 'test'], threshold=70))
-        self.assertTrue(self.tool.line_matches(line, ['example', 'absent'], threshold=70))
-        self.assertFalse(self.tool.line_matches(line, ['potato', 'absent'], threshold=70))
-        self.assertFalse(self.tool.line_matches(line, ['potato', 'absent'], threshold=50))
+        self.assertTrue(self.tool._line_matches(line, ['example', 'test'], threshold=70))
+        self.assertTrue(self.tool._line_matches(line, ['example', 'absent'], threshold=70))
+        self.assertFalse(self.tool._line_matches(line, ['potato', 'absent'], threshold=70))
+        self.assertFalse(self.tool._line_matches(line, ['potato', 'absent'], threshold=50))
 
     def test_find_matches_in_text(self):
         text = '\n'.join(
@@ -158,11 +158,11 @@ class TestFuzzGrep(unittest.TestCase):
 
         # Line with only reserved keywords
         line = 'module test endmodule'
-        self.assertFalse(self.tool.line_matches(line, ['module'], threshold=70))
+        self.assertFalse(self.tool._line_matches(line, ['module'], threshold=70))
 
         # Line with both reserved and non-reserved words
         line = 'module custom_module endmodule'
-        self.assertTrue(self.tool.line_matches(line, ['custommodule'], threshold=70))
+        self.assertTrue(self.tool._line_matches(line, ['custommodule'], threshold=70))
 
 
 if __name__ == '__main__':

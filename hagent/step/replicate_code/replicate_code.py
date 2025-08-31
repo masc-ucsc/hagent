@@ -28,7 +28,7 @@ class Replicate_code(Step):
         if self.lw.last_error:
             raise ValueError(self.lw.last_error)
 
-    def check_lec(self, data) -> list[str]:
+    def _check_lec(self, data) -> list[str]:
         try:
             original_code = data['code_content']
             optimized_codes = data['optimized']  # this is a list
@@ -101,7 +101,7 @@ class Replicate_code(Step):
                         result['optimized'].append(new_code)
 
         # print(f'\n\n\n result => \n\n {data} \n\n')
-        codes_passing_lec = self.check_lec(result)
+        codes_passing_lec = self._check_lec(result)
         result['optimized_equivalent'] = codes_passing_lec
 
         x = 1

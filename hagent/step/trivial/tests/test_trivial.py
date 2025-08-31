@@ -43,9 +43,9 @@ def test_trivial():
             with open(expected_out_file, 'r') as f:
                 expected_output = yaml_obj.load(f)
 
-            trivial_step.input_data = trivial_step.read_input()
+            trivial_step.input_data = trivial_step._read_input()
             trivial_step.setup()
-            with trivial_step.temporary_env_vars():
+            with trivial_step._temporary_env_vars():
                 result_data = trivial_step.run(trivial_step.input_data)
 
             # Check that all expected fields are present and match

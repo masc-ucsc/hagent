@@ -44,10 +44,10 @@ class MockDiagnosticWithError(Diagnostic):
     def to_str(self) -> str:
         return f'Error at line {self.loc}: {self.msg}\nHint: {self.hint}'
 
-    def insert_comment(self, code: str, prefix: str) -> str:
+    def _insert_comment(self, code: str, prefix: str) -> str:
         """Insert a comment with diagnostic info into the code."""
         if self.raise_on_insert:
-            raise ValueError('Simulated error in insert_comment')
+            raise ValueError('Simulated error in _insert_comment')
         return code  # Just return the code unchanged for simplicity
 
 

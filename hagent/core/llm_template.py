@@ -7,7 +7,7 @@ import os
 
 
 class LLM_template:
-    def validate_template(self, data):  # No type check, because it generates errors for incorrect types
+    def _validate_template(self, data):  # No type check, because it generates errors for incorrect types
         if not isinstance(data, list):
             return 'the data is not a list'
 
@@ -60,7 +60,7 @@ class LLM_template:
             self.last_error = 'LLM_template could not process template type (file or dictionary)'
 
         if not self.last_error:
-            err = self.validate_template(self.template_dict)
+            err = self._validate_template(self.template_dict)
             if err is not None:
                 self.last_error = f'LLM_template file {data} fails because {err}'
         else:

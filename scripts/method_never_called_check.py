@@ -71,6 +71,7 @@ class MethodDef:
     method: str
     lineno: int
     decorators: Tuple[str, ...]
+    class_bases: Tuple[str, ...]
 
 
 class MethodCollector(ast.NodeVisitor):
@@ -78,8 +79,22 @@ class MethodCollector(ast.NodeVisitor):
         self.file = file
         self.methods: List[MethodDef] = []
 
+    def _base_to_name(self, b: ast.expr) -> str:
+        if isinstance(b, ast.Name):
+            return b.id
+        parts: List[str] = []
+        cur = b
+        while isinstance(cur, ast.Attribute):
+            parts.append(cur.attr)
+            cur = cur.value
+        if isinstance(cur, ast.Name):
+            parts.append(cur.id)
+        parts.reverse()
+        return '.'.join(parts) if parts else ''
+
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         cls = node.name
+        bases = tuple(self._base_to_name(b) for b in node.bases)
         for ch in node.body:
             if isinstance(ch, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 name = ch.name
@@ -89,7 +104,7 @@ class MethodCollector(ast.NodeVisitor):
                         decos.append(dec.id)
                     elif isinstance(dec, ast.Attribute):
                         decos.append(dec.attr)
-                self.methods.append(MethodDef(self.file, cls, name, ch.lineno, tuple(decos)))
+                self.methods.append(MethodDef(self.file, cls, name, ch.lineno, tuple(decos), bases))
         self.generic_visit(node)
 
 
@@ -99,6 +114,7 @@ class CallCollector(ast.NodeVisitor):
         self.class_stack: List[str] = []
         self.var_class_map_stack: List[Dict[str, str]] = []
         self.calls: List[Tuple[str, str]] = []
+        self.attr_call_names: Set[str] = set()
 
     def _map(self) -> Dict[str, str]:
         return self.var_class_map_stack[-1] if self.var_class_map_stack else {}
@@ -136,17 +152,19 @@ class CallCollector(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         f = node.func
-        if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
-            recv = f.value.id
-            meth = f.attr
-            if recv == 'self' and self.class_stack:
-                self.calls.append((self.class_stack[-1], meth))
-            elif recv in self.known_classes:
-                self.calls.append((recv, meth))
-            else:
-                c = self._map().get(recv)
-                if c:
-                    self.calls.append((c, meth))
+        if isinstance(f, ast.Attribute):
+            self.attr_call_names.add(f.attr)
+            if isinstance(f.value, ast.Name):
+                recv = f.value.id
+                meth = f.attr
+                if recv == 'self' and self.class_stack:
+                    self.calls.append((self.class_stack[-1], meth))
+                elif recv in self.known_classes:
+                    self.calls.append((recv, meth))
+                else:
+                    c = self._map().get(recv)
+                    if c:
+                        self.calls.append((c, meth))
         self.generic_visit(node)
 
 
@@ -174,6 +192,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Collect calls from ALL files including tests
     calls_by_method: Dict[Tuple[str, str], int] = {}
+    any_attr_names: Set[str] = set()
     files_calls = list(iter_py_files(root, include_tests=True, test_globs=test_globs, exclude_dirs=DEFAULT_EXCLUDE_DIRS))
     for pf in files_calls:
         try:
@@ -188,12 +207,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         cc.visit(tree)
         for cls, meth in cc.calls:
             calls_by_method[(cls, meth)] = calls_by_method.get((cls, meth), 0) + 1
+        any_attr_names.update(cc.attr_call_names)
 
     issues: List[str] = []
+
+    def _has_base_suffix(bases: Tuple[str, ...], suffix: str) -> bool:
+        return any(b.endswith(suffix) for b in bases)
 
     for m in methods:
         # Skip test-defined methods
         if is_test_file(m.file, test_globs):
+            continue
+        # Skip methods on unittest.TestCase subclasses
+        if _has_base_suffix(m.class_bases, 'TestCase'):
             continue
         # Skip dunder methods
         if m.method.startswith('__'):
@@ -202,9 +228,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         deco_lower = ','.join(m.decorators).lower()
         if any(k in deco_lower for k in ('property', 'setter', 'getter')):
             continue
+        # Skip visitor pattern methods (NodeVisitor dispatch)
+        if m.method.startswith('visit_') or _has_base_suffix(m.class_bases, 'NodeVisitor'):
+            continue
         # Count calls
         called = calls_by_method.get((m.class_name, m.method), 0)
-        if called == 0:
+        # Fallback: if method name appears in any attribute call anywhere, consider maybe-used
+        if called == 0 and m.method not in any_attr_names:
             issues.append(
                 f'UNUSED: {m.file}:{m.lineno} {m.class_name}.{m.method} appears never called. Hint: Add a test or remove/refactor.'
             )

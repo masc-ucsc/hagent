@@ -18,7 +18,7 @@ class DiffVerifier:
         # we only need the hunks from the LLM diff
         self.expected_diff = [line + '\n' for line in diff_text.splitlines() if line.startswith(('@@', '+', '-', ' '))]
 
-    def compute_diff(self):
+    def _compute_diff(self):
         """Compute the unified diff between original and new."""
         return list(difflib.unified_diff(self.orig_lines, self.new_lines, fromfile='original', tofile='updated', lineterm='\n'))
 
@@ -35,12 +35,12 @@ class DiffVerifier:
                 norm.append(marker + content + '\n')
         return norm
 
-    def verify(self):
+    def _verify(self):
         """
         Returns True if the exact same hunks appear in the re-diff,
         else raises RuntimeError listing the mismatches.
         """
-        actual = self.compute_diff()
+        actual = self._compute_diff()
         exp_norm = self._normalize(self.expected_diff)
         act_norm = self._normalize(actual)
 

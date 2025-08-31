@@ -32,7 +32,7 @@ class YAMLValidator:
         self.original_env = dict(os.environ)
         self.config = None
 
-    def load_yaml(self) -> bool:
+    def _load_yaml(self) -> bool:
         """Load and parse the YAML configuration file."""
         try:
             with open(self.yaml_file, 'r') as f:
@@ -46,7 +46,7 @@ class YAMLValidator:
             logger.error(f'YAML parsing error: {e}')
             return False
 
-    def parse_track_directive(self, directive: str) -> Tuple[str, str, Optional[str]]:
+    def _parse_track_directive(self, directive: str) -> Tuple[str, str, Optional[str]]:
         """Parse track_dir() or track_file() directives."""
         # Extract function name, path, and extension
         if directive.startswith('track_dir('):
@@ -69,10 +69,10 @@ class YAMLValidator:
 
         return path, func_type, ext
 
-    def check_input_sources(self, profile: Dict) -> bool:
+    def _check_input_sources(self, profile: Dict) -> bool:
         """Check if input sources exist."""
         source = profile['configuration']['source']
-        path, func_type, ext = self.parse_track_directive(source)
+        path, func_type, ext = self._parse_track_directive(source)
 
         logger.info(f'Checking input source: {path} (type: {func_type}, ext: {ext})')
 
@@ -97,7 +97,7 @@ class YAMLValidator:
 
         return True
 
-    def setup_environment(self, profile: Dict) -> None:
+    def _setup_environment(self, profile: Dict) -> None:
         """Set up environment variables for the profile."""
         env_vars = profile['configuration'].get('environment', {})
 
@@ -113,7 +113,7 @@ class YAMLValidator:
 
             logger.info(f'Set environment variable: {key}={os.environ[key]}')
 
-    def check_dependencies(self) -> bool:
+    def _check_dependencies(self) -> bool:
         """Check if required tools are available."""
         tools = ['sbt', 'yosys']  # Add more tools as needed
         missing_tools = []
@@ -133,10 +133,10 @@ class YAMLValidator:
             return False
         return True
 
-    def get_output_files_before(self, profile: Dict) -> List[str]:
+    def _get_output_files_before(self, profile: Dict) -> List[str]:
         """Get list of output files before command execution."""
         output = profile['configuration']['output']
-        path, func_type, ext = self.parse_track_directive(output)
+        path, func_type, ext = self._parse_track_directive(output)
 
         files = []
         if func_type == 'dir':
@@ -154,7 +154,7 @@ class YAMLValidator:
 
         return files
 
-    def execute_command(self, command: str, timeout: int = 300) -> Tuple[bool, str, str]:
+    def _execute_command(self, command: str, timeout: int = 300) -> Tuple[bool, str, str]:
         """Execute a command and return success status, stdout, stderr."""
         if self.dry_run:
             logger.info(f'DRY RUN - Would execute: {command}')
@@ -184,10 +184,10 @@ class YAMLValidator:
             logger.error(f'Command execution failed: {e}')
             return False, '', str(e)
 
-    def verify_output_generation(self, profile: Dict, files_before: List[str]) -> bool:
+    def _verify_output_generation(self, profile: Dict, files_before: List[str]) -> bool:
         """Verify that new output files were generated."""
         output = profile['configuration']['output']
-        path, func_type, ext = self.parse_track_directive(output)
+        path, func_type, ext = self._parse_track_directive(output)
 
         files_after = []
         if func_type == 'dir':
@@ -229,7 +229,7 @@ class YAMLValidator:
 
         return True
 
-    def test_profile(self, profile: Dict) -> bool:
+    def _test_profile(self, profile: Dict) -> bool:
         """Test a single profile configuration."""
         profile_name = profile['name']
         logger.info(f'\n{"=" * 60}')
@@ -241,12 +241,12 @@ class YAMLValidator:
         logger.info(f'Profile requires {memory_gb}GB memory')
 
         # Check input sources
-        if not self.check_input_sources(profile):
+        if not self._check_input_sources(profile):
             logger.error(f'Input source validation failed for profile: {profile_name}')
             return False
 
         # Setup environment
-        self.setup_environment(profile)
+        self._setup_environment(profile)
 
         # Test each API
         apis = profile.get('apis', [])
@@ -259,11 +259,11 @@ class YAMLValidator:
             logger.info(f'Description: {description}')
 
             # Get output files before execution
-            files_before = self.get_output_files_before(profile)
+            files_before = self._get_output_files_before(profile)
             logger.info(f'Output files before execution: {len(files_before)}')
 
             # Execute command
-            success, stdout, stderr = self.execute_command(command)
+            success, stdout, stderr = self._execute_command(command)
 
             if not success:
                 logger.error(f'API {api_name} failed to execute')
@@ -271,7 +271,7 @@ class YAMLValidator:
 
             # Verify output generation (skip for lint commands)
             if api_name != 'lint':
-                if not self.verify_output_generation(profile, files_before):
+                if not self._verify_output_generation(profile, files_before):
                     logger.warning(f'Output verification failed for API: {api_name}')
                     # Don't fail the test for synthesis commands as they might not generate tracked files
                     if api_name not in ['synthesize']:
@@ -284,13 +284,13 @@ class YAMLValidator:
         logger.info(f'Profile {profile_name} completed successfully')
         return True
 
-    def run_validation(self, profile_names: Optional[List[str]] = None) -> bool:
+    def _run_validation(self, profile_names: Optional[List[str]] = None) -> bool:
         """Run validation for specified profiles or all profiles."""
-        if not self.load_yaml():
+        if not self._load_yaml():
             return False
 
         # Check dependencies
-        if not self.check_dependencies():
+        if not self._check_dependencies():
             logger.warning('Some dependencies are missing - continuing anyway')
 
         profiles = self.config.get('profiles', [])
@@ -313,7 +313,7 @@ class YAMLValidator:
         success_count = 0
         for profile in profiles:
             try:
-                if self.test_profile(profile):
+                if self._test_profile(profile):
                     success_count += 1
                 else:
                     logger.error(f'Profile {profile["name"]} failed')
@@ -343,7 +343,7 @@ def main():
     validator = YAMLValidator(args.yaml_file, dry_run=args.dry_run)
 
     try:
-        success = validator.run_validation(args.profiles)
+        success = validator._run_validation(args.profiles)
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
         logger.info('Validation interrupted by user')

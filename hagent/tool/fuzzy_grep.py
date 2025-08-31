@@ -43,14 +43,14 @@ class Fuzzy_grep:
             return False
 
     @staticmethod
-    def preprocess(text: str) -> str:
+    def _preprocess(text: str) -> str:
         """
         Remove underscores and digits from the input text and convert to lower-case.
         """
         return re.sub(r'[_\d]', '', text).lower()
 
     @staticmethod
-    def extract_words(text: str) -> list:
+    def _extract_words(text: str) -> list:
         """
         Split text into words based on word characters.
         """
@@ -270,9 +270,9 @@ class Fuzzy_grep:
         else:
             keywords = []
         # Preprocess each keyword for consistent comparison.
-        return {cls.preprocess(word) for word in keywords}
+        return {cls._preprocess(word) for word in keywords}
 
-    def line_matches(self, line: str, search_terms: list, threshold: int) -> bool:
+    def _line_matches(self, line: str, search_terms: list, threshold: int) -> bool:
         """
         Returns True if for every search term, at least one non-reserved (if configured)
         preprocessed word in the line has a fuzzy match with the preprocessed search term
@@ -282,15 +282,15 @@ class Fuzzy_grep:
         # Skip processing if the line is a comment.
         if re.match(r'^\s*(//|/\*|\*)', line):
             return False
-        words = self.extract_words(line)
+        words = self._extract_words(line)
         # Filter out reserved words.
         candidate_words = [
-            self.preprocess(word)
+            self._preprocess(word)
             for word in words
-            if not (self.reserved_keywords and self.preprocess(word) in self.reserved_keywords)
+            if not (self.reserved_keywords and self._preprocess(word) in self.reserved_keywords)
         ]
         for term in search_terms:
-            proc_term = self.preprocess(term)
+            proc_term = self._preprocess(term)
 
             if any(fuzz.ratio(proc_term, candidate) >= threshold for candidate in candidate_words):
                 return True
@@ -304,7 +304,7 @@ class Fuzzy_grep:
         lines = text.splitlines()
         indices = list()
         for i, line in enumerate(lines):
-            if self.line_matches(line, search_terms, threshold):
+            if self._line_matches(line, search_terms, threshold):
                 indices.append(i)
 
         return [(i, lines[i].rstrip('\n')) for i in indices]

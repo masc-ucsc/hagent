@@ -50,7 +50,7 @@ class MethodKey:
     class_name: str  # e.g., "MyClass"
     method: str  # e.g., "do_work"
 
-    def fqname(self) -> str:
+    def _fqname(self) -> str:
         return f'{self.module}.{self.class_name}.{self.method}'
 
 
@@ -346,7 +346,7 @@ def compute_unused(idx: RepoIndex, consider_static_and_classmethods: bool, requi
 def to_json_report(unused: List[MethodDef]) -> str:
     data = [
         {
-            'fqname': m.key.fqname(),
+            'fqname': m.key._fqname(),
             'file': str(m.filepath),
             'line': m.lineno,
             'dunder': m.dunder,
@@ -480,7 +480,7 @@ class _MiniRepoTest(unittest.TestCase):
             exclude_dirs=DEFAULT_EXCLUDE_DIRS,
         )
         unused = compute_unused(idx, consider_static_and_classmethods=False, require_cross_module_calls=False)
-        names = {m.key.fqname() for m in unused}
+        names = {m.key._fqname() for m in unused}
         # Alpha.unused and Beta.b_unused should be reported
         self.assertIn('pkg.a.Alpha.unused', names)
         self.assertIn('pkg.a.Beta.b_unused', names)
@@ -501,7 +501,7 @@ class _MiniRepoTest(unittest.TestCase):
             exclude_dirs=DEFAULT_EXCLUDE_DIRS,
         )
         unused = compute_unused(idx, consider_static_and_classmethods=True, require_cross_module_calls=False)
-        names = {m.key.fqname() for m in unused}
+        names = {m.key._fqname() for m in unused}
         # Alpha.unused was called in test; thus should not be reported
         self.assertNotIn('pkg.a.Alpha.unused', names)
 

@@ -248,6 +248,17 @@ uv run ruff format hagent
 
 These commands ensure code quality, consistency, and compliance with the project's style guidelines. Make this a standard part of your development process - **never commit code changes without running ruff check and format first**.
 
+## Maintenance Checks
+
+- Entry script: run `bash scripts/code_check.sh` to scan for maintenance issues. Outputs are HINTS meant to guide improvements and are not strictly enforced.
+- Method privacy: methods starting with `_` are internal/private-like; tests may freely call them. Public methods used only internally should generally be renamed with a leading `_`. Double-underscore dunder methods (e.g., `__init__`) are excluded.
+- False-positive reduction: checks ignore methods in test files, unittest `TestCase` subclasses, and AST visitor `visit_*` methods.
+- Never-called methods: reports class methods that appear unused (including across tests). Treat as a hint to add tests or remove/refactor if indeed unused.
+- Env vars: references to `HAGENT_*_DIR` must appear only under `hagent/inou/` or `hagent/mcp/`.
+- Container paths: hard-coded `/code/workspace/...` paths should only appear under `hagent/inou/` or `hagent/mcp/`. Prefer `PathManager` for path handling.
+- Heuristic nature: these checks are static and best‑effort; use judgment when addressing hints.
+- Coverage hints: if `coverage.xml` exists, list public methods with 0 hits.
+
 ## File Organization Notes
 
 - Test files are distributed throughout the codebase alongside their components
@@ -332,4 +343,3 @@ return output_dir  # May contain unresolved symlinks or be relative
 ```
 
 This ensures consistent behavior across different environments, proper symlink handling, and eliminates path comparison issues between relative and absolute paths.
-

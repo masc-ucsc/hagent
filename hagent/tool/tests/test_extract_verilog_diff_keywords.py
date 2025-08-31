@@ -25,7 +25,7 @@ module test;
 endmodule
 """
 
-    diff = Extract_verilog_diff_keywords.generate_diff(old_code, new_code)
+    diff = Extract_verilog_diff_keywords._generate_diff(old_code, new_code)
 
     # Verify the diff contains the expected changes
     assert 'counter <= counter + 1' in diff
@@ -38,18 +38,18 @@ def test_extract_variables():
     """Test extraction of variables from a line of Verilog code."""
     # Test with a simple assignment
     line = 'counter <= counter + 1;'
-    vars_set = Extract_verilog_diff_keywords.extract_variables(line)
+    vars_set = Extract_verilog_diff_keywords._extract_variables(line)
     assert 'counter' in vars_set
 
     # Test with a comment
     line = 'counter <= counter + 1; // Increment counter'
-    vars_set = Extract_verilog_diff_keywords.extract_variables(line)
+    vars_set = Extract_verilog_diff_keywords._extract_variables(line)
     assert 'counter' in vars_set
     assert 'Increment' not in vars_set  # Comment should be ignored
 
     # Test with Verilog constants
     line = "data <= 8'h3F | mask;"
-    vars_set = Extract_verilog_diff_keywords.extract_variables(line)
+    vars_set = Extract_verilog_diff_keywords._extract_variables(line)
     assert 'data' in vars_set
     assert 'mask' in vars_set
     assert '|' in vars_set  # Important operator should be included
@@ -57,7 +57,7 @@ def test_extract_variables():
 
     # Test with special signals
     line = 'signal = *GEN*1 & *signals*T_110;'
-    vars_set = Extract_verilog_diff_keywords.extract_variables(line)
+    vars_set = Extract_verilog_diff_keywords._extract_variables(line)
     assert 'signal' in vars_set
     assert '1' in vars_set  # From *GEN*1
     assert 'T_110' in vars_set  # From *signals*T_110
@@ -76,7 +76,7 @@ def test_get_words():
 +    counter <= counter + 2; // Changed increment
  endmodule"""
 
-    words = Extract_verilog_diff_keywords.get_words(diff_text)
+    words = Extract_verilog_diff_keywords._get_words(diff_text)
 
     # Basic checks for expected variables
     assert 'counter' in words
