@@ -10,7 +10,7 @@ Usage:
     uv run python hagent/mcp/tests/test_mcp_build.py
     uv run pytest hagent/mcp/tests/test_mcp_build.py
 
-    # Run with verbose output  
+    # Run with verbose output
     uv run pytest hagent/mcp/tests/test_mcp_build.py -v -s
 
 Expected behavior:
@@ -37,7 +37,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         cls.hagent_root = Path(__file__).parent.parent.parent.parent
         cls.setup_script = cls.hagent_root / 'scripts' / 'setup_simplechisel_mcp.sh'
         cls.mcp_build_script = cls.hagent_root / 'hagent' / 'mcp' / 'mcp_build.py'
-        
+
         # Verify required files exist
         if not cls.setup_script.exists():
             raise unittest.SkipTest(f'Setup script not found: {cls.setup_script}')
@@ -69,7 +69,7 @@ class TestMCPBuildDocker(unittest.TestCase):
 
         print(f'Base test directory: {cls.base_test_dir}')
 
-    @classmethod  
+    @classmethod
     def tearDownClass(cls):
         """Clean up test environment."""
         # Change back to original directory
@@ -82,7 +82,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         test_id = str(uuid.uuid4())[:8]
         test_name = self._testMethodName
         self.test_dir = self.base_test_dir / f'{test_name}_{test_id}'
-        
+
         # Clean up any existing test directory
         if self.test_dir.exists():
             shutil.rmtree(self.test_dir)
@@ -104,11 +104,11 @@ class TestMCPBuildDocker(unittest.TestCase):
         # Verify expected directory structure was created
         expected_dirs = [
             self.test_dir / 'repo',
-            self.test_dir / 'build', 
+            self.test_dir / 'build',
             self.test_dir / 'cache',
             self.test_dir / 'logs'
         ]
-        
+
         for expected_dir in expected_dirs:
             if not expected_dir.exists():
                 self.fail(f'Expected directory not created: {expected_dir}')
@@ -121,7 +121,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         print(f'Test environment setup complete in {self.test_dir}')
 
     def tearDown(self):
-        """Clean up after each test.""" 
+        """Clean up after each test."""
         # Clean up any Docker containers from this test
         try:
             # Find and remove containers using the test image
@@ -138,12 +138,12 @@ class TestMCPBuildDocker(unittest.TestCase):
 
     def test_mcp_build_gcd_compile(self):
         """Test that mcp_build.py can successfully compile the gcd profile with Docker."""
-        
+
         # Set up environment variables for Docker execution
         test_env = {
             **os.environ,
             'UV_PROJECT': str(self.hagent_root),
-            'HAGENT_ROOT': str(self.hagent_root), 
+            'HAGENT_ROOT': str(self.hagent_root),
             'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.08',
             'HAGENT_EXECUTION_MODE': 'docker',
             'HAGENT_REPO_DIR': str(self.test_dir / 'repo'),
@@ -171,7 +171,7 @@ class TestMCPBuildDocker(unittest.TestCase):
             self.fail(f'mcp_build.py timed out after 300 seconds. Partial output:\nStdout: {e.stdout}\nStderr: {e.stderr}')
 
         print(f'mcp_build.py completed with return code: {result.returncode}')
-        print(f'Stdout length: {len(result.stdout)}')  
+        print(f'Stdout length: {len(result.stdout)}')
         print(f'Stderr length: {len(result.stderr)}')
 
         # Print first part of output for debugging
@@ -183,13 +183,13 @@ class TestMCPBuildDocker(unittest.TestCase):
         # Check for the specific sbt failure we're trying to capture/fix
         if result.returncode != 0:
             output = result.stderr + result.stdout
-            
+
             # Check if this is the expected sbt failure
             if 'sbt: command not found' in output:
                 # This is the expected failure we're documenting
                 print('✓ Captured expected sbt failure - this validates the test setup')
                 print('✗ This test will pass once Docker image is fixed with new entrypoint script')
-                
+
                 # For now, we'll make this a conditional failure with detailed info
                 self.skipTest(
                     'Expected failure captured: sbt command not found due to LOCAL_USER_ID issue. '
@@ -210,9 +210,9 @@ class TestMCPBuildDocker(unittest.TestCase):
             self.fail(f'Build directory not created: {build_dir}')
 
         # Look for expected Verilog output files
-        expected_patterns = ['*.v', '*.sv'] 
+        expected_patterns = ['*.v', '*.sv']
         artifacts_found = []
-        
+
         for pattern in expected_patterns:
             artifacts = list(build_dir.rglob(pattern))
             artifacts_found.extend(artifacts)
@@ -227,7 +227,7 @@ class TestMCPBuildDocker(unittest.TestCase):
 
     def test_mcp_build_schema(self):
         """Test that mcp_build.py --schema works correctly."""
-        
+
         test_env = {
             **os.environ,
             'UV_PROJECT': str(self.hagent_root),
@@ -257,13 +257,13 @@ class TestMCPBuildDocker(unittest.TestCase):
         # Verify expected schema structure
         self.assertIn('name', schema)
         self.assertEqual(schema['name'], 'hagent_build')
-        self.assertIn('inputSchema', schema) 
+        self.assertIn('inputSchema', schema)
         self.assertIn('properties', schema['inputSchema'])
-        
+
         # Check for expected parameters
         expected_params = ['name', 'profile', 'api', 'dry_run']
         properties = schema['inputSchema']['properties']
-        
+
         for param in expected_params:
             self.assertIn(param, properties, f'Expected parameter {param} not found in schema')
 
@@ -271,11 +271,13 @@ class TestMCPBuildDocker(unittest.TestCase):
 
     def test_mcp_build_dry_run(self):
         """Test that mcp_build.py dry run works without Docker."""
-        
+
         test_env = {
             **os.environ,
             'UV_PROJECT': str(self.hagent_root),
             'HAGENT_ROOT': str(self.hagent_root),
+            'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.08',
+            'HAGENT_EXECUTION_MODE': 'docker',
             'HAGENT_REPO_DIR': str(self.test_dir / 'repo'),
         }
 
