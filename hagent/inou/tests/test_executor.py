@@ -241,11 +241,11 @@ class TestDockerExecutor:
             os.environ.clear()
             os.environ.update(original_env)
 
-    def test_translate_path_to_container_repo_dir(self):
+    @patch('hagent.inou.executor.is_docker_mode', return_value=True)
+    def test_translate_path_to_container_repo_dir(self, mock_is_docker_mode):
         """Test path translation for repo directory."""
         mock_cm = MagicMock()
         mock_pm = MagicMock()
-        mock_pm.is_docker_mode.return_value = True
         mock_pm.repo_dir = Path('/host/repo')
         mock_pm.build_dir = Path('/host/build')
         mock_pm.cache_dir = Path('/host/cache')
@@ -260,11 +260,11 @@ class TestDockerExecutor:
         result = executor._translate_path_to_container('/host/repo')
         assert result == '/code/workspace/repo'
 
-    def test_translate_path_to_container_build_dir(self):
+    @patch('hagent.inou.executor.is_docker_mode', return_value=True)
+    def test_translate_path_to_container_build_dir(self, mock_is_docker_mode):
         """Test path translation for build directory."""
         mock_cm = MagicMock()
         mock_pm = MagicMock()
-        mock_pm.is_docker_mode.return_value = True
         mock_pm.repo_dir = Path('/host/repo')
         mock_pm.build_dir = Path('/host/build')
         mock_pm.cache_dir = Path('/host/cache')
@@ -275,11 +275,11 @@ class TestDockerExecutor:
         result = executor._translate_path_to_container('/host/build/output')
         assert result == '/code/workspace/build/output'
 
-    def test_translate_path_to_container_cache_dir(self):
+    @patch('hagent.inou.executor.is_docker_mode', return_value=True)
+    def test_translate_path_to_container_cache_dir(self, mock_is_docker_mode):
         """Test path translation for cache directory."""
         mock_cm = MagicMock()
         mock_pm = MagicMock()
-        mock_pm.is_docker_mode.return_value = True
         mock_pm.repo_dir = Path('/host/repo')
         mock_pm.build_dir = Path('/host/build')
         mock_pm.cache_dir = Path('/host/cache')
@@ -290,11 +290,11 @@ class TestDockerExecutor:
         result = executor._translate_path_to_container('/host/cache/logs')
         assert result == '/code/workspace/cache/logs'
 
-    def test_translate_path_to_container_no_match(self):
+    @patch('hagent.inou.executor.is_docker_mode', return_value=True)
+    def test_translate_path_to_container_no_match(self, mock_is_docker_mode):
         """Test path translation for unknown path."""
         mock_cm = MagicMock()
         mock_pm = MagicMock()
-        mock_pm.is_docker_mode.return_value = True
         mock_pm.repo_dir = Path('/host/repo')
         mock_pm.build_dir = Path('/host/build')
         mock_pm.cache_dir = Path('/host/cache')
@@ -305,11 +305,11 @@ class TestDockerExecutor:
         result = executor._translate_path_to_container('/other/path')
         assert result == str(Path('/other/path').resolve())
 
-    def test_translate_path_to_container_non_docker_mode(self):
+    @patch('hagent.inou.executor.is_docker_mode', return_value=False)
+    def test_translate_path_to_container_non_docker_mode(self, mock_is_docker_mode):
         """Test path translation in non-Docker mode."""
         mock_cm = MagicMock()
         mock_pm = MagicMock()
-        mock_pm.is_docker_mode.return_value = False
 
         executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 

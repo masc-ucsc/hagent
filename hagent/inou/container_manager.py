@@ -253,7 +253,6 @@ class ContainerManager:
         self._image_user: Optional[str] = None
         self._has_bash: bool = False
         self._checkpoints: List[str] = []
-        self._mounts: List[Dict[str, str]] = []
         self._workdir = '/code/workspace/repo'  # New default working directory
         self.error_message: str = ''  # For error handling like Tool pattern
         self._cleaned_up = False  # Track cleanup state
@@ -623,35 +622,7 @@ class ContainerManager:
             build_mount = docker.types.Mount(target='/code/workspace/build', source=build_dir_path, type='bind')
             mount_objs.append(build_mount)
 
-        # Add any additional mounts registered via add_mount()
-        for mount_config in self._mounts:
-            source_path = os.path.abspath(mount_config['source'])
-            # Validate the mount path for safety
-            is_valid, error_msg = _validate_mount_path(source_path)
-            if not is_valid:
-                self.set_error(f'Additional mount validation failed: {error_msg}')
-                return []
-
-            # Ensure additional mount source exists
-            os.makedirs(source_path, exist_ok=True)
-            # Resolve symlinks (important on macOS where /var -> /private/var)
-            source_path = os.path.realpath(source_path)
-            mount_obj = docker.types.Mount(target=mount_config['target'], source=source_path, type='bind')
-            mount_objs.append(mount_obj)
-
         return mount_objs
-
-    def add_mount(self, host_path: str, container_path: str) -> bool:
-        """Register additional directory mount. Must be called before setup()."""
-        if self.container is not None:
-            self.set_error('add_mount must be called before setup()')
-            return False
-
-        full_container_path = container_path if os.path.isabs(container_path) else os.path.join(self._workdir, container_path)
-        self._mounts.append({'source': host_path, 'target': full_container_path})
-        return True
-
-
 
     def _fix_mounted_directory_permissions(self) -> bool:
         """

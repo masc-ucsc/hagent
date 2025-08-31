@@ -5,7 +5,6 @@ Tests Docker container lifecycle management, mount point configuration,
 environment variable injection, and workspace validation.
 """
 
-import os
 import subprocess
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -341,74 +340,6 @@ class TestContainerManager:
                 assert '/code/workspace/cache' in mount_targets
                 assert '/code/workspace/repo' in mount_targets
                 assert '/code/workspace/build' in mount_targets
-
-    def test_setup_mount_points_with_additional_mounts(self, setup_local_directory):
-        """Test setup with additional mounts."""
-        local_dirs = setup_local_directory
-
-        # Create a real PathManager with test environment (missing build_dir)
-        # Save original value
-        original_build_dir = os.environ.get('HAGENT_BUILD_DIR')
-
-        try:
-            # Clear HAGENT_BUILD_DIR temporarily
-            if 'HAGENT_BUILD_DIR' in os.environ:
-                del os.environ['HAGENT_BUILD_DIR']
-
-            with patch.dict(
-                'os.environ',
-                {
-                    'HAGENT_EXECUTION_MODE': 'docker',
-                    'HAGENT_REPO_DIR': str(local_dirs['repo_dir']),
-                    'HAGENT_CACHE_DIR': str(local_dirs['cache_dir']),
-                    # Note: HAGENT_BUILD_DIR is intentionally omitted
-                },
-            ):
-                mock_pm = PathManager()
-
-                with patch.object(ContainerManager, '_initialize_docker_client'):
-                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', mock_pm)
-                    manager._mounts = [{'source': str(local_dirs['local_dir'] / 'extra'), 'target': '/container/extra'}]
-
-                    with patch('docker.types.Mount') as mock_mount:
-                        manager._setup_mount_points()
-
-                        # Should have 3 mounts (cache, repo, extra)
-                        assert mock_mount.call_count == 3
-        finally:
-            # Restore original value
-            if original_build_dir is not None:
-                os.environ['HAGENT_BUILD_DIR'] = original_build_dir
-
-    def test_add_mount_before_setup(self, setup_local_directory):
-        """Test adding mount before container setup."""
-        local_dirs = setup_local_directory
-        test_path = str(local_dirs['local_dir'] / 'test_path')
-
-        with patch('hagent.inou.container_manager.PathManager'):
-            with patch.object(ContainerManager, '_initialize_docker_client'):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
-
-                result = manager.add_mount(test_path, '/container/path')
-
-                assert result is True
-                assert len(manager._mounts) == 1
-                assert manager._mounts[0]['source'] == test_path
-                assert manager._mounts[0]['target'] == '/container/path'
-
-    def test_add_mount_after_setup(self, setup_local_directory):
-        """Test adding mount after container setup fails."""
-        local_dirs = setup_local_directory
-        test_path = str(local_dirs['local_dir'] / 'test_path')
-
-        with patch('hagent.inou.container_manager.PathManager'):
-            with patch.object(ContainerManager, '_initialize_docker_client'):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08')
-                manager.container = MagicMock()  # Simulate setup
-
-                result = manager.add_mount(test_path, '/container/path')
-                assert result is False, 'Should return False when called after setup'
-                assert 'add_mount must be called before setup' in manager.get_error()
 
     @patch('docker.types.Mount')
     def test_setup_success(self, mock_mount, setup_local_directory):
