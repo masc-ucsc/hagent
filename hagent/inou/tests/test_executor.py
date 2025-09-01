@@ -11,13 +11,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from hagent.inou.executor import (
-    LocalExecutor,
-    DockerExecutor,
-    ExecutorFactory,
-    create_executor,
-    run_command,
-)
+from hagent.inou.executor import LocalExecutor, DockerExecutor, ExecutorFactory, create_executor, run_cmd
 
 
 class TestLocalExecutor:
@@ -52,7 +46,7 @@ class TestLocalExecutor:
                 mock_result.stderr = 'test error'
                 mock_run.return_value = mock_result
 
-                exit_code, stdout, stderr = executor.run('echo test', temp_dir, {'TEST_VAR': 'value'}, quiet=True)
+                exit_code, stdout, stderr = executor.run_cmd('echo test', temp_dir, {'TEST_VAR': 'value'}, quiet=True)
 
                 assert exit_code == 0
                 assert stdout == 'test output'
@@ -73,7 +67,7 @@ class TestLocalExecutor:
         mock_pm = MagicMock()
         executor = LocalExecutor(mock_pm)
 
-        exit_code, stdout, stderr = executor.run('echo test', '/nonexistent/directory', {}, quiet=True)
+        exit_code, stdout, stderr = executor.run_cmd('echo test', '/nonexistent/directory', {}, quiet=True)
 
         assert exit_code == -1
         assert stdout == ''
@@ -85,7 +79,7 @@ class TestLocalExecutor:
             mock_pm = MagicMock()
             executor = LocalExecutor(mock_pm)
 
-            exit_code, stdout, stderr = executor.run('echo test', temp_file.name, {}, quiet=True)
+            exit_code, stdout, stderr = executor.run_cmd('echo test', temp_file.name, {}, quiet=True)
 
             assert exit_code == -1
             assert stdout == ''
@@ -108,7 +102,7 @@ class TestLocalExecutor:
                 mock_popen.return_value = mock_process
 
                 with patch('builtins.print') as mock_print:
-                    exit_code, stdout, stderr = executor.run('echo test', temp_dir, {}, quiet=False)
+                    exit_code, stdout, stderr = executor.run_cmd('echo test', temp_dir, {}, quiet=False)
 
                 assert exit_code == 0
                 assert 'line1\n' in stdout
@@ -126,7 +120,7 @@ class TestLocalExecutor:
             executor = LocalExecutor(mock_pm)
 
             with patch('subprocess.run', side_effect=Exception('Test error')):
-                exit_code, stdout, stderr = executor.run('echo test', temp_dir, {}, quiet=True)
+                exit_code, stdout, stderr = executor.run_cmd('echo test', temp_dir, {}, quiet=True)
 
                 assert exit_code == -1
                 assert stdout == ''
@@ -183,43 +177,43 @@ class TestDockerExecutor:
         """Test DockerExecutor.run basic functionality with container_manager."""
         mock_cm = MagicMock()
         mock_pm = MagicMock()
-        mock_cm.run.return_value = (0, 'output', 'error')
+        mock_cm.run_cmd.return_value = (0, 'output', 'error')
 
         executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 
         with patch.dict(os.environ, {}, clear=True):
-            exit_code, stdout, stderr = executor.run('echo test', '/test/path', {'TEST_VAR': 'value'}, quiet=True)
+            exit_code, stdout, stderr = executor.run_cmd('echo test', '/test/path', {'TEST_VAR': 'value'}, quiet=True)
 
         assert exit_code == 0
         assert stdout == 'output'
         assert stderr == 'error'
 
         # Verify container_manager.run was called
-        mock_cm.run.assert_called_once_with('echo test', '/test/path', True)
+        mock_cm.run_cmd.assert_called_once_with('echo test', '/test/path', True)
 
     def test_run_basic_with_container_manager(self):
         """Test DockerExecutor.run basic functionality with container_manager."""
         mock_cm = MagicMock()
         mock_pm = MagicMock()
-        mock_cm.run.return_value = (0, 'output', 'error')
+        mock_cm.run_cmd.return_value = (0, 'output', 'error')
 
         executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 
         with patch.dict(os.environ, {}, clear=True):
-            exit_code, stdout, stderr = executor.run('echo test', '/test/path', {'TEST_VAR': 'value'}, quiet=True)
+            exit_code, stdout, stderr = executor.run_cmd('echo test', '/test/path', {'TEST_VAR': 'value'}, quiet=True)
 
         assert exit_code == 0
         assert stdout == 'output'
         assert stderr == 'error'
 
         # Verify container_manager.run was called
-        mock_cm.run.assert_called_once_with('echo test', '/test/path', True)
+        mock_cm.run_cmd.assert_called_once_with('echo test', '/test/path', True)
 
     def test_run_environment_restoration(self):
         """Test DockerExecutor.run environment variable restoration."""
         mock_cm = MagicMock()
         mock_pm = MagicMock()
-        mock_cm.run.return_value = (0, 'output', 'error')
+        mock_cm.run_cmd.return_value = (0, 'output', 'error')
 
         executor = DockerExecutor(container_manager=mock_cm, path_manager=mock_pm)
 
@@ -228,7 +222,7 @@ class TestDockerExecutor:
         os.environ['EXISTING_VAR'] = 'original'
 
         try:
-            exit_code, stdout, stderr = executor.run(
+            exit_code, stdout, stderr = executor.run_cmd(
                 'echo test', '/test/path', {'EXISTING_VAR': 'modified', 'NEW_VAR': 'new'}, quiet=True
             )
 
@@ -420,30 +414,30 @@ class TestConvenienceFunctions:
         with patch('hagent.inou.executor.create_executor') as mock_create:
             with patch('hagent.inou.executor.PathManager') as mock_pm_class:
                 mock_executor = MagicMock()
-                mock_executor.run.return_value = (0, 'output', 'error')
+                mock_executor.run_cmd.return_value = (0, 'output', 'error')
                 mock_create.return_value = mock_executor
 
                 mock_pm = MagicMock()
                 mock_pm.repo_dir = Path('/test/repo')
                 mock_pm_class.return_value = mock_pm
 
-                result = run_command('echo test')
+                result = run_cmd('echo test')
 
                 assert result == (0, 'output', 'error')
-                mock_executor.run.assert_called_once_with('echo test', '/test/repo', {}, False)
+                mock_executor.run_cmd.assert_called_once_with('echo test', '/test/repo', {}, False)
 
     def test_run_command_function_with_params(self):
         """Test run_command convenience function with all parameters."""
         with patch('hagent.inou.executor.create_executor') as mock_create:
             mock_executor = MagicMock()
-            mock_executor.run.return_value = (0, 'output', 'error')
+            mock_executor.run_cmd.return_value = (0, 'output', 'error')
             mock_create.return_value = mock_executor
 
             mock_cm = MagicMock()
             mock_pm = MagicMock()
             env = {'TEST': 'value'}
 
-            result = run_command(
+            result = run_cmd(
                 'echo test',
                 cwd='/test/dir',
                 env=env,
@@ -454,4 +448,4 @@ class TestConvenienceFunctions:
 
             assert result == (0, 'output', 'error')
             mock_create.assert_called_once_with(mock_cm, mock_pm)
-            mock_executor.run.assert_called_once_with('echo test', '/test/dir', env, True)
+            mock_executor.run_cmd.assert_called_once_with('echo test', '/test/dir', env, True)

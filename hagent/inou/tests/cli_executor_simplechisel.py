@@ -37,7 +37,7 @@ def _run_simplechisel_test():
     project_location = None
 
     for location in possible_locations:
-        exit_code, stdout, stderr = runner.run(f'ls -la {location}/', cwd='/')
+        exit_code, stdout, stderr = runner.run_cmd(f'ls -la {location}/', cwd='/')
         if exit_code == 0:
             project_location = location
             print(f'✅ Found SimpleChisel project at: {location}')
@@ -46,8 +46,8 @@ def _run_simplechisel_test():
     if project_location is None:
         # List what's actually available
         print('Exploring container structure...')
-        runner.run('ls -la /code/', cwd='/code')
-        runner.run('find /code -name "build.sbt" -o -name "*.scala" | head -10', cwd='/code')
+        runner.run_cmd('ls -la /code/', cwd='/code')
+        runner.run_cmd('find /code -name "build.sbt" -o -name "*.scala" | head -10', cwd='/code')
 
         print('⚠️  SimpleChisel project not found in expected locations')
         print('This test requires the mascucsc/hagent-simplechisel:2025.09 image with SimpleChisel project')
@@ -56,15 +56,15 @@ def _run_simplechisel_test():
         return
 
     # 4. Execute SBT compile command in the found project directory
-    runner.run('ls -la /code/workspace/repo', cwd='/')
+    runner.run_cmd('ls -la /code/workspace/repo', cwd='/')
     print('Running SBT compile...')
-    exit_code, stdout, stderr = runner.run('sbt compile', cwd=project_location)
+    exit_code, stdout, stderr = runner.run_cmd('sbt compile', cwd=project_location)
     assert exit_code == 0, f'sbt compile failed: code:{exit_code}\nstderr: {stderr}'
     print('✅ SBT compile successful')
 
     # 5. Execute SBT runMain command
     print('Running SBT runMain...')
-    exit_code, stdout, stderr = runner.run(
+    exit_code, stdout, stderr = runner.run_cmd(
         'sbt "runMain dinocpu.pipelined.PipelinedDualIssueDebug"',
         # No need to say cwd because /code/workspace/repo is supposed to be the default
     )

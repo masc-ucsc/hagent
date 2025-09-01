@@ -35,7 +35,7 @@ def example_simplechisel_with_runner():
 
         # Check if SimpleChisel project exists
         print('Checking for SimpleChisel project...')
-        exit_code, stdout, stderr = runner.run('ls -la /code/workspace/repo/', cwd='/')
+        exit_code, stdout, stderr = runner.run_cmd('ls -la /code/workspace/repo/', cwd='/')
 
         if exit_code != 0:
             print('⚠️  SimpleChisel project not found in expected locations')
@@ -45,7 +45,7 @@ def example_simplechisel_with_runner():
 
         # Execute SBT compile command
         print('Running SBT compile...')
-        exit_code, stdout, stderr = runner.run('sbt compile', cwd='/code/workspace/repo')
+        exit_code, stdout, stderr = runner.run_cmd('sbt compile', cwd='/code/workspace/repo')
 
         if exit_code != 0:
             print(f'❌ sbt compile failed: {stderr}')
@@ -55,7 +55,7 @@ def example_simplechisel_with_runner():
 
         # Execute SBT runMain command
         print('Running SBT runMain...')
-        exit_code, stdout, stderr = runner.run(
+        exit_code, stdout, stderr = runner.run_cmd(
             'sbt "runMain dinocpu.pipelined.PipelinedDualIssueDebug"', cwd='/code/workspace/repo'
         )
 
@@ -89,7 +89,7 @@ def example_xiangshan_with_runner_and_tracking():
 
         # Check XiangShan project structure
         print('Checking XiangShan project structure...')
-        exit_code, stdout, stderr = runner.run('ls -la /code/workspace/repo/', cwd='/')
+        exit_code, stdout, stderr = runner.run_cmd('ls -la /code/workspace/repo/', cwd='/')
 
         if exit_code != 0:
             print('❌ XiangShan project not found')
@@ -117,7 +117,7 @@ def example_xiangshan_with_runner_and_tracking():
         old_pattern = 'backend_redirect || mmio_redirect || wb_redirect'
         new_pattern = 'backend_redirect && mmio_redirect || wb_redirect'
 
-        exit_code, stdout, stderr = runner.run(f'sed -i "s/{old_pattern}/{new_pattern}/g" "{ifu_path}"', cwd='/')
+        exit_code, stdout, stderr = runner.run_cmd(f'sed -i "s/{old_pattern}/{new_pattern}/g" "{ifu_path}"', cwd='/')
 
         if exit_code == 0:
             print('✅ Successfully applied modification to IFU.scala')
@@ -139,7 +139,7 @@ def example_xiangshan_with_runner_and_tracking():
             'make BUILD_DIR=/code/workspace/build/build_dbg DEBUG_VERILOG=1 CONFIG=MinimalConfig EMU_THREADS=2 sim-verilog'
         )
 
-        exit_code, stdout, stderr = runner.run(build_command, cwd='/code/workspace/repo')
+        exit_code, stdout, stderr = runner.run_cmd(build_command, cwd='/code/workspace/repo')
 
         if exit_code == 0:
             print('✅ XiangShan Verilog generation successful')
@@ -211,13 +211,13 @@ def example_trivial_step_with_runner():
         return
 
     # Run commands
-    exit_code, stdout, stderr = runner.run('uname -a')
+    exit_code, stdout, stderr = runner.run_cmd('uname -a')
     print(f'uname: {stdout.strip()}')
 
-    exit_code, stdout, stderr = runner.run('pwd')
+    exit_code, stdout, stderr = runner.run_cmd('pwd')
     print(f'pwd: {stdout.strip()}')
 
-    exit_code, stdout, stderr = runner.run('which yosys')
+    exit_code, stdout, stderr = runner.run_cmd('which yosys')
     print(f'yosys path: {stdout.strip() if exit_code == 0 else "not found"}')
 
     runner.cleanup()

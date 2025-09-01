@@ -175,7 +175,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
         # Execute the command
         try:
             # First try with exact name if provided
-            exit_code, stdout, stderr = builder.execute(
+            exit_code, stdout, stderr = builder.run_api(
                 exact_name=exact_name,
                 title_query=None,
                 command_name=api_name,
@@ -185,7 +185,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
 
             # If exact name failed and we have a profile parameter, try as title query
             if exit_code != 0 and profile_query and not exact_name and 'exact_name or title_query' in stderr:
-                exit_code, stdout, stderr = builder.execute(
+                exit_code, stdout, stderr = builder.run_api(
                     exact_name=None,
                     title_query=profile_query,
                     command_name=api_name,

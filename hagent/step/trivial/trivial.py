@@ -25,7 +25,7 @@ class Trivial(Step):
         data_copy = data.copy()
         data_copy['added_field_trivial'] = 'sample'
 
-        ret, out, err = self.runner.run('uname -a')
+        ret, out, err = self.runner.run_cmd('uname -a')
         if ret != 0:
             print(f'ERROR in uname?? ret:{ret} out:{out} err:{err}')
             exit(-3)
@@ -34,17 +34,17 @@ class Trivial(Step):
         data_copy['uname_out'] = out
         data_copy['uname_err'] = err
 
-        ret, out, err = self.runner.run('pwd')
+        ret, out, err = self.runner.run_cmd('pwd')
         data_copy['pwd_ret'] = str(ret)
         data_copy['pwd_out'] = out
         data_copy['pwd_err'] = err
 
-        ret, out, err = self.runner.run('which yosys')
+        ret, out, err = self.runner.run_cmd('which yosys')
         data_copy['yosys_path_ret'] = str(ret)
         data_copy['yosys_path_out'] = out
         data_copy['yosys_path_err'] = err
 
-        ret, out, err = self.runner.run(command='ls -al', cwd='/code/workspace/repo')
+        ret, out, err = self.runner.run_cmd(command='ls -al', cwd='/code/workspace/repo')
         data_copy['ls_ret'] = str(ret)
         data_copy['ls_out'] = out
         data_copy['ls_err'] = err

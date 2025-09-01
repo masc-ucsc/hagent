@@ -132,12 +132,12 @@ endmodule
         executor, container_manager = yosys_executor
 
         # Check if yosys is available
-        rc, out, err = executor.run('which yosys')
+        rc, out, err = executor.run_cmd('which yosys')
         if rc != 0:
             pytest.skip(f'Yosys not available in container: {err}')
 
         # Check yosys version
-        rc, out, err = executor.run('yosys -V')
+        rc, out, err = executor.run_cmd('yosys -V')
         assert rc == 0, f'Yosys version check failed - RC: {rc}, ERR: {err}'
         assert 'Yosys' in out, f'Unexpected yosys version output: {out}'
 
@@ -146,12 +146,12 @@ endmodule
         executor, container_manager = yosys_executor
 
         # Skip if yosys not available
-        rc, _, _ = executor.run('which yosys')
+        rc, _, _ = executor.run_cmd('which yosys')
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
         # Clean up any existing files
-        executor.run('rm -f *.v *.json')
+        executor.run_cmd('rm -f *.v *.json')
 
         # Create simple Verilog file in container
         verilog_content = verilog_files['inverter.v']
@@ -161,53 +161,53 @@ endmodule
         ), f'Failed to create Verilog file: {container_manager.get_error()}'
 
         # Debug: Check if commands are running at all
-        rc, out, err = executor.run('echo "Test command working"')
+        rc, out, err = executor.run_cmd('echo "Test command working"')
         print(f"Test command: RC={rc}, OUT='{out}', ERR='{err}'")
 
         # Try different ways to check mounts
-        rc, out, err = executor.run('mount | grep workspace || echo "No workspace mounts found"')
+        rc, out, err = executor.run_cmd('mount | grep workspace || echo "No workspace mounts found"')
         print(f'Workspace mounts: {out}')
 
         # Check if directories exist
-        rc, out, err = executor.run('ls -la /code/workspace/ || echo "workspace dir missing"')
+        rc, out, err = executor.run_cmd('ls -la /code/workspace/ || echo "workspace dir missing"')
         print(f'Workspace directory: {out}')
 
         print('=' * 50)
 
         # Check current working directory and initial files
-        rc, out, err = executor.run('pwd && ls -la')
+        rc, out, err = executor.run_cmd('pwd && ls -la')
         print(f'Working directory and files before yosys: {out}')
 
         # Check container user and permissions
-        rc, out, err = executor.run('id && ls -la inverter.v')
+        rc, out, err = executor.run_cmd('id && ls -la inverter.v')
         print(f'User and file permissions: {out}')
 
         # Simple synthesis using opt instead of synth to avoid memory issues
         yosys_cmd = 'yosys -p "read_verilog inverter.v; opt; write_verilog inverter_synth.v"'
-        rc, out, err = executor.run(yosys_cmd)
+        rc, out, err = executor.run_cmd(yosys_cmd)
 
         # Debug: show files after yosys run and check if yosys completed successfully
-        rc2, out2, err2 = executor.run('ls -la *.v 2>/dev/null || echo "No .v files found"')
+        rc2, out2, err2 = executor.run_cmd('ls -la *.v 2>/dev/null || echo "No .v files found"')
         print(f'Verilog files after yosys: {out2}')
 
         # Check if yosys actually completed or was killed
         if rc == 137:
             print('Yosys was killed (SIGKILL) - likely memory or resource constraint')
-            rc3, out3, err3 = executor.run('dmesg | tail -10 2>/dev/null || echo "Cannot access dmesg"')
+            rc3, out3, err3 = executor.run_cmd('dmesg | tail -10 2>/dev/null || echo "Cannot access dmesg"')
             print(f'System messages: {out3}')
 
         assert rc == 0, f'Yosys synthesis failed - RC: {rc}, ERR: {err}, STDOUT: {out}'
 
         # Verify output file was created
-        rc, out, err = executor.run('test -f inverter_synth.v')
+        rc, out, err = executor.run_cmd('test -f inverter_synth.v')
         if rc != 0:
             # Additional debugging if file not found
-            rc_debug, out_debug, err_debug = executor.run('ls -la && find . -name "*.v"')
+            rc_debug, out_debug, err_debug = executor.run_cmd('ls -la && find . -name "*.v"')
             print(f'Debug - current directory contents: {out_debug}')
         assert rc == 0, f'Synthesis output file not found - RC: {rc}, ERR: {err}'
 
         # Check that output contains synthesized content
-        rc, out, err = executor.run('cat inverter_synth.v')
+        rc, out, err = executor.run_cmd('cat inverter_synth.v')
         assert rc == 0, f'Could not read synthesis output - RC: {rc}, ERR: {err}'
         assert 'module' in out.lower(), f'Synthesis output does not contain module: {out}'
 
@@ -216,12 +216,12 @@ endmodule
         executor, container_manager = yosys_executor
 
         # Skip if yosys not available
-        rc, _, _ = executor.run('which yosys')
+        rc, _, _ = executor.run_cmd('which yosys')
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
         # Clean up any existing files
-        executor.run('rm -f *.v *.json')
+        executor.run_cmd('rm -f *.v *.json')
 
         # Create Verilog file
         verilog_content = verilog_files['and_gate.v']
@@ -232,7 +232,7 @@ endmodule
 
         # Synthesis with statistics
         yosys_cmd = 'yosys -p "read_verilog and_gate.v; synth; stat"'
-        rc, out, err = executor.run(yosys_cmd)
+        rc, out, err = executor.run_cmd(yosys_cmd)
         assert rc == 0, f'Yosys synthesis with stats failed - RC: {rc}, ERR: {err}'
 
         # Check that statistics are in output
@@ -243,12 +243,12 @@ endmodule
         executor, container_manager = yosys_executor
 
         # Skip if yosys not available
-        rc, _, _ = executor.run('which yosys')
+        rc, _, _ = executor.run_cmd('which yosys')
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
         # Clean up any existing files
-        executor.run('rm -f *.v *.json')
+        executor.run_cmd('rm -f *.v *.json')
 
         # Create Verilog file
         verilog_content = verilog_files['inverter.v']
@@ -259,15 +259,15 @@ endmodule
 
         # Synthesis to JSON
         yosys_cmd = 'yosys -p "read_verilog inverter.v; synth; write_json inverter.json"'
-        rc, out, err = executor.run(yosys_cmd)
+        rc, out, err = executor.run_cmd(yosys_cmd)
         assert rc == 0, f'Yosys JSON synthesis failed - RC: {rc}, ERR: {err}'
 
         # Verify JSON file was created
-        rc, out, err = executor.run('test -f inverter.json')
+        rc, out, err = executor.run_cmd('test -f inverter.json')
         assert rc == 0, f'JSON output file not found - RC: {rc}, ERR: {err}'
 
         # Verify JSON content
-        rc, out, err = executor.run('head -10 inverter.json')
+        rc, out, err = executor.run_cmd('head -10 inverter.json')
         assert rc == 0, f'Could not read JSON output - RC: {rc}, ERR: {err}'
         assert '{' in out, f'JSON output does not appear to be valid JSON: {out}'
 
@@ -276,12 +276,12 @@ endmodule
         executor, container_manager = yosys_executor
 
         # Skip if yosys not available
-        rc, _, _ = executor.run('which yosys')
+        rc, _, _ = executor.run_cmd('which yosys')
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
         # Clean up any existing files
-        executor.run('rm -f *.v *.json')
+        executor.run_cmd('rm -f *.v *.json')
 
         # Create invalid Verilog file
         invalid_verilog = """
@@ -296,7 +296,7 @@ module broken_module(
 
         # Try to synthesize invalid file
         yosys_cmd = 'yosys -p "read_verilog broken.v; synth"'
-        rc, out, err = executor.run(yosys_cmd)
+        rc, out, err = executor.run_cmd(yosys_cmd)
         assert rc != 0, 'Yosys should have failed on invalid Verilog but succeeded'
 
         # Check that error message is informative
@@ -310,12 +310,12 @@ module broken_module(
         executor, container_manager = yosys_executor
 
         # Skip if yosys not available
-        rc, _, _ = executor.run('which yosys')
+        rc, _, _ = executor.run_cmd('which yosys')
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
         # Clean up any existing .v files to avoid conflicts
-        executor.run('rm -f *.v *.json')
+        executor.run_cmd('rm -f *.v *.json')
 
         # Create multiple Verilog files
         working_dir = container_manager._workdir
@@ -326,15 +326,15 @@ module broken_module(
 
         # Synthesis with multiple files
         yosys_cmd = 'yosys -p "read_verilog *.v; synth; write_verilog combined_synth.v"'
-        rc, out, err = executor.run(yosys_cmd)
+        rc, out, err = executor.run_cmd(yosys_cmd)
         assert rc == 0, f'Multi-file synthesis failed - RC: {rc}, ERR: {err}'
 
         # Verify output file was created
-        rc, out, err = executor.run('test -f combined_synth.v')
+        rc, out, err = executor.run_cmd('test -f combined_synth.v')
         assert rc == 0, f'Multi-file synthesis output not found - RC: {rc}, ERR: {err}'
 
         # Check that all modules are present in output
-        rc, out, err = executor.run('cat combined_synth.v')
+        rc, out, err = executor.run_cmd('cat combined_synth.v')
         assert rc == 0, f'Could not read multi-file synthesis output - RC: {rc}, ERR: {err}'
 
     def test_synthesis_with_technology_mapping(self, yosys_executor, verilog_files):
@@ -342,12 +342,12 @@ module broken_module(
         executor, container_manager = yosys_executor
 
         # Skip if yosys not available
-        rc, _, _ = executor.run('which yosys')
+        rc, _, _ = executor.run_cmd('which yosys')
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
         # Clean up any existing files
-        executor.run('rm -f *.v *.json')
+        executor.run_cmd('rm -f *.v *.json')
 
         # Create Verilog file
         verilog_content = verilog_files['counter.v']
@@ -358,13 +358,13 @@ module broken_module(
 
         # Synthesis with technology mapping (using basic cell library)
         yosys_cmd = 'yosys -p "read_verilog counter.v; synth; dfflibmap -liberty /dev/null; abc; write_verilog counter_mapped.v"'
-        rc, out, err = executor.run(yosys_cmd)
+        rc, out, err = executor.run_cmd(yosys_cmd)
         # Note: This might fail if liberty file is not available, which is expected
         # We're mainly testing that the command structure works
 
         if rc == 0:
             # If successful, verify output
-            rc, out, err = executor.run('test -f counter_mapped.v')
+            rc, out, err = executor.run_cmd('test -f counter_mapped.v')
             assert rc == 0, f'Technology mapped output not found - RC: {rc}, ERR: {err}'
 
     def test_yosys_script_execution(self, yosys_executor, verilog_files):
@@ -372,12 +372,12 @@ module broken_module(
         executor, container_manager = yosys_executor
 
         # Skip if yosys not available
-        rc, _, _ = executor.run('which yosys')
+        rc, _, _ = executor.run_cmd('which yosys')
         if rc != 0:
             pytest.skip('Yosys not available in container')
 
         # Clean up any existing files
-        executor.run('rm -f *.v *.json *.ys')
+        executor.run_cmd('rm -f *.v *.json *.ys')
 
         # Create Verilog file
         verilog_content = verilog_files['and_gate.v']
@@ -399,9 +399,9 @@ write_verilog and_gate_script.v
         ), f'Failed to create Yosys script: {container_manager.get_error()}'
 
         # Execute script
-        rc, out, err = executor.run('yosys -s synth.ys')
+        rc, out, err = executor.run_cmd('yosys -s synth.ys')
         assert rc == 0, f'Yosys script execution failed - RC: {rc}, ERR: {err}'
 
         # Verify output file was created
-        rc, out, err = executor.run('test -f and_gate_script.v')
+        rc, out, err = executor.run_cmd('test -f and_gate_script.v')
         assert rc == 0, f'Script output file not found - RC: {rc}, ERR: {err}'

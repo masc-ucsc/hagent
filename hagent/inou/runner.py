@@ -30,7 +30,7 @@ class Runner:
             return
 
         # Run commands
-        exit_code, stdout, stderr = runner.run('ls -la')
+        exit_code, stdout, stderr = runner.run_cmd('ls -la')
 
         # Track files (lazy FileTracker initialization)
         runner.track_file('src/main.scala')
@@ -95,7 +95,7 @@ class Runner:
             self.set_error(f'Executor setup failed: {self.executor.get_error()}')
         return success
 
-    def run(
+    def run_cmd(
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
     ) -> Tuple[int, str, str]:
         """
@@ -115,7 +115,13 @@ class Runner:
             self.set_error(error_msg)
             return -1, '', error_msg
 
-        return self.executor.run(command, cwd, env, quiet)
+        return self.executor.run_cmd(command, cwd, env, quiet)
+
+    # Backward-compatible alias (deprecated). Prefer run_cmd().
+    def run(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]:
+        return self.run_cmd(command, cwd, env, quiet)
 
     def set_cwd(self, new_workdir: str) -> bool:
         """

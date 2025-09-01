@@ -502,7 +502,7 @@ class TestContainerManager:
                 manager._has_bash = True
 
                 with patch('builtins.print') as mock_print:
-                    exit_code, stdout, stderr = manager.run('echo test', quiet=False)
+                    exit_code, stdout, stderr = manager.run_cmd('echo test', quiet=False)
 
                 assert exit_code == 0
                 assert 'line1\n' in stdout
@@ -518,7 +518,7 @@ class TestContainerManager:
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 manager = ContainerManager('mascucsc/hagent-simplechisel:2025.09')
 
-                exit_code, stdout, stderr = manager.run('echo test')
+                exit_code, stdout, stderr = manager.run_cmd('echo test')
                 assert exit_code == -1, 'Should return -1 exit code when no container'
                 assert 'Container not set up' in manager.get_error()
 
