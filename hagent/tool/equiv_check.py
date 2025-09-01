@@ -115,7 +115,7 @@ class Equiv_check:
             # Setup container with no automatic mounts for equiv_check operations
             if self.container_manager.setup(automount=False):
                 # Test that Yosys is available in the Docker container
-                rc, out, err = self.container_manager.run('yosys --version')
+                rc, out, err = self.container_manager.run_cmd('yosys --version')
                 if rc == 0 and 'Yosys' in out:
                     self.use_docker = True
                     self.yosys_installed = True
@@ -151,7 +151,7 @@ class Equiv_check:
 
             # Get list of files to copy from the container work directory
             # We want to copy check.s script and any .log files
-            rc, out, err = self.container_manager.run(
+            rc, out, err = self.container_manager.run_cmd(
                 f'find {container_work_dir} -type f \\( -name "check.s" -o -name "*.log" \\) 2>/dev/null || true'
             )
             if rc != 0:
@@ -168,7 +168,7 @@ class Equiv_check:
                 local_file_path = os.path.join(work_dir, os.path.basename(container_file_path))
 
                 # Read file content from container
-                rc, file_content, err = self.container_manager.run(f'cat {container_file_path}')
+                rc, file_content, err = self.container_manager.run_cmd(f'cat {container_file_path}')
                 if rc == 0:
                     # Write to local file
                     with open(local_file_path, 'w') as f:
@@ -713,7 +713,7 @@ class Equiv_check:
         if self.use_docker and self.container_manager:
             # Docker execution
             try:
-                rc, stdout, stderr = self.container_manager.run(command)
+                rc, stdout, stderr = self.container_manager.run_cmd(command)
                 return rc, stdout, stderr
             except Exception as e:
                 self.error_message = f'Docker Yosys execution error: {e}'

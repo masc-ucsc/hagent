@@ -116,12 +116,12 @@ class TestExecutorContainerOperations:
         executor, _ = executor_setup
 
         # Test basic echo command
-        rc, out, err = executor.run('echo "test"')
+        rc, out, err = executor.run_cmd('echo "test"')
         assert rc == 0, f'Basic echo failed - RC: {rc}, ERR: {err}'
         assert 'test' in out
 
         # Test shell availability
-        rc, out, err = executor.run('which sh')
+        rc, out, err = executor.run_cmd('which sh')
         assert rc == 0, f'Shell check failed - RC: {rc}, ERR: {err}'
         assert '/bin/sh' in out or '/sh' in out
 
@@ -133,11 +133,11 @@ class TestExecutorContainerOperations:
         # Note: In the new API, we use container_manager for file operations
         temp_file_content = 'potato'
 
-        rc, out, err = executor.run('id')
+        rc, out, err = executor.run_cmd('id')
         print(f'id result rc:{rc} out:{out} err:{err}')
         assert rc == 0
 
-        rc, out, err = executor.run('ls -ald')
+        rc, out, err = executor.run_cmd('ls -ald')
         print(f'ls result rc:{rc} out:{out} err:{err}')
         assert rc == 0
 
@@ -145,23 +145,23 @@ class TestExecutorContainerOperations:
         container_output_dir = 'output/test_executor_container_operations2'
         container_temp_file = f'{container_output_dir}/{temp_files["temp_file_name"]}'
 
-        rc, out, err = executor.run(f'mkdir -p {container_output_dir}')
+        rc, out, err = executor.run_cmd(f'mkdir -p {container_output_dir}')
         assert rc == 0, f'Directory creation failed - RC: {rc}, ERR: {err}'
 
-        rc, out, err = executor.run(f'echo "{temp_file_content}" > {container_temp_file}')
+        rc, out, err = executor.run_cmd(f'echo "{temp_file_content}" > {container_temp_file}')
         assert rc == 0, f'File write failed - RC: {rc}, ERR: {err}'
 
         # Verify file exists and has correct content
-        rc, out, err = executor.run(f'cat {container_temp_file}')
+        rc, out, err = executor.run_cmd(f'cat {container_temp_file}')
         assert rc == 0, f'File read failed - RC: {rc}, ERR: {err}'
         assert temp_file_content in out
 
         # Test file modification
-        rc, out, err = executor.run(f'echo "destroyer" > {container_temp_file}')
+        rc, out, err = executor.run_cmd(f'echo "destroyer" > {container_temp_file}')
         assert rc == 0, f'File modification failed - RC: {rc}, ERR: {err}'
 
         # Verify modification
-        rc, out, err = executor.run(f'cat {container_temp_file}')
+        rc, out, err = executor.run_cmd(f'cat {container_temp_file}')
         assert rc == 0, f'Modified file read failed - RC: {rc}, ERR: {err}'
         assert 'destroyer' in out
 
@@ -170,11 +170,11 @@ class TestExecutorContainerOperations:
         executor, _ = executor_setup
 
         # Test directory listing
-        rc, out, err = executor.run('ls -la')
+        rc, out, err = executor.run_cmd('ls -la')
         assert rc == 0, f'Directory listing failed - RC: {rc}, ERR: {err}'
 
         # Test working directory
-        rc, out, err = executor.run('pwd')
+        rc, out, err = executor.run_cmd('pwd')
         assert rc == 0, f'pwd command failed - RC: {rc}, ERR: {err}'
         # Should be in the repo workspace directory
         assert '/code/workspace/repo' in out
@@ -187,10 +187,10 @@ class TestExecutorContainerOperations:
         container_output_dir = 'output/test_executor_container_operations3'
         container_greeting_file = f'{container_output_dir}/greeting.txt'
 
-        rc, out, err = executor.run(f'mkdir -p {container_output_dir}')
+        rc, out, err = executor.run_cmd(f'mkdir -p {container_output_dir}')
         assert rc == 0, f'Directory creation failed - RC: {rc}, ERR: {err}'
 
-        rc, out, err = executor.run(f'echo "Hello" > {container_greeting_file}')
+        rc, out, err = executor.run_cmd(f'echo "Hello" > {container_greeting_file}')
         assert rc == 0, f'Create greeting failed - RC: {rc}, ERR: {err}'
 
         # Execute multiple commands
@@ -201,11 +201,11 @@ class TestExecutorContainerOperations:
         ]
 
         for cmd in commands:
-            rc, _, _ = executor.run(cmd)
+            rc, _, _ = executor.run_cmd(cmd)
             assert rc == 0, f'Command failed: {cmd}'
 
         # Verify final content
-        rc, out, err = executor.run(f'cat {container_greeting_file}')
+        rc, out, err = executor.run_cmd(f'cat {container_greeting_file}')
         assert rc == 0, f'Final read failed - RC: {rc}, ERR: {err}'
         assert 'Hello' in out and 'World' in out
 
@@ -214,11 +214,11 @@ class TestExecutorContainerOperations:
         executor, _ = executor_setup
 
         # Test nonexistent command
-        rc, out, err = executor.run('nonexistent-command-12345')
+        rc, out, err = executor.run_cmd('nonexistent-command-12345')
         assert rc != 0, 'Should fail for nonexistent command'
 
         # Test reading nonexistent file
-        rc, out, err = executor.run('cat nonexistent.txt')
+        rc, out, err = executor.run_cmd('cat nonexistent.txt')
         assert rc != 0, 'Should fail for nonexistent file'
 
     def test_executable_installation(self, executor_setup, temp_files):
@@ -240,15 +240,15 @@ class TestExecutorContainerOperations:
             custom_name = '/code/workspace/build/my_custom_tool'
 
             # Create script in container
-            rc, out, err = executor.run(f"echo '{script_content}' > {custom_name}")
+            rc, out, err = executor.run_cmd(f"echo '{script_content}' > {custom_name}")
             assert rc == 0, f'Script creation failed - RC: {rc}, ERR: {err}'
 
             # Make executable
-            rc, out, err = executor.run(f'chmod +x {custom_name}')
+            rc, out, err = executor.run_cmd(f'chmod +x {custom_name}')
             assert rc == 0, f'chmod failed - RC: {rc}, ERR: {err}'
 
             # Test execution
-            rc, out, err = executor.run(f'{custom_name}')
+            rc, out, err = executor.run_cmd(f'{custom_name}')
             assert rc == 0, f'Script execution failed - RC: {rc}, ERR: {err}'
             assert 'Hello from custom script' in out
 
@@ -262,13 +262,13 @@ class TestExecutorContainerOperations:
         executor, _ = executor_setup
 
         # Check if patch is available
-        rc, out, err = executor.run('which patch')
+        rc, out, err = executor.run_cmd('which patch')
         if rc != 0:
             # Try to install patch
-            rc, out, err = executor.run('apk update && apk add patch')
+            rc, out, err = executor.run_cmd('apk update && apk add patch')
             if rc != 0:
                 pytest.skip('Cannot install patch utility - skipping patch availability test')
 
         # Verify patch is now available
-        rc, out, err = executor.run('which patch')
+        rc, out, err = executor.run_cmd('which patch')
         assert rc == 0, 'Patch utility should be available'

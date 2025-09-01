@@ -14,7 +14,7 @@ from pathlib import Path
 # Add parent directory to path to allow direct execution
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from hagent.inou.executor import run_command
+from hagent.inou.executor import run_cmd
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
         print(f"Executing '{args.command}' in {args.mode} mode...")
 
         # Use convenience function
-        exit_code, stdout, stderr = run_command(args.command, cwd=args.cwd, env=env_vars, quiet=args.quiet)
+        exit_code, stdout, stderr = run_cmd(args.command, cwd=args.cwd, env=env_vars, quiet=args.quiet)
 
         print(f'\nExit code: {exit_code}')
         if stdout:

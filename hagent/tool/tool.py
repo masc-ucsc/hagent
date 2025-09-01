@@ -1,12 +1,13 @@
 # See LICENSE for details
 
-from typing import Optional
+from typing import Optional, Tuple, Dict
 import os
 import shutil
 import subprocess
 from abc import abstractmethod
 
 from hagent.core.tracer import TracerABCMetaClass
+from hagent.inou.executor import run_cmd
 
 
 class Tool(metaclass=TracerABCMetaClass):
@@ -87,23 +88,29 @@ class Tool(metaclass=TracerABCMetaClass):
                 return False
             return True
 
-    def run_command(self, cmd, cwd=None, timeout=60, capture_output=True, check=False, text=True):
+    def run_cmd(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = True
+    ) -> Tuple[int, str, str]:
         """
-        Run a command and handle exceptions in a standardized way.
+        Execute a shell command using HAgent's execution environment (local/docker).
 
         Args:
-            cmd: Command to run (list or string)
-            cwd: Working directory for the command
-            timeout: Timeout in seconds
-            capture_output: Whether to capture stdout/stderr
-            check: Whether to raise an exception on non-zero exit
-            text: Whether to return strings (vs bytes)
+            command: Shell command to execute
+            cwd: Working directory for the command (default '.')
+            env: Additional environment variables to include
+            quiet: If True, capture output. If False, stream output.
 
         Returns:
-            A CompletedProcess object from subprocess.run()
+            Tuple of (exit_code, stdout, stderr)
+        """
+        env = env or {}
+        return run_cmd(command, cwd=cwd, env=env, quiet=quiet)
 
-        Raises:
-            Sets error_message and returns None on failure
+    # Backward-compatible helper (deprecated). Prefer run_cmd().
+    def run_command(self, cmd, cwd=None, timeout=60, capture_output=True, check=False, text=True):
+        """
+        Legacy subprocess runner maintained for compatibility with existing tests.
+        Returns subprocess.CompletedProcess or None on failure.
         """
         try:
             return subprocess.run(cmd, cwd=cwd, timeout=timeout, capture_output=capture_output, check=check, text=text)

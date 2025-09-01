@@ -808,8 +808,8 @@ class ContainerManager:
             self.set_error(f'Container setup failed: {e}')
             return False
 
-    def run(
-        self, command: str, container_path: Optional[str] = '.', quiet: bool = False, config_sources: Optional[List[str]] = None
+    def run_cmd(
+        self, command: str, cwd: Optional[str] = '.', quiet: bool = False, config_sources: Optional[List[str]] = None
     ) -> Tuple[int, str, str]:
         """
         Execute command inside the container.
@@ -828,13 +828,13 @@ class ContainerManager:
             return -1, '', 'Container not set up'
 
         # Handle working directory
-        if container_path == '.':
+        if cwd == '.':
             workdir = self._workdir
         else:
-            if not os.path.isabs(container_path):
-                workdir = os.path.join(self._workdir, container_path)
+            if not os.path.isabs(cwd):
+                workdir = os.path.join(self._workdir, cwd)
             else:
-                workdir = container_path
+                workdir = cwd
 
             # Validate that the container path exists
             if not self._validate_container_path(workdir):
@@ -918,6 +918,13 @@ class ContainerManager:
         except Exception as e:
             self.set_error(f'Command execution failed: {e}')
             return -1, '', str(e)
+
+    # Backward-compatible alias (deprecated). Prefer run_cmd().
+    def run(
+        self, command: str, container_path: Optional[str] = '.', quiet: bool = False, config_sources: Optional[List[str]] = None
+    ) -> Tuple[int, str, str]:
+        # map deprecated container_path to cwd
+        return self.run_cmd(command, container_path, quiet, config_sources)
 
     def image_checkpoint(self, name: Optional[str] = None) -> Optional[str]:
         """

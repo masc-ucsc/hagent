@@ -33,7 +33,7 @@ def _run_xiangshan_test():
     print('Checking for XiangShan project structure...')
 
     # Check for main project directory
-    exit_code, stdout, stderr = runner.run('ls -la /code/workspace/repo/', cwd='/')
+    exit_code, stdout, stderr = runner.run_cmd('ls -la /code/workspace/repo/', cwd='/')
     if exit_code != 0:
         print('⚠️  XiangShan project not found in expected location')
         print('This test requires the mascucsc/hagent-xiangshan:2025.09 image with XiangShan project')
@@ -62,12 +62,12 @@ def _run_xiangshan_test():
     print('✅ File tracking configured for source and generated files')
 
     print('Checking for IFU.scala file...')
-    exit_code, stdout, stderr = runner.run(f'test -f "{ifu_path}"', cwd='/')
+    exit_code, stdout, stderr = runner.run_cmd(f'test -f "{ifu_path}"', cwd='/')
     if exit_code != 0:
         print(f'❌ IFU.scala file not found at {ifu_path}')
         # Try to find it
         print('Searching for IFU.scala in the project...')
-        exit_code, stdout, stderr = runner.run('find /code/workspace/repo -name "IFU.scala" | head -5', cwd='/')
+        exit_code, stdout, stderr = runner.run_cmd('find /code/workspace/repo -name "IFU.scala" | head -5', cwd='/')
         if stdout.strip():
             print(f'Found IFU.scala files at:\n{stdout}')
             # Use the first found file and update our tracking
@@ -84,7 +84,7 @@ def _run_xiangshan_test():
         print(f'✅ Found IFU.scala at: {ifu_path}')
 
     print('Checking for RTL build directory...')
-    exit_code, stdout, stderr = runner.run(f'test -d "{rtl_path}"', cwd='/')
+    exit_code, stdout, stderr = runner.run_cmd(f'test -d "{rtl_path}"', cwd='/')
     if exit_code != 0:
         print(f'⚠️  RTL directory not found at {rtl_path} (will be created during build)')
     else:
@@ -95,7 +95,7 @@ def _run_xiangshan_test():
         print('Applying test modification to IFU.scala...')
 
         # First, let's see the current content around the line we want to modify
-        exit_code, stdout, stderr = runner.run(
+        exit_code, stdout, stderr = runner.run_cmd(
             f'grep -n "f2_flush.*backend_redirect" "{ifu_path}" || echo "Pattern not found"', cwd='/'
         )
         print(f'Current f2_flush line(s):\n{stdout}')
@@ -106,13 +106,13 @@ def _run_xiangshan_test():
 
         # Use sed to make the replacement
         sed_command = f'sed -i "s/{old_pattern}/{new_pattern}/g" "{ifu_path}"'
-        exit_code, stdout, stderr = runner.run(sed_command, cwd='/')
+        exit_code, stdout, stderr = runner.run_cmd(sed_command, cwd='/')
 
         if exit_code == 0:
             print('✅ Successfully applied modification to IFU.scala')
 
             # Verify the change
-            exit_code, stdout, stderr = runner.run(f'grep -n "f2_flush.*backend_redirect" "{ifu_path}"', cwd='/')
+            exit_code, stdout, stderr = runner.run_cmd(f'grep -n "f2_flush.*backend_redirect" "{ifu_path}"', cwd='/')
             print(f'Modified f2_flush line(s):\n{stdout}')
 
             # Show immediate changes detected by Runner's file tracking
@@ -145,17 +145,17 @@ def _run_xiangshan_test():
 
     # For demonstration, let's first try a quicker command to verify the build system
     print('Testing build system availability...')
-    exit_code, stdout, stderr = runner.run('make --version', cwd='/code/workspace/repo')
+    exit_code, stdout, stderr = runner.run_cmd('make --version', cwd='/code/workspace/repo')
     if exit_code != 0:
         print('❌ Make not available')
         runner.cleanup()
         return
 
-    exit_code, stdout, stderr = runner.run('ls -la Makefile', cwd='/code/workspace/repo')
+    exit_code, stdout, stderr = runner.run_cmd('ls -la Makefile', cwd='/code/workspace/repo')
     if exit_code != 0:
         print('❌ Makefile not found in /code/workspace/repo')
         # Try to find Makefiles
-        runner.run('find /code/workspace/repo -name "Makefile" -o -name "makefile" | head -3', cwd='/')
+        runner.run_cmd('find /code/workspace/repo -name "Makefile" -o -name "makefile" | head -3', cwd='/')
         runner.cleanup()
         return
 
@@ -165,18 +165,18 @@ def _run_xiangshan_test():
     print(f'Executing: {build_command}')
     print('⏳ This may take 10+ minutes for XiangShan Verilog generation...')
 
-    exit_code, stdout, stderr = runner.run(build_command, cwd='/code/workspace/repo')
+    exit_code, stdout, stderr = runner.run_cmd(build_command, cwd='/code/workspace/repo')
 
     if exit_code == 0:
         print('✅ XiangShan Verilog generation successful')
 
         # Check what was generated
-        exit_code, stdout, stderr = runner.run('find /code/workspace/build -name "*.sv" -o -name "*.v" | wc -l', cwd='/')
+        exit_code, stdout, stderr = runner.run_cmd('find /code/workspace/build -name "*.sv" -o -name "*.v" | wc -l', cwd='/')
         if stdout.strip():
             print(f'Generated {stdout.strip()} Verilog files')
 
         # Show some example generated files
-        exit_code, stdout, stderr = runner.run('find /code/workspace/build -name "*.sv" | head -5', cwd='/')
+        exit_code, stdout, stderr = runner.run_cmd('find /code/workspace/build -name "*.sv" | head -5', cwd='/')
         if stdout.strip():
             print('Example generated files:')
             print(stdout)

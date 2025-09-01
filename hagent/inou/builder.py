@@ -330,7 +330,7 @@ class Builder:
 
     # ---------------------------- command execution ----------------------------
 
-    def _execute_command(
+    def _run_api(
         self,
         profile: dict,
         command_name: str,
@@ -406,11 +406,11 @@ class Builder:
         # Execute using Runner
         if not self.runner:
             raise RuntimeError('Runner not available for non-dry run execution')
-        return self.runner.run(command, cwd, env, quiet)
+        return self.runner.run_cmd(command, cwd, env, quiet)
 
     # ---------------------------- convenience methods ----------------------------
 
-    def execute(
+    def run_api(
         self,
         exact_name: Optional[str] = None,
         title_query: Optional[str] = None,
@@ -436,7 +436,31 @@ class Builder:
             Tuple of (exit_code, stdout, stderr)
         """
         profile = self._select_profile(exact_name, title_query)
-        return self._execute_command(profile, command_name, extra_args, build_dir, dry_run, quiet)
+        return self._run_api(profile, command_name, extra_args, build_dir, dry_run, quiet)
+
+    # Backward-compatible aliases (deprecated). Prefer run_api().
+    def _execute_command(
+        self,
+        profile: dict,
+        command_name: str,
+        extra_args: Optional[List[str]] = None,
+        build_dir: Optional[Path] = None,
+        dry_run: bool = False,
+        quiet: bool = False,
+    ) -> Tuple[int, str, str]:
+        return self._run_api(profile, command_name, extra_args, build_dir, dry_run, quiet)
+
+    def execute(
+        self,
+        exact_name: Optional[str] = None,
+        title_query: Optional[str] = None,
+        command_name: str = '',
+        extra_args: Optional[List[str]] = None,
+        build_dir: Optional[Path] = None,
+        dry_run: bool = False,
+        quiet: bool = False,
+    ) -> Tuple[int, str, str]:
+        return self.run_api(exact_name, title_query, command_name, extra_args, build_dir, dry_run, quiet)
 
     # ---------------------------- listing methods ----------------------------
 

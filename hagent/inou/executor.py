@@ -28,7 +28,7 @@ class ExecutionStrategy(Protocol):
         """
         ...
 
-    def run(
+    def run_cmd(
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
     ) -> Tuple[int, str, str]:
         """
@@ -44,6 +44,11 @@ class ExecutionStrategy(Protocol):
             Tuple of (exit_code, stdout, stderr)
         """
         ...
+
+    # Backward-compatible alias (deprecated). Prefer run_cmd().
+    def run(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]: ...
 
     def set_cwd(self, new_workdir: str) -> bool:
         """
@@ -145,7 +150,7 @@ class LocalExecutor:
             self.set_error(f'Failed to change working directory: {e}')
             return False
 
-    def run(
+    def run_cmd(
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
     ) -> Tuple[int, str, str]:
         """
@@ -255,6 +260,12 @@ class LocalExecutor:
         except Exception as e:
             return -1, '', f'Command execution failed: {e}'
 
+    # Backward-compatible alias (deprecated). Prefer run_cmd().
+    def run(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]:
+        return self.run_cmd(command, cwd, env, quiet)
+
 
 class DockerExecutor:
     """Execution strategy that runs commands within Docker containers."""
@@ -329,7 +340,7 @@ class DockerExecutor:
             self.set_error(self.container_manager.get_error())
         return success
 
-    def run(
+    def run_cmd(
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
     ) -> Tuple[int, str, str]:
         """
@@ -365,7 +376,7 @@ class DockerExecutor:
 
         try:
             # Use ContainerManager approach
-            return self.container_manager.run(command, container_cwd, quiet)
+            return self.container_manager.run_cmd(command, container_cwd, quiet)
         finally:
             # Restore previous environment
             for key, old_value in old_env.items():
@@ -373,6 +384,12 @@ class DockerExecutor:
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = old_value
+
+    # Backward-compatible alias (deprecated). Prefer run_cmd().
+    def run(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]:
+        return self.run_cmd(command, cwd, env, quiet)
 
     def _translate_path_to_container(self, host_path: str) -> str:
         """
@@ -459,7 +476,7 @@ def create_executor(container_manager=None, path_manager: Optional[PathManager] 
     return ExecutorFactory.create_executor(container_manager, path_manager)
 
 
-def run_command(
+def run_cmd(
     command: str,
     cwd: str = '.',
     env: Optional[Dict[str, str]] = None,
@@ -490,4 +507,16 @@ def run_command(
             path_manager = PathManager()
         cwd = str(path_manager.repo_dir)
 
-    return executor.run(command, cwd, env, quiet)
+    return executor.run_cmd(command, cwd, env, quiet)
+
+
+# Backward-compatible alias (deprecated). Prefer run_cmd().
+def run_command(
+    command: str,
+    cwd: str = '.',
+    env: Optional[Dict[str, str]] = None,
+    quiet: bool = False,
+    container_manager=None,
+    path_manager: Optional[PathManager] = None,
+) -> Tuple[int, str, str]:
+    return run_cmd(command, cwd, env, quiet, container_manager, path_manager)

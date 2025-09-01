@@ -59,7 +59,7 @@ class TestRunner:
         assert not runner.is_docker_mode()
 
         # Run a simple command
-        exit_code, stdout, stderr = runner.run('echo "Hello World"')
+        exit_code, stdout, stderr = runner.run_cmd('echo "Hello World"')
         assert exit_code == 0
         assert 'Hello World' in stdout
 
@@ -178,7 +178,7 @@ class TestRunner:
         assert success, f'Directory change failed: {runner.get_error()}'
 
         # Run command in new directory
-        exit_code, stdout, stderr = runner.run('pwd')
+        exit_code, stdout, stderr = runner.run_cmd('pwd')
         assert exit_code == 0
         assert 'subproject' in stdout
 
@@ -240,7 +240,7 @@ class TestRunner:
             assert runner.file_tracker is not None
 
             # Run command
-            exit_code, stdout, stderr = runner.run('echo "test"')
+            exit_code, stdout, stderr = runner.run_cmd('echo "test"')
             assert exit_code == 0
 
         # After context exit, cleanup should have been called
@@ -347,11 +347,11 @@ int main() {
         assert runner.setup()
 
         # Try to run a command that will fail
-        exit_code, stdout, stderr = runner.run('nonexistent_command')
+        exit_code, stdout, stderr = runner.run_cmd('nonexistent_command')
         assert exit_code != 0
 
         # Runner should still be usable after a failed command
-        exit_code, stdout, stderr = runner.run('echo "recovery test"')
+        exit_code, stdout, stderr = runner.run_cmd('echo "recovery test"')
         assert exit_code == 0
         assert 'recovery test' in stdout
 
@@ -361,7 +361,7 @@ int main() {
         # but should not crash the Runner
 
         # Runner should still be usable
-        exit_code, stdout, stderr = runner.run('echo "still working"')
+        exit_code, stdout, stderr = runner.run_cmd('echo "still working"')
         assert exit_code == 0
 
         runner.cleanup()
