@@ -41,13 +41,13 @@ class V2chisel_batch(Step):
         super().__init__()
         # Initialize Runner for automated Docker container management
         self.runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.08')
-        
+
     def setup(self):
         """Initialize the batch processing step"""
         super().setup()
         print(f'[V2chisel_batch] Input file: {self.input_file}')
         print(f'[V2chisel_batch] Output file: {self.output_file}')
-        
+
         # Setup Runner for Docker container management
         if not self.runner.setup():
             self.error(f'Docker container setup failed: {self.runner.get_error()}')
@@ -95,17 +95,17 @@ class V2chisel_batch(Step):
 
     def _run_docker_command(self, cmd_list, timeout=None):
         """Helper method to run Docker commands through Runner instead of subprocess
-        
+
         Args:
             cmd_list: List of command parts (Docker, exec, container, command...)
             timeout: Timeout in seconds (warning: Runner doesn't support timeout)
-            
+
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
         if timeout:
             print(f'⚠️  Warning: timeout={timeout}s requested but not supported by Runner')
-            
+
         # Convert Docker exec command list to Runner command
         # cmd_list format: ['docker', 'exec', container, 'bash', '-l', '-c', 'actual_command']
         if len(cmd_list) >= 4 and cmd_list[0] == 'docker' and cmd_list[1] == 'exec':
@@ -123,12 +123,12 @@ class V2chisel_batch(Step):
             else:
                 # Join remaining command parts
                 command = ' '.join(cmd_list[3:])
-            
+
             return self.runner.run(command)
         else:
             # Fallback: join all parts (shouldn't happen with Docker commands)
             return self.runner.run(' '.join(cmd_list))
-            
+
     def cleanup(self):
         """Clean up resources including Runner"""
         if hasattr(self, 'runner') and self.runner:
