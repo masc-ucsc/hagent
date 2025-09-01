@@ -553,8 +553,8 @@ class ContainerManager:
         # Set LOCAL_USER_ID and LOCAL_GROUP_ID to match host user
         # This allows the entrypoint script to map container user to host user
         # preventing permission issues with mounted volumes
-        #env_vars['LOCAL_USER_ID'] = str(os.getuid())
-        #env_vars['LOCAL_GROUP_ID'] = str(os.getgid())
+        # env_vars['LOCAL_USER_ID'] = str(os.getuid())
+        # env_vars['LOCAL_GROUP_ID'] = str(os.getgid())
 
         return env_vars
 
@@ -752,9 +752,8 @@ class ContainerManager:
                 }
 
                 # Set LOCAL_USER_ID and LOCAL_GROUP_ID to match host user
-                #env_vars['LOCAL_USER_ID'] = str(os.getuid())
-                #env_vars['LOCAL_GROUP_ID'] = str(os.getgid())
-
+                # env_vars['LOCAL_USER_ID'] = str(os.getuid())
+                # env_vars['LOCAL_GROUP_ID'] = str(os.getgid())
 
             # Create the container with security restrictions
             # Start as root to allow the entrypoint script to set up user mapping
