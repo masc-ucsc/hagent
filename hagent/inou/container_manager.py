@@ -15,6 +15,8 @@ import time
 import atexit
 import weakref
 import random
+import uuid
+import signal
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple, Any
 
@@ -23,6 +25,13 @@ from .path_manager import PathManager
 # Global registry to track ContainerManager instances for cleanup
 _container_manager_registry: weakref.WeakSet = weakref.WeakSet()
 _cleanup_registered = False
+
+# Session-scoped labels to mark containers created by this Python process
+_SESSION_LABEL_KEY = 'hagent.session'
+_OWNER_PID_LABEL_KEY = 'hagent.owner_pid'
+_MANAGED_LABEL_KEY = 'hagent.managed'
+_SESSION_ID = str(uuid.uuid4())
+_cleanup_running = False
 
 # Global state to track if we're in validated Docker mode
 _docker_workspace_validated = False
@@ -260,9 +269,24 @@ class ContainerManager:
         # Register this instance for cleanup
         _container_manager_registry.add(self)
 
-        # Register global cleanup function once
+        # Register global cleanup function once (atexit + signals)
         if not _cleanup_registered:
             atexit.register(_cleanup_all_containers)
+
+            # Best-effort early cleanup on termination signals
+            def _sig_cleanup_handler(signum, frame):
+                try:
+                    _cleanup_all_containers()
+                finally:
+                    # Re-raise default behavior
+                    signal.signal(signum, signal.SIG_DFL)
+                    os.kill(os.getpid(), signum)
+
+            for _sig in (signal.SIGINT, signal.SIGTERM):
+                try:
+                    signal.signal(_sig, _sig_cleanup_handler)
+                except Exception:
+                    pass
             _cleanup_registered = True
 
         # Try to initialize Docker client - errors will be stored for later
@@ -485,6 +509,12 @@ class ContainerManager:
             return image_info.attrs.get('Config', {})
         except Exception:
             return {}
+
+    def _get_container_labels(self) -> Dict[str, str]:
+        """Labels to tag containers for session-scoped cleanup."""
+        labels = _get_process_labels()
+        labels['hagent.image'] = self.image
+        return labels
 
     def _setup_docker_workspace_if_needed(self, timeout: int = 30) -> bool:
         """
@@ -776,6 +806,8 @@ class ContainerManager:
                 read_only=False,  # We need write access to mounted volumes
                 # Auto-remove container when it exits to prevent accumulation
                 auto_remove=True,
+                # Labels to identify and clean up containers for this session
+                labels=self._get_container_labels(),
             )
             self.container.start()
 
@@ -1031,9 +1063,10 @@ class ContainerManager:
 
         if self.container:
             try:
-                if self.container.status == 'running':
+                self.container.reload()
+                if getattr(self.container, 'status', None) == 'running':
                     self.container.kill()
-                self.container.remove()
+                self.container.remove(force=True)
                 self.container = None
             except docker.errors.APIError:
                 pass
@@ -1043,9 +1076,10 @@ class ContainerManager:
         # Clean up reference container
         if self._reference_container:
             try:
-                if self._reference_container.status == 'running':
+                self._reference_container.reload()
+                if getattr(self._reference_container, 'status', None) == 'running':
                     self._reference_container.kill()
-                self._reference_container.remove()
+                self._reference_container.remove(force=True)
                 self._reference_container = None
             except docker.errors.APIError:
                 pass
@@ -1183,16 +1217,96 @@ def _cleanup_all_containers():
     This function is registered with atexit and will clean up any containers
     that weren't properly cleaned up due to test interruptions or failures.
     """
-    global _container_manager_registry
+    global _container_manager_registry, _cleanup_running
 
-    # Clean up any remaining container managers
-    managers_to_cleanup = list(_container_manager_registry)
-    if managers_to_cleanup:
-        print(f'\n⚠️  atexit: Cleaning up {len(managers_to_cleanup)} remaining ContainerManager instances...')
+    if _cleanup_running:
+        return
+    _cleanup_running = True
 
-        for manager in managers_to_cleanup:
+    # 1) Clean up any remaining container managers (best-effort)
+    try:
+        managers_to_cleanup = list(_container_manager_registry)
+        if managers_to_cleanup:
+            print(f'\n⚠️  atexit: Cleaning up {len(managers_to_cleanup)} remaining ContainerManager instances...')
+
+            for manager in managers_to_cleanup:
+                try:
+                    if hasattr(manager, 'cleanup') and not getattr(manager, '_cleaned_up', False):
+                        manager.cleanup()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # 2) Additionally, clean up any containers labeled with this session ID
+    try:
+        client = None
+        try:
+            client = docker.from_env()
+        except Exception:
+            # Try common sockets as fallback
+            for sock in ('/var/run/docker.sock', os.path.expanduser('~/.docker/run/docker.sock')):
+                try:
+                    if os.path.exists(sock):
+                        client = docker.DockerClient(base_url=f'unix://{sock}')
+                        break
+                except Exception:
+                    continue
+        if client is None:
+            return
+
+        # Find containers belonging to this session
+        flt = {'label': [f'{_MANAGED_LABEL_KEY}=true', f'{_SESSION_LABEL_KEY}={_SESSION_ID}']}
+        containers = client.containers.list(all=True, filters=flt)
+        if containers:
+            print(f'⚠️  atexit: Removing {len(containers)} hagent containers for session {_SESSION_ID}...')
+        for c in containers:
             try:
-                if hasattr(manager, 'cleanup') and not getattr(manager, '_cleaned_up', False):
-                    manager.cleanup()
+                try:
+                    c.reload()
+                except Exception:
+                    pass
+                status = getattr(c, 'status', None)
+                if status == 'running':
+                    try:
+                        c.kill()
+                    except Exception:
+                        pass
+                try:
+                    c.remove(force=True)
+                except Exception:
+                    pass
             except Exception:
                 pass
+    except Exception:
+        pass
+
+    _cleanup_running = False
+
+
+def _get_process_labels() -> Dict[str, str]:
+    return {
+        _MANAGED_LABEL_KEY: 'true',
+        _SESSION_LABEL_KEY: _SESSION_ID,
+        _OWNER_PID_LABEL_KEY: str(os.getpid()),
+    }
+
+
+def _merge_labels(base: Optional[Dict[str, str]], extra: Dict[str, str]) -> Dict[str, str]:
+    merged = dict(base) if base else {}
+    merged.update(extra)
+    return merged
+
+
+def _safe_getattr(obj: Any, name: str, default: Any = None) -> Any:
+    try:
+        return getattr(obj, name)
+    except Exception:
+        return default
+
+
+def _safe_dict_get(d: Optional[Dict[str, Any]], key: str, default: Any = None) -> Any:
+    try:
+        return (d or {}).get(key, default)
+    except Exception:
+        return default
