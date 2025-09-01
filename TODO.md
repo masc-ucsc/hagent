@@ -1,5 +1,15 @@
 -------
 
+container_manager has issues with HAGENT_*_DIR setup. It should never be set to /code/workspace/...
+
+The code sets it, and then in several places does not thing if set there. Overall, it should not set the environment variables in container_manager to /cpde/workspace.
+
+If inside docker running hagent, the container_manager should not be called after all.
+
+Not sure that we need the "automount" option in container_manager.setup
+
+-------
+
 If HAGENT_LLM_MODEL is set, it uses this LLM for all the queries.
 
 Usuful when users do not have  the keys used for regression testing.

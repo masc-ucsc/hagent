@@ -63,7 +63,7 @@ def _run_xiangshan_patches_test():
     """Core XiangShan patches and hints generation logic."""
 
     # 1. Initialize Runner with Docker image
-    runner = Runner(docker_image='mascucsc/hagent-xiangshan:2025.08')
+    runner = Runner(docker_image='mascucsc/hagent-xiangshan:2025.09')
 
     # 2. Setup runner
     assert runner.setup(), f'Setup failed: {runner.get_error()}'
@@ -74,7 +74,7 @@ def _run_xiangshan_patches_test():
     exit_code, stdout, stderr = runner.run('ls -la /code/workspace/repo/', cwd='/')
     if exit_code != 0:
         print('❌ XiangShan project not found in expected location')
-        print('This test requires the mascucsc/hagent-xiangshan:2025.08 image with XiangShan project')
+        print('This test requires the mascucsc/hagent-xiangshan:2025.09 image with XiangShan project')
         runner.cleanup()
         return
 

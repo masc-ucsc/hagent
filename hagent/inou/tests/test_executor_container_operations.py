@@ -65,7 +65,7 @@ class TestExecutorContainerOperations:
     def temp_files(self):
         """Create temporary test files and clean them up after test."""
         temp_file_name = f'tmp_{uuid.uuid4().hex}.txt'
-        test_output_dir = os.path.abspath('./output/test_executor_container_operations')
+        test_output_dir = os.path.abspath('./output/test_executor_container_operations1')
         os.makedirs(test_output_dir, exist_ok=True)
 
         temp_file_host_path = os.path.join(test_output_dir, temp_file_name)
@@ -98,7 +98,7 @@ class TestExecutorContainerOperations:
             os.makedirs(cache_dir, exist_ok=True)
 
         path_manager = PathManager()
-        container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.08', path_manager)
+        container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.09', path_manager)
         executor = ExecutorFactory.create_executor(container_manager)
 
         assert executor.setup(), f'Executor setup failed: {executor.get_error()}'
@@ -142,7 +142,7 @@ class TestExecutorContainerOperations:
         assert rc == 0
 
         # Create the test output directory in container and write content to a file there
-        container_output_dir = 'output/test_executor_container_operations'
+        container_output_dir = 'output/test_executor_container_operations2'
         container_temp_file = f'{container_output_dir}/{temp_files["temp_file_name"]}'
 
         rc, out, err = executor.run(f'mkdir -p {container_output_dir}')
@@ -184,7 +184,7 @@ class TestExecutorContainerOperations:
         executor, _ = executor_setup
 
         # Create test output directory and greeting file there
-        container_output_dir = 'output/test_executor_container_operations'
+        container_output_dir = 'output/test_executor_container_operations3'
         container_greeting_file = f'{container_output_dir}/greeting.txt'
 
         rc, out, err = executor.run(f'mkdir -p {container_output_dir}')
@@ -227,16 +227,13 @@ class TestExecutorContainerOperations:
 
         # Create a simple executable script on host
         script_content = '#!/bin/sh\necho "Hello from custom script"\n'
-        test_output_dir = os.path.abspath('./output/test_executor_container_operations')
+        test_output_dir = os.path.abspath('./output/test_executor_container_operations4')
         os.makedirs(test_output_dir, exist_ok=True)
         script_path = os.path.join(test_output_dir, 'test_script.sh')
 
         try:
             with open(script_path, 'w') as f:
                 f.write(script_content)
-
-            # Make it executable on host
-            os.chmod(script_path, 0o755)
 
             # Note: In new API, we would need to implement file copying via container_manager
             # For now, we'll create the script in build directory to avoid repo mount execution restrictions

@@ -73,11 +73,11 @@ class TestRunner:
         # Switch to docker mode
         os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
 
-        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.08')
+        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09')
 
         assert runner.is_docker_mode()
         assert not runner.is_local_mode()
-        assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.08'
+        assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.09'
         assert runner.container_manager is not None
 
         runner.cleanup()
