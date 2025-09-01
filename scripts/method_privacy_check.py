@@ -187,11 +187,16 @@ class CallCollector(ast.NodeVisitor):
                 return False
             op = test.ops[0]
             right = comps[0]
+
             def is_name_main(n: ast.AST) -> bool:
                 return isinstance(n, ast.Name) and n.id == '__name__'
+
             def is_const_main(n: ast.AST) -> bool:
                 return isinstance(n, ast.Constant) and n.value == '__main__'
-            if isinstance(op, ast.Eq) and ((is_name_main(left) and is_const_main(right)) or (is_const_main(left) and is_name_main(right))):
+
+            if isinstance(op, ast.Eq) and (
+                (is_name_main(left) and is_const_main(right)) or (is_const_main(left) and is_name_main(right))
+            ):
                 return True
         return False
 
