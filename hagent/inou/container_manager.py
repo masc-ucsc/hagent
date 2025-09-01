@@ -183,8 +183,8 @@ def _validate_mount_path(host_path: str) -> Tuple[bool, str]:
         hagent_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
 
         # Log mount validation attempts for debugging
-        #print(f'🔍 MOUNT VALIDATION: {host_path} -> {abs_path}')
-        #print(f'🔍 HAGENT ROOT: {hagent_root}')
+        # print(f'🔍 MOUNT VALIDATION: {host_path} -> {abs_path}')
+        # print(f'🔍 HAGENT ROOT: {hagent_root}')
 
         # Check if we're trying to mount the hagent repo root
         if abs_path == hagent_root:
@@ -259,7 +259,6 @@ class ContainerManager:
         self.client: Optional[docker.DockerClient] = None
         self.container: Optional[docker.models.containers.Container] = None
         self._reference_container: Optional[docker.models.containers.Container] = None
-        self._image_user: Optional[str] = None
         self._has_bash: bool = False
         self._checkpoints: List[str] = []
         self._workdir = '/code/workspace/repo'  # New default working directory
@@ -483,23 +482,6 @@ class ContainerManager:
         except Exception as e:
             return {'status': 'ERROR', 'message': str(e)}
 
-    def _get_image_user(self) -> Optional[str]:
-        """Get the default user from the Docker image."""
-        if self._image_user is not None:
-            return self._image_user  # Return cached value
-
-        try:
-            if not self.client:
-                return None
-            image_info = self.client.images.get(self.image)
-            config = image_info.attrs.get('Config', {})
-            user = config.get('User')
-            self._image_user = user if user else ''
-            return user
-        except Exception:
-            self._image_user = ''
-            return None
-
     def _get_image_config(self) -> Dict[str, Any]:
         """Get the original image configuration including command and entrypoint."""
         try:
@@ -550,12 +532,6 @@ class ContainerManager:
             'UV_PROJECT_ENVIRONMENT': '/code/workspace/cache/venv',
         }
 
-        # Set LOCAL_USER_ID and LOCAL_GROUP_ID to match host user
-        # This allows the entrypoint script to map container user to host user
-        # preventing permission issues with mounted volumes
-        # env_vars['LOCAL_USER_ID'] = str(os.getuid())
-        # env_vars['LOCAL_GROUP_ID'] = str(os.getgid())
-
         return env_vars
 
     def _get_security_options(self) -> List[str]:
@@ -598,7 +574,7 @@ class ContainerManager:
             # Resolve symlinks (important on macOS where /var -> /private/var)
             cache_dir_path = os.path.realpath(cache_dir_path)
 
-            print(f" docker MOUNT /code/workspace/cache {cache_dir_path}")
+            print(f' docker MOUNT /code/workspace/cache {cache_dir_path}')
 
             cache_mount = docker.types.Mount(target='/code/workspace/cache', source=cache_dir_path, type='bind')
             mount_objs.append(cache_mount)
@@ -625,7 +601,7 @@ class ContainerManager:
             # Resolve symlinks (important on macOS where /var -> /private/var)
             resolved_repo_path = os.path.realpath(repo_dir_path)
 
-            print(f" docker MOUNT /code/workspace/repo {resolved_repo_path}")
+            print(f' docker MOUNT /code/workspace/repo {resolved_repo_path}')
 
             repo_mount = docker.types.Mount(target='/code/workspace/repo', source=resolved_repo_path, type='bind')
             mount_objs.append(repo_mount)
@@ -651,7 +627,7 @@ class ContainerManager:
             # Resolve symlinks (important on macOS where /var -> /private/var)
             build_dir_path = os.path.realpath(build_dir_path)
 
-            print(f" docker MOUNT /code/workspace/build {build_dir_path}")
+            print(f' docker MOUNT /code/workspace/build {build_dir_path}')
 
             build_mount = docker.types.Mount(target='/code/workspace/build', source=build_dir_path, type='bind')
             mount_objs.append(build_mount)
@@ -661,24 +637,9 @@ class ContainerManager:
     def _fix_mounted_directory_permissions(self) -> bool:
         """
         Fix permissions on mounted directories to allow container user to write.
-
-        This addresses permission issues in CI environments where the host
-        user UID doesn't match the container user UID.
+        Since we're running as root, this is simplified.
         """
         try:
-            # Get the container user's UID and GID
-            result = self.container.exec_run('id -u')
-            if result.exit_code != 0:
-                self.set_error('Failed to get container user UID')
-                return False
-            container_uid = result.output.decode('utf-8').strip()
-
-            result = self.container.exec_run('id -g')
-            if result.exit_code != 0:
-                self.set_error('Failed to get container user GID')
-                return False
-            container_gid = result.output.decode('utf-8').strip()
-
             # List of mounted directories that need permission fixes
             mount_points = ['/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache']
 
@@ -686,17 +647,10 @@ class ContainerManager:
                 # Check if the mount point exists
                 result = self.container.exec_run(f'test -d {mount_point}')
                 if result.exit_code == 0:
-                    # For performance, just fix the directory itself rather than recursively
-                    # First, try to chown as root (if available in the image)
-                    result = self.container.exec_run(f'chown {container_uid}:{container_gid} {mount_point}', user='root')
+                    # Ensure directory is writable (running as root so this should work)
+                    result = self.container.exec_run(f'chmod 755 {mount_point}')
                     if result.exit_code != 0:
-                        # If root user is not available, try chmod to make it writable by all
-                        result = self.container.exec_run(f'chmod 755 {mount_point}')
-                        if result.exit_code != 0:
-                            # As a last resort, just try to make the directory writable
-                            result = self.container.exec_run(f'chmod 777 {mount_point}')
-                            if result.exit_code != 0:
-                                print(f'Warning: Could not fix permissions for {mount_point}')
+                        print(f'Warning: Could not fix permissions for {mount_point}')
 
             return True
 
@@ -759,13 +713,8 @@ class ContainerManager:
                     'HAGENT_EXECUTION_MODE': 'docker',
                 }
 
-                # Set LOCAL_USER_ID and LOCAL_GROUP_ID to match host user
-                # env_vars['LOCAL_USER_ID'] = str(os.getuid())
-                # env_vars['LOCAL_GROUP_ID'] = str(os.getgid())
-
             # Create the container with security restrictions
-            # Start as root to allow the entrypoint script to set up user mapping
-            # The entrypoint will use LOCAL_USER_ID/LOCAL_GROUP_ID to match host user
+            # Run as root consistently for simplified permission handling
             self.container = self.client.containers.create(
                 self.image,
                 command='tail -f /dev/null',  # Keep container running
@@ -773,12 +722,11 @@ class ContainerManager:
                 environment=env_vars,
                 working_dir=self._workdir,
                 detach=True,
-                user='root',  # Start as root to allow entrypoint user mapping
+                user='root',  # Always use root
                 # Security options to prevent privilege escalation
                 security_opt=self._get_security_options(),
-                # Drop dangerous capabilities, keep minimal ones for user switching
+                # Drop dangerous capabilities
                 cap_drop=['NET_ADMIN', 'NET_RAW', 'SYS_ADMIN', 'SYS_TIME', 'SYS_MODULE'],
-                cap_add=['SETUID', 'SETGID', 'DAC_OVERRIDE', 'CHOWN', 'FOWNER'],  # For user switching and file ops
                 # Prevent new privileges after initial setup
                 read_only=False,  # We need write access to mounted volumes
                 # Auto-remove container when it exits to prevent accumulation
@@ -860,14 +808,14 @@ class ContainerManager:
                 config_prefix = '; '.join(source_commands)
                 wrapped_command = f'{config_prefix}; {wrapped_command}'
 
-            # Use the entrypoint script to handle user switching and environment setup
-            # This ensures proper UID/GID matching and sourcing of .profile/.bashrc
-            # The entrypoint script will run: su-exec "$USER_NAME" bash --login -c "$*"
+            # Use direct bash execution since we're running as root
             final_command = wrapped_command if config_sources else command
-            shell_command = ['/usr/local/bin/entrypoint.sh', final_command]
+            if self._has_bash:
+                shell_command = ['/bin/bash', '--login', '-c', final_command]
+            else:
+                shell_command = ['/bin/sh', '-c', f'source /etc/profile 2>/dev/null || true; {final_command}']
 
-            # Set execution parameters - let the entrypoint handle user switching
-            # This ensures proper UID/GID setup and environment sourcing via the entrypoint script
+            # Set execution parameters
             exec_kwargs = {'workdir': workdir, 'demux': True}
 
             if quiet:
