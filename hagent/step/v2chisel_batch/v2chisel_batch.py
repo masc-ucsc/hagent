@@ -20,6 +20,9 @@ from pathlib import Path
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
+# Set up environment for Runner (Docker execution mode)
+os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
@@ -29,14 +32,26 @@ from hagent.core.llm_wrap import LLM_wrap
 from hagent.tool.module_finder import Module_finder
 from hagent.tool.docker_diff_applier import DockerDiffApplier
 from hagent.tool.equiv_check import Equiv_check
+from hagent.inou.runner import Runner
 
 
 class V2chisel_batch(Step):
+    def __init__(self):
+        """Initialize V2chisel_batch with Runner for automated Docker management"""
+        super().__init__()
+        # Initialize Runner for automated Docker container management
+        self.runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.08')
+        
     def setup(self):
         """Initialize the batch processing step"""
         super().setup()
         print(f'[V2chisel_batch] Input file: {self.input_file}')
         print(f'[V2chisel_batch] Output file: {self.output_file}')
+        
+        # Setup Runner for Docker container management
+        if not self.runner.setup():
+            self.error(f'Docker container setup failed: {self.runner.get_error()}')
+        print('[V2chisel_batch] Docker container setup successful')
 
         # Initialize module_finder
         self.module_finder = Module_finder()
@@ -77,6 +92,48 @@ class V2chisel_batch(Step):
         model_name = final_llm_config.get('model', 'default')
         print('[V2chisel_batch] LLM components initialized')
         print(f'[V2chisel_batch] Using model: {model_name}')
+
+    def _run_docker_command(self, cmd_list, timeout=None):
+        """Helper method to run Docker commands through Runner instead of subprocess
+        
+        Args:
+            cmd_list: List of command parts (Docker, exec, container, command...)
+            timeout: Timeout in seconds (warning: Runner doesn't support timeout)
+            
+        Returns:
+            Tuple of (exit_code, stdout, stderr)
+        """
+        if timeout:
+            print(f'⚠️  Warning: timeout={timeout}s requested but not supported by Runner')
+            
+        # Convert Docker exec command list to Runner command
+        # cmd_list format: ['docker', 'exec', container, 'bash', '-l', '-c', 'actual_command']
+        if len(cmd_list) >= 4 and cmd_list[0] == 'docker' and cmd_list[1] == 'exec':
+            # Skip docker, exec, container_name and use rest as command
+            if len(cmd_list) >= 7 and cmd_list[3:6] == ['bash', '-l', '-c']:
+                # This is a bash -l -c command - extract the actual command and use full SBT path
+                command = cmd_list[6]
+                # Fix SBT path and ensure proper quoting for runMain commands
+                if 'sbt ' in command:
+                    command = command.replace('sbt ', '/home/user/.local/share/coursier/bin/sbt ')
+                    # Ensure runMain commands are properly quoted
+                    if 'runMain' in command and '"runMain' not in command:
+                        command = command.replace('sbt "runMain', '/home/user/.local/share/coursier/bin/sbt "runMain')
+                        command = command.replace('runMain ', '"runMain ') + '"' if not command.endswith('"') else command
+            else:
+                # Join remaining command parts
+                command = ' '.join(cmd_list[3:])
+            
+            return self.runner.run(command)
+        else:
+            # Fallback: join all parts (shouldn't happen with Docker commands)
+            return self.runner.run(' '.join(cmd_list))
+            
+    def cleanup(self):
+        """Clean up resources including Runner"""
+        if hasattr(self, 'runner') and self.runner:
+            self.runner.cleanup()
+            print('[V2chisel_batch] Docker container cleaned up')
 
     def _load_bug_list(self, bug_file_path: str) -> list:
         """Load and parse the bug_lists_unified.yaml file"""
@@ -2912,6 +2969,7 @@ class V2chisel_batch(Step):
 
         # Final cleanup
         self._cleanup_temp_files()
+        self.cleanup()  # Clean up Runner resources
 
         return final_result
 
