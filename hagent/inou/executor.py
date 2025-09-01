@@ -287,7 +287,7 @@ class DockerExecutor:
             from .container_manager import ContainerManager
 
             self.container_manager = ContainerManager(
-                image='mascucsc/hagent-simplechisel:2025.09', path_manager=self.path_manager
+                image='mascucsc/hagent-simplechisel:2025.09r', path_manager=self.path_manager
             )
 
         # Container instance for reuse

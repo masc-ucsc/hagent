@@ -98,7 +98,7 @@ class TestExecutorContainerOperations:
             os.makedirs(cache_dir, exist_ok=True)
 
         path_manager = PathManager()
-        container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.09', path_manager)
+        container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.09r', path_manager)
         executor = ExecutorFactory.create_executor(container_manager)
 
         assert executor.setup(), f'Executor setup failed: {executor.get_error()}'
