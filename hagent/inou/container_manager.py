@@ -183,8 +183,8 @@ def _validate_mount_path(host_path: str) -> Tuple[bool, str]:
         hagent_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
 
         # Log mount validation attempts for debugging
-        print(f'🔍 MOUNT VALIDATION: {host_path} -> {abs_path}')
-        print(f'🔍 HAGENT ROOT: {hagent_root}')
+        #print(f'🔍 MOUNT VALIDATION: {host_path} -> {abs_path}')
+        #print(f'🔍 HAGENT ROOT: {hagent_root}')
 
         # Check if we're trying to mount the hagent repo root
         if abs_path == hagent_root:
@@ -219,11 +219,11 @@ def _validate_mount_path(host_path: str) -> Tuple[bool, str]:
                 return False, error_msg
 
             # Allow mounting subdirectories (2+ levels deep)
-            print(f'✅ ALLOWING SUBDIRECTORY MOUNT: {relative_path} -> {abs_path}')
+            # print(f'✅ ALLOWING SUBDIRECTORY MOUNT: {relative_path} -> {abs_path}')
             return True, ''
 
         # Allow mounting directories outside the hagent repo entirely
-        print(f'✅ ALLOWING EXTERNAL MOUNT: {abs_path}')
+        # print(f'✅ ALLOWING EXTERNAL MOUNT: {abs_path}')
         return True, ''
 
     except Exception as e:
@@ -598,6 +598,8 @@ class ContainerManager:
             # Resolve symlinks (important on macOS where /var -> /private/var)
             cache_dir_path = os.path.realpath(cache_dir_path)
 
+            print(f" docker MOUNT /code/workspace/cache {cache_dir_path}")
+
             cache_mount = docker.types.Mount(target='/code/workspace/cache', source=cache_dir_path, type='bind')
             mount_objs.append(cache_mount)
 
@@ -622,6 +624,9 @@ class ContainerManager:
             os.makedirs(repo_dir_path, exist_ok=True)
             # Resolve symlinks (important on macOS where /var -> /private/var)
             resolved_repo_path = os.path.realpath(repo_dir_path)
+
+            print(f" docker MOUNT /code/workspace/repo {resolved_repo_path}")
+
             repo_mount = docker.types.Mount(target='/code/workspace/repo', source=resolved_repo_path, type='bind')
             mount_objs.append(repo_mount)
 
@@ -645,6 +650,9 @@ class ContainerManager:
             os.makedirs(build_dir_path, exist_ok=True)
             # Resolve symlinks (important on macOS where /var -> /private/var)
             build_dir_path = os.path.realpath(build_dir_path)
+
+            print(f" docker MOUNT /code/workspace/build {build_dir_path}")
+
             build_mount = docker.types.Mount(target='/code/workspace/build', source=build_dir_path, type='bind')
             mount_objs.append(build_mount)
 
