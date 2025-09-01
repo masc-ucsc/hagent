@@ -550,15 +550,11 @@ class ContainerManager:
             'UV_PROJECT_ENVIRONMENT': '/code/workspace/cache/venv',
         }
 
-        # Only set LOCAL_USER_ID if it's different from common container UIDs (1000, 1001)
-        # This prevents conflicts when the container already has a user with that UID
-        host_uid = os.getuid()
-        host_gid = os.getgid()
-
-        # Skip setting LOCAL_USER_ID for common container UIDs to avoid conflicts
-        if host_uid not in [1000, 1001]:
-            env_vars['LOCAL_USER_ID'] = str(host_uid)
-            env_vars['LOCAL_GROUP_ID'] = str(host_gid)
+        # Set LOCAL_USER_ID and LOCAL_GROUP_ID to match host user
+        # This allows the entrypoint script to map container user to host user
+        # preventing permission issues with mounted volumes
+        #env_vars['LOCAL_USER_ID'] = str(os.getuid())
+        #env_vars['LOCAL_GROUP_ID'] = str(os.getgid())
 
         return env_vars
 
@@ -754,41 +750,15 @@ class ContainerManager:
                 env_vars = {
                     'HAGENT_EXECUTION_MODE': 'docker',
                 }
-                # Check if the UID/GID already exist in the container to avoid conflicts
-                host_uid = os.getuid()
-                host_gid = os.getgid()
-                should_set_local_user_id = True
 
-                try:
-                    # Create a temporary container to check /etc/passwd and /etc/group
-                    temp_container = self.client.containers.create(self.image, command='true')
-                    temp_container.start()
+                # Set LOCAL_USER_ID and LOCAL_GROUP_ID to match host user
+                #env_vars['LOCAL_USER_ID'] = str(os.getuid())
+                #env_vars['LOCAL_GROUP_ID'] = str(os.getgid())
 
-                    # Check if UID exists in /etc/passwd
-                    uid_check = temp_container.exec_run(['getent', 'passwd', str(host_uid)])
-                    if uid_check.exit_code == 0:
-                        should_set_local_user_id = False
-
-                    # Check if GID exists in /etc/group (only if UID check passed)
-                    if should_set_local_user_id:
-                        gid_check = temp_container.exec_run(['getent', 'group', str(host_gid)])
-                        if gid_check.exit_code == 0:
-                            should_set_local_user_id = False
-
-                    # Clean up temp container
-                    temp_container.remove(force=True)
-
-                except Exception as e:
-                    self.set_error(f'Failed to check container UID/GID conflicts: {e}')
-                    should_set_local_user_id = False
-
-                if should_set_local_user_id:
-                    env_vars['LOCAL_USER_ID'] = str(host_uid)
-                    env_vars['LOCAL_GROUP_ID'] = str(host_gid)
 
             # Create the container with security restrictions
-            # Note: We start as root to allow LOCAL_USER_ID mechanism to work,
-            # but with restricted capabilities and no-new-privileges
+            # Start as root to allow the entrypoint script to set up user mapping
+            # The entrypoint will use LOCAL_USER_ID/LOCAL_GROUP_ID to match host user
             self.container = self.client.containers.create(
                 self.image,
                 command='tail -f /dev/null',  # Keep container running
@@ -796,7 +766,7 @@ class ContainerManager:
                 environment=env_vars,
                 working_dir=self._workdir,
                 detach=True,
-                user='root',  # Start as root to allow LOCAL_USER_ID switching
+                user='root',  # Start as root to allow entrypoint user mapping
                 # Security options to prevent privilege escalation
                 security_opt=self._get_security_options(),
                 # Drop dangerous capabilities, keep minimal ones for user switching
@@ -883,18 +853,14 @@ class ContainerManager:
                 config_prefix = '; '.join(source_commands)
                 wrapped_command = f'{config_prefix}; {wrapped_command}'
 
-            # Use bash with login shell if available, otherwise fall back to sh
-            if self._has_bash:
-                if config_sources:
-                    shell_command = ['/bin/bash', '-c', wrapped_command]
-                else:
-                    shell_command = ['/bin/bash', '--login', '-c', command]
-            else:
-                if not config_sources:
-                    wrapped_command = f'source /etc/profile 2>/dev/null || true; {wrapped_command}'
-                shell_command = ['/bin/sh', '-c', wrapped_command]
+            # Use the entrypoint script to handle user switching and environment setup
+            # This ensures proper UID/GID matching and sourcing of .profile/.bashrc
+            # The entrypoint script will run: su-exec "$USER_NAME" bash --login -c "$*"
+            final_command = wrapped_command if config_sources else command
+            shell_command = ['/usr/local/bin/entrypoint.sh', final_command]
 
-            # Set execution parameters
+            # Set execution parameters - let the entrypoint handle user switching
+            # This ensures proper UID/GID setup and environment sourcing via the entrypoint script
             exec_kwargs = {'workdir': workdir, 'demux': True}
 
             if quiet:
