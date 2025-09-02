@@ -8,7 +8,8 @@
 
 # Set default values
 HAGENT_ROOT=${HAGENT_ROOT:-$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}")")" && pwd)}
-HAGENT_DOCKER=${HAGENT_DOCKER:-"mascucsc/hagent-simplechisel:2025.08"}
+# Default to 2025.09r image
+HAGENT_DOCKER=${HAGENT_DOCKER:-"mascucsc/hagent-simplechisel:2025.09r"}
 
 # Use current directory as base directory unless specified
 BASE_DIR=${1:-$(pwd)}
@@ -20,37 +21,29 @@ CACHE_TEMPLATE_DIR="${HAGENT_ROOT}/.cache/setup_simplechisel_mcp"
 create_template() {
   echo "Creating cached template at ${CACHE_TEMPLATE_DIR}..."
   mkdir -p "${CACHE_TEMPLATE_DIR}"
-  
-  # Create directories in template
-  mkdir -p "${CACHE_TEMPLATE_DIR}/repo" "${CACHE_TEMPLATE_DIR}/build" "${CACHE_TEMPLATE_DIR}/cache" "${CACHE_TEMPLATE_DIR}/cache/mcp" "${CACHE_TEMPLATE_DIR}/logs"
 
-  # Copy sample project if potato directory exists
-  POTATO_DIR="/Users/renau/tmp/potato"
-  if [[ -d "${POTATO_DIR}/repo" ]]; then
-    echo "Copying sample project from ${POTATO_DIR}/repo to template"
-    # Copy the essential files needed for the gcd project
-    cp -r "${POTATO_DIR}/repo/src" "${CACHE_TEMPLATE_DIR}/repo/" 2>/dev/null || true
-    cp "${POTATO_DIR}/repo/hagent.yaml" "${CACHE_TEMPLATE_DIR}/repo/" 2>/dev/null || true
-    cp "${POTATO_DIR}/repo/build.sbt" "${CACHE_TEMPLATE_DIR}/repo/" 2>/dev/null || true
-    cp "${POTATO_DIR}/repo/project" "${CACHE_TEMPLATE_DIR}/repo/" -r 2>/dev/null || true
-    # Note: Not copying .git and target directories to keep it clean
+  # Create directories in template
+  mkdir -p "${CACHE_TEMPLATE_DIR}/build" "${CACHE_TEMPLATE_DIR}/cache" "${CACHE_TEMPLATE_DIR}/cache/mcp" "${CACHE_TEMPLATE_DIR}/logs"
+
+  # Populate repo via shallow clone if not already cached
+  if [[ ! -d "${CACHE_TEMPLATE_DIR}/repo/.git" ]]; then
+    echo "Cloning SimpleChisel repo (shallow) into template..."
+    rm -rf "${CACHE_TEMPLATE_DIR}/repo" 2>/dev/null || true
+    if command -v git >/dev/null 2>&1; then
+      if git clone --depth 1 https://github.com/masc-ucsc/simplechisel.git "${CACHE_TEMPLATE_DIR}/repo"; then
+        echo "Clone completed."
+      else
+        echo "Warning: git clone failed. Falling back to minimal repo scaffold." >&2
+        mkdir -p "${CACHE_TEMPLATE_DIR}/repo"
+      fi
+    else
+      echo "Warning: git not found. Creating minimal repo scaffold instead." >&2
+      mkdir -p "${CACHE_TEMPLATE_DIR}/repo"
+    fi
   else
-    # Create minimal repo structure if no potato directory exists
-    echo "No potato directory found, creating minimal repo structure"
-    cat > "${CACHE_TEMPLATE_DIR}/repo/hagent.yaml" <<EOF
-profiles:
-  echo:
-    title: Just print HAGENT_ environment variables
-    apis:
-      build_dir:
-        description: Echo HAGENT_BUILD_DIR
-        cmd: echo "HAGENT_BUILD_DIR=\${HAGENT_BUILD_DIR}"
-      repo_dir:
-        description: Echo HAGENT_REPO_DIR
-        cmd: echo "HAGENT_REPO_DIR=\${HAGENT_REPO_DIR}"
-EOF
+    echo "Using existing cached repo at ${CACHE_TEMPLATE_DIR}/repo"
   fi
-  
+
   echo "Template created successfully"
 }
 
@@ -125,4 +118,3 @@ echo
 echo "To test manually:"
 echo "  ${BASE_DIR}/hagent_server.sh"
 echo
-

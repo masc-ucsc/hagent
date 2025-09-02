@@ -40,7 +40,7 @@ class V2chisel_batch(Step):
         """Initialize V2chisel_batch with Runner for automated Docker management"""
         super().__init__()
         # Initialize Runner for automated Docker container management
-        self.runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.08')
+        self.runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
 
     def setup(self):
         """Initialize the batch processing step"""

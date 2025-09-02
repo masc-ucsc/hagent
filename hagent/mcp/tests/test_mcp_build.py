@@ -26,7 +26,6 @@ import unittest
 import uuid
 from pathlib import Path
 
-import pytest
 
 
 class TestMCPBuildDocker(unittest.TestCase):
@@ -137,7 +136,6 @@ class TestMCPBuildDocker(unittest.TestCase):
         except subprocess.TimeoutExpired:
             pass  # Ignore cleanup timeouts
 
-    @pytest.mark.skip(reason='docker root issues -- disable until new docker is fixed')
     def test_mcp_build_gcd_compile(self):
         """Test that mcp_build.py can successfully compile the gcd profile with Docker."""
 
