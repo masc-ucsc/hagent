@@ -343,25 +343,21 @@ class TestContainerManager:
         mock_image = MagicMock()
         mock_client.images.get.return_value = mock_image
         mock_container = MagicMock()
-        # Mock UID/GID output for permission fixing
-        uid_result = MagicMock(exit_code=0)
-        uid_result.output.decode.return_value = '9001'
-        gid_result = MagicMock(exit_code=0)
-        gid_result.output.decode.return_value = '9001'
 
+        # Align side effects with current root-based implementation:
+        # - workspace validation handled separately; we'll stub it to True
+        # - mkdir workdir
+        # - permission fixes: test -d + chmod for repo/build/cache
+        # - bash existence test
         mock_container.exec_run.side_effect = [
-            MagicMock(exit_code=0),  # container ready test ('true')
-            MagicMock(exit_code=0),  # workspace validation
-            MagicMock(exit_code=0),  # mkdir workdir
-            uid_result,  # id -u for permission fix
-            gid_result,  # id -g for permission fix
+            MagicMock(exit_code=0),  # mkdir -p workdir
             MagicMock(exit_code=0),  # test -d /code/workspace/repo
-            MagicMock(exit_code=0),  # chown repo directory
+            MagicMock(exit_code=0),  # chmod 755 repo
             MagicMock(exit_code=0),  # test -d /code/workspace/build
-            MagicMock(exit_code=0),  # chown build directory
+            MagicMock(exit_code=0),  # chmod 755 build
             MagicMock(exit_code=0),  # test -d /code/workspace/cache
-            MagicMock(exit_code=0),  # chown cache directory
-            MagicMock(exit_code=0),  # bash test
+            MagicMock(exit_code=0),  # chmod 755 cache
+            MagicMock(exit_code=0),  # test -x /bin/bash
         ]
         mock_container.reload.return_value = None
         mock_container.status = 'running'
@@ -371,8 +367,9 @@ class TestContainerManager:
         with patch.object(ContainerManager, '_initialize_docker_client'):
             manager = ContainerManager('mascucsc/hagent-simplechisel:2025.09r', mock_pm)
             manager.client = mock_client
-
-            result = manager.setup()
+            # Avoid dependence on global workspace flag by stubbing validation
+            with patch.object(ContainerManager, '_setup_docker_workspace_if_needed', return_value=True):
+                result = manager.setup()
 
             assert result is True
             assert manager.container == mock_container
