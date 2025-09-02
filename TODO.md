@@ -32,7 +32,7 @@ When I run:
 ```
 export UV_PROJECT="/Users/renau/projs/hagent"
 export HAGENT_ROOT="/Users/renau/projs/hagent"
-export HAGENT_DOCKER="mascucsc/hagent-simplechisel:2025.08"
+export HAGENT_DOCKER="mascucsc/hagent-simplechisel:2025.09r"
 export HAGENT_REPO_DIR="/Users/renau/tmp/potato/repo"
 export HAGENT_BUILD_DIR="/Users/renau/tmp/potato/build"
 export HAGENT_CACHE_DIR="/Users/renau/tmp/potato/cache"

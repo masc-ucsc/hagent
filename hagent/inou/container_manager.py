@@ -199,7 +199,7 @@ def _validate_mount_path(host_path: str) -> Tuple[bool, str]:
             print(error_msg)
             return False, error_msg
 
-        # Check if we're trying to mount a top-level directory inside the hagent repository
+        # Check if we're trying to mount a directory inside the hagent repository
         if abs_path.startswith(hagent_root + os.sep):
             relative_path = os.path.relpath(abs_path, hagent_root)
             path_parts = relative_path.split(os.sep)
@@ -799,21 +799,30 @@ class ContainerManager:
                 return -1, '', error_msg
 
         try:
-            # Build the command with sourcing configuration files if provided
-            wrapped_command = command
+            # Build the command with robust environment sourcing
+            # Always attempt to source common profile files to make tool shims (e.g., sbt via coursier/sdkman) available.
+            default_sources = [
+                '/etc/profile',
+                '~/.bash_profile',
+                '~/.profile',
+                '~/.bashrc',
+                '~/.sdkman/bin/sdkman-init.sh',
+            ]
 
-            # Add configuration sources if provided
-            if config_sources:
-                source_commands = [f"source '{source}' 2>/dev/null || true" for source in config_sources]
-                config_prefix = '; '.join(source_commands)
-                wrapped_command = f'{config_prefix}; {wrapped_command}'
+            # Merge user-provided sources (if any), preserving order and uniqueness
+            merged_sources: List[str] = []
+            for src in (config_sources or []) + default_sources:
+                if src not in merged_sources:
+                    merged_sources.append(src)
 
-            # Use direct bash execution since we're running as root
-            final_command = wrapped_command if config_sources else command
+            source_cmds = [f'source {s} 2>/dev/null || true' for s in merged_sources]
+            prologue = '; '.join(source_cmds)
+
+            final_command = f'{prologue}; {command}'
             if self._has_bash:
                 shell_command = ['/bin/bash', '--login', '-c', final_command]
             else:
-                shell_command = ['/bin/sh', '-c', f'source /etc/profile 2>/dev/null || true; {final_command}']
+                shell_command = ['/bin/sh', '-c', final_command]
 
             # Set execution parameters
             exec_kwargs = {'workdir': workdir, 'demux': True}
