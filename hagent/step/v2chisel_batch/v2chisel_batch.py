@@ -115,10 +115,10 @@ class V2chisel_batch(Step):
                 command = cmd_list[6]
                 # Fix SBT path and ensure proper quoting for runMain commands
                 if 'sbt ' in command:
-                    command = command.replace('sbt ', '/home/user/.local/share/coursier/bin/sbt ')
+                    command = command.replace('sbt ', 'sbt ')
                     # Ensure runMain commands are properly quoted
                     if 'runMain' in command and '"runMain' not in command:
-                        command = command.replace('sbt "runMain', '/home/user/.local/share/coursier/bin/sbt "runMain')
+                        command = command.replace('sbt "runMain', '/root/.cache/coursier/arc/https/github.com/sbt/sbt/releases/download/v1.11.5/sbt-1.11.5.zip/sbt/bin/sbt "runMain')
                         command = command.replace('runMain ', '"runMain ') + '"' if not command.endswith('"') else command
             else:
                 # Join remaining command parts
@@ -255,7 +255,7 @@ class V2chisel_batch(Step):
 
         try:
             # Search for Verilog files in the build directory
-            cmd = ['docker', 'exec', '-u', 'user', container_name, 'find', '/code/workspace/build', '-name', '*.sv', '-type', 'f']
+            cmd = ['docker', 'exec', '-u', 'root', container_name, 'find', '/code/workspace/build', '-name', '*.sv', '-type', 'f']
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             verilog_files = [f.strip() for f in result.stdout.strip().split('\n') if f.strip()]
 
@@ -274,7 +274,7 @@ class V2chisel_batch(Step):
 
                 # Read content from the first matching file to get module context
                 try:
-                    content_cmd = ['docker', 'exec', '-u', 'user', container_name, 'head', '-20', matching_files[0]]
+                    content_cmd = ['docker', 'exec', '-u', 'root', container_name, 'head', '-20', matching_files[0]]
                     content_result = subprocess.run(content_cmd, capture_output=True, text=True, check=True)
                     return content_result.stdout
                 except Exception:
@@ -1044,9 +1044,9 @@ class V2chisel_batch(Step):
                 print(f'     📝 Trying generation command {i + 1}: {gen_cmd_str.split("&&")[-1].strip()}')
 
                 if use_login_shell:
-                    cmd = ['docker', 'exec', '-u', 'user', docker_container, 'bash', '-l', '-c', gen_cmd_str]
+                    cmd = ['docker', 'exec', '-u', 'root', docker_container, 'bash', '-l', '-c', gen_cmd_str]
                 else:
-                    cmd = ['docker', 'exec', '-u', 'user', docker_container, 'bash', '-c', gen_cmd_str]
+                    cmd = ['docker', 'exec', '-u', 'root', docker_container, 'bash', '-c', gen_cmd_str]
 
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 min timeout
 
@@ -1995,35 +1995,69 @@ class V2chisel_batch(Step):
         except Exception as e:
             return {'success': False, 'error': f'Module name verification error: {str(e)}'}
 
-    def _compile_xiangshan(self, docker_container: str, force_compile: bool = True) -> dict:
-        """Compile Chisel code in Docker container with enhanced verification"""
-        print('🏗️  [COMPILE] Starting compilation...')
-
+    def _ensure_sbt_symlink(self, docker_container: str):
+        """Replace broken wrapper script with working SBT binary"""
         try:
             import subprocess
-
-            # Method 1: Try SBT with login shell (this is what works for you manually)
-            print('     📝 Running: sbt compile (with login shell)')
-            sbt_cmd = [
-                'docker',
-                'exec',
-                '-u',
-                'user',
-                docker_container,
-                'bash',
-                '-l',
-                '-c',
-                'cd /code/workspace/repo && sbt compile',
+            # Remove broken wrapper script and replace with symlink
+            fix_cmd = [
+                'docker', 'exec', '-u', 'root', docker_container, 'bash', '-c',
+                'rm -f /root/.local/share/coursier/bin/sbt && ln -sf /root/.cache/coursier/arc/https/github.com/sbt/sbt/releases/download/v1.11.5/sbt-1.11.5.zip/sbt/bin/sbt /root/.local/share/coursier/bin/sbt'
             ]
+            subprocess.run(fix_cmd, capture_output=True, text=True)
+        except Exception:
+            pass  # Ignore symlink errors
 
-            sbt_result = subprocess.run(sbt_cmd, capture_output=True, text=True, timeout=600)  # 10 min timeout
+    def _compile_xiangshan(self, docker_container: str, force_compile: bool = True) -> dict:
+        """Compile Chisel code in Docker container with enhanced verification using Runner"""
+        print('🏗️  [COMPILE] Starting compilation with permission fixes...')
 
-            if sbt_result.returncode == 0:
-                print('✅ [COMPILE] Compilation successful using sbt')
-                return {'success': True, 'output': sbt_result.stdout, 'compilation_method': 'sbt'}
+        try:
+            # Step 1: Fix permissions on the repo directory
+            print('🔧 [COMPILE] Fixing file permissions in container...')
+            exit_code, stdout, stderr = self._run_docker_command([
+                'docker', 'exec', '-u', 'root', docker_container, 'chown', '-R', 'root:root', '/code/workspace/repo'
+            ])
+            if exit_code == 0:
+                print('✅ [COMPILE] Fixed repository permissions')
+            else:
+                print(f'⚠️  [COMPILE] Permission fix warning: {stderr}')
+
+            # Step 2: Clean any existing target directories that might have wrong permissions
+            self._run_docker_command([
+                'docker', 'exec', '-u', 'root', docker_container, 'bash', '-c', 
+                'rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true'
+            ])
+            print('🗑️ [COMPILE] Cleaned old target directories')
+
+            # Step 3: Install SBT and try compilation
+            print('📝 [COMPILE] Installing/ensuring SBT is available...')
+            self._run_docker_command([
+                'docker', 'exec', '-u', 'root', docker_container, 'bash', '-c',
+                "curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs"
+            ])
+            self._run_docker_command([
+                'docker', 'exec', '-u', 'root', docker_container, '/usr/local/bin/cs', 'install', 'sbt'
+            ])
+            
+            # Verify SBT is now available
+            exit_code, sbt_location, stderr = self._run_docker_command([
+                'docker', 'exec', '-u', 'root', docker_container, 'which', 'sbt'
+            ])
+            print(f'SBT location: {sbt_location.strip()}')
+            
+            print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
+            exit_code, stdout, stderr = self._run_docker_command([
+                'docker', 'exec', '-u', 'root', docker_container, 'bash', '-l', '-c', 
+                'cd /code/workspace/repo && sbt compile'
+            ])
+
+            if exit_code == 0:
+                print('✅ [COMPILE] SBT compilation successful')
+                return {'success': True, 'output': stdout, 'compilation_method': 'sbt_with_runner_and_permissions'}
             else:
                 # SBT failed - check if it's a real compilation error vs build system issue
-                sbt_error = sbt_result.stderr + sbt_result.stdout  # Combine both outputs
+                sbt_error = stderr + stdout  # Combine both outputs
                 if (
                     'expected class or object definition' in sbt_error
                     or 'Compilation failed' in sbt_error
@@ -2853,11 +2887,25 @@ class V2chisel_batch(Step):
             local_files.extend(files)
         print(f'[V2chisel_batch] Found {len(local_files)} local Chisel files')
 
+        # Get the actual container name from Runner
+        actual_container_name = None
+        if hasattr(self, 'runner') and self.runner and hasattr(self.runner, 'container_manager'):
+            container_mgr = self.runner.container_manager
+            if hasattr(container_mgr, 'container') and container_mgr.container:
+                # Get container name from Docker container object
+                actual_container_name = container_mgr.container.name
+                
+        if actual_container_name:
+            print(f'✅ [V2chisel_batch] Using Runner container: {actual_container_name}')
+            self.input_data['docker_container'] = actual_container_name
+        else:
+            print('⚠️  [V2chisel_batch] Could not get Runner container name, using default')
+
         # Step 3: Process each bug
         print(f'\n🔄 Processing {len(bugs)} bugs...')
         results = []
 
-        docker_container = self.input_data.get('docker_container', 'hagent')
+        docker_container = self.input_data.get('docker_container', actual_container_name or 'hagent')
         docker_patterns = self.input_data.get('docker_patterns', ['/code/workspace/repo'])
 
         # Step 3.1: Generate fresh baseline Verilog before processing any bugs
