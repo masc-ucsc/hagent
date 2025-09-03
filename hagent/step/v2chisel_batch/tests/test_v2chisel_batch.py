@@ -52,7 +52,7 @@ class TestV2chisel_batch(V2chisel_batch):
                 # Extract bash command and fix SBT path
                 command = cmd_list[6]
                 if 'sbt ' in command:
-                    command = command.replace('sbt ', '/home/user/.local/share/coursier/bin/sbt ')
+                    command = command.replace('sbt ', 'sbt ')
             else:
                 # Join remaining command parts
                 command = ' '.join(cmd_list[3:])
@@ -79,10 +79,18 @@ class TestV2chisel_batch(V2chisel_batch):
             self.runner.run('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
             print('🗑️ [COMPILE] Cleaned old target directories')
 
-            # Step 3: Try SBT compilation with Runner and proper paths
+            # Step 3: Install SBT and try compilation
+            print('📝 [COMPILE] Installing/ensuring SBT is available...')
+            self.runner.run("curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs")
+            self.runner.run("/usr/local/bin/cs install sbt")
+            
+            # Verify SBT is now available
+            sbt_check_exit, sbt_check_out, sbt_check_err = self.runner.run("which sbt")
+            print(f'SBT location: {sbt_check_out.strip()}')
+            
             print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
             exit_code, stdout, stderr = self.runner.run(
-                "bash -l -c 'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt compile'"
+                "bash -l -c 'cd /code/workspace/repo && sbt compile'"
             )
 
             if exit_code == 0:
@@ -134,32 +142,32 @@ class TestV2chisel_batch(V2chisel_batch):
             generation_commands = [
                 # DINO-specific SBT commands (HIGHEST PRIORITY - these work for DINO)
                 {
-                    'cmd': 'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt "runMain dinocpu.SingleCycleCPUNoDebug"',
+                    'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"',
                     'name': 'SingleCycleCPUNoDebug',
                 },
                 {
-                    'cmd': 'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt "runMain dinocpu.Main"',
+                    'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.Main"',
                     'name': 'Main',
                 },
                 {
-                    'cmd': 'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt "runMain dinocpu.pipelined.PipelinedDualIssueNoDebug"',
+                    'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.pipelined.PipelinedDualIssueNoDebug"',
                     'name': 'PipelinedDualIssueNoDebug',
                 },
                 {
-                    'cmd': 'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt "runMain dinocpu.PipelinedDualIssueNoDebug"',
+                    'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.PipelinedDualIssueNoDebug"',
                     'name': 'PipelinedDualIssueNoDebug_alt',
                 },
                 {
-                    'cmd': 'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt "runMain dinocpu.SingleCycleCPUDebug"',
+                    'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUDebug"',
                     'name': 'SingleCycleCPUDebug',
                 },
                 # Generic SBT commands (fallback for other projects)
                 {
-                    'cmd': 'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt "runMain Main"',
+                    'cmd': 'cd /code/workspace/repo && sbt "runMain Main"',
                     'name': 'Generic_Main',
                 },
                 {
-                    'cmd': f'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt "runMain {module_name}"',
+                    'cmd': f'cd /code/workspace/repo && sbt "runMain {module_name}"',
                     'name': f'Module_{module_name}',
                 },
             ]
@@ -312,7 +320,7 @@ class TestV2chisel_batch(V2chisel_batch):
             # Use Runner directly like the working cli_executor_simplechisel.py pattern
             print('🔧 [TEST] Running: sbt "runMain dinocpu.SingleCycleCPUNoDebug"')
             exit_code, stdout, stderr = self.runner.run(
-                'bash -l -c \'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt "runMain dinocpu.SingleCycleCPUNoDebug"\''
+                'bash -l -c \'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"\''
             )
 
             # Create compatibility object for existing code
@@ -390,7 +398,7 @@ class TestV2chisel_batch(V2chisel_batch):
             # Step 2: Clean SBT cache to prevent stale compilation artifacts
             print('🧹 [RESTORE] Cleaning SBT cache...')
             exit_code, stdout, stderr = self.runner.run(
-                "bash -l -c 'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt clean'"
+                "bash -l -c 'cd /code/workspace/repo && sbt clean'"
             )
             if exit_code == 0:
                 print('✅ [RESTORE] SBT cache cleaned')
@@ -480,7 +488,7 @@ class TestV2chisel_batch(V2chisel_batch):
 
             # Generate with the working SBT pattern
             exit_code, stdout, stderr = self.runner.run(
-                'bash -l -c "cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt \\"runMain dinocpu.SingleCycleCPUNoDebug\\""'
+                'bash -l -c "cd /code/workspace/repo && sbt \\"runMain dinocpu.SingleCycleCPUNoDebug\\""'
             )
 
             if exit_code != 0:
@@ -636,7 +644,7 @@ class TestV2chisel_batch(V2chisel_batch):
             # Step 3: Clean SBT project build cache using Runner with proper SBT path
             print('🧹 [BASELINE] Cleaning SBT project build cache...')
             exit_code, stdout, stderr = self.runner.run(
-                'bash -l -c "cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt clean"'
+                'bash -l -c "cd /code/workspace/repo && sbt clean"'
             )
 
             if exit_code == 0:
@@ -805,6 +813,9 @@ def main():
             return 1
         print('✅ [TEST] Docker container setup successful')
 
+        # Fix broken SBT wrapper script
+        processor.runner.run('rm -f /root/.local/share/coursier/bin/sbt && ln -sf /root/.cache/coursier/arc/https/github.com/sbt/sbt/releases/download/v1.11.5/sbt-1.11.5.zip/sbt/bin/sbt /root/.local/share/coursier/bin/sbt')
+
         # Step 1: Fix git ownership and restore Chisel source files
         print('🔄 [TEST] Fixing git ownership and restoring Chisel code...')
         processor.runner.run('git config --global --add safe.directory /code/workspace/repo')
@@ -821,7 +832,7 @@ def main():
         # Step 2: Clean SBT build cache using the working pattern
         print('🧹 [TEST] Cleaning SBT build cache...')
         exit_code, stdout, stderr = processor.runner.run(
-            "bash -l -c 'cd /code/workspace/repo && /home/user/.local/share/coursier/bin/sbt clean'"
+            "bash -l -c 'cd /code/workspace/repo && sbt clean'"
         )
         if exit_code != 0:
             print(f'⚠️  [TEST] SBT clean failed (non-critical): {stderr}')

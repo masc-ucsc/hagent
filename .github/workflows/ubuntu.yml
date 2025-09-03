@@ -46,6 +46,10 @@ jobs:
     name: Run tests with coverage
     runs-on: ubuntu-latest
     needs: install_uv
+    services:
+      docker:
+        image: docker:dind
+        options: --privileged
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -63,6 +67,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          HAGENT_EXECUTION_MODE: docker
           TEMP: /tmp
           TMPDIR: /tmp
         run: |
@@ -94,6 +99,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: install_uv
     if: github.event_name == 'schedule' || contains(github.event.head_commit.message, '[run-slow]')
+    services:
+      docker:
+        image: docker:dind
+        options: --privileged
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -110,6 +119,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          HAGENT_EXECUTION_MODE: docker
           TEMP: /tmp
           TMPDIR: /tmp
         run: |

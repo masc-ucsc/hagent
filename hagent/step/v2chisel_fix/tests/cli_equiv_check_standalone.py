@@ -106,9 +106,9 @@ def test_counter_out_badfix_non_equivalence():
     result, error_msg, counterexample_str = run_equivalence_check(gold_code, gate_code)
 
     # This test case should have non-equivalent designs
-    assert result is False, (
-        f'counter_out_badfix.yaml should have non-equivalent designs but got result={result}, error={error_msg}'
-    )
+    assert (
+        result is False
+    ), f'counter_out_badfix.yaml should have non-equivalent designs but got result={result}, error={error_msg}'
 
     # Should have counterexample information when non-equivalent
     assert counterexample_str, 'Should have counterexample information when designs are non-equivalent'
@@ -144,9 +144,9 @@ def test_module_name_difference():
     result, error_msg, counterexample_str = run_equivalence_check(gold_code, gate_code)
 
     # Should successfully complete and find equivalence despite different names
-    assert result is True, (
-        f'Should handle different module names and find equivalence, but got result={result}, error={error_msg}'
-    )
+    assert (
+        result is True
+    ), f'Should handle different module names and find equivalence, but got result={result}, error={error_msg}'
 
     print(f'✓ Successfully handled modules with different names: {gold_module} vs {gate_module}')
     print(f'✓ Equivalence result: {result} (equivalent despite different names)')

@@ -52,7 +52,7 @@ class DockerDiffApplier:
     def find_file_in_container(self, filename: str, base_path: str = '/code') -> List[str]:
         """Find all occurrences of a file in the Docker container"""
         try:
-            cmd = ['docker', 'exec', '-u', 'user', self.container_name, 'find', base_path, '-name', filename, '-type', 'f']
+            cmd = ['docker', 'exec', '-u', 'root', self.container_name, 'find', base_path, '-name', filename, '-type', 'f']
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             paths = [p.strip() for p in result.stdout.strip().split('\n') if p.strip()]
             return paths
@@ -63,7 +63,7 @@ class DockerDiffApplier:
     def read_file_from_container(self, file_path: str) -> Optional[str]:
         """Read file content from Docker container"""
         try:
-            cmd = ['docker', 'exec', '-u', 'user', self.container_name, 'cat', file_path]
+            cmd = ['docker', 'exec', '-u', 'root', self.container_name, 'cat', file_path]
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             return result.stdout
         except subprocess.CalledProcessError as e:
@@ -71,7 +71,7 @@ class DockerDiffApplier:
             # Try to fix permissions and retry
             if self.fix_file_permissions(file_path):
                 try:
-                    cmd = ['docker', 'exec', '-u', 'user', self.container_name, 'cat', file_path]
+                    cmd = ['docker', 'exec', '-u', 'root', self.container_name, 'cat', file_path]
                     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
                     print('✅ Successfully read file after permission fix')
                     return result.stdout
@@ -94,12 +94,12 @@ class DockerDiffApplier:
             # Try to fix permissions as user first, then as root if needed
             try:
                 subprocess.run(
-                    ['docker', 'exec', '-u', 'user', self.container_name, 'chmod', '644', file_path],
+                    ['docker', 'exec', '-u', 'root', self.container_name, 'chmod', '644', file_path],
                     capture_output=True,
                     check=True,
                 )
                 subprocess.run(
-                    ['docker', 'exec', '-u', 'user', self.container_name, 'chown', 'user:guser', file_path],
+                    ['docker', 'exec', '-u', 'root', self.container_name, 'chown', 'user:guser', file_path],
                     capture_output=True,
                     check=True,
                 )
