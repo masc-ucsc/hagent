@@ -81,17 +81,17 @@ class TestV2chisel_batch(V2chisel_batch):
 
             # Step 3: Install SBT and try compilation
             print('📝 [COMPILE] Installing/ensuring SBT is available...')
-            self.runner.run("curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs")
-            self.runner.run("/usr/local/bin/cs install sbt")
-            
-            # Verify SBT is now available
-            sbt_check_exit, sbt_check_out, sbt_check_err = self.runner.run("which sbt")
-            print(f'SBT location: {sbt_check_out.strip()}')
-            
-            print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
-            exit_code, stdout, stderr = self.runner.run(
-                "bash -l -c 'cd /code/workspace/repo && sbt compile'"
+            self.runner.run(
+                'curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs'
             )
+            self.runner.run('/usr/local/bin/cs install sbt')
+
+            # Verify SBT is now available
+            sbt_check_exit, sbt_check_out, sbt_check_err = self.runner.run('which sbt')
+            print(f'SBT location: {sbt_check_out.strip()}')
+
+            print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
+            exit_code, stdout, stderr = self.runner.run("bash -l -c 'cd /code/workspace/repo && sbt compile'")
 
             if exit_code == 0:
                 print('✅ [COMPILE] SBT compilation successful')
@@ -397,9 +397,7 @@ class TestV2chisel_batch(V2chisel_batch):
 
             # Step 2: Clean SBT cache to prevent stale compilation artifacts
             print('🧹 [RESTORE] Cleaning SBT cache...')
-            exit_code, stdout, stderr = self.runner.run(
-                "bash -l -c 'cd /code/workspace/repo && sbt clean'"
-            )
+            exit_code, stdout, stderr = self.runner.run("bash -l -c 'cd /code/workspace/repo && sbt clean'")
             if exit_code == 0:
                 print('✅ [RESTORE] SBT cache cleaned')
             else:
@@ -643,9 +641,7 @@ class TestV2chisel_batch(V2chisel_batch):
 
             # Step 3: Clean SBT project build cache using Runner with proper SBT path
             print('🧹 [BASELINE] Cleaning SBT project build cache...')
-            exit_code, stdout, stderr = self.runner.run(
-                'bash -l -c "cd /code/workspace/repo && sbt clean"'
-            )
+            exit_code, stdout, stderr = self.runner.run('bash -l -c "cd /code/workspace/repo && sbt clean"')
 
             if exit_code == 0:
                 print('✅ [BASELINE] SBT project build cache cleaned')
@@ -814,7 +810,9 @@ def main():
         print('✅ [TEST] Docker container setup successful')
 
         # Fix broken SBT wrapper script
-        processor.runner.run('rm -f /root/.local/share/coursier/bin/sbt && ln -sf /root/.cache/coursier/arc/https/github.com/sbt/sbt/releases/download/v1.11.5/sbt-1.11.5.zip/sbt/bin/sbt /root/.local/share/coursier/bin/sbt')
+        processor.runner.run(
+            'rm -f /root/.local/share/coursier/bin/sbt && ln -sf /root/.cache/coursier/arc/https/github.com/sbt/sbt/releases/download/v1.11.5/sbt-1.11.5.zip/sbt/bin/sbt /root/.local/share/coursier/bin/sbt'
+        )
 
         # Step 1: Fix git ownership and restore Chisel source files
         print('🔄 [TEST] Fixing git ownership and restoring Chisel code...')
@@ -831,9 +829,7 @@ def main():
 
         # Step 2: Clean SBT build cache using the working pattern
         print('🧹 [TEST] Cleaning SBT build cache...')
-        exit_code, stdout, stderr = processor.runner.run(
-            "bash -l -c 'cd /code/workspace/repo && sbt clean'"
-        )
+        exit_code, stdout, stderr = processor.runner.run("bash -l -c 'cd /code/workspace/repo && sbt clean'")
         if exit_code != 0:
             print(f'⚠️  [TEST] SBT clean failed (non-critical): {stderr}')
         else:

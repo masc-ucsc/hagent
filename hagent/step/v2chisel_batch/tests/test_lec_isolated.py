@@ -15,9 +15,13 @@ import os
 import sys
 import tempfile
 
+# Set up environment for Runner (Docker execution mode)
+os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+
 # Add parent directories to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from v2chisel_batch import V2chisel_batch
+from hagent.inou.runner import Runner
 
 
 def create_test_input():
@@ -25,22 +29,21 @@ def create_test_input():
     return {
         'id': 'test_lec_isolated',
         'description': 'LEC isolation test with known correct chisel_diff',
-        'verilog_diff': {
-            'file': 'Control.sv',
-            'unified_diff': """--- a/Control.sv
+        'verilog_diff': """--- a/Control.sv
 +++ b/Control.sv
-@@ -1,1 +1,1 @@
--wire _signals_T_132 = io_opcode == 7'h3B;
-+wire _signals_T_132 = io_opcode == 7'h3F;""",
-        },
+@@ -27,1 +27,1 @@
+-  wire _signals_T_132 = io_opcode == 7'h3B;
++  wire _signals_T_132 = io_opcode == 7'h3F;""",
         # This is the KNOWN CORRECT answer - bypass LLM
-        'expected_chisel_diff': """@@ -1194,7 +1194,7 @@
+        'expected_chisel_diff': """--- a/src/main/scala/components/control.scala
++++ b/src/main/scala/components/control.scala
+@@ -1194,7 +1194,7 @@
            // I-format 32-bit operands
            BitPat("b0011011") -> List( true.B,  true.B, false.B,  1.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),
-   -       // R-format 32-bit operands
-   -       BitPat("b0111011") -> List(false.B,  true.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),
-   +       // R-format 32-bit operands
-   +       BitPat("b0111111") -> List(false.B,  true.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),""",
+-       // R-format 32-bit operands
+-       BitPat("b0111011") -> List(false.B,  true.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),
++       // R-format 32-bit operands
++       BitPat("b0111111") -> List(false.B,  true.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),""",
     }
 
 
@@ -53,20 +56,86 @@ class MockV2chisel_batch(V2chisel_batch):
         # Initialize ALL required attributes to prevent AttributeError
         self.chisel_source_pattern = './tmp/src/main/scala/*/*.scala'
 
-        # Create mock template_config with required structure
+        # Create mock template_config with required structure including prompts
         class MockTemplateConfig:
             def __init__(self):
-                self.template_dict = {'v2chisel_batch': {'llm': {'model': 'test', 'temperature': 0.1}}}
-
+                self.template_dict = {
+                    'v2chisel_batch': {
+                        'llm': {'model': 'test', 'temperature': 0.1},
+                        'prompt_initial': 'test prompt',
+                        'prompt_retry': 'test retry prompt',
+                        'prompt_compile_error': 'test compile error prompt',
+                        'prompt_applier_error': 'test applier error prompt'
+                    }
+                }
+                
         self.template_config = MockTemplateConfig()
         self.debug = True
         self.module_finder = None  # Will be set if needed
+        
+        # Initialize Runner for automated Docker management
+        self.runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        
+        # Setup runner and get container name
+        self.runner.setup()
+        
+        # Create mock input_data with proper container name
+        if hasattr(self, 'runner') and self.runner and hasattr(self.runner, 'container_manager'):
+            container_mgr = self.runner.container_manager
+            if hasattr(container_mgr, 'container') and container_mgr.container:
+                actual_container_name = container_mgr.container.name
+            else:
+                actual_container_name = 'test_container'
+        else:
+            actual_container_name = 'test_container'
+            
+        # Set input_data with proper structure
+        self.input_data = {
+            'docker_container': actual_container_name,
+            'docker_patterns': ['/code/workspace/repo']
+        }
+        
+        # Create mock LLM wrapper
+        class MockLLMWrapper:
+            def __init__(self):
+                self.last_error = None
+                
+        self.lw = MockLLMWrapper()
 
     def set_test_chisel_diff(self, chisel_diff):
         """Set the known correct chisel_diff to use instead of LLM"""
         self.test_chisel_diff = chisel_diff
 
-    def _call_llm(self, docker_container, system_prompt, user_prompt, history=None):
+    def _run_docker_command(self, cmd_list, timeout=None):
+        """Override parent method to use our Runner instead of subprocess"""
+        if timeout:
+            print(f'⚠️  Warning: timeout={timeout}s requested but not supported by Runner')
+
+        # Convert Docker exec command list to Runner command
+        if len(cmd_list) >= 4 and cmd_list[0] == 'docker' and cmd_list[1] == 'exec':
+            # Find where the actual command starts (skip docker, exec, optional -u user, container)
+            command_start = 2  # Start after 'docker exec'
+            
+            # Skip optional user specification
+            if command_start < len(cmd_list) and cmd_list[command_start] == '-u':
+                command_start += 2  # Skip '-u' and 'user'
+            
+            # Skip container name
+            command_start += 1
+            
+            if command_start < len(cmd_list) and len(cmd_list) >= command_start + 3 and cmd_list[command_start:command_start+3] == ['bash', '-l', '-c']:
+                # Extract bash command
+                command = cmd_list[command_start + 3]
+            else:
+                # Join remaining command parts
+                command = ' '.join(cmd_list[command_start:])
+
+            return self.runner.run(command)
+        else:
+            # Fallback: join all parts
+            return self.runner.run(' '.join(cmd_list))
+
+    def _call_llm_for_chisel_diff(self, verilog_diff, chisel_hints, attempt=1, previous_diff='', error_message='', attempt_history=''):
         """Override LLM call to return known correct chisel_diff"""
         if self.test_chisel_diff is None:
             raise ValueError('Test chisel_diff not set! Call set_test_chisel_diff() first')
@@ -77,10 +146,9 @@ class MockV2chisel_batch(V2chisel_batch):
 
         return {
             'success': True,
-            'response': self.test_chisel_diff,
-            'input_tokens': 100,
-            'output_tokens': 50,
-            'model': 'test_known_answer',
+            'chisel_diff': self.test_chisel_diff,
+            'prompt_used': 'test_prompt',
+            'attempt': attempt,
         }
 
 
@@ -92,7 +160,7 @@ def test_lec_isolated():
     # Create test input
     test_bug = create_test_input()
     print(f'📋 Test case: {test_bug["description"]}')
-    print(f'🎯 Verilog diff: {test_bug["verilog_diff"]["file"]}')
+    print('🎯 Verilog diff: Control.sv')
     print("🔍 Expected to change: 7'h3B → 7'h3F")
 
     # Create mock processor
@@ -114,7 +182,7 @@ def test_lec_isolated():
 
         # Set input data and output path
         processor.input_data = test_data
-        processor.output_path = output_file
+        processor.output_file = output_file
 
         # Process the test case (this will run the full pipeline)
         result = processor.run(test_data)

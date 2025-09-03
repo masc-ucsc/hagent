@@ -5,12 +5,17 @@ Test script for v2chisel_batch retry mechanism with diff applier
 
 import sys
 from pathlib import Path
+import os
+
+# Set up environment for Runner (Docker execution mode)
+os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
 
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 
 from hagent.step.v2chisel_batch.v2chisel_batch import V2chisel_batch
 from hagent.tool.docker_diff_applier import DockerDiffApplier
+from hagent.inou.runner import Runner
 
 
 def test_retry_mechanism():
@@ -47,6 +52,19 @@ def test_retry_mechanism():
         # Setup the processor
         processor.setup()
         print('✅ V2chisel_batch initialized successfully')
+        
+        # Get actual container name from Runner
+        actual_container_name = None
+        if hasattr(processor, 'runner') and processor.runner and hasattr(processor.runner, 'container_manager'):
+            container_mgr = processor.runner.container_manager
+            if hasattr(container_mgr, 'container') and container_mgr.container:
+                actual_container_name = container_mgr.container.name
+        
+        if not actual_container_name:
+            print('❌ Could not get container name from Runner')
+            return False
+        
+        print(f'✅ Using container: {actual_container_name}')
 
     except Exception as e:
         print(f'❌ Failed to initialize v2chisel_batch: {e}')
@@ -56,16 +74,15 @@ def test_retry_mechanism():
     print('\n🐳 Testing DockerDiffApplier with intentionally wrong diff...')
 
     # Create a test diff that should fail (wrong removal line)
-    wrong_diff = """--- a/yunsuan/vector/VectorFloatAdder.scala
-+++ b/yunsuan/vector/VectorFloatAdder.scala
-@@ -778,7 +778,7 @@
--  io_c := io_a - io_b  // This line doesn't exist in the actual file
-+  io_c := io_a + io_b
+    wrong_diff = """--- a/src/main/scala/components/control.scala
++++ b/src/main/scala/components/control.scala
+@@ -100,1 +100,1 @@
+-  // This line doesn't exist in the actual file
++  // This is a test replacement
 """
 
-    # Test the applier
-    container_name = processor.input_data.get('docker_container', 'musing_sammet')
-    applier = DockerDiffApplier(container_name)
+    # Test the applier with actual container name
+    applier = DockerDiffApplier(actual_container_name)
 
     try:
         success = applier.apply_diff_to_container(wrong_diff, dry_run=True)
@@ -79,12 +96,12 @@ def test_retry_mechanism():
 
     print('\n🔄 Now testing correct diff...')
 
-    # Test with a correct diff
-    correct_diff = """--- a/yunsuan/vector/VectorFloatAdder.scala
-+++ b/yunsuan/vector/VectorFloatAdder.scala
-@@ -778,7 +778,7 @@
--    io.c := (if (is_sub) io.a -& io.b else io.a +& io.b)
-+    io.c := (if (is_sub) io.a +& io.b else io.a +& io.b)
+    # Test with a correct diff that should work (using actual file content)
+    correct_diff = """--- a/src/main/scala/components/control.scala
++++ b/src/main/scala/components/control.scala
+@@ -1194,7 +1194,7 @@
+-       BitPat("b0111011") -> List(false.B,  true.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),
++       BitPat("b0111111") -> List(false.B,  true.B, false.B,  0.U,  false.B,       0.U,      false.B,   0.U, false.B,   true.B,    true.B,   true.B),
 """
 
     try:
