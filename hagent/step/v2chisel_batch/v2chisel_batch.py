@@ -2072,42 +2072,30 @@ class V2chisel_batch(Step):
                     }
                 else:
                     # This might be a build system issue - try fallbacks
-                    print(f'     ⚠️  SBT compilation failed: {sbt_result.stderr[:200]}...')
+                    print(f'     ⚠️  SBT compilation failed: {stderr[:200]}...')
 
             # Method 2: Try mill as fallback
-            print('     📝 Running: ./mill root.compile (fallback)')
-            mill_cmd = [
-                'docker',
-                'exec',
-                '-u',
-                'user',
-                docker_container,
-                'bash',
-                '-c',
-                'cd /code/workspace/repo && ./mill clean && ./mill root.compile',
-            ]
+            print('     📝 Trying Mill fallback via Runner...')
+            mill_exit_code, mill_stdout, mill_stderr = self._run_docker_command([
+                'docker', 'exec', '-u', 'root', docker_container, 'bash', '-c', 
+                'cd /code/workspace/repo && ./mill clean && ./mill root.compile'
+            ])
 
-            mill_result = subprocess.run(mill_cmd, capture_output=True, text=True, timeout=600)
-
-            if mill_result.returncode == 0:
+            if mill_exit_code == 0:
                 print('✅ [COMPILE] Compilation successful using mill')
-                return {'success': True, 'output': mill_result.stdout, 'compilation_method': 'mill'}
+                return {'success': True, 'output': mill_stdout, 'compilation_method': 'mill'}
             else:
-                print(f'     ⚠️  Mill compilation also failed: {mill_result.stderr[:200]}...')
+                print(f'     ⚠️  Mill compilation also failed: {mill_stderr[:200]}...')
 
             # Both failed
             print('❌ [COMPILE] Both sbt and mill compilation failed')
             return {
                 'success': False,
-                'error': f'SBT failed: {sbt_result.stderr}\nMill failed: {mill_result.stderr}',
-                'stdout': f'SBT stdout: {sbt_result.stdout}\nMill stdout: {mill_result.stdout}',
+                'error': f'SBT failed: {stderr}\nMill failed: {mill_stderr}',
+                'stdout': f'SBT stdout: {stdout}\nMill stdout: {mill_stdout}',
                 'compilation_method': 'both_failed',
             }
 
-        except subprocess.TimeoutExpired:
-            error_msg = 'Compilation timeout (10 minutes)'
-            print(f'❌ [COMPILE] {error_msg}')
-            return {'success': False, 'error': error_msg, 'compilation_method': 'timeout'}
         except Exception as e:
             error_msg = f'Compilation error: {str(e)}'
             print(f'❌ [COMPILE] {error_msg}')
