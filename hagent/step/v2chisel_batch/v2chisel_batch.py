@@ -118,7 +118,10 @@ class V2chisel_batch(Step):
                     command = command.replace('sbt ', 'sbt ')
                     # Ensure runMain commands are properly quoted
                     if 'runMain' in command and '"runMain' not in command:
-                        command = command.replace('sbt "runMain', '/root/.cache/coursier/arc/https/github.com/sbt/sbt/releases/download/v1.11.5/sbt-1.11.5.zip/sbt/bin/sbt "runMain')
+                        command = command.replace(
+                            'sbt "runMain',
+                            '/root/.cache/coursier/arc/https/github.com/sbt/sbt/releases/download/v1.11.5/sbt-1.11.5.zip/sbt/bin/sbt "runMain',
+                        )
                         command = command.replace('runMain ', '"runMain ') + '"' if not command.endswith('"') else command
             else:
                 # Join remaining command parts
@@ -1999,10 +2002,17 @@ class V2chisel_batch(Step):
         """Replace broken wrapper script with working SBT binary"""
         try:
             import subprocess
+
             # Remove broken wrapper script and replace with symlink
             fix_cmd = [
-                'docker', 'exec', '-u', 'root', docker_container, 'bash', '-c',
-                'rm -f /root/.local/share/coursier/bin/sbt && ln -sf /root/.cache/coursier/arc/https/github.com/sbt/sbt/releases/download/v1.11.5/sbt-1.11.5.zip/sbt/bin/sbt /root/.local/share/coursier/bin/sbt'
+                'docker',
+                'exec',
+                '-u',
+                'root',
+                docker_container,
+                'bash',
+                '-c',
+                'rm -f /root/.local/share/coursier/bin/sbt && ln -sf /root/.cache/coursier/arc/https/github.com/sbt/sbt/releases/download/v1.11.5/sbt-1.11.5.zip/sbt/bin/sbt /root/.local/share/coursier/bin/sbt',
             ]
             subprocess.run(fix_cmd, capture_output=True, text=True)
         except Exception:
@@ -2015,42 +2025,55 @@ class V2chisel_batch(Step):
         try:
             # Step 1: Fix permissions on the repo directory
             print('🔧 [COMPILE] Fixing file permissions in container...')
-            exit_code, stdout, stderr = self._run_docker_command([
-                'docker', 'exec', '-u', 'root', docker_container, 'chown', '-R', 'root:root', '/code/workspace/repo'
-            ])
+            exit_code, stdout, stderr = self._run_docker_command(
+                ['docker', 'exec', '-u', 'root', docker_container, 'chown', '-R', 'root:root', '/code/workspace/repo']
+            )
             if exit_code == 0:
                 print('✅ [COMPILE] Fixed repository permissions')
             else:
                 print(f'⚠️  [COMPILE] Permission fix warning: {stderr}')
 
             # Step 2: Clean any existing target directories that might have wrong permissions
-            self._run_docker_command([
-                'docker', 'exec', '-u', 'root', docker_container, 'bash', '-c', 
-                'rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true'
-            ])
+            self._run_docker_command(
+                [
+                    'docker',
+                    'exec',
+                    '-u',
+                    'root',
+                    docker_container,
+                    'bash',
+                    '-c',
+                    'rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true',
+                ]
+            )
             print('🗑️ [COMPILE] Cleaned old target directories')
 
             # Step 3: Install SBT and try compilation
             print('📝 [COMPILE] Installing/ensuring SBT is available...')
-            self._run_docker_command([
-                'docker', 'exec', '-u', 'root', docker_container, 'bash', '-c',
-                "curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs"
-            ])
-            self._run_docker_command([
-                'docker', 'exec', '-u', 'root', docker_container, '/usr/local/bin/cs', 'install', 'sbt'
-            ])
-            
+            self._run_docker_command(
+                [
+                    'docker',
+                    'exec',
+                    '-u',
+                    'root',
+                    docker_container,
+                    'bash',
+                    '-c',
+                    'curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs',
+                ]
+            )
+            self._run_docker_command(['docker', 'exec', '-u', 'root', docker_container, '/usr/local/bin/cs', 'install', 'sbt'])
+
             # Verify SBT is now available
-            exit_code, sbt_location, stderr = self._run_docker_command([
-                'docker', 'exec', '-u', 'root', docker_container, 'which', 'sbt'
-            ])
+            exit_code, sbt_location, stderr = self._run_docker_command(
+                ['docker', 'exec', '-u', 'root', docker_container, 'which', 'sbt']
+            )
             print(f'SBT location: {sbt_location.strip()}')
-            
+
             print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
-            exit_code, stdout, stderr = self._run_docker_command([
-                'docker', 'exec', '-u', 'root', docker_container, 'bash', '-l', '-c', 
-                'cd /code/workspace/repo && sbt compile'
-            ])
+            exit_code, stdout, stderr = self._run_docker_command(
+                ['docker', 'exec', '-u', 'root', docker_container, 'bash', '-l', '-c', 'cd /code/workspace/repo && sbt compile']
+            )
 
             if exit_code == 0:
                 print('✅ [COMPILE] SBT compilation successful')
@@ -2076,10 +2099,18 @@ class V2chisel_batch(Step):
 
             # Method 2: Try mill as fallback
             print('     📝 Trying Mill fallback via Runner...')
-            mill_exit_code, mill_stdout, mill_stderr = self._run_docker_command([
-                'docker', 'exec', '-u', 'root', docker_container, 'bash', '-c', 
-                'cd /code/workspace/repo && ./mill clean && ./mill root.compile'
-            ])
+            mill_exit_code, mill_stdout, mill_stderr = self._run_docker_command(
+                [
+                    'docker',
+                    'exec',
+                    '-u',
+                    'root',
+                    docker_container,
+                    'bash',
+                    '-c',
+                    'cd /code/workspace/repo && ./mill clean && ./mill root.compile',
+                ]
+            )
 
             if mill_exit_code == 0:
                 print('✅ [COMPILE] Compilation successful using mill')
@@ -2882,7 +2913,7 @@ class V2chisel_batch(Step):
             if hasattr(container_mgr, 'container') and container_mgr.container:
                 # Get container name from Docker container object
                 actual_container_name = container_mgr.container.name
-                
+
         if actual_container_name:
             print(f'✅ [V2chisel_batch] Using Runner container: {actual_container_name}')
             self.input_data['docker_container'] = actual_container_name

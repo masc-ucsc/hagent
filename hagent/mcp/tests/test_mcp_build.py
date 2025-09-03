@@ -27,7 +27,6 @@ import uuid
 from pathlib import Path
 
 
-
 class TestMCPBuildDocker(unittest.TestCase):
     """Test suite for mcp_build.py direct execution with Docker."""
 
