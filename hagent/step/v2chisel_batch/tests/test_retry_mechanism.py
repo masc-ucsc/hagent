@@ -8,6 +8,13 @@ from pathlib import Path
 import os
 import pytest
 
+# Add project root to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
+
+# ruff: noqa: E402
+from hagent.step.v2chisel_batch.v2chisel_batch import V2chisel_batch
+from hagent.tool.docker_diff_applier import DockerDiffApplier
+
 
 @pytest.fixture(autouse=True)
 def setup_test_env():
@@ -54,12 +61,6 @@ def setup_test_environment():
 
 # Set up environment before importing
 setup_test_environment()
-
-# Add project root to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
-
-from hagent.step.v2chisel_batch.v2chisel_batch import V2chisel_batch
-from hagent.tool.docker_diff_applier import DockerDiffApplier
 
 
 def test_retry_mechanism():

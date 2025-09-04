@@ -16,6 +16,12 @@ import sys
 import tempfile
 import pytest
 
+# Add parent directories to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# ruff: noqa: E402
+from v2chisel_batch import V2chisel_batch
+from hagent.inou.runner import Runner
+
 
 @pytest.fixture(autouse=True)
 def setup_test_env():
@@ -62,11 +68,6 @@ def setup_test_environment():
 
 # Set up environment before importing
 setup_test_environment()
-
-# Add parent directories to path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from v2chisel_batch import V2chisel_batch
-from hagent.inou.runner import Runner
 
 
 def create_test_input():
