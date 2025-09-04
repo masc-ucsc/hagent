@@ -6,9 +6,54 @@ Test script for v2chisel_batch retry mechanism with diff applier
 import sys
 from pathlib import Path
 import os
+import pytest
 
-# Set up environment for Runner (Docker execution mode)
-os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+
+@pytest.fixture(autouse=True)
+def setup_test_env():
+    """Pytest fixture to ensure proper environment setup for every test in this module"""
+    # Store original environment
+    original_env = {
+        'HAGENT_EXECUTION_MODE': os.environ.get('HAGENT_EXECUTION_MODE'),
+        'HAGENT_REPO_DIR': os.environ.get('HAGENT_REPO_DIR'),
+        'HAGENT_BUILD_DIR': os.environ.get('HAGENT_BUILD_DIR'),
+        'HAGENT_CACHE_DIR': os.environ.get('HAGENT_CACHE_DIR'),
+    }
+    
+    # Set up environment for this test
+    setup_test_environment()
+    
+    yield  # Run the test
+    
+    # Restore original environment (cleanup)
+    for key, value in original_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+def setup_test_environment():
+    """Set up environment variables for testing - called before each test"""
+    # Force set environment variables (don't use setdefault)
+    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    
+    # Use current directory for CI compatibility
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    os.environ['HAGENT_REPO_DIR'] = current_dir
+    os.environ['HAGENT_BUILD_DIR'] = os.path.join(current_dir, 'build')
+    os.environ['HAGENT_CACHE_DIR'] = os.path.join(current_dir, 'cache')
+    
+    # Create directories if they don't exist
+    os.makedirs(os.environ['HAGENT_REPO_DIR'], exist_ok=True)
+    os.makedirs(os.environ['HAGENT_BUILD_DIR'], exist_ok=True)
+    os.makedirs(os.environ['HAGENT_CACHE_DIR'], exist_ok=True)
+    
+    # Environment successfully set up
+
+
+# Set up environment before importing
+setup_test_environment()
 
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
