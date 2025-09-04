@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 
 from hagent.step.v2chisel_batch.v2chisel_batch import V2chisel_batch
 from hagent.tool.docker_diff_applier import DockerDiffApplier
-from hagent.inou.runner import Runner
 
 
 def test_retry_mechanism():
