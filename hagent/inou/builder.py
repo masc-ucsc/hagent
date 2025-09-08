@@ -23,6 +23,12 @@ class Builder:
     Handles YAML configuration loading, profile management, environment setup,
     and command execution through Runner integration. Provides both direct
     execution and file tracking capabilities.
+
+    Works in two modes:
+    - With hagent.yaml: Full profile-based API execution via run_api() + direct execution via run_cmd()
+    - Without hagent.yaml: Direct execution via run_cmd() only, run_api() returns helpful error
+
+    This eliminates the need to choose between Builder and Runner - always use Builder.
     """
 
     def __init__(self, config_path: Optional[str] = None, docker_image: Optional[str] = None):
@@ -33,12 +39,22 @@ class Builder:
             config_path: Path to the YAML configuration file (auto-discovered if None)
             docker_image: Docker image for container execution (if needed)
         """
-        self.config_path = config_path or self._find_config()
-        self.config = self._load_config()
-
-        # Initialize Runner if available, otherwise create a placeholder
+        # Always initialize Runner first
         self.runner = Runner(docker_image)
         self.error_message = ''
+
+        # Try to find and load config, but don't fail if not found
+        self.config_path = None
+        self.config = {}
+        self.has_config = False
+
+        try:
+            self.config_path = config_path or self._find_config()
+            self.config = self._load_config()
+            self.has_config = True
+        except (FileNotFoundError, ValueError):
+            # Config not found or invalid - Builder can still work without it
+            pass
 
     @staticmethod
     def _find_config() -> str:
@@ -93,6 +109,8 @@ class Builder:
 
     def get_all_profiles(self) -> List[dict]:
         """Get all profiles from configuration."""
+        if not self.has_config:
+            return []
         profs = self.config.get('profiles', []) or []
         assert isinstance(profs, list), "'profiles' must be a list"
         return profs
@@ -435,6 +453,11 @@ class Builder:
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
+        if not self.has_config:
+            error_msg = 'No hagent.yaml configuration found. Use run_cmd() for direct command execution.'
+            self.set_error(error_msg)
+            return -1, '', error_msg
+
         profile = self._select_profile(exact_name, title_query)
         return self._run_api(profile, command_name, extra_args, build_dir, dry_run, quiet)
 
@@ -460,15 +483,29 @@ class Builder:
         dry_run: bool = False,
         quiet: bool = False,
     ) -> Tuple[int, str, str]:
+        """Backward-compatible alias for run_api()."""
         return self.run_api(exact_name, title_query, command_name, extra_args, build_dir, dry_run, quiet)
 
     # ---------------------------- listing methods ----------------------------
 
     def list_profiles(self):
         """List all available profiles."""
+        if not self.has_config:
+            print('\nNo hagent.yaml configuration found.')
+            print('Available operations:')
+            print('  - Use run_cmd() for direct command execution')
+            print('  - File tracking: track_file(), track_dir(), get_diffs()')
+            print('  - Add hagent.yaml configuration to enable profile-based APIs')
+            return
+
+        profiles = self.get_all_profiles()
+        if not profiles:
+            print('\nNo profiles found in configuration.')
+            return
+
         print('\nAvailable profiles:')
         print('-' * 60)
-        for p in self.get_all_profiles():
+        for p in profiles:
             print(f'\nname: {p.get("name", "<unnamed>")}')
             print(f'  title: {self.profile_title(p) or "N/A"}')
             print('  APIs:')
@@ -477,6 +514,10 @@ class Builder:
 
     def list_apis_for_profile(self, exact_name: Optional[str], title_query: Optional[str]):
         """List APIs for given profile selection."""
+        if not self.has_config:
+            print('Error: No hagent.yaml configuration found. Cannot list profile APIs.', file=sys.stderr)
+            return False
+
         if exact_name:
             hits = self.find_profile_by_name(exact_name)
             if not hits:
@@ -515,6 +556,88 @@ class Builder:
                 print(line)
 
         return True
+
+    # ---------------------------- direct runner delegation ----------------------------
+
+    def run_cmd(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]:
+        """Execute a command using the underlying Runner (direct delegation)."""
+        if not self.runner:
+            self.set_error('Runner not initialized')
+            return -1, '', 'Runner not initialized'
+        return self.runner.run_cmd(command, cwd, env, quiet)
+
+    def run(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]:
+        """Backward-compatible alias for run_cmd."""
+        return self.run_cmd(command, cwd, env, quiet)
+
+    def set_cwd(self, new_workdir: str) -> bool:
+        """Change the working directory with validation."""
+        if not self.runner:
+            self.set_error('Runner not initialized')
+            return False
+        return self.runner.set_cwd(new_workdir)
+
+    def track_file(self, file_path: str) -> bool:
+        """Track individual file for changes."""
+        if not self.runner:
+            self.set_error('Runner not initialized')
+            return False
+        return self.runner.track_file(file_path)
+
+    def track_dir(self, dir_path: str, ext_filter: Optional[str] = None) -> bool:
+        """Track directory with optional extension filter."""
+        if not self.runner:
+            self.set_error('Runner not initialized')
+            return False
+        return self.runner.track_dir(dir_path, ext_filter)
+
+    def get_tracked_files(self, ext_filter: Optional[str] = None):
+        """Get set of currently tracked files."""
+        if not self.runner:
+            return set()
+        return self.runner.get_tracked_files(ext_filter)
+
+    def get_diff(self, file_path: str) -> str:
+        """Get unified diff for specific tracked file."""
+        if not self.runner:
+            return ''
+        return self.runner.get_diff(file_path)
+
+    def get_all_diffs(self, ext_filter: Optional[str] = None):
+        """Get diffs for all tracked files with optional filtering."""
+        if not self.runner:
+            return {}
+        return self.runner.get_all_diffs(ext_filter)
+
+    def get_patch_dict(self):
+        """Generate patch dictionary compatible with YAML export."""
+        if not self.runner:
+            return {'full': [], 'patch': []}
+        return self.runner.get_patch_dict()
+
+    def is_docker_mode(self) -> bool:
+        """Check if running in Docker execution mode."""
+        if not self.runner:
+            return False
+        return self.runner.is_docker_mode()
+
+    def is_local_mode(self) -> bool:
+        """Check if running in local execution mode."""
+        if not self.runner:
+            return False
+        return self.runner.is_local_mode()
+
+    def has_configuration(self) -> bool:
+        """Check if Builder has loaded YAML configuration."""
+        return self.has_config
+
+    def get_config_path(self) -> Optional[str]:
+        """Get path to loaded configuration file, or None if no config."""
+        return self.config_path if self.has_config else None
 
     def cleanup(self) -> None:
         """

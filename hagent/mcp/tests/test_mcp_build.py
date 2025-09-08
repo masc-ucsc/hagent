@@ -233,6 +233,7 @@ class TestMCPBuildDocker(unittest.TestCase):
             **os.environ,
             'UV_PROJECT': str(self.hagent_root),
             'HAGENT_ROOT': str(self.hagent_root),
+            'HAGENT_EXECUTION_MODE': 'docker',
         }
 
         # Test schema generation (should work without Docker)
