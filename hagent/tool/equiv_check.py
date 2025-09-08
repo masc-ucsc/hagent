@@ -119,8 +119,8 @@ class Equiv_check:
                 if rc == 0 and 'Yosys' in out:
                     self.use_docker = True
                     self.yosys_installed = True
-                    # Initialize file tracker for Docker mode
-                    self.file_tracker = FileTracker(self.path_manager)
+                    # Initialize file tracker for Docker mode with container access
+                    self.file_tracker = FileTracker(self.path_manager, self.container_manager)
                     return True
                 else:
                     self.error_message = f'Yosys not available in Docker container - RC: {rc}, ERR: {err}'

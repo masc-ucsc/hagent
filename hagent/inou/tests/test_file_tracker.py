@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-from hagent.inou.file_tracker import FileTracker
+from hagent.inou.file_tracker import FileTrackerLocal as FileTracker
 
 
 @pytest.fixture(autouse=True)
@@ -169,7 +169,7 @@ class TestSnapshotManagement:
         mock_path_manager = MagicMock()
         mock_path_manager.repo_dir = Path('/test/repo')
 
-        with patch.object(FileTracker, '__init__', lambda x, y: None):
+        with patch.object(FileTracker, '__init__', lambda self, pm, cm=None: None):
             tracker = FileTracker(mock_path_manager)
             tracker.path_manager = mock_path_manager
             tracker.logger = MagicMock()
@@ -188,7 +188,7 @@ class TestSnapshotManagement:
         mock_path_manager = MagicMock()
         mock_path_manager.repo_dir = Path('/test/repo')
 
-        with patch.object(FileTracker, '__init__', lambda x, y: None):
+        with patch.object(FileTracker, '__init__', lambda self, pm, cm=None: None):
             tracker = FileTracker(mock_path_manager)
             tracker.path_manager = mock_path_manager
             tracker.logger = MagicMock()
@@ -237,7 +237,7 @@ class TestFileDirectoryTracking:
         self.mock_path_manager.build_dir = Path('/test/build')
 
         # Create tracker with mocked initialization
-        with patch.object(FileTracker, '__init__', lambda x, y: None):
+        with patch.object(FileTracker, '__init__', lambda self, pm, cm=None: None):
             self.tracker = FileTracker(self.mock_path_manager)
             self.tracker.path_manager = self.mock_path_manager
             self.tracker.logger = MagicMock()
@@ -311,7 +311,7 @@ class TestUnifiedGitTracking:
         self.mock_path_manager.build_dir = Path('/test/build')
         self.mock_path_manager.cache_dir = Path('/test/cache')
 
-        with patch.object(FileTracker, '__init__', lambda x, y: None):
+        with patch.object(FileTracker, '__init__', lambda self, pm, cm=None: None):
             self.tracker = FileTracker(self.mock_path_manager)
             self.tracker.path_manager = self.mock_path_manager
             self.tracker.logger = MagicMock()
@@ -447,7 +447,7 @@ class TestContextManagerAndCleanup:
         """Test successful context manager usage."""
         mock_path_manager = MagicMock()
 
-        with patch.object(FileTracker, '__init__', lambda x, y: None):
+        with patch.object(FileTracker, '__init__', lambda self, pm, cm=None: None):
             tracker = FileTracker(mock_path_manager)
             tracker.path_manager = mock_path_manager
 
@@ -461,7 +461,7 @@ class TestContextManagerAndCleanup:
         """Test context manager cleanup on exception."""
         mock_path_manager = MagicMock()
 
-        with patch.object(FileTracker, '__init__', lambda x, y: None):
+        with patch.object(FileTracker, '__init__', lambda self, pm, cm=None: None):
             tracker = FileTracker(mock_path_manager)
             tracker.path_manager = mock_path_manager
 
@@ -477,7 +477,7 @@ class TestContextManagerAndCleanup:
         """Test cleanup method calls all cleanup functions."""
         mock_path_manager = MagicMock()
 
-        with patch.object(FileTracker, '__init__', lambda x, y: None):
+        with patch.object(FileTracker, '__init__', lambda self, pm, cm=None: None):
             tracker = FileTracker(mock_path_manager)
             tracker.path_manager = mock_path_manager
             tracker.logger = MagicMock()
@@ -498,7 +498,7 @@ class TestContextManagerAndCleanup:
         """Test cleanup is called in destructor."""
         mock_path_manager = MagicMock()
 
-        with patch.object(FileTracker, '__init__', lambda x, y: None):
+        with patch.object(FileTracker, '__init__', lambda self, pm, cm=None: None):
             tracker = FileTracker(mock_path_manager)
             del tracker
 
@@ -513,7 +513,7 @@ class TestErrorHandling:
         """Test track_file handles exceptions gracefully."""
         mock_path_manager = MagicMock()
 
-        with patch.object(FileTracker, '__init__', lambda x, y: None):
+        with patch.object(FileTracker, '__init__', lambda self, pm, cm=None: None):
             tracker = FileTracker(mock_path_manager)
             tracker.path_manager = mock_path_manager
             tracker.logger = MagicMock()
