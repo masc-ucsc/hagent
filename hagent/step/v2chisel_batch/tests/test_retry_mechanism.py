@@ -26,12 +26,12 @@ def setup_test_env():
         'HAGENT_BUILD_DIR': os.environ.get('HAGENT_BUILD_DIR'),
         'HAGENT_CACHE_DIR': os.environ.get('HAGENT_CACHE_DIR'),
     }
-    
+
     # Set up environment for this test
     setup_test_environment()
-    
+
     yield  # Run the test
-    
+
     # Restore original environment (cleanup)
     for key, value in original_env.items():
         if value is None:
@@ -44,18 +44,18 @@ def setup_test_environment():
     """Set up environment variables for testing - called before each test"""
     # Force set environment variables (don't use setdefault)
     os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
-    
+
     # Use current directory for CI compatibility
     current_dir = os.path.dirname(os.path.abspath(__file__))
     os.environ['HAGENT_REPO_DIR'] = current_dir
     os.environ['HAGENT_BUILD_DIR'] = os.path.join(current_dir, 'build')
     os.environ['HAGENT_CACHE_DIR'] = os.path.join(current_dir, 'cache')
-    
+
     # Create directories if they don't exist
     os.makedirs(os.environ['HAGENT_REPO_DIR'], exist_ok=True)
     os.makedirs(os.environ['HAGENT_BUILD_DIR'], exist_ok=True)
     os.makedirs(os.environ['HAGENT_CACHE_DIR'], exist_ok=True)
-    
+
     # Environment successfully set up
 
 
@@ -97,18 +97,18 @@ def test_retry_mechanism():
         # Setup the processor
         processor.setup()
         print('✅ V2chisel_batch initialized successfully')
-        
+
         # Get actual container name from Runner
         actual_container_name = None
         if hasattr(processor, 'runner') and processor.runner and hasattr(processor.runner, 'container_manager'):
             container_mgr = processor.runner.container_manager
             if hasattr(container_mgr, 'container') and container_mgr.container:
                 actual_container_name = container_mgr.container.name
-        
+
         if not actual_container_name:
             print('❌ Could not get container name from Runner')
             return False
-        
+
         print(f'✅ Using container: {actual_container_name}')
 
     except Exception as e:

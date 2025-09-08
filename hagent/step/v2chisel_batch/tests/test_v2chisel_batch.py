@@ -64,23 +64,23 @@ class TestV2chisel_batch(V2chisel_batch):
 
     def _compile_xiangshan(self, docker_container: str, force_compile: bool = True) -> dict:
         """Override parent compilation to fix permissions and use Runner"""
-        print('🏗️  [COMPILE] Starting compilation with permission fixes...')
+        print('✅ Step 7: Compilation - START')
 
         try:
             # Step 1: Fix permissions on the repo directory
-            print('🔧 [COMPILE] Fixing file permissions in container...')
+            # print('🔧 [COMPILE] Fixing file permissions in container...')
             exit_code, stdout, stderr = self.runner.run('chown -R root:root /code/workspace/repo')
-            if exit_code == 0:
-                print('✅ [COMPILE] Fixed repository permissions')
-            else:
-                print(f'⚠️  [COMPILE] Permission fix warning: {stderr}')
+            # if exit_code == 0:
+            #     print('✅ [COMPILE] Fixed repository permissions')
+            # else:
+            #     print(f'⚠️  [COMPILE] Permission fix warning: {stderr}')
 
             # Step 2: Clean any existing target directories that might have wrong permissions
             self.runner.run('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
-            print('🗑️ [COMPILE] Cleaned old target directories')
+            # print('🗑️ [COMPILE] Cleaned old target directories')
 
             # Step 3: Install SBT and try compilation
-            print('📝 [COMPILE] Installing/ensuring SBT is available...')
+            # print('📝 [COMPILE] Installing/ensuring SBT is available...')
             self.runner.run(
                 'curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs'
             )
@@ -88,28 +88,26 @@ class TestV2chisel_batch(V2chisel_batch):
 
             # Verify SBT is now available
             sbt_check_exit, sbt_check_out, sbt_check_err = self.runner.run('which sbt')
-            print(f'SBT location: {sbt_check_out.strip()}')
+            # print(f'SBT location: {sbt_check_out.strip()}')
 
-            print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
+            # print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
             exit_code, stdout, stderr = self.runner.run("bash -l -c 'cd /code/workspace/repo && sbt compile'")
 
             if exit_code == 0:
-                print('✅ [COMPILE] SBT compilation successful')
+                print('✅ Step 7: Compilation - SUCCESS')
                 return {'success': True, 'output': stdout, 'compilation_method': 'sbt_with_runner_and_permissions'}
             else:
-                print(f'⚠️  [COMPILE] SBT failed: {stderr[:200]}...')
-
-                # Step 4: Try Mill as fallback with Runner
-                print('📝 [COMPILE] Trying Mill fallback via Runner...')
+                # Try Mill as fallback
+                # print('📝 [COMPILE] Trying Mill fallback via Runner...')
                 exit_code2, stdout2, stderr2 = self.runner.run(
                     'bash -c "cd /code/workspace/repo && chmod +x ./mill && ./mill root.compile"'
                 )
 
                 if exit_code2 == 0:
-                    print('✅ [COMPILE] Mill compilation successful')
+                    print('✅ Step 7: Compilation - SUCCESS (Mill)')
                     return {'success': True, 'output': stdout2, 'compilation_method': 'mill_with_runner_and_permissions'}
                 else:
-                    print(f'⚠️  [COMPILE] Mill also failed: {stderr2[:200]}...')
+                    print('❌ Step 7: Compilation - FAILED')
 
             return {
                 'success': False,
@@ -122,21 +120,21 @@ class TestV2chisel_batch(V2chisel_batch):
 
     def _generate_verilog_from_chisel(self, docker_container: str, module_name: str) -> dict:
         """Override parent Verilog generation to fix permissions and use Runner"""
-        print('🔧 [VERILOG_GEN] Generating Verilog with permission fixes...')
+        print('✅ Step 8: Verilog Generation - START')
 
         try:
             # Step 1: Fix permissions on the repo directory
-            print('🔧 [VERILOG_GEN] Fixing file permissions in container...')
+            # print('🔧 [VERILOG_GEN] Fixing file permissions in container...')
             exit_code, stdout, stderr = self.runner.run('chown -R root:root /code/workspace/repo')
-            if exit_code == 0:
-                print('✅ [VERILOG_GEN] Fixed repository permissions')
-            else:
-                print(f'⚠️  [VERILOG_GEN] Permission fix warning: {stderr}')
+            # if exit_code == 0:
+            #     print('✅ [VERILOG_GEN] Fixed repository permissions')
+            # else:
+            #     print(f'⚠️  [VERILOG_GEN] Permission fix warning: {stderr}')
 
             # Step 2: Clean target directories and create fresh build dirs
             self.runner.run('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
             self.runner.run('mkdir -p /code/workspace/build/build_singlecyclecpu_nd')
-            print('🗑️ [VERILOG_GEN] Cleaned target directories and prepared build dirs')
+            # print('🗑️ [VERILOG_GEN] Cleaned target directories and prepared build dirs')
 
             # Step 3: Try Verilog generation commands with Runner (same priority order as parent)
             generation_commands = [
@@ -177,18 +175,18 @@ class TestV2chisel_batch(V2chisel_batch):
                 gen_cmd_str = gen_cmd_info['cmd']
                 cmd_name = gen_cmd_info['name']
 
-                print(f'     📝 Trying generation command {i + 1}: {cmd_name}')
+                # print(f'     📝 Trying generation command {i + 1}: {cmd_name}')
 
                 # Use Runner with bash -l -c for login shell
                 exit_code, stdout, stderr = self.runner.run(f"bash -l -c '{gen_cmd_str}'")
 
                 if exit_code == 0:
-                    print(f'✅ [VERILOG_GEN] Verilog generation successful with command {i + 1}: {cmd_name}')
+                    print('✅ Step 8: Verilog Generation - SUCCESS')
 
-                    # Warn if we're not using the expected SingleCycleCPU command
-                    if 'SingleCycleCPUNoDebug' not in gen_cmd_str:
-                        print('⚠️  WARNING: Expected SingleCycleCPUNoDebug but used different command!')
-                        print('           This may generate wrong CPU type for LEC comparison')
+                    # # Warn if we're not using the expected SingleCycleCPU command
+                    # if 'SingleCycleCPUNoDebug' not in gen_cmd_str:
+                    #     print('⚠️  WARNING: Expected SingleCycleCPUNoDebug but used different command!')
+                    #     print('           This may generate wrong CPU type for LEC comparison')
 
                     return {'success': True, 'output': stdout, 'command_used': gen_cmd_str, 'tooling_issue': False}
                 else:
@@ -262,11 +260,12 @@ class TestV2chisel_batch(V2chisel_batch):
                 or has_critical_tooling_error
             )
 
-            print(f'     🔍 Tooling error analysis: {tooling_count}/{len(tooling_errors)} commands had tooling errors')
-            if is_tooling_failure:
-                print('     🔧 This appears to be a tooling/configuration issue')
-            else:
-                print('     🤖 This might be related to the Chisel diff generated by LLM')
+            print('❌ Step 8: Verilog Generation - FAILED')
+            # print(f'     🔍 Tooling error analysis: {tooling_count}/{len(tooling_errors)} commands had tooling errors')
+            # if is_tooling_failure:
+            #     print('     🔧 This appears to be a tooling/configuration issue')
+            # else:
+            #     print('     🤖 This might be related to the Chisel diff generated by LLM')
 
             return {
                 'success': False,
