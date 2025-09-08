@@ -66,7 +66,7 @@ def verify_verilog_patch_applied(runner, file_path, expected_change_from, expect
             lines = file_content.split('\n')
             for i, line in enumerate(lines):
                 if expected_change_from in line:
-                    print(f'     Line {i+1}: {line.strip()}')
+                    print(f'     Line {i + 1}: {line.strip()}')
             return False
 
         # Check if the new pattern is present
@@ -79,7 +79,7 @@ def verify_verilog_patch_applied(runner, file_path, expected_change_from, expect
         for i, line in enumerate(lines):
             if expected_change_to in line:
                 print('✅ [VERIFY] Apply a bug patch to the Verilog is done correctly')
-                print(f'🔍 [VERIFY] Found change at line {i+1}: {line.strip()}')
+                print(f'🔍 [VERIFY] Found change at line {i + 1}: {line.strip()}')
                 return True
 
         return False
@@ -107,7 +107,7 @@ def verify_chisel_patch_applied(runner, file_path, expected_change_from, expecte
             lines = file_content.split('\n')
             for i, line in enumerate(lines):
                 if expected_change_from in line:
-                    print(f'     Line {i+1}: {line.strip()}')
+                    print(f'     Line {i + 1}: {line.strip()}')
             return False
 
         # Check if the new pattern is present
@@ -117,7 +117,7 @@ def verify_chisel_patch_applied(runner, file_path, expected_change_from, expecte
             lines = file_content.split('\n')
             for i, line in enumerate(lines):
                 if 'BitPat(' in line and '0111' in line:
-                    print(f'     Line {i+1}: {line.strip()}')
+                    print(f'     Line {i + 1}: {line.strip()}')
             return False
 
         # Find and print the line with the change
@@ -125,7 +125,7 @@ def verify_chisel_patch_applied(runner, file_path, expected_change_from, expecte
         for i, line in enumerate(lines):
             if expected_change_to in line:
                 print('✅ [VERIFY] Apply a "known correct" Chisel fix is done correctly')
-                print(f'🔍 [VERIFY] Found Chisel change at line {i+1}: {line.strip()}')
+                print(f'🔍 [VERIFY] Found Chisel change at line {i + 1}: {line.strip()}')
                 return True
 
         return False
@@ -333,7 +333,7 @@ def main():
                 lines = restored_content.split('\n')
                 for i, line in enumerate(lines):
                     if 'BitPat(' in line and ('0111' in line):
-                        print(f'     Line {i+1}: {line.strip()}')
+                        print(f'     Line {i + 1}: {line.strip()}')
                 print('❌ [TEST] File still contains wrong pattern - manual restore needed')
                 return 1
         else:
@@ -541,13 +541,13 @@ def main():
                                     lines = patched_content.split('\n')
                                     for i, line in enumerate(lines):
                                         if "7'h3" in line and 'signals_T_132' in line:
-                                            print(f'     Patched Line {i+1}: {line.strip()}')
+                                            print(f'     Patched Line {i + 1}: {line.strip()}')
 
                                     print('🔍 [DEBUG] New generated Verilog content check:')
                                     lines = new_content.split('\n')
                                     for i, line in enumerate(lines):
                                         if "7'h3" in line and 'signals_T_132' in line:
-                                            print(f'     Generated Line {i+1}: {line.strip()}')
+                                            print(f'     Generated Line {i + 1}: {line.strip()}')
 
                                     final_result = checker.check_equivalence(patched_content, new_content)
 
@@ -562,7 +562,7 @@ def main():
                                         lines = new_content.split('\n')
                                         for i, line in enumerate(lines):
                                             if "7'h3" in line and 'signals_T_132' in line:
-                                                print(f'     Line {i+1}: {line.strip()}')
+                                                print(f'     Line {i + 1}: {line.strip()}')
 
                                         results.append({'final_check': 'still_not_equivalent'})
                                     else:
