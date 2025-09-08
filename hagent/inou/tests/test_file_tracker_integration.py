@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-from hagent.inou.file_tracker import FileTracker
+from hagent.inou.file_tracker import FileTracker, FileTrackerLocal
 from hagent.inou.path_manager import PathManager
 
 
@@ -62,9 +62,9 @@ class TestPathManagerIntegration:
             with (
                 patch('pathlib.Path.exists', return_value=True),
                 patch('pathlib.Path.mkdir'),
-                patch.object(FileTracker, '_ensure_git_repo', return_value=True),
-                patch.object(FileTracker, '_check_git_available', return_value=True),
-                patch.object(FileTracker, '_create_baseline_snapshot', return_value=None),
+                patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+                patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+                patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
             ):
                 path_manager = PathManager()
                 tracker = FileTracker(path_manager)
@@ -87,9 +87,9 @@ class TestPathManagerIntegration:
             with (
                 patch('pathlib.Path.exists', return_value=True),
                 patch('pathlib.Path.mkdir'),
-                patch.object(FileTracker, '_ensure_git_repo', return_value=True),
-                patch.object(FileTracker, '_check_git_available', return_value=True),
-                patch.object(FileTracker, '_create_baseline_snapshot', return_value=None),
+                patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+                patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+                patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
             ):
                 path_manager = PathManager()
                 tracker = FileTracker(path_manager)
@@ -261,9 +261,9 @@ class TestFileSystemIntegration:
         mock_path_manager.cache_dir = self.cache_dir
 
         with (
-            patch.object(FileTracker, '_ensure_git_repo', return_value=True),
-            patch.object(FileTracker, '_check_git_available', return_value=True),
-            patch.object(FileTracker, '_create_baseline_snapshot', return_value=None),
+            patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+            patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+            patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
             tracker = FileTracker(mock_path_manager)
 
@@ -301,9 +301,9 @@ class TestFileSystemIntegration:
         mock_path_manager.cache_dir = self.cache_dir
 
         with (
-            patch.object(FileTracker, '_ensure_git_repo', return_value=True),
-            patch.object(FileTracker, '_check_git_available', return_value=True),
-            patch.object(FileTracker, '_create_baseline_snapshot', return_value=None),
+            patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+            patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+            patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
             tracker = FileTracker(mock_path_manager)
 
@@ -346,9 +346,9 @@ class TestFileSystemIntegration:
         mock_path_manager.cache_dir = self.cache_dir
 
         with (
-            patch.object(FileTracker, '_ensure_git_repo', return_value=True),
-            patch.object(FileTracker, '_check_git_available', return_value=True),
-            patch.object(FileTracker, '_create_baseline_snapshot', return_value=None),
+            patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+            patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+            patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
             tracker = FileTracker(mock_path_manager)
 
@@ -389,9 +389,9 @@ class TestPerformanceIntegration:
         mock_path_manager.cache_dir = self.temp_dir / 'cache'
 
         with (
-            patch.object(FileTracker, '_ensure_git_repo', return_value=True),
-            patch.object(FileTracker, '_check_git_available', return_value=True),
-            patch.object(FileTracker, '_create_baseline_snapshot', return_value=None),
+            patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+            patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+            patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
             tracker = FileTracker(mock_path_manager)
 
@@ -423,9 +423,9 @@ class TestPerformanceIntegration:
         mock_path_manager.cache_dir = self.temp_dir / 'cache'
 
         with (
-            patch.object(FileTracker, '_ensure_git_repo', return_value=True),
-            patch.object(FileTracker, '_check_git_available', return_value=True),
-            patch.object(FileTracker, '_create_baseline_snapshot', return_value=None),
+            patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+            patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+            patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
             tracker = FileTracker(mock_path_manager)
 
@@ -471,9 +471,9 @@ class TestErrorRecoveryIntegration:
         mock_path_manager.repo_dir = Path('/test/repo')
 
         with (
-            patch.object(FileTracker, '_ensure_git_repo', return_value=True),
-            patch.object(FileTracker, '_check_git_available', return_value=True),
-            patch.object(FileTracker, '_create_baseline_snapshot', return_value=None),
+            patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+            patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+            patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
             tracker = FileTracker(mock_path_manager)
 
@@ -495,9 +495,9 @@ class TestErrorRecoveryIntegration:
         mock_path_manager.repo_dir = Path('/test/repo')
 
         with (
-            patch.object(FileTracker, '_ensure_git_repo', return_value=True),
-            patch.object(FileTracker, '_check_git_available', return_value=True),
-            patch.object(FileTracker, '_create_baseline_snapshot', return_value=None),
+            patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+            patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+            patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
             with patch.object(FileTracker, 'cleanup') as mock_cleanup:
                 with pytest.raises(ValueError):

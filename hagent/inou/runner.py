@@ -151,7 +151,8 @@ class Runner:
         """
         if self.file_tracker is None:
             try:
-                self.file_tracker = FileTracker(self.path_manager)
+                # Provide container_manager so FileTracker can perform Docker-aware checks
+                self.file_tracker = FileTracker(self.path_manager, self.container_manager)
                 return True
             except Exception as e:
                 self.set_error(f'Failed to initialize FileTracker: {e}')

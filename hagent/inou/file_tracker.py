@@ -19,7 +19,7 @@ from .path_manager import PathManager
 from .container_manager import is_docker_mode, is_docker_workspace_ready
 
 
-class FileTracker:
+class FileTrackerLocal:
     """
     File tracking using unified git approach.
 
@@ -29,7 +29,7 @@ class FileTracker:
     approach works consistently across all execution modes and directory types.
     """
 
-    def __init__(self, path_manager: PathManager):
+    def __init__(self, path_manager: PathManager, container_manager=None):
         """
         Initialize file tracker with path manager dependency.
 
@@ -41,6 +41,8 @@ class FileTracker:
         """
         self.path_manager = path_manager
         self.logger = logging.getLogger(__name__)
+        # Optional handle to an active ContainerManager when in docker mode
+        self.container_manager = container_manager
 
         # Initialize tracking state
         self._tracked_files: Set[str] = set()
@@ -67,7 +69,7 @@ class FileTracker:
         else:
             self.logger.info('No pre-existing changes to snapshot')
 
-        self.logger.info('FileTracker initialized successfully')
+        self.logger.info('FileTrackerLocal initialized successfully')
 
     def _fail_fast(self, message: str) -> None:
         """
@@ -560,7 +562,7 @@ class FileTracker:
         self._tracked_dirs.clear()
         self._baseline_stash = None
 
-        self.logger.info('FileTracker cleanup completed')
+        self.logger.info('FileTrackerLocal cleanup completed')
 
     def track_file(self, file_path: str) -> bool:
         """
@@ -575,11 +577,16 @@ class FileTracker:
         try:
             resolved_path = self._resolve_tracking_path(file_path)
 
-            # Validate file exists or can be created
-            path_obj = Path(resolved_path)
-            if not path_obj.exists() and not path_obj.parent.exists():
-                self.logger.warning(f"Cannot track file - parent directory doesn't exist: {resolved_path}")
-                return False
+            # Validate file/parent existence. In docker mode, check inside container.
+            if self._is_container_path(resolved_path):
+                if not self._container_parent_exists(resolved_path):
+                    self.logger.warning(f"Cannot track file - parent directory doesn't exist (container): {resolved_path}")
+                    return False
+            else:
+                path_obj = Path(resolved_path)
+                if not path_obj.exists() and not path_obj.parent.exists():
+                    self.logger.warning(f"Cannot track file - parent directory doesn't exist: {resolved_path}")
+                    return False
 
             # Add to tracked files
             self._tracked_files.add(resolved_path)
@@ -604,11 +611,16 @@ class FileTracker:
         try:
             resolved_path = self._resolve_tracking_path(dir_path)
 
-            # Validate directory exists or can be created
-            path_obj = Path(resolved_path)
-            if not path_obj.exists() and not path_obj.parent.exists():
-                self.logger.warning(f"Cannot track directory - parent doesn't exist: {resolved_path}")
-                return False
+            # Validate directory existence. In docker mode, check inside container.
+            if self._is_container_path(resolved_path):
+                if not self._container_parent_exists(resolved_path):
+                    self.logger.warning(f"Cannot track directory - parent doesn't exist (container): {resolved_path}")
+                    return False
+            else:
+                path_obj = Path(resolved_path)
+                if not path_obj.exists() and not path_obj.parent.exists():
+                    self.logger.warning(f"Cannot track directory - parent doesn't exist: {resolved_path}")
+                    return False
 
             # Add to tracked directories
             self._tracked_dirs.append({'path': resolved_path, 'ext': ext_filter})
@@ -639,23 +651,31 @@ class FileTracker:
 
         # Add files from tracked directories
         for dir_info in self._tracked_dirs:
-            dir_path = Path(dir_info['path'])
+            dir_path_str = dir_info['path']
             dir_ext = dir_info['ext']
 
-            if dir_path.exists():
+            if self._is_container_path(dir_path_str):
                 try:
-                    # Find all files in directory
-                    if dir_path.is_file():
-                        # Single file tracked as directory
-                        if self._matches_filter(str(dir_path), ext_filter, dir_ext):
-                            tracked.add(str(dir_path))
-                    else:
-                        # Directory - find all matching files
-                        for file_path in self._find_files_in_dir(dir_path, ext_filter, dir_ext):
-                            tracked.add(file_path)
-
+                    for f in self._find_files_in_dir_container(dir_path_str, ext_filter, dir_ext):
+                        tracked.add(f)
                 except Exception as e:
-                    self.logger.warning(f'Error scanning directory {dir_path}: {e}')
+                    self.logger.warning(f'Error scanning container directory {dir_path_str}: {e}')
+            else:
+                dir_path = Path(dir_path_str)
+                if dir_path.exists():
+                    try:
+                        # Find all files in directory
+                        if dir_path.is_file():
+                            # Single file tracked as directory
+                            if self._matches_filter(str(dir_path), ext_filter, dir_ext):
+                                tracked.add(str(dir_path))
+                        else:
+                            # Directory - find all matching files
+                            for file_path in self._find_files_in_dir(dir_path, ext_filter, dir_ext):
+                                tracked.add(file_path)
+
+                    except Exception as e:
+                        self.logger.warning(f'Error scanning directory {dir_path}: {e}')
 
         return tracked
 
@@ -677,7 +697,49 @@ class FileTracker:
 
         # All paths are relative to repo_dir (git repository root)
         repo_path = Path(self.path_manager.repo_dir) / path
-        return str(repo_path.resolve())
+        # In docker mode, repo_dir may be a container path. Return normalized string.
+        try:
+            return str(repo_path.resolve())
+        except Exception:
+            return str(repo_path)
+
+    # ---------------- Docker helpers ----------------
+    def _is_container_path(self, path: str) -> bool:
+        return is_docker_mode() and str(path).startswith('/code/workspace/') and self.container_manager is not None
+
+    def _container_parent_exists(self, path: str) -> bool:
+        if not self._is_container_path(path):
+            return False
+        # Use 'test -d' on parent directory in container
+        parent = os.path.dirname(path.rstrip('/')) or '/'
+        try:
+            rc, out, err = self.container_manager.run_cmd(f'test -d "{parent}" && echo OK || echo MISS')
+            return rc == 0 and 'OK' in out
+        except Exception:
+            return False
+
+    def _find_files_in_dir_container(self, dir_path: str, ext_filter: Optional[str], dir_ext: Optional[str]) -> List[str]:
+        """Find files in a container directory, filtering by extensions."""
+        files: List[str] = []
+        # If dir_path is a file, handle directly
+        rc, out, err = self.container_manager.run_cmd(f'test -f "{dir_path}" && echo FILE || echo DIR', quiet=True)
+        if rc == 0 and 'FILE' in out:
+            candidate = dir_path
+            if self._matches_filter(candidate, ext_filter, dir_ext):
+                files.append(candidate)
+            return files
+
+        # Directory search via find
+        rc, out, err = self.container_manager.run_cmd(f'find "{dir_path}" -type f 2>/dev/null || true', quiet=True)
+        if rc != 0:
+            return files
+        for line in out.splitlines():
+            p = line.strip()
+            if not p:
+                continue
+            if self._matches_filter(p, ext_filter, dir_ext):
+                files.append(p)
+        return files
 
     def _matches_filter(self, file_path: str, ext_filter: Optional[str], dir_ext: Optional[str]) -> bool:
         """
@@ -962,3 +1024,230 @@ class FileTracker:
         except Exception:
             # Ignore any errors during destruction cleanup
             pass
+
+
+class FileTrackerDocker:
+    """
+    Docker-aware file tracker using in-container filesystem and in-memory baselines.
+
+    This implementation avoids git requirements by capturing a baseline snapshot
+    of tracked files' contents inside the container and generating unified diffs
+    against the current contents later.
+    """
+
+    def __init__(self, path_manager: PathManager, container_manager):
+        self.path_manager = path_manager
+        self.container_manager = container_manager
+        self.logger = logging.getLogger(__name__)
+
+        # Tracking state
+        self._tracked_files: Set[str] = set()
+        self._tracked_dirs: List[Dict[str, Any]] = []  # [{'path': str, 'ext': Optional[str]}]
+        self._baseline: Dict[str, str] = {}  # path -> content (from initial snapshot)
+
+        # Basic validation: container must be ready
+        repo_dir = str(self.path_manager.repo_dir)
+        if not str(repo_dir).startswith('/code/workspace/'):
+            self.logger.warning('FileTrackerDocker expected container paths for repo_dir')
+
+        # No-op setup; defer checks to operations
+
+    # ---- helpers ----
+    def _container_read_file(self, path: str) -> Optional[str]:
+        rc, out, err = self.container_manager.run_cmd(f'cat "{path}" 2>/dev/null || true', quiet=True)
+        if rc == 0 and out is not None:
+            return out
+        return None
+
+    def _container_exists(self, path: str, is_dir: bool = False) -> bool:
+        test_flag = '-d' if is_dir else '-f'
+        rc, out, err = self.container_manager.run_cmd(f'test {test_flag} "{path}" && echo OK || echo MISS', quiet=True)
+        return rc == 0 and 'OK' in out
+
+    def _container_find_files(self, dir_path: str) -> List[str]:
+        rc, out, err = self.container_manager.run_cmd(f'find "{dir_path}" -type f 2>/dev/null || true', quiet=True)
+        if rc != 0:
+            return []
+        return [line.strip() for line in out.splitlines() if line.strip()]
+
+    def _matches_filter(self, file_path: str, ext_filter: Optional[str], dir_ext: Optional[str]) -> bool:
+        if ext_filter is not None and not file_path.endswith(ext_filter):
+            return False
+        if dir_ext is not None and not file_path.endswith(dir_ext):
+            return False
+        return True
+
+    # ---- API ----
+    def cleanup(self) -> None:
+        self._tracked_files.clear()
+        self._tracked_dirs.clear()
+        self._baseline.clear()
+
+    def track_file(self, file_path: str) -> bool:
+        # Resolve container path relative to repo_dir if not absolute
+        if not os.path.isabs(file_path):
+            path = str(Path('/code/workspace/repo') / file_path)
+        else:
+            path = file_path
+
+        # Parent dir must exist
+        parent = os.path.dirname(path.rstrip('/')) or '/'
+        if not self._container_exists(parent, is_dir=True):
+            self.logger.warning(f"Cannot track file - parent directory doesn't exist (container): {path}")
+            return False
+
+        # Snapshot baseline content (empty if file missing)
+        content = self._container_read_file(path)
+        if content is None:
+            content = ''
+
+        self._tracked_files.add(path)
+        # Only store baseline once
+        self._baseline.setdefault(path, content)
+        return True
+
+    def track_dir(self, dir_path: str, ext_filter: Optional[str] = None) -> bool:
+        # Resolve container path relative to repo_dir if not absolute
+        if not os.path.isabs(dir_path):
+            path = str(Path('/code/workspace/repo') / dir_path)
+        else:
+            path = dir_path
+
+        parent = os.path.dirname(path.rstrip('/')) or '/'
+        if not self._container_exists(parent, is_dir=True):
+            self.logger.warning(f"Cannot track directory - parent doesn't exist (container): {path}")
+            return False
+
+        # Store tracked dir and capture baseline snapshot of files currently present
+        self._tracked_dirs.append({'path': path, 'ext': ext_filter})
+
+        for f in self._container_find_files(path):
+            if self._matches_filter(f, None, ext_filter):
+                if f not in self._baseline:
+                    content = self._container_read_file(f) or ''
+                    self._baseline[f] = content
+        return True
+
+    def get_tracked_files(self, ext_filter: Optional[str] = None) -> Set[str]:
+        files: Set[str] = set()
+        for f in self._tracked_files:
+            if self._matches_filter(f, ext_filter, None):
+                files.add(f)
+        for d in self._tracked_dirs:
+            base = d['path']
+            dir_ext = d['ext']
+            for f in self._container_find_files(base):
+                if self._matches_filter(f, ext_filter, dir_ext):
+                    files.add(f)
+        return files
+
+    def get_diff(self, file_path: str) -> str:
+        # Resolve container path
+        if not os.path.isabs(file_path):
+            path = str(Path('/code/workspace/repo') / file_path)
+        else:
+            path = file_path
+
+        old = self._baseline.get(path, '')
+        cur = self._container_read_file(path)
+        if cur is None:
+            cur = ''
+
+        if old == cur:
+            return ''
+
+        old_lines = old.splitlines(keepends=True)
+        cur_lines = cur.splitlines(keepends=True)
+        diff = difflib.unified_diff(old_lines, cur_lines, fromfile=f'{path} (baseline)', tofile=f'{path} (current)', lineterm='')
+        return ''.join(diff)
+
+    def get_all_diffs(self, ext_filter: Optional[str] = None) -> Dict[str, str]:
+        diffs: Dict[str, str] = {}
+        for f in self.get_tracked_files(ext_filter):
+            d = self.get_diff(f)
+            if d.strip():
+                diffs[f] = d
+        return diffs
+
+    def get_patch_dict(self) -> Dict[str, Any]:
+        patch_dict = {'full': [], 'patch': []}
+        all_diffs = self.get_all_diffs()
+        for path, diff_content in all_diffs.items():
+            cur = self._container_read_file(path) or ''
+            # Use similar heuristic to local version
+            if (
+                not diff_content
+                or not cur
+                or len(cur.encode('utf-8')) < 1024
+                or len(cur.splitlines()) < 10
+                or (len(cur) > 0 and len(diff_content.encode('utf-8')) / max(1, len(cur.encode('utf-8'))) > 0.5)
+            ):
+                patch_dict['full'].append({'filename': path, 'contents': cur})
+            else:
+                patch_dict['patch'].append({'filename': path, 'diff': diff_content})
+        return patch_dict
+
+    # Context manager
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cleanup()
+        return False
+
+    def __del__(self) -> None:
+        try:
+            self.cleanup()
+        except Exception:
+            pass
+
+
+class FileTracker:
+    """
+    Facade that selects Local or Docker file tracker implementation.
+    """
+
+    def __init__(self, path_manager: PathManager, container_manager=None):
+        if path_manager.execution_mode == 'docker' and container_manager is not None:
+            self._impl = FileTrackerDocker(path_manager, container_manager)
+        else:
+            self._impl = FileTrackerLocal(path_manager, container_manager)
+
+    # Delegate API
+    def cleanup(self) -> None:
+        return self._impl.cleanup()
+
+    def track_file(self, file_path: str) -> bool:
+        return self._impl.track_file(file_path)
+
+    def track_dir(self, dir_path: str, ext_filter: Optional[str] = None) -> bool:
+        return self._impl.track_dir(dir_path, ext_filter)
+
+    def get_tracked_files(self, ext_filter: Optional[str] = None) -> Set[str]:
+        return self._impl.get_tracked_files(ext_filter)
+
+    def get_diff(self, file_path: str) -> str:
+        return self._impl.get_diff(file_path)
+
+    def get_all_diffs(self, ext_filter: Optional[str] = None) -> Dict[str, str]:
+        return self._impl.get_all_diffs(ext_filter)
+
+    def get_patch_dict(self) -> Dict[str, Any]:
+        return self._impl.get_patch_dict()
+
+    def __enter__(self):
+        self._impl.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return self._impl.__exit__(exc_type, exc_val, exc_tb)
+
+    def __del__(self) -> None:
+        try:
+            self.cleanup()
+        except Exception:
+            pass
+
+    def __getattr__(self, name):
+        # Delegate unknown attributes to underlying implementation
+        return getattr(self._impl, name)

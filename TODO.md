@@ -1,5 +1,16 @@
 -------
 
+hagent/inou has several objects, but Python classes outside hagent should only use Runner or Builder.
+
+
+Builder is mostly a wrapper around Runner for the case that we have a hagent.yaml configuration.
+
+
+container_manager, FileTracker and PathManager should not be used like equiv_check.py does, but use Runner or Builder (running in the case of equiv_check)
+
+
+-------
+
 container_manager has issues with HAGENT_*_DIR setup. It should never be set to /code/workspace/...
 
 The code sets it, and then in several places does not thing if set there. Overall, it should not set the environment variables in container_manager to /cpde/workspace.
