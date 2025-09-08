@@ -33,12 +33,12 @@ def setup_test_env():
         'HAGENT_BUILD_DIR': os.environ.get('HAGENT_BUILD_DIR'),
         'HAGENT_CACHE_DIR': os.environ.get('HAGENT_CACHE_DIR'),
     }
-    
+
     # Set up environment for this test
     setup_test_environment()
-    
+
     yield  # Run the test
-    
+
     # Restore original environment (cleanup)
     for key, value in original_env.items():
         if value is None:
@@ -51,18 +51,18 @@ def setup_test_environment():
     """Set up environment variables for testing - called before each test"""
     # Force set environment variables (don't use setdefault)
     os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
-    
+
     # Use current directory for CI compatibility
     current_dir = os.path.dirname(os.path.abspath(__file__))
     os.environ['HAGENT_REPO_DIR'] = current_dir
     os.environ['HAGENT_BUILD_DIR'] = os.path.join(current_dir, 'build')
     os.environ['HAGENT_CACHE_DIR'] = os.path.join(current_dir, 'cache')
-    
+
     # Create directories if they don't exist
     os.makedirs(os.environ['HAGENT_REPO_DIR'], exist_ok=True)
     os.makedirs(os.environ['HAGENT_BUILD_DIR'], exist_ok=True)
     os.makedirs(os.environ['HAGENT_CACHE_DIR'], exist_ok=True)
-    
+
     # Environment successfully set up
 
 
@@ -111,20 +111,20 @@ class MockV2chisel_batch(V2chisel_batch):
                         'prompt_initial': 'test prompt',
                         'prompt_retry': 'test retry prompt',
                         'prompt_compile_error': 'test compile error prompt',
-                        'prompt_applier_error': 'test applier error prompt'
+                        'prompt_applier_error': 'test applier error prompt',
                     }
                 }
-                
+
         self.template_config = MockTemplateConfig()
         self.debug = True
         self.module_finder = None  # Will be set if needed
-        
+
         # Initialize Runner for automated Docker management
         self.runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
-        
+
         # Setup runner and get container name
         self.runner.setup()
-        
+
         # Create mock input_data with proper container name
         if hasattr(self, 'runner') and self.runner and hasattr(self.runner, 'container_manager'):
             container_mgr = self.runner.container_manager
@@ -134,18 +134,15 @@ class MockV2chisel_batch(V2chisel_batch):
                 actual_container_name = 'test_container'
         else:
             actual_container_name = 'test_container'
-            
+
         # Set input_data with proper structure
-        self.input_data = {
-            'docker_container': actual_container_name,
-            'docker_patterns': ['/code/workspace/repo']
-        }
-        
+        self.input_data = {'docker_container': actual_container_name, 'docker_patterns': ['/code/workspace/repo']}
+
         # Create mock LLM wrapper
         class MockLLMWrapper:
             def __init__(self):
                 self.last_error = None
-                
+
         self.lw = MockLLMWrapper()
 
     def set_test_chisel_diff(self, chisel_diff):
@@ -161,15 +158,19 @@ class MockV2chisel_batch(V2chisel_batch):
         if len(cmd_list) >= 4 and cmd_list[0] == 'docker' and cmd_list[1] == 'exec':
             # Find where the actual command starts (skip docker, exec, optional -u user, container)
             command_start = 2  # Start after 'docker exec'
-            
+
             # Skip optional user specification
             if command_start < len(cmd_list) and cmd_list[command_start] == '-u':
                 command_start += 2  # Skip '-u' and 'user'
-            
+
             # Skip container name
             command_start += 1
-            
-            if command_start < len(cmd_list) and len(cmd_list) >= command_start + 3 and cmd_list[command_start:command_start+3] == ['bash', '-l', '-c']:
+
+            if (
+                command_start < len(cmd_list)
+                and len(cmd_list) >= command_start + 3
+                and cmd_list[command_start : command_start + 3] == ['bash', '-l', '-c']
+            ):
                 # Extract bash command
                 command = cmd_list[command_start + 3]
             else:
@@ -181,7 +182,9 @@ class MockV2chisel_batch(V2chisel_batch):
             # Fallback: join all parts
             return self.runner.run(' '.join(cmd_list))
 
-    def _call_llm_for_chisel_diff(self, verilog_diff, chisel_hints, attempt=1, previous_diff='', error_message='', attempt_history=''):
+    def _call_llm_for_chisel_diff(
+        self, verilog_diff, chisel_hints, attempt=1, previous_diff='', error_message='', attempt_history=''
+    ):
         """Override LLM call to return known correct chisel_diff"""
         if self.test_chisel_diff is None:
             raise ValueError('Test chisel_diff not set! Call set_test_chisel_diff() first')
