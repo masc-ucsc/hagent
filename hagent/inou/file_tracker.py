@@ -10,6 +10,7 @@ tracking logic and provides consistent behavior across all execution modes.
 import difflib
 import logging
 import os
+import posixpath
 import subprocess
 import sys
 from pathlib import Path
@@ -712,7 +713,7 @@ class FileTrackerLocal:
         if not self._is_container_path(path):
             return False
         # Use 'test -d' on parent directory in container
-        parent = os.path.dirname(path.rstrip('/')) or '/'
+        parent = posixpath.dirname(path.rstrip('/')) or '/'
         try:
             rc, out, err = self.container_manager.run_cmd(f'test -d "{parent}" && echo OK || echo MISS')
             return rc == 0 and 'OK' in out
@@ -1086,13 +1087,13 @@ class FileTrackerDocker:
 
     def track_file(self, file_path: str) -> bool:
         # Resolve container path relative to repo_dir if not absolute
-        if not os.path.isabs(file_path):
+        if not posixpath.isabs(file_path):
             path = str(Path('/code/workspace/repo') / file_path)
         else:
             path = file_path
 
         # Parent dir must exist
-        parent = os.path.dirname(path.rstrip('/')) or '/'
+        parent = posixpath.dirname(path.rstrip('/')) or '/'
         if not self._container_exists(parent, is_dir=True):
             self.logger.warning(f"Cannot track file - parent directory doesn't exist (container): {path}")
             return False
@@ -1109,12 +1110,12 @@ class FileTrackerDocker:
 
     def track_dir(self, dir_path: str, ext_filter: Optional[str] = None) -> bool:
         # Resolve container path relative to repo_dir if not absolute
-        if not os.path.isabs(dir_path):
+        if not posixpath.isabs(dir_path):
             path = str(Path('/code/workspace/repo') / dir_path)
         else:
             path = dir_path
 
-        parent = os.path.dirname(path.rstrip('/')) or '/'
+        parent = posixpath.dirname(path.rstrip('/')) or '/'
         if not self._container_exists(parent, is_dir=True):
             self.logger.warning(f"Cannot track directory - parent doesn't exist (container): {path}")
             return False
@@ -1144,7 +1145,7 @@ class FileTrackerDocker:
 
     def get_diff(self, file_path: str) -> str:
         # Resolve container path
-        if not os.path.isabs(file_path):
+        if not posixpath.isabs(file_path):
             path = str(Path('/code/workspace/repo') / file_path)
         else:
             path = file_path
