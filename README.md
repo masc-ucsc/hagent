@@ -1,8 +1,6 @@
 
 ![HAgent logo](./docs/hagent_logo.png)
 
-# HAgent
-
 [![codecov](https://codecov.io/gh/masc-ucsc/hagent/graph/badge.svg?token=Hyj2VifE7j)](https://codecov.io/gh/masc-ucsc/hagent)
 [![CI Status](https://github.com/masc-ucsc/hagent/actions/workflows/ubuntu.yml/badge.svg)](https://github.com/masc-ucsc/hagent/actions/workflows/ubuntu.yml)
 
@@ -85,6 +83,23 @@ export FIREWORKS_AI_API_KEY=your_fireworks_key_here
 ```bash
 export FIREWORKS_AI_API_KEY=dummy_key_for_testing
 ```
+
+#### Overriding LLM Models
+
+You can override the LLM model specified in any configuration file by setting the `HAGENT_LLM_MODEL` environment variable:
+
+```bash
+# Override any configured model with a specific one
+export HAGENT_LLM_MODEL=openai/gpt-5-mini
+
+# This will use gpt-5-mini regardless of what's specified in YAML configs
+uv run python hagent/step/trivial/trivial.py input.yaml -o output.yaml
+```
+
+This is useful for:
+- Testing different models without modifying config files
+- Using a preferred model across all HAgent steps
+- Switching between different model providers quickly
 
 ### Quick Start
 

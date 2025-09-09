@@ -197,6 +197,16 @@ class LLM_wrap:
             self._set_error(f'conf_file:{conf_file} must specify llm "model" in section {name}')
             return
 
+        # Override model with HAGENT_LLM_MODEL environment variable if set
+        env_model = os.environ.get('HAGENT_LLM_MODEL')
+        if env_model:
+            # When overriding model, keep original parameters but enable drop_params
+            # to automatically drop unsupported parameters instead of failing
+            self.llm_args['model'] = env_model
+            # Enable litellm to drop unsupported parameters instead of erroring
+            # Note: This may reduce randomness for multiple outputs if temperature/top_p are dropped
+            litellm.drop_params = True
+
         try:
             with open(self.log_file, 'a', encoding='utf-8'):
                 pass
