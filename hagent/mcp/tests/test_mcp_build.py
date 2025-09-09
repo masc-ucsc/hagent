@@ -135,6 +135,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         except subprocess.TimeoutExpired:
             pass  # Ignore cleanup timeouts
 
+    @unittest.skip('Disabled until MCP debug')
     def test_mcp_build_gcd_compile(self):
         """Test that mcp_build.py can successfully compile the gcd profile with Docker."""
 

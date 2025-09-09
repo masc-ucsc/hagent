@@ -144,13 +144,8 @@ class Equiv_check:
             return
 
         try:
-            # Convert host work_dir to container path
-            if self.builder:
-                cache_dir = self.builder.runner.path_manager.cache_dir
-                relative_path = os.path.relpath(work_dir, cache_dir)
-                container_work_dir = f'/code/workspace/cache/{relative_path}'
-            else:
-                container_work_dir = work_dir
+            # Use Builder's translate_path_to_container method
+            container_work_dir = self.builder.translate_path_to_container(work_dir)
 
             # Get list of files to copy from the container work directory
             # We want to copy check.s script and any .log files
@@ -166,18 +161,27 @@ class Equiv_check:
                 if line.strip():
                     files_to_copy.append(line.strip())
 
-            # Copy each file from container to local work directory
+            # Copy each file from container to local work directory using filesystem
             for container_file_path in files_to_copy:
                 local_file_path = os.path.join(work_dir, os.path.basename(container_file_path))
 
-                # Read file content from container
-                rc, file_content, err = self.builder.run_cmd(f'cat {container_file_path}')
-                if rc == 0:
-                    # Write to local file
-                    with open(local_file_path, 'w') as f:
-                        f.write(file_content)
-                else:
-                    print(f'Warning: Failed to read {container_file_path} from Docker: {err}', file=sys.stderr)
+                # Use filesystem to read and write files
+                try:
+                    if self.builder.filesystem:
+                        file_content = self.builder.filesystem.read_text(container_file_path)
+                        # Write to local file using standard Python (since this is for local output)
+                        with open(local_file_path, 'w') as f:
+                            f.write(file_content)
+                    else:
+                        # Fallback to run_cmd if filesystem not available
+                        rc, file_content, err = self.builder.run_cmd(f'cat {container_file_path}')
+                        if rc == 0:
+                            with open(local_file_path, 'w') as f:
+                                f.write(file_content)
+                        else:
+                            print(f'Warning: Failed to read {container_file_path} from Docker: {err}', file=sys.stderr)
+                except Exception as read_err:
+                    print(f'Warning: Failed to read {container_file_path} from Docker: {read_err}', file=sys.stderr)
 
         except Exception as e:
             # Don't fail the main operation if we can't copy results
@@ -248,13 +252,8 @@ class Equiv_check:
 
     def _save_yosys_output_docker(self, work_dir: str, method_name: str, return_code: int, stdout: str, stderr: str) -> None:
         """Save Yosys output to Docker container files."""
-        # Convert host work_dir to container path
-        if self.builder:
-            cache_dir = self.builder.runner.path_manager.cache_dir
-            relative_path = os.path.relpath(work_dir, cache_dir)
-            container_work_dir = f'/code/workspace/cache/{relative_path}'
-        else:
-            container_work_dir = work_dir
+        # Use Builder's translate_path method
+        container_work_dir = self.builder.translate_path(work_dir, 'to_container')
 
         stdout_content = 'Return code: {}\nMethod: {}\n{}\n{}'.format(return_code, method_name, '-' * 50, stdout)
         stderr_content = 'Return code: {}\nMethod: {}\n{}\n{}'.format(return_code, method_name, '-' * 50, stderr)
@@ -265,7 +264,7 @@ class Equiv_check:
         ]
 
         for filename, content in files_to_create:
-            # Use the new create_file API to avoid escaping issues
+            # Use the create_file API to avoid escaping issues
             if not self.builder.create_file(filename, content):
                 print(f'Warning: Failed to create {filename} in Docker: {self.builder.get_error()}', file=sys.stderr)
 
@@ -638,26 +637,24 @@ class Equiv_check:
 
     def _write_temp_verilog(self, work_dir: str, verilog_code: str, label: str) -> str:
         """
-        Write verilog_code to a temporary .v file in temporary directory.
-        For Docker mode, also copy the file to the container.
+        Write verilog_code to a temporary .v file using Builder's filesystem.
         Return the file path.
         """
         filename = os.path.join(work_dir, f'{label}.v')
 
         if self.use_docker and self.builder:
-            # For Docker mode, create the file in the container directly
-            if self.builder:
-                cache_dir = self.builder.runner.path_manager.cache_dir
-                relative_path = os.path.relpath(work_dir, cache_dir)
-                container_work_dir = f'/code/workspace/cache/{relative_path}'
-            else:
-                container_work_dir = work_dir
-
+            # For Docker mode, create the file in the container using filesystem
+            container_work_dir = self.builder.translate_path_to_container(work_dir)
             container_filename = f'{container_work_dir}/{label}.v'
 
-            # Use the new create_file API to avoid shell escaping issues
-            if not self.builder.create_file(container_filename, verilog_code):
-                raise RuntimeError(f'Failed to create {label}.v in container: {self.builder.get_error()}')
+            # Use filesystem for unified file operations
+            if self.builder.filesystem:
+                if not self.builder.filesystem.write_text(container_filename, verilog_code):
+                    raise RuntimeError(f'Failed to create {label}.v in container using filesystem')
+            else:
+                # Fallback to create_file API
+                if not self.builder.create_file(container_filename, verilog_code):
+                    raise RuntimeError(f'Failed to create {label}.v in container: {self.builder.get_error()}')
 
         # Also create the file locally for reference and compatibility
         with open(filename, 'w') as f:
@@ -692,16 +689,8 @@ class Equiv_check:
         full_cmd = ';\n'.join(cmd)
 
         if self.use_docker:
-            # For Docker, we need to translate the host work_dir to the container path
-            # The work_dir is in the cache directory which is mounted at /code/workspace/cache
-            if self.builder:
-                cache_dir = self.builder.runner.path_manager.cache_dir
-                # Convert host work_dir to container path
-                relative_path = os.path.relpath(work_dir, cache_dir)
-                container_work_dir = f'/code/workspace/cache/{relative_path}'
-            else:
-                # Fallback: assume work_dir is already a container path
-                container_work_dir = work_dir
+            # Use Builder's translate_path_to_container method
+            container_work_dir = self.builder.translate_path_to_container(work_dir)
 
             script_name = 'check.s'
             container_script_path = f'{container_work_dir}/{script_name}'
@@ -713,10 +702,15 @@ class Equiv_check:
             cmd[4] = f'read_verilog -sv {relative_gate}'
             full_cmd = ';\n'.join(cmd) + '\n'
 
-            # Create the script in the container using the new create_file API
-            if not self.builder.create_file(container_script_path, full_cmd):
-                error_msg = self.builder.get_error()
-                return 1, '', f'Failed to create script in container: {error_msg}'
+            # Create the script using filesystem or fallback to create_file
+            if self.builder.filesystem:
+                if not self.builder.filesystem.write_text(container_script_path, full_cmd):
+                    return 1, '', 'Failed to create script in container using filesystem'
+            else:
+                # Fallback to create_file API
+                if not self.builder.create_file(container_script_path, full_cmd):
+                    error_msg = self.builder.get_error()
+                    return 1, '', f'Failed to create script in container: {error_msg}'
 
             # Run Yosys from within container_work_dir
             yosys_cmd = f'cd {container_work_dir} && yosys -s {script_name}'

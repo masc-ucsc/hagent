@@ -17,13 +17,13 @@ def design_golden_generation_strategy():
     print('   📦 Output: Golden design files for LEC comparison')
 
     print('\n✅ KEY INSIGHT: Original Verilog files ALREADY EXIST!')
-    print('   📍 Path: /code/workspace/build/build_pipelined_d/*.sv')
+    print('   📍 Path: {HAGENT_BUILD_DIR}/build_pipelined_d/*.sv (auto-translated by Builder)')
     print('   🗂️  Files: ALU.sv, Control.sv, PipelinedDualIssueCPU.sv, etc.')
 
     print('\n🔄 CORRECTED GOLDEN DESIGN GENERATION FLOW:')
     steps = [
         '📋 Receive verilog_diff (target changes)',
-        '📁 Find EXISTING original Verilog in /code/workspace/build/build_pipelined_d/',
+        '📁 Find EXISTING original Verilog in {HAGENT_BUILD_DIR}/build_pipelined_d/ (Builder auto-translates)',
         '💾 Backup original Verilog files (for safety)',
         '🏗️  Create golden design directory in container',
         '📋 Copy original Verilog files to golden design directory',
@@ -45,48 +45,48 @@ def show_corrected_implementation():
     print('=' * 50)
 
     print('\n1️⃣ ACTUAL FILE STRUCTURE IN DOCKER:')
-    print('   /code/workspace/')
-    print('   ├── build/build_pipelined_d/         # ORIGINAL Verilog files (EXISTING)')
+    print('   {Builder auto-translates paths}')
+    print('   ├── {HAGENT_BUILD_DIR}/build_pipelined_d/  # ORIGINAL Verilog files (EXISTING)')
     print('   │   ├── ALU.sv')
     print('   │   ├── Control.sv')
     print('   │   ├── PipelinedDualIssueCPU.sv')
     print('   │   ├── DualIssueHazardUnit.sv')
     print('   │   └── [other .sv files]')
-    print('   ├── repo/src/main/scala/             # Chisel source code')
+    print('   ├── {HAGENT_REPO_DIR}/src/main/scala/      # Chisel source code')
     print('   │   ├── Main.scala')
     print('   │   ├── components/')
     print('   │   └── pipelined/')
-    print('   └── repo/lec_golden/                 # Golden design (created)')
-    print('       ├── ALU.sv                      # original + verilog_diff')
-    print('       ├── Control.sv                  # original + verilog_diff')
-    print('       └── PipelinedDualIssueCPU.sv    # original + verilog_diff')
+    print('   └── {HAGENT_REPO_DIR}/lec_golden/          # Golden design (created)')
+    print('       ├── ALU.sv                             # original + verilog_diff')
+    print('       ├── Control.sv                         # original + verilog_diff')
+    print('       └── PipelinedDualIssueCPU.sv           # original + verilog_diff')
 
     print('\n2️⃣ CORRECTED GOLDEN GENERATION ALGORITHM:')
     algorithm = [
         {
             'step': 'Find existing original Verilog',
-            'details': 'Locate files in /code/workspace/build/build_pipelined_d/*.sv',
+            'details': 'Use builder.translate_path() to locate files in {HAGENT_BUILD_DIR}/build_pipelined_d/*.sv',
             'example': 'Found: ALU.sv, Control.sv, PipelinedDualIssueCPU.sv',
         },
         {
             'step': 'Backup original files',
             'details': 'Copy originals to backup location for safety',
-            'example': 'cp /code/workspace/build/build_pipelined_d/*.sv /tmp/original_backup/',
+            'example': 'Use builder.filesystem.copy() with auto-translated paths',
         },
         {
             'step': 'Create golden directory',
-            'details': 'Ensure /code/workspace/repo/lec_golden/ exists in container',
-            'example': 'mkdir -p /code/workspace/repo/lec_golden/',
+            'details': 'Use builder.filesystem.mkdir() with auto-translated paths',
+            'example': 'builder.filesystem.mkdir({HAGENT_REPO_DIR}/lec_golden/)',
         },
         {
             'step': 'Copy originals to golden',
             'details': 'Copy original Verilog files to golden design directory',
-            'example': 'cp /code/workspace/build/build_pipelined_d/*.sv /code/workspace/repo/lec_golden/',
+            'example': 'Use builder.filesystem.copy() with auto-translated paths',
         },
         {
             'step': 'Apply verilog_diff',
             'details': 'Use docker_diff_applier to apply verilog_diff to golden files',
-            'example': "docker_diff_applier.apply_diff(verilog_diff, '/code/workspace/repo/lec_golden/')",
+            'example': 'docker_diff_applier.apply_diff(verilog_diff, builder.translate_path_to_container(golden_dir))',
         },
         {
             'step': 'Validate golden design',
@@ -112,25 +112,27 @@ def show_corrected_code_implementation():
 
     print('\n1️⃣ CONFIGURATION:')
     print('```python')
-    print('# Configurable paths for future Xiangshan support')
-    print("ORIGINAL_VERILOG_PATH = '/code/workspace/build/build_pipelined_d'")
-    print("GOLDEN_DESIGN_PATH = '/code/workspace/repo/lec_golden'")
+    print('# Use Builder for automatic path translation')
+    print("original_verilog_path = builder.translate_path(f'{builder.runner.path_manager.build_dir}/build_pipelined_d')")
+    print("golden_design_path = builder.translate_path(f'{builder.runner.path_manager.repo_dir}/lec_golden')")
     print('```')
 
     print('\n2️⃣ CORRECTED _create_golden_design() method:')
     print('```python')
-    print('def _create_golden_design(self, docker_container: str, verilog_diff: str) -> dict:')
+    print('def _create_golden_design(self, builder: Builder, verilog_diff: str) -> dict:')
     print('    """Create golden design using EXISTING original Verilog files"""')
     print('    try:')
-    print('        import subprocess')
+    print('        # Use Builder for unified path management')
+    print('        path_manager = builder.runner.path_manager')
+    print("        original_verilog_path = f'{path_manager.build_dir}/build_pipelined_d'")
+    print("        golden_dir = f'{path_manager.repo_dir}/lec_golden'")
     print('        ')
-    print("        original_verilog_path = '/code/workspace/build/build_pipelined_d'")
-    print("        golden_dir = '/code/workspace/repo/lec_golden'")
+    print('        # Translate paths for the execution environment')
+    print('        container_original_path = builder.translate_path_to_container(original_verilog_path)')
+    print('        container_golden_dir = builder.translate_path_to_container(golden_dir)')
     print('        ')
-    print('        # Find existing original Verilog files')
-    print("        find_cmd = ['docker', 'exec', docker_container, 'find', original_verilog_path,")
-    print("                   '-name', '*.sv', '-type', 'f']")
-    print('        find_result = subprocess.run(find_cmd, capture_output=True, text=True)')
+    print('        # Find existing original Verilog files using Builder')
+    print('        rc, out, err = builder.run_cmd(f\'find {container_original_path} -name "*.sv" -type f\')')
     print('        ')
     print('        if find_result.returncode != 0 or not find_result.stdout.strip():')
     print("            return {'success': False, 'error': 'No original Verilog files found'}")
