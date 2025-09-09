@@ -81,6 +81,8 @@ def test_setup_version_parsing_failure(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
     monkeypatch.setattr('hagent.tool.equiv_check.Equiv_check._setup_docker_fallback', mock_docker_fallback)
+    # Ensure we test the local yosys path, not the Docker path
+    monkeypatch.setenv('HAGENT_EXECUTION_MODE', 'local')
 
     checker = prepare_checker
     result = checker.setup()
@@ -108,6 +110,8 @@ def test_setup_version_too_old(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
     monkeypatch.setattr('hagent.tool.equiv_check.Equiv_check._setup_docker_fallback', mock_docker_fallback)
+    # Ensure we test the local yosys path, not the Docker path
+    monkeypatch.setenv('HAGENT_EXECUTION_MODE', 'local')
 
     checker = prepare_checker
     result = checker.setup()

@@ -17,6 +17,7 @@ from typing import Optional, Set, List, Dict, Any
 
 from .path_manager import PathManager
 from .container_manager import is_docker_mode, is_docker_workspace_ready
+from .filesystem import FileSystem
 
 
 class FileTrackerLocal:
@@ -1207,7 +1208,18 @@ class FileTracker:
     Facade that selects Local or Docker file tracker implementation.
     """
 
-    def __init__(self, path_manager: PathManager, container_manager=None):
+    def __init__(self, path_manager: PathManager, container_manager=None, filesystem: Optional[FileSystem] = None):
+        """
+        Initialize FileTracker with optional FileSystem for unified operations.
+
+        Args:
+            path_manager: PathManager instance
+            container_manager: Optional ContainerManager for Docker mode
+            filesystem: Optional FileSystem for unified file operations
+        """
+        self.filesystem = filesystem
+
+        # Keep existing implementation as fallback
         if path_manager.execution_mode == 'docker' and container_manager is not None:
             self._impl = FileTrackerDocker(path_manager, container_manager)
         else:

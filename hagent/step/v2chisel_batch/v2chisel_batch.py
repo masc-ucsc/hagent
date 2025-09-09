@@ -32,7 +32,7 @@ from hagent.core.llm_wrap import LLM_wrap
 from hagent.tool.module_finder import Module_finder
 from hagent.tool.docker_diff_applier import DockerDiffApplier
 from hagent.tool.equiv_check import Equiv_check
-from hagent.inou.runner import Runner
+from hagent.inou.builder import Builder
 
 
 class V2chisel_batch(Step):
@@ -45,8 +45,8 @@ class V2chisel_batch(Step):
         self.files_to_restore = []  # Track files that need restoration
         self.baseline_generated = False  # Track if we generated fresh baseline
 
-        # Initialize Runner for automated Docker management
-        self.runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        # Initialize Builder for automated Docker management
+        self.builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.09r')
 
     def setup(self):
         """Initialize the batch processing step"""
@@ -127,10 +127,10 @@ class V2chisel_batch(Step):
                 # Join remaining command parts
                 command = ' '.join(cmd_list[3:])
 
-            return self.runner.run(command)
+            return self.builder.run(command)
         else:
             # Fallback: join all parts (shouldn't happen with Docker commands)
-            return self.runner.run(' '.join(cmd_list))
+            return self.builder.run(' '.join(cmd_list))
 
     def _compile_xiangshan(self, docker_container: str, force_compile: bool = True) -> dict:
         """Override parent compilation to fix permissions and use Runner"""
@@ -139,29 +139,29 @@ class V2chisel_batch(Step):
         try:
             # Step 1: Fix permissions on the repo directory
             print('🔧 [COMPILE] Fixing file permissions in container...')
-            exit_code, stdout, stderr = self.runner.run('chown -R root:root /code/workspace/repo')
+            exit_code, stdout, stderr = self.builder.run('chown -R root:root /code/workspace/repo')
             if exit_code == 0:
                 print('✅ [COMPILE] Fixed repository permissions')
             else:
                 print(f'⚠️  [COMPILE] Permission fix warning: {stderr}')
 
             # Step 2: Clean any existing target directories that might have wrong permissions
-            self.runner.run('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
+            self.builder.run('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
             print('🗑️ [COMPILE] Cleaned old target directories')
 
             # Step 3: Install SBT and try compilation
             print('📝 [COMPILE] Installing/ensuring SBT is available...')
-            self.runner.run(
+            self.builder.run(
                 'curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs'
             )
-            self.runner.run('/usr/local/bin/cs install sbt')
+            self.builder.run('/usr/local/bin/cs install sbt')
 
             # Verify SBT is now available
-            sbt_check_exit, sbt_check_out, sbt_check_err = self.runner.run('which sbt')
+            sbt_check_exit, sbt_check_out, sbt_check_err = self.builder.run('which sbt')
             print(f'SBT location: {sbt_check_out.strip()}')
 
             print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
-            exit_code, stdout, stderr = self.runner.run("bash -l -c 'cd /code/workspace/repo && sbt compile'")
+            exit_code, stdout, stderr = self.builder.run("bash -l -c 'cd /code/workspace/repo && sbt compile'")
 
             if exit_code == 0:
                 print('✅ [COMPILE] SBT compilation successful')
@@ -171,7 +171,7 @@ class V2chisel_batch(Step):
 
                 # Step 4: Try Mill as fallback with Runner
                 print('📝 [COMPILE] Trying Mill fallback via Runner...')
-                exit_code2, stdout2, stderr2 = self.runner.run(
+                exit_code2, stdout2, stderr2 = self.builder.run(
                     'bash -c "cd /code/workspace/repo && chmod +x ./mill && ./mill root.compile"'
                 )
 
@@ -197,15 +197,15 @@ class V2chisel_batch(Step):
         try:
             # Step 1: Fix permissions on the repo directory
             print('🔧 [VERILOG_GEN] Fixing file permissions in container...')
-            exit_code, stdout, stderr = self.runner.run('chown -R root:root /code/workspace/repo')
+            exit_code, stdout, stderr = self.builder.run('chown -R root:root /code/workspace/repo')
             if exit_code == 0:
                 print('✅ [VERILOG_GEN] Fixed repository permissions')
             else:
                 print(f'⚠️  [VERILOG_GEN] Permission fix warning: {stderr}')
 
             # Step 2: Clean target directories and create fresh build dirs
-            self.runner.run('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
-            self.runner.run('mkdir -p /code/workspace/build/build_singlecyclecpu_nd')
+            self.builder.run('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
+            self.builder.run('mkdir -p /code/workspace/build/build_singlecyclecpu_nd')
             print('🗑️ [VERILOG_GEN] Cleaned target directories and prepared build dirs')
 
             # Step 3: Try Verilog generation commands with Runner (same priority order as parent)
@@ -250,7 +250,7 @@ class V2chisel_batch(Step):
                 print(f'     📝 Trying generation command {i + 1}: {cmd_name}')
 
                 # Use Runner with bash -l -c for login shell
-                exit_code, stdout, stderr = self.runner.run(f"bash -l -c '{gen_cmd_str}'")
+                exit_code, stdout, stderr = self.builder.run(f"bash -l -c '{gen_cmd_str}'")
 
                 if exit_code == 0:
                     print(f'✅ [VERILOG_GEN] Verilog generation successful with command {i + 1}: {cmd_name}')
@@ -290,8 +290,8 @@ class V2chisel_batch(Step):
         # The golden design phase needs the container to still be running
         if hasattr(self, '_final_cleanup') and self._final_cleanup:
             print('🧹 [CLEANUP] Final cleanup - shutting down Docker container...')
-            if hasattr(self, 'runner') and self.runner:
-                self.runner.cleanup()
+            if hasattr(self, 'runner') and self.builder:
+                self.builder.cleanup()
         else:
             print('🔄 [CLEANUP] Deferring Docker cleanup - container still needed for golden design...')
 
@@ -324,7 +324,7 @@ class V2chisel_batch(Step):
             # Generate ONLY SingleCycleCPU to match what the gate design will be
             # Use Runner directly like the working cli_executor_simplechisel.py pattern
             print('🔧 [V2chisel_batch] Running: sbt "runMain dinocpu.SingleCycleCPUNoDebug"')
-            exit_code, stdout, stderr = self.runner.run(
+            exit_code, stdout, stderr = self.builder.run(
                 'bash -l -c \'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"\''
             )
 
@@ -337,7 +337,7 @@ class V2chisel_batch(Step):
 
                 # Copy generated files from build_singlecyclecpu_d to build_singlecyclecpu_nd
                 # so they're available in the location the backup method expects
-                copy_exit_code, copy_stdout, copy_stderr = self.runner.run(
+                copy_exit_code, copy_stdout, copy_stderr = self.builder.run(
                     'cp -r build/build_singlecyclecpu_d/* build/build_singlecyclecpu_nd/ 2>/dev/null || true',
                     cwd='/code/workspace',
                 )
@@ -348,7 +348,7 @@ class V2chisel_batch(Step):
                     print(f'⚠️  [V2chisel_batch] Copy had issues: {copy_stderr}')
 
                 # DEBUG: Check what opcode is actually in the generated baseline
-                debug_exit_code, debug_stdout, debug_stderr = self.runner.run(
+                debug_exit_code, debug_stdout, debug_stderr = self.builder.run(
                     'grep -n _signals_T_132 /code/workspace/build/build_singlecyclecpu_nd/Control.sv'
                 )
                 if debug_exit_code == 0:
@@ -385,7 +385,7 @@ class V2chisel_batch(Step):
                     # Convert Docker path to git-relative path
                     if file_path.startswith('/code/workspace/repo/'):
                         git_path = file_path.replace('/code/workspace/repo/', '')
-                        exit_code, stdout, stderr = self.runner.run(
+                        exit_code, stdout, stderr = self.builder.run(
                             f'git checkout HEAD -- {git_path}', cwd='/code/workspace/repo'
                         )
                         if exit_code == 0:
@@ -397,7 +397,7 @@ class V2chisel_batch(Step):
 
             # Step 2: Clean SBT cache to prevent stale compilation artifacts
             print('🧹 [RESTORE] Cleaning SBT cache...')
-            exit_code, stdout, stderr = self.runner.run("bash -l -c 'cd /code/workspace/repo && sbt clean'")
+            exit_code, stdout, stderr = self.builder.run("bash -l -c 'cd /code/workspace/repo && sbt clean'")
             if exit_code == 0:
                 print('✅ [RESTORE] SBT cache cleaned')
             else:
@@ -405,20 +405,20 @@ class V2chisel_batch(Step):
 
             # Step 3: Remove generated Verilog files to ensure clean state
             print('🗑️ [RESTORE] Cleaning generated Verilog files...')
-            self.runner.run(
+            self.builder.run(
                 'rm -rf build/build_singlecyclecpu_d/* build/build_singlecyclecpu_nd/* build/build_pipelined_d/* build/build_gcd/* || true',
                 cwd='/code/workspace',
             )
 
             # Step 4: Remove golden directory
-            self.runner.run('rm -rf lec_golden', cwd='/code/workspace/repo')
+            self.builder.run('rm -rf lec_golden', cwd='/code/workspace/repo')
             print('✅ [RESTORE] Docker state fully cleaned - ready for next run')
 
             # Step 5: Final Docker container cleanup (now that we're completely done)
             print('🧹 [RESTORE] Final cleanup - shutting down Docker container...')
             self._final_cleanup = True  # Set flag to allow Docker cleanup
-            if hasattr(self, 'runner') and self.runner:
-                self.runner.cleanup()
+            if hasattr(self, 'runner') and self.builder:
+                self.builder.cleanup()
                 print('✅ [RESTORE] Docker container shut down')
 
         except Exception as e:
@@ -2016,7 +2016,7 @@ class V2chisel_batch(Step):
                 applier.find_file_in_container = golden_find_file
 
                 # Fix filename case in verilog_diff to match actual files
-                corrected_verilog_diff = self._fix_diff_filename_case(verilog_diff, self.runner)
+                corrected_verilog_diff = self._fix_diff_filename_case(verilog_diff, self.builder)
 
                 # Apply the unified diff to files in the golden directory
                 diff_success = applier.apply_diff_to_container(corrected_verilog_diff, dry_run=False)
@@ -3377,8 +3377,8 @@ class V2chisel_batch(Step):
 
         # Get the actual container name from Runner
         actual_container_name = None
-        if hasattr(self, 'runner') and self.runner and hasattr(self.runner, 'container_manager'):
-            container_mgr = self.runner.container_manager
+        if hasattr(self, 'runner') and self.builder and hasattr(self.builder, 'container_manager'):
+            container_mgr = self.builder.container_manager
             if hasattr(container_mgr, 'container') and container_mgr.container:
                 # Get container name from Docker container object
                 actual_container_name = container_mgr.container.name

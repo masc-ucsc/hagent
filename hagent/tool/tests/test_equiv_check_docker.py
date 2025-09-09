@@ -141,7 +141,6 @@ endmodule
 
         assert equiv_checker.use_docker is True
         assert equiv_checker.yosys_installed is True
-        assert equiv_checker.file_tracker is not None
         print('✓ Docker fallback setup successful')
 
     def test_docker_equivalent_designs(self, verilog_modules):
@@ -236,12 +235,10 @@ endmodule
             gold_code=verilog_modules['inverter_gold'], gate_code=verilog_modules['inverter_gate'], desired_top='simple_inverter'
         )
 
-        # Verify that file_tracker was used
-        assert equiv_checker.file_tracker is not None
         assert equiv_checker.use_docker is True
 
         # Check that patches were tracked (indicates files were managed)
-        patches = equiv_checker.file_tracker.get_patch_dict()
+        patches = equiv_checker.builder.get_patch_dict()
         assert 'full' in patches or 'patch' in patches
 
         print('✓ Docker file management working correctly')
@@ -259,7 +256,6 @@ endmodule
         # Check which mode it's using
         if equiv_checker.use_docker:
             print('✓ Setup using Docker fallback')
-            assert equiv_checker.file_tracker is not None
         else:
             print('✓ Setup using local Yosys installation')
 

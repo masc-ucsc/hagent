@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Tuple
 
 from .runner import Runner
 from .path_manager import PathManager
+from .filesystem import FileSystemFactory, FileSystem
 
 
 class Builder:
@@ -43,15 +44,17 @@ class Builder:
         self.runner = Runner(docker_image)
         self.error_message = ''
 
-        # Try to find and load config, but don't fail if not found
+        # Initialize FileSystem (will be set after Runner setup)
+        self.filesystem: Optional[FileSystem] = None
+
+        # Try to find config path, but defer loading until after setup()
         self.config_path = None
         self.config = {}
         self.has_config = False
 
         try:
             self.config_path = config_path or self._find_config()
-            self.config = self._load_config()
-            self.has_config = True
+            # Note: Config loading deferred until setup() when FileSystem is available
         except (FileNotFoundError, ValueError):
             # Config not found or invalid - Builder can still work without it
             pass
@@ -70,11 +73,37 @@ class Builder:
         return PathManager.find_config()
 
     def _load_config(self) -> dict:
-        """Load YAML configuration from file."""
-        with open(self.config_path, 'r') as f:
-            data = yaml.safe_load(f) or {}
-        assert isinstance(data, dict), 'Top-level YAML must be a mapping'
-        return data
+        """
+        Load YAML configuration from file using FileSystem.
+
+        This now works in both local and Docker execution modes!
+        """
+        if not self.filesystem:
+            raise RuntimeError('FileSystem not initialized - call setup() first')
+
+        try:
+            # For Docker mode, translate host paths to container paths
+            config_path_for_fs = self.config_path
+            if hasattr(self.filesystem, 'container_manager') and self.runner:
+                # This is DockerFileSystem - translate host path to container path
+                path_manager = self.runner.path_manager
+                if hasattr(path_manager, '_repo_dir') and path_manager._repo_dir:
+                    host_repo_dir = str(path_manager._repo_dir)
+                    container_repo_dir = '/code/workspace/repo'
+                    if self.config_path.startswith(host_repo_dir):
+                        # Replace host repo path with container repo path
+                        import os
+
+                        relative_path = os.path.relpath(self.config_path, host_repo_dir)
+                        config_path_for_fs = os.path.join(container_repo_dir, relative_path)
+
+            # Use FileSystem to read config - works in both local and Docker!
+            content = self.filesystem.read_text(config_path_for_fs)
+            data = yaml.safe_load(content) or {}
+            assert isinstance(data, dict), 'Top-level YAML must be a mapping'
+            return data
+        except Exception as e:
+            raise ValueError(f'Failed to load config from {self.config_path}: {e}')
 
     def set_error(self, message: str) -> None:
         """Set error message following Tool pattern."""
@@ -86,7 +115,7 @@ class Builder:
 
     def setup(self) -> bool:
         """
-        Setup the execution environment.
+        Setup the execution environment and initialize FileSystem.
 
         Returns:
             True if setup successful, False otherwise
@@ -96,9 +125,48 @@ class Builder:
             return False
 
         success = self.runner.setup()
-        if not success:
+
+        # Initialize FileSystem after Runner is setup (or try local fallback)
+        if success:
+            try:
+                self.filesystem = FileSystemFactory.create_for_builder(self)
+            except Exception as e:
+                self.set_error(f'FileSystem initialization failed: {e}')
+                success = False
+
+        # Try to load config - if Runner setup failed, try local file reading for dry run compatibility
+        if self.config_path:
+            try:
+                if success:
+                    # Use FileSystem for config loading (works in both local and Docker)
+                    self.config = self._load_config()
+                else:
+                    # Fallback: try direct file reading for local files (dry run compatibility)
+                    import os
+
+                    if os.path.exists(self.config_path):
+                        import yaml
+
+                        with open(self.config_path, 'r') as f:
+                            self.config = yaml.safe_load(f) or {}
+                        assert isinstance(self.config, dict), 'Top-level YAML must be a mapping'
+                    else:
+                        raise FileNotFoundError(f'Config file not found: {self.config_path}')
+
+                self.has_config = True
+            except (FileNotFoundError, ValueError):
+                # Config not found or invalid - continue without it, but preserve the Runner setup error
+                self.config_path = None
+                if not success:
+                    self.set_error(f'Runner setup failed: {self.runner.get_error()}')
+                pass
+
+        # Return success if either Runner setup succeeded OR we have config for dry run mode
+        if not success and not self.has_config:
             self.set_error(f'Runner setup failed: {self.runner.get_error()}')
-        return success
+            return False
+
+        return True
 
     # ---------------------------- helpers ----------------------------
 
@@ -638,6 +706,27 @@ class Builder:
     def get_config_path(self) -> Optional[str]:
         """Get path to loaded configuration file, or None if no config."""
         return self.config_path if self.has_config else None
+
+    def create_file(self, file_path: str, content: str, encoding: str = 'utf-8') -> bool:
+        """
+        Create a file with the given content.
+
+        This method delegates to the unified filesystem interface,
+        replacing the need for separate create_file implementations.
+
+        Args:
+            file_path: Path where the file should be created
+            content: Content to write to the file
+            encoding: Text encoding to use (default: utf-8)
+
+        Returns:
+            True if file was created successfully, False otherwise
+        """
+        if not self.filesystem:
+            self.set_error('FileSystem not initialized - call setup() first')
+            return False
+
+        return self.filesystem.write_file(file_path, content, encoding)
 
     def cleanup(self) -> None:
         """

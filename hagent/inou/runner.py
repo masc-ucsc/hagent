@@ -11,6 +11,7 @@ from .container_manager import ContainerManager
 from .executor import ExecutorFactory
 from .path_manager import PathManager
 from .file_tracker import FileTracker
+from .filesystem import FileSystemFactory, FileSystem
 
 
 class Runner:
@@ -54,7 +55,8 @@ class Runner:
         self.docker_image = docker_image
         self.path_manager = path_manager or PathManager()
         self.container_manager: Optional[ContainerManager] = None
-        self.executor = None
+        self.executor = None  # Keep for backward compatibility, but will be deprecated
+        self.filesystem: Optional[FileSystem] = None  # New unified approach
         self.file_tracker: Optional[FileTracker] = None  # Lazy initialization
         self.error_message = ''
 
@@ -68,7 +70,7 @@ class Runner:
                 return
             self.container_manager = ContainerManager(docker_image, self.path_manager)
 
-        # Create executor
+        # Create executor (backward compatibility)
         self.executor = ExecutorFactory.create_executor(self.container_manager, self.path_manager)
 
     def set_error(self, message: str) -> None:
@@ -81,7 +83,7 @@ class Runner:
 
     def setup(self) -> bool:
         """
-        Setup the execution environment.
+        Setup the execution environment and initialize FileSystem.
 
         Returns:
             True if setup successful, False otherwise
@@ -93,13 +95,22 @@ class Runner:
         success = self.executor.setup()
         if not success:
             self.set_error(f'Executor setup failed: {self.executor.get_error()}')
+            return False
+
+        # Initialize unified FileSystem
+        try:
+            self.filesystem = FileSystemFactory.create(self.container_manager)
+        except Exception as e:
+            self.set_error(f'FileSystem initialization failed: {e}')
+            return False
+
         return success
 
     def run_cmd(
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
     ) -> Tuple[int, str, str]:
         """
-        Execute a command using the appropriate executor.
+        Execute a command using unified FileSystem approach.
 
         Args:
             command: The command to execute
@@ -110,8 +121,18 @@ class Runner:
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
+        # Use new unified FileSystem approach if available
+        if self.filesystem:
+            # Translate cwd='.' to executor's current working directory
+            if cwd == '.' and self.executor:
+                actual_cwd = self.executor.get_cwd()
+            else:
+                actual_cwd = cwd
+            return self.filesystem.run_cmd(command, actual_cwd, env, quiet)
+
+        # Fallback to old executor approach for backward compatibility
         if not self.executor:
-            error_msg = 'Executor not available - call setup() first'
+            error_msg = 'Neither FileSystem nor Executor available - call setup() first'
             self.set_error(error_msg)
             return -1, '', error_msg
 
@@ -151,8 +172,8 @@ class Runner:
         """
         if self.file_tracker is None:
             try:
-                # Provide container_manager so FileTracker can perform Docker-aware checks
-                self.file_tracker = FileTracker(self.path_manager, self.container_manager)
+                # Pass FileSystem to FileTracker for unified operations
+                self.file_tracker = FileTracker(self.path_manager, self.container_manager, filesystem=self.filesystem)
                 return True
             except Exception as e:
                 self.set_error(f'Failed to initialize FileTracker: {e}')

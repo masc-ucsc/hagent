@@ -151,6 +151,7 @@ class TestPathManager:
                 found_path = PathManager.find_config()
                 assert found_path == str(config_file.resolve())
 
+    @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'local'}, clear=True)
     def test_find_config_no_file(self):
         """Test find_config when no config file exists."""
         with patch('hagent.inou.path_manager.PathManager.possible_config_paths', return_value=['/nonexistent/path']):

@@ -9,6 +9,7 @@ import pytest
 import docker
 import sys
 import re
+import os
 
 
 def pytest_sessionstart(session):
@@ -62,7 +63,41 @@ def pytest_sessionfinish(session, exitstatus):
             print('✅ Container cleanup completed.')
 
     except Exception as e:
-        print(f'Warning: Failed to cleanup test containers: {e}', file=sys.stderr)
+        # Only show warning if we actually had containers to cleanup
+        initial_containers = getattr(session.config, '_initial_test_containers', set())
+        if initial_containers:
+            print(f'Warning: Failed to cleanup test containers: {e}', file=sys.stderr)
+
+
+@pytest.fixture(autouse=True)
+def setup_test_environment():
+    """
+    Auto-use fixture that sets up required environment variables for all tests.
+
+    This ensures that tests have the necessary environment variables set
+    even when running the full test suite.
+    """
+    # Store original values to restore later
+    original_execution_mode = os.environ.get('HAGENT_EXECUTION_MODE')
+    original_tokenizers = os.environ.get('TOKENIZERS_PARALLELISM')
+
+    # Set required environment variables if not already set
+    if 'HAGENT_EXECUTION_MODE' not in os.environ:
+        os.environ['HAGENT_EXECUTION_MODE'] = 'local'
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+
+    yield
+
+    # Restore original values
+    if original_execution_mode is None:
+        os.environ.pop('HAGENT_EXECUTION_MODE', None)
+    else:
+        os.environ['HAGENT_EXECUTION_MODE'] = original_execution_mode
+
+    if original_tokenizers is None:
+        os.environ.pop('TOKENIZERS_PARALLELISM', None)
+    else:
+        os.environ['TOKENIZERS_PARALLELISM'] = original_tokenizers
 
 
 @pytest.fixture(autouse=True)

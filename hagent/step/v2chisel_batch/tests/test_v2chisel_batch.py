@@ -15,16 +15,16 @@ import os
 import sys
 import argparse
 
-# Set up environment for Runner (Docker execution mode)
+# Set up environment for Builder (Docker execution mode)
 os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from v2chisel_batch import V2chisel_batch
 
-# Import Module_finder and Runner using the same path as v2chisel_batch
+# Import Module_finder and Builder using the same path as v2chisel_batch
 from hagent.tool.module_finder import Module_finder
-from hagent.inou.runner import Runner
+from hagent.inou.builder import Builder
 
 
 class TestV2chisel_batch(V2chisel_batch):
@@ -37,15 +37,15 @@ class TestV2chisel_batch(V2chisel_batch):
         self.files_to_restore = []  # Track files that need restoration
         self.baseline_generated = False  # Track if we generated fresh baseline
 
-        # Initialize Runner for automated Docker management
-        self.runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        # Initialize Builder for automated Docker management
+        self.runner = Builder(docker_image='mascucsc/hagent-simplechisel:2025.09r')
 
     def _run_docker_command(self, cmd_list, timeout=None):
-        """Override parent method to use our Runner instead of subprocess"""
+        """Override parent method to use our Builder instead of subprocess"""
         if timeout:
-            print(f'\u26a0\ufe0f  Warning: timeout={timeout}s requested but not supported by Runner')
+            print(f'\u26a0\ufe0f  Warning: timeout={timeout}s requested but not supported by Builder')
 
-        # Convert Docker exec command list to Runner command
+        # Convert Docker exec command list to Builder command
         if len(cmd_list) >= 4 and cmd_list[0] == 'docker' and cmd_list[1] == 'exec':
             # Skip docker, exec, container_name and use rest as command
             if len(cmd_list) >= 7 and cmd_list[3:6] == ['bash', '-l', '-c']:
@@ -63,7 +63,7 @@ class TestV2chisel_batch(V2chisel_batch):
             return self.runner.run(' '.join(cmd_list))
 
     def _compile_xiangshan(self, docker_container: str, force_compile: bool = True) -> dict:
-        """Override parent compilation to fix permissions and use Runner"""
+        """Override parent compilation to fix permissions and use Builder"""
         print('✅ Step 7: Compilation - START')
 
         try:
@@ -90,7 +90,7 @@ class TestV2chisel_batch(V2chisel_batch):
             sbt_check_exit, sbt_check_out, sbt_check_err = self.runner.run('which sbt')
             # print(f'SBT location: {sbt_check_out.strip()}')
 
-            # print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
+            # print('📝 [COMPILE] Running: sbt compile (via Builder with fixed permissions)')
             exit_code, stdout, stderr = self.runner.run("bash -l -c 'cd /code/workspace/repo && sbt compile'")
 
             if exit_code == 0:
@@ -98,7 +98,7 @@ class TestV2chisel_batch(V2chisel_batch):
                 return {'success': True, 'output': stdout, 'compilation_method': 'sbt_with_runner_and_permissions'}
             else:
                 # Try Mill as fallback
-                # print('📝 [COMPILE] Trying Mill fallback via Runner...')
+                # print('📝 [COMPILE] Trying Mill fallback via Builder...')
                 exit_code2, stdout2, stderr2 = self.runner.run(
                     'bash -c "cd /code/workspace/repo && chmod +x ./mill && ./mill root.compile"'
                 )
@@ -119,7 +119,7 @@ class TestV2chisel_batch(V2chisel_batch):
             return {'success': False, 'error': f'Compilation exception: {str(e)}', 'compilation_method': 'exception'}
 
     def _generate_verilog_from_chisel(self, docker_container: str, module_name: str) -> dict:
-        """Override parent Verilog generation to fix permissions and use Runner"""
+        """Override parent Verilog generation to fix permissions and use Builder"""
         print('✅ Step 8: Verilog Generation - START')
 
         try:
@@ -136,7 +136,7 @@ class TestV2chisel_batch(V2chisel_batch):
             self.runner.run('mkdir -p /code/workspace/build/build_singlecyclecpu_nd')
             # print('🗑️ [VERILOG_GEN] Cleaned target directories and prepared build dirs')
 
-            # Step 3: Try Verilog generation commands with Runner (same priority order as parent)
+            # Step 3: Try Verilog generation commands with Builder (same priority order as parent)
             generation_commands = [
                 # DINO-specific SBT commands (HIGHEST PRIORITY - these work for DINO)
                 {
@@ -177,7 +177,7 @@ class TestV2chisel_batch(V2chisel_batch):
 
                 # print(f'     📝 Trying generation command {i + 1}: {cmd_name}')
 
-                # Use Runner with bash -l -c for login shell
+                # Use Builder with bash -l -c for login shell
                 exit_code, stdout, stderr = self.runner.run(f"bash -l -c '{gen_cmd_str}'")
 
                 if exit_code == 0:
@@ -279,7 +279,7 @@ class TestV2chisel_batch(V2chisel_batch):
             return {'success': False, 'error': f'Verilog generation exception: {str(e)}', 'tooling_issue': True}
 
     def cleanup(self):
-        """Override parent cleanup to use our Runner - but delay Docker cleanup until very end"""
+        """Override parent cleanup to use our Builder - but delay Docker cleanup until very end"""
         # Don't cleanup Docker container during the test - only at the very end
         # The golden design phase needs the container to still be running
         if hasattr(self, '_final_cleanup') and self._final_cleanup:
@@ -316,7 +316,7 @@ class TestV2chisel_batch(V2chisel_batch):
 
         try:
             # Generate ONLY SingleCycleCPU to match what the gate design will be
-            # Use Runner directly like the working cli_executor_simplechisel.py pattern
+            # Use Builder directly like the working cli_executor_simplechisel.py pattern
             print('🔧 [TEST] Running: sbt "runMain dinocpu.SingleCycleCPUNoDebug"')
             exit_code, stdout, stderr = self.runner.run(
                 'bash -l -c \'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"\''
@@ -623,7 +623,7 @@ class TestV2chisel_batch(V2chisel_batch):
             return super()._generate_fresh_baseline_verilog(docker_container)
 
     def _ensure_pristine_chisel_and_clean_cache(self, docker_container: str) -> dict:
-        """Override parent method to use Runner instead of subprocess"""
+        """Override parent method to use Builder instead of subprocess"""
         try:
             print('🔄 [BASELINE] Ensuring Chisel code is pristine and cleaning build cache...')
 
@@ -638,7 +638,7 @@ class TestV2chisel_batch(V2chisel_batch):
             self.runner.run('rm -rf ~/.ivy2 ~/.sbt ~/.cache || true')
             print('✅ [BASELINE] SBT global cache cleared')
 
-            # Step 3: Clean SBT project build cache using Runner with proper SBT path
+            # Step 3: Clean SBT project build cache using Builder with proper SBT path
             print('🧹 [BASELINE] Cleaning SBT project build cache...')
             exit_code, stdout, stderr = self.runner.run('bash -l -c "cd /code/workspace/repo && sbt clean"')
 
@@ -801,10 +801,10 @@ def main():
         # First, make sure Chisel code is in original state and clean build cache
         print('🔄 [TEST] Ensuring Chisel code is pristine and cleaning build cache...')
 
-        # Setup processor's Runner to access Docker commands
+        # Setup processor's Builder to access Docker commands
         print('🔧 [TEST] Setting up Docker container...')
         if not processor.runner.setup():
-            print(f'❌ [TEST] Failed to setup Runner: {processor.runner.get_error()}')
+            print(f'❌ [TEST] Failed to setup Builder: {processor.runner.get_error()}')
             return 1
         print('✅ [TEST] Docker container setup successful')
 
@@ -861,7 +861,7 @@ def main():
         processor.input_data = input_data
         processor.output_path = args.output
 
-        # CRITICAL: Get the actual container name from Runner and override input_data
+        # CRITICAL: Get the actual container name from Builder and override input_data
         # This ensures the main pipeline uses the same container we set up
         actual_container_name = None
         if hasattr(processor.runner, 'container_manager') and processor.runner.container_manager:
@@ -871,12 +871,12 @@ def main():
                 actual_container_name = container_mgr.container.name
 
         if actual_container_name:
-            print(f'\u2705 [TEST] Using Runner container: {actual_container_name}')
+            print(f'\u2705 [TEST] Using Builder container: {actual_container_name}')
             input_data['docker_container'] = actual_container_name
         else:
-            print('\u26a0\ufe0f [TEST] Could not get Runner container name, using default')
+            print('\u26a0\ufe0f [TEST] Could not get Builder container name, using default')
             # Instead of using a non-existent container name, let's override all Docker calls
-            # The _run_docker_command method will handle routing through Runner
+            # The _run_docker_command method will handle routing through Builder
             input_data['docker_container'] = 'runner_managed'  # Placeholder - will be handled by _run_docker_command
 
         # Run the complete pipeline (this calls all the same methods as real v2chisel_batch)

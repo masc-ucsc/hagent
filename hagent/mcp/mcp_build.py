@@ -24,9 +24,46 @@ def get_mcp_schema() -> Dict[str, Any]:
     profiles_description = ''
 
     try:
-        # Use Builder directly to get profiles in current environment
-        # For schema generation, we don't need Docker - just YAML config reading
-        builder = Builder()
+        # For schema generation, temporarily set required environment variables if not set
+        # This allows schema generation to work without a full project setup
+        import tempfile
+
+        temp_dir = tempfile.mkdtemp(prefix='hagent_schema_')
+
+        env_backup = {}
+        required_env_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
+        env_defaults = {
+            'HAGENT_EXECUTION_MODE': 'local',
+            'HAGENT_REPO_DIR': temp_dir,
+            'HAGENT_BUILD_DIR': temp_dir,
+            'HAGENT_CACHE_DIR': temp_dir,
+        }
+        for var in required_env_vars:
+            if var not in os.environ:
+                env_backup[var] = None
+                os.environ[var] = env_defaults[var]  # Set appropriate default for schema generation
+            else:
+                env_backup[var] = os.environ[var]
+
+        try:
+            # Use Builder directly to get profiles in current environment
+            # For schema generation, we don't need Docker - just YAML config reading
+            builder = Builder()
+        finally:
+            # Restore original environment
+            for var, original_value in env_backup.items():
+                if original_value is None:
+                    os.environ.pop(var, None)
+                else:
+                    os.environ[var] = original_value
+
+            # Clean up temp directory
+            import shutil
+
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception:
+                pass  # Ignore cleanup errors
 
         # Get all profiles and APIs
         profiles = builder.get_all_profiles()
@@ -295,10 +332,14 @@ def main():
             builder.list_profiles()
             return 0
 
-        # Only setup for operations that require execution (not dry run, not list operations)
-        if not args.dry_run and not args.list_apis and not builder.setup():
-            print(f'Error: Builder setup failed: {builder.get_error()}', file=sys.stderr)
-            return 1
+        # Setup for all operations - but for dry runs, config loading should work even if Runner setup fails
+        if not builder.setup():
+            # For dry runs, allow operation if we at least have config, even if Runner setup failed
+            if args.dry_run and builder.has_config:
+                pass  # Continue with dry run using loaded config
+            else:
+                print(f'Error: Builder setup failed: {builder.get_error()}', file=sys.stderr)
+                return 1
 
         # List APIs for selected profiles.
         if args.list_apis:

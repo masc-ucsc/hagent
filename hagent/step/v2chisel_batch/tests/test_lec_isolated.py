@@ -20,7 +20,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # ruff: noqa: E402
 from v2chisel_batch import V2chisel_batch
-from hagent.inou.runner import Runner
+from hagent.inou.builder import Builder
 
 
 @pytest.fixture(autouse=True)
@@ -119,8 +119,8 @@ class MockV2chisel_batch(V2chisel_batch):
         self.debug = True
         self.module_finder = None  # Will be set if needed
 
-        # Initialize Runner for automated Docker management
-        self.runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        # Initialize Builder for automated Docker management
+        self.runner = Builder(docker_image='mascucsc/hagent-simplechisel:2025.09r')
 
         # Setup runner and get container name
         self.runner.setup()
@@ -150,11 +150,11 @@ class MockV2chisel_batch(V2chisel_batch):
         self.test_chisel_diff = chisel_diff
 
     def _run_docker_command(self, cmd_list, timeout=None):
-        """Override parent method to use our Runner instead of subprocess"""
+        """Override parent method to use our Builder instead of subprocess"""
         if timeout:
-            print(f'⚠️  Warning: timeout={timeout}s requested but not supported by Runner')
+            print(f'⚠️  Warning: timeout={timeout}s requested but not supported by Builder')
 
-        # Convert Docker exec command list to Runner command
+        # Convert Docker exec command list to Builder command
         if len(cmd_list) >= 4 and cmd_list[0] == 'docker' and cmd_list[1] == 'exec':
             # Find where the actual command starts (skip docker, exec, optional -u user, container)
             command_start = 2  # Start after 'docker exec'
