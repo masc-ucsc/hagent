@@ -1074,6 +1074,15 @@ class ContainerManager:
         self._workdir = target_workdir
         return True
 
+    def get_cwd(self) -> str:
+        """
+        Get the current working directory.
+
+        Returns:
+            Current working directory path
+        """
+        return self._workdir
+
     def _ensure_container_directory(self, dir_path: str) -> bool:
         """Ensure a directory exists in the container."""
         try:
@@ -1088,8 +1097,7 @@ class ContainerManager:
         """
         Create a file in the container with the given content.
 
-        This method handles proper escaping and avoids shell injection issues
-        by using base64 encoding to transfer the content.
+        Note: This is a legacy method. New code should use Builder.filesystem.write_file() instead.
 
         Args:
             container_path: Absolute path where the file should be created in the container

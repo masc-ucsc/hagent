@@ -273,7 +273,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         print('✓ Schema validation passed')
 
     def test_mcp_build_dry_run(self):
-        """Test that mcp_build.py dry run works without Docker."""
+        """Test that mcp_build.py dry run works with Docker mode."""
 
         test_env = {
             **os.environ,
@@ -282,6 +282,8 @@ class TestMCPBuildDocker(unittest.TestCase):
             'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.09r',
             'HAGENT_EXECUTION_MODE': 'docker',
             'HAGENT_REPO_DIR': str(self.test_dir / 'repo'),
+            'HAGENT_BUILD_DIR': str(self.test_dir / 'build'),
+            'HAGENT_CACHE_DIR': str(self.test_dir / 'cache'),
         }
 
         # Test dry run (should work without Docker setup)

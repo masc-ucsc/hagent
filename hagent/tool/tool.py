@@ -7,7 +7,7 @@ import subprocess
 from abc import abstractmethod
 
 from hagent.core.tracer import TracerABCMetaClass
-from hagent.inou.executor import run_cmd
+from hagent.inou.builder import Builder
 
 
 class Tool(metaclass=TracerABCMetaClass):
@@ -23,6 +23,7 @@ class Tool(metaclass=TracerABCMetaClass):
         """Initialize the base tool with default values."""
         self.error_message = ''
         self._is_ready = False
+        self.builder: Optional[Builder] = None
 
     def set_error(self, message: str) -> None:
         """
@@ -103,8 +104,14 @@ class Tool(metaclass=TracerABCMetaClass):
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
+        if not self.builder:
+            # Initialize Builder if not already done
+            self.builder = Builder()
+            if not self.builder.setup():
+                return -1, '', f'Failed to setup builder: {self.builder.get_error()}'
+
         env = env or {}
-        return run_cmd(command, cwd=cwd, env=env, quiet=quiet)
+        return self.builder.run_cmd(command, cwd=cwd, env=env, quiet=quiet)
 
     # Backward-compatible helper (deprecated). Prefer run_cmd().
     def run_command(self, cmd, cwd=None, timeout=60, capture_output=True, check=False, text=True):

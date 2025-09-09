@@ -147,14 +147,18 @@ class PathManager:
     def possible_config_paths() -> List[str]:
         """
         Get list of possible configuration file paths in search order.
+        Priority: environment-specific paths first, then fallback paths.
 
         Returns:
             List of potential configuration file paths to check
         """
-        paths = [
-            './hagent.yaml',
-            'hagent.yaml',
-        ]
+        paths = []
+
+        # Add environment-based paths first (highest priority)
+        if os.environ.get('HAGENT_REPO_DIR'):
+            paths.append(str(Path(os.environ['HAGENT_REPO_DIR']) / 'hagent.yaml'))
+        if os.environ.get('HAGENT_BUILD_DIR'):
+            paths.append(str(Path(os.environ['HAGENT_BUILD_DIR']) / 'hagent.yaml'))
 
         # Add Docker-specific paths
         paths.extend(
@@ -164,11 +168,13 @@ class PathManager:
             ]
         )
 
-        # Add environment-based paths
-        if os.environ.get('HAGENT_REPO_DIR'):
-            paths.append(str(Path(os.environ['HAGENT_REPO_DIR']) / 'hagent.yaml'))
-        if os.environ.get('HAGENT_BUILD_DIR'):
-            paths.append(str(Path(os.environ['HAGENT_BUILD_DIR']) / 'hagent.yaml'))
+        # Add current directory paths (lowest priority)
+        paths.extend(
+            [
+                './hagent.yaml',
+                'hagent.yaml',
+            ]
+        )
 
         return paths
 
@@ -177,15 +183,32 @@ class PathManager:
         """
         Locate hagent.yaml via the standard search path.
 
+        Uses a hybrid approach: checks local paths first (for local mode),
+        then returns container paths (for Docker mode where files will exist in container).
+
         Returns:
             Path to the first existing configuration file
 
         Raises:
             FileNotFoundError: If no configuration file is found
         """
-        for path in PathManager.possible_config_paths():
-            if path and os.path.exists(path):
-                return str(Path(path).resolve())
+        possible_paths = PathManager.possible_config_paths()
+        execution_mode = os.environ.get('HAGENT_EXECUTION_MODE', 'local')
+
+        # For local mode, check if files actually exist locally
+        if execution_mode == 'local':
+            for path in possible_paths:
+                if path and os.path.exists(path):
+                    return str(Path(path).resolve())
+        else:
+            # For Docker mode, return the first valid path (existence will be checked by FileSystem later)
+            # Priority order: HAGENT_REPO_DIR first, then standard container paths
+            for path in possible_paths:
+                if path:
+                    # Return resolved path for consistency with local mode
+                    return str(Path(path).resolve())
+
+        # If we get here, no valid paths were found
         repo_dir = os.environ.get('HAGENT_REPO_DIR')
         if repo_dir:
             raise FileNotFoundError(f'No hagent.yaml found in HAGENT_REPO_DIR set to {repo_dir} paths')

@@ -62,6 +62,15 @@ class ExecutionStrategy(Protocol):
         """
         ...
 
+    def get_cwd(self) -> str:
+        """
+        Get the current working directory.
+
+        Returns:
+            Current working directory path
+        """
+        ...
+
 
 class LocalExecutor:
     """Execution strategy that runs commands directly on the host system."""
@@ -149,6 +158,15 @@ class LocalExecutor:
         except Exception as e:
             self.set_error(f'Failed to change working directory: {e}')
             return False
+
+    def get_cwd(self) -> str:
+        """
+        Get the current working directory.
+
+        Returns:
+            Current working directory path
+        """
+        return self._workdir
 
     def run_cmd(
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
@@ -339,6 +357,15 @@ class DockerExecutor:
         if not success:
             self.set_error(self.container_manager.get_error())
         return success
+
+    def get_cwd(self) -> str:
+        """
+        Get the current working directory.
+
+        Returns:
+            Current working directory path
+        """
+        return self.container_manager.get_cwd()
 
     def run_cmd(
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False

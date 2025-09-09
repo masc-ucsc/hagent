@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # See LICENSE for details
 
-from hagent.inou.runner import Runner
+from hagent.inou.builder import Builder
 from hagent.core.step import Step
 
 from typing import Dict
@@ -14,18 +14,18 @@ class Trivial(Step):
     def setup(self):
         super().setup()  # superclass
         if os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
-            self.runner = Runner(docker_image='mascucsc/hagent-builder:2025.09')
+            self.builder = Builder(docker_image='mascucsc/hagent-builder:2025.09')
         else:
-            self.runner = Runner()
+            self.builder = Builder()
 
-        if not self.runner.setup():
-            self.error(f'OOPS in trivial.py error from runner:{self.runner.get_error()}')
+        if not self.builder.setup():
+            self.error(f'OOPS in trivial.py error from builder:{self.builder.get_error()}')
 
     def run(self, data: Dict):
         data_copy = data.copy()
         data_copy['added_field_trivial'] = 'sample'
 
-        ret, out, err = self.runner.run_cmd('uname -a')
+        ret, out, err = self.builder.run_cmd('uname -a')
         if ret != 0:
             print(f'ERROR in uname?? ret:{ret} out:{out} err:{err}')
             exit(-3)
@@ -34,17 +34,17 @@ class Trivial(Step):
         data_copy['uname_out'] = out
         data_copy['uname_err'] = err
 
-        ret, out, err = self.runner.run_cmd('pwd')
+        ret, out, err = self.builder.run_cmd('pwd')
         data_copy['pwd_ret'] = str(ret)
         data_copy['pwd_out'] = out
         data_copy['pwd_err'] = err
 
-        ret, out, err = self.runner.run_cmd('which yosys')
+        ret, out, err = self.builder.run_cmd('which yosys')
         data_copy['yosys_path_ret'] = str(ret)
         data_copy['yosys_path_out'] = out
         data_copy['yosys_path_err'] = err
 
-        ret, out, err = self.runner.run_cmd(command='ls -al', cwd='/code/workspace/repo')
+        ret, out, err = self.builder.run_cmd(command='ls -al', cwd='/code/workspace/repo')
         data_copy['ls_ret'] = str(ret)
         data_copy['ls_out'] = out
         data_copy['ls_err'] = err
