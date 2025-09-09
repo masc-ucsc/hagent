@@ -11,6 +11,7 @@ import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
+import posixpath
 
 
 class FileSystem(ABC):
@@ -222,7 +223,8 @@ class DockerFileSystem(FileSystem):
     def write_file(self, path: str, content: str, encoding: Optional[str] = 'utf-8') -> bool:
         try:
             # Ensure parent directory exists
-            parent_dir = os.path.dirname(path)
+            # Use POSIX semantics inside the container
+            parent_dir = posixpath.dirname(path)
             if parent_dir:
                 self.container_manager.run_cmd(f'mkdir -p "{parent_dir}"')
 
@@ -276,7 +278,8 @@ class DockerFileSystem(FileSystem):
 
     def resolve_path(self, path: str) -> str:
         """Resolve to absolute container path."""
-        if os.path.isabs(path):
+        # Use POSIX semantics; do not use host os.path in docker mode
+        if posixpath.isabs(path):
             return path
 
         # For Docker, resolve relative to container working directory
@@ -284,10 +287,10 @@ class DockerFileSystem(FileSystem):
         exit_code, pwd_output, _ = self.container_manager.run_cmd('pwd')
         if exit_code == 0:
             container_cwd = pwd_output.strip()
-            return os.path.join(container_cwd, path)
+            return posixpath.join(container_cwd, path)
 
-        # Fallback
-        return os.path.abspath(path)
+        # Fallback: return the path unchanged (avoid host-specific resolution)
+        return path
 
 
 class FileSystemFactory:

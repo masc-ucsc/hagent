@@ -3,12 +3,12 @@
 
 # HAgent
 
-An AI hardware agent engine to support multiple components in chip design, such as code generation, verification, debugging, and tapeout.
-
-HAgent is an open-source infrastructure that brings the power of Large Language Models (LLMs) to hardware design. By integrating LLMs with chip design tools in a compiler-inspired pipeline, HAgent enables the creation of custom new EDA flows. Its architecture leverages hermetic Docker-based steps and YAML interfaces to simplify development, debugging, and testing, making it accessible and extensible for researchers and practitioners.
-
 [![codecov](https://codecov.io/gh/masc-ucsc/hagent/graph/badge.svg?token=Hyj2VifE7j)](https://codecov.io/gh/masc-ucsc/hagent)
 [![CI Status](https://github.com/masc-ucsc/hagent/actions/workflows/ubuntu.yml/badge.svg)](https://github.com/masc-ucsc/hagent/actions/workflows/ubuntu.yml)
+
+An AI hardware agent engine that supports multiple components in chip design, including code generation, verification, debugging, and tapeout.
+
+HAgent is an open-source infrastructure that brings the power of Large Language Models (LLMs) to hardware design. By integrating LLMs with chip design tools in a compiler-inspired pipeline, HAgent enables the creation of custom EDA flows. Its architecture leverages hermetic Docker-based steps and YAML interfaces to simplify development, debugging, and testing, making it accessible and extensible for researchers and practitioners.
 
 ## Quick Introduction
 
@@ -16,7 +16,6 @@ HAgent is an open-source infrastructure that brings the power of Large Language 
 
 - **Python 3.13** or higher (required by the project)
 - **[uv](https://docs.astral.sh/uv/getting-started/installation/)** for managing dependencies
-- **Yosys**: Required for benchmarking and testing
 
 #### Installing uv
 
@@ -48,7 +47,7 @@ cd hagent
 uv sync
 ```
 
-If you run test/developtment (E.g: ruff neeeds dev extra packages)
+If you run tests/development (e.g., ruff needs dev extra packages):
 ```
 uv sync --extra dev
 ```
@@ -70,7 +69,7 @@ uv sync
 
 #### Setting up API Keys
 
-Each HAgent pipeline may use a different set of LLMs. We use litellm which supports most LLM providers. Set the required API keys (depends on the pipe that you use):
+Each HAgent pipeline may use a different set of LLMs. We use LiteLLM which supports most LLM providers. Set the required API keys (depends on the pipeline you use):
 
 ```bash
 # Required for most pipelines
@@ -112,7 +111,7 @@ uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yam
 
 ### Usage
 
-The `HAgent` script provides several commands to help you generate multiple Ninja files for each step in chip design.
+HAgent provides several commands to help you generate multiple Ninja files for each step in chip design.
 
 ### Examples
 
@@ -142,6 +141,12 @@ uv run pytest
 # Run with testmon for faster iteration
 uv run pytest --testmon
 ```
+
+### File Naming Conventions
+
+- `test_*.py`: Unit tests next to their components
+- `cli_*.py`: CLI examples demonstrating API usage
+- `mcp_*.py`: CLI-like examples that can also run as MCP servers
 
 #### Execution Mode Configuration
 
@@ -187,33 +192,41 @@ uv run python hagent/step/trivial/trivial.py hagent/step/trivial/tests/input1.ya
 - Docker mode automatically handles container setup and path mounting
 - Local mode provides direct access for debugging and development
 
+### Path Management
+
+- **Pipes should use Builder**: All pipes should use the Builder pattern and access files through `runner.filesystem`
+- **No direct path_manager/runner usage**: Pipes should not directly use `path_manager` or `runner` - use Builder instead
+- **File operations**: Use `runner.filesystem.read_file()` and `runner.filesystem.write_file()` instead of `run_cmd` with `cat` for copying files, especially for Verilog files with special characters
+- **Docker/Local mode**: Builder and filesystem automatically handle path translation between Docker (`/code/workspace/...`) and local modes
+- Avoid hard-coded `/code/workspace/...` paths outside `hagent/inou/` or `hagent/mcp/`
+
 
 ## Structure
 
 HAgent code is divided into four key components:
 
-- **core**: Contains multiple Python files with shared functionality across steps.
-  - When common functionality is used by several steps or tools, the logic is to push the code to core as a Python library.
+- **core**: Contains multiple Python files with shared functionality across steps
+  - When common functionality is used by several steps or tools, the logic is to push the code to core as a Python library
 
-- **step**: Has a subdirectory for each HAgent compiler step.
-  - Each step has a stand-alone Python executable that matches the directory name.
-  - Each step only reads and writes YAML files. There may also exist a log file that matches the output YAML name.
-  - Each step should be hermetic, relying only on the input YAML files or calling tools.
-  - Each step inherits from a core Step class and provides basic functionality.
+- **step**: Has a subdirectory for each HAgent compiler step
+  - Each step has a stand-alone Python executable that matches the directory name
+  - Each step only reads and writes YAML files. There may also exist a log file that matches the output YAML name
+  - Each step should be hermetic, relying only on the input YAML files or calling tools
+  - Each step inherits from a core Step class and provides basic functionality
   - **Examples**: `trivial`, `get_spec_io`
 
-- **tool**: Has a subdirectory for each external tool.
-  - Each tool requires a different Python library.
-  - Each tool inherits from a core tool class and provides a common interface to check tool existence, calling, handling warnings and errors, and other common APIs shared across most tools.
+- **tool**: Has a subdirectory for each external tool
+  - Each tool requires a different Python library
+  - Each tool inherits from a core tool class and provides a common interface to check tool existence, calling, handling warnings and errors, and other common APIs shared across most tools
   - **Examples**: `yosys`, `slang`, `chisel`
 
-- **pipe**: Has a subdirectory for each end-user HAgent compiler.
-  - Each pipe has a stand-alone Python executable that matches the directory name.
-  - Each pipe combines several HAgent steps and is intended to be called by a user.
-  - Each pipe can have multiple iterative sets of step calls.
+- **pipe**: Has a subdirectory for each end-user HAgent compiler
+  - Each pipe has a stand-alone Python executable that matches the directory name
+  - Each pipe combines several HAgent steps and is intended to be called by a user
+  - Each pipe can have multiple iterative sets of step calls
   - Some differences between pipe and step:
-    - A step is supposed to be simple and can have multiple running in parallel.
-    - A pipe can have command line options and non-yaml inputs or outputs.
+    - A step is supposed to be simple and can have multiple running in parallel
+    - A pipe can have command line options and non-YAML inputs or outputs
 
 ## Contributing
 
@@ -228,10 +241,14 @@ uv run pytest -v
 
 Or better, run `push_check.sh` before each github push.
 
-If you want to work on this project, reach out Jose Renau. Most steps and pipes have a different
-code owner.
+### Maintenance Checks
 
-When contributors submit feel free to add yourself to the CREDITS.txt file that each step, tool, core, pipe has.
+- Run `bash scripts/code_check.sh` for heuristic maintenance hints (unused methods, env var/path conventions, etc.).
+- Methods starting with `_` are considered internal; public-but-internal methods should generally be renamed with a leading `_`.
+
+If you want to work on this project, reach out to Jose Renau. Most steps and pipes have a different code owner.
+
+When contributors submit changes, feel free to add yourself to the CREDITS.txt file that each step, tool, core, and pipe has.
 
 ## License
 
@@ -254,12 +271,11 @@ If you encounter any issues or have questions, please open an issue on GitHub.
 
 ## Build Flow
 
-HAgent is mostly build with AI tools as a way to learn insights/ideas for HAgent flow. A typical
-class creation follows these steps:
+HAgent is mostly built with AI tools as a way to learn insights/ideas for HAgent flow. A typical class creation follows these steps:
 
 ### Create the API
 
-Use the following prompt, to create a first API, and iterate with Human-in-the-loop until happy with it.
+Use the following prompt to create a first API, and iterate with human-in-the-loop until happy with it.
 
 """
 Build a new Hagent tool API. This is a high level explanation for HAgent:
@@ -278,10 +294,10 @@ A sample code that can be used as a guide for how to use the tool:
 
 ### Create the Simple Example
 
-Use the following prompt, to create a simple use case example, and iterate with Human-in-the-loop until happy with it. If it requires to change the API, fix it.
+Use the following prompt to create a simple use case example, and iterate with human-in-the-loop until happy with it. If it requires changing the API, fix it.
 
 """
-Assuming a HAgent class with the following API, create a simple use case example that demonstrates the class usage and has some simple testing. This is not a unit testing, just a sample to highligh the API usage.
+Assuming a HAgent class with the following API, create a simple use case example that demonstrates the class usage and has some simple testing. This is not unit testing, just a sample to highlight the API usage.
 <API>
 
 As a reference, this is a simple test example for another HAgent tool
@@ -363,28 +379,33 @@ uv lock --upgrade
 uv sync
 ```
 
-### Perfetto stats
+### Perfetto Stats
 
-Each run generated yaml file has a tracer entry. This can be extracted and create a perfetto.
-Put all the yaml files in a directory (inputs/outputs). E.g:
+Each generated YAML file has a tracer entry. This can be extracted to create a Perfetto trace.
+Put all the YAML files in a directory (inputs/outputs). For example:
 
 ```
 uv run ./hagent/step/trivial/trivial.py ./hagent/step/trivial/tests/input1.yaml -o out.yaml
 uv run ./hagent/step/trivial/trivial.py  out.yaml -o out2.yaml
 ```
 
-and run this to generate perfetto.json
+Then run this to generate perfetto.json:
 ```
 uv run ./scripts/build_perfetto_trace.py -i .
 ```
 
 To see the results, upload the perfetto.json to https://ui.perfetto.dev/
 
+### MCP Server Integration
+
+- SystemVerilog syntax checker MCP server: `mcp/slang-mcp-server/`.
+- Add to Claude Code: `claude mcp add slang-syntax-checker ~/projs/hagent/mcp/slang-mcp-server/run_server.sh`.
+
 ### Docker Issues
 
-If you use OSX and colima, you may get a "docker-crediential-desktop not installed" issue. More likely, you need to delete the "credStore" entry from your config.json at `~/.docker/config.json`
+If you use macOS and Colima, you may get a "docker-credential-desktop not installed" issue. Most likely, you need to delete the "credStore" entry from your config.json at `~/.docker/config.json`
 
-If you run colima, you need to use virtiofs as mount point, and 32GB for XiangShan. This may require to reinstall colima:
+If you run Colima, you need to use virtiofs as mount point, and 32GB for XiangShan. This may require reinstalling Colima:
 ```
 # brew install colima
 rm -rf ~/.colima
@@ -392,19 +413,19 @@ colima start --mount-type virtiofs --vm-type=vz --vz-rosetta --memory 32
 # brew services start colima
 ```
 
-Try in the command line that you can do: (Fix this before, or it will not work)
+Try in the command line that you can do the following (fix Docker/Colima first, or it will not work):
 ```bash
 docker pull ubuntu:latest
 docker run -it --rm ubuntu:latest
 ```
 
-For docker/colima, you need to have enough memory. In OSX colima, the default is 2GB. This is fine for small runs, but not things like Xiangshan run. Check that you have at least 32GB of memory.
+For Docker/Colima, you need to have enough memory. In macOS Colima, the default is 2GB. This is fine for small runs, but not for things like XiangShan runs. Check that you have at least 32GB of memory.
 
 ```
  docker run --rm busybox cat /proc/meminfo | grep MemTotal
 ```
 
-Sometimes you need to cleanup left over dockers, run ./cleanup.sh
+Sometimes you need to clean up leftover Docker containers, run ./cleanup.sh
 
 #### Docker Container Management
 

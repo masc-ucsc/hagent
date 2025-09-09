@@ -93,9 +93,11 @@ class Builder:
                     if self.config_path.startswith(host_repo_dir):
                         # Replace host repo path with container repo path
                         import os
+                        import posixpath
 
                         relative_path = os.path.relpath(self.config_path, host_repo_dir)
-                        config_path_for_fs = os.path.join(container_repo_dir, relative_path)
+                        # Join using POSIX semantics for container path
+                        config_path_for_fs = posixpath.join(container_repo_dir, relative_path)
 
             # Use FileSystem to read config - works in both local and Docker!
             content = self.filesystem.read_text(config_path_for_fs)
