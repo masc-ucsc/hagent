@@ -100,10 +100,30 @@ def test_missing_env_var(monkeypatch):
     assert 'environment' in lw.last_error.lower()
 
 
+def test_hagent_llm_model_override(monkeypatch):
+    # Test that HAGENT_LLM_MODEL environment variable overrides the config file model
+    conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
+
+    # Set the environment variable to a fake provider/model
+    fake_model = 'fakeprovider/fake-model'
+    monkeypatch.setenv('HAGENT_LLM_MODEL', fake_model)
+
+    lw = LLM_wrap(name='test_caching', log_file='test_llm_model_override.log', conf_file=conf_file)
+
+    # Verify the model was overridden
+    assert lw.llm_args['model'] == fake_model
+
+    # Try to make an inference call - should fail with unsupported model error
+    result = lw._inference({}, 'use_prompt1', n=1)
+    assert result == []
+    assert 'environment keys not set for fakeprovider/fake-model' in lw.last_error
+
+
 if __name__ == '__main__':  # pragma: no cover
     test_llm_wrap_caching()
     test_llm_wrap_n_diff()
     test_bad_config_file_nonexistent()
     test_bad_config_file_bad_yaml()
     # test_missing_env_var()
+    # test_hagent_llm_model_override()
     test_bad_prompt()

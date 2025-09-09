@@ -636,13 +636,12 @@ class Builder:
         if not self.runner:
             self.set_error('Runner not initialized')
             return -1, '', 'Runner not initialized'
-        return self.runner.run_cmd(command, cwd, env, quiet)
+        # Normalize cwd using common translator to avoid duplication
+        translated_cwd = cwd
+        if cwd not in (None, '.', '') and self.runner.is_local_mode():
+            translated_cwd = self.translate_path_to_local(cwd) or cwd
 
-    def run(
-        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
-    ) -> Tuple[int, str, str]:
-        """Backward-compatible alias for run_cmd."""
-        return self.run_cmd(command, cwd, env, quiet)
+        return self.runner.run_cmd(command, translated_cwd, env, quiet)
 
     def set_cwd(self, new_workdir: str) -> bool:
         """
@@ -656,31 +655,10 @@ class Builder:
             self.set_error('Runner not initialized')
             return False
 
-        # Translate Docker container paths to local paths when in local mode
+        # Normalize new_workdir using common translator
         translated_path = new_workdir
         if self.runner.is_local_mode():
-            path_manager = self.runner.path_manager
-
-            # Define container-to-local path mappings
-            container_mappings = {
-                '/code/workspace/repo': str(path_manager.repo_dir),
-                '/code/workspace/build': str(path_manager.build_dir),
-                '/code/workspace/cache': str(path_manager.cache_dir),
-            }
-
-            # Check if path starts with any container path
-            for container_prefix, local_base in container_mappings.items():
-                if new_workdir.startswith(container_prefix):
-                    # Replace container prefix with local base
-                    if new_workdir == container_prefix:
-                        translated_path = local_base
-                    else:
-                        # Handle subdirectories: /code/workspace/repo/foo/bar -> /local/repo/foo/bar
-                        suffix = new_workdir[len(container_prefix) :]
-                        if suffix.startswith('/'):
-                            suffix = suffix[1:]  # Remove leading slash
-                        translated_path = str(Path(local_base) / suffix)
-                    break
+            translated_path = self.translate_path_to_local(new_workdir) or new_workdir
 
         return self.runner.set_cwd(translated_path)
 
@@ -727,8 +705,8 @@ class Builder:
 
     def translate_path_to_local(self, path: str) -> Optional[str]:
         """
-        Translate Docker container paths to local paths when in Docker mode.
-        In local mode, paths are already local paths.
+        Translate Docker container paths to local paths when in local mode.
+        In Docker mode, paths are already container paths so no translation needed.
 
         Args:
             path: Container path to translate
@@ -739,11 +717,11 @@ class Builder:
         if not self.runner:
             return path
 
-        # In local mode, paths are already local paths
-        if self.runner.is_local_mode():
+        # In Docker mode, paths are already container paths
+        if self.runner.is_docker_mode():
             return path
 
-        # In Docker mode, translate container paths to local paths
+        # In local mode, translate container paths to local paths
         path_manager = self.runner.path_manager
 
         container_to_local = {
