@@ -156,9 +156,9 @@ endmodule
         # Create simple Verilog file in container
         verilog_content = verilog_files['inverter.v']
         working_dir = container_manager._workdir
-        assert container_manager.create_file(f'{working_dir}/inverter.v', verilog_content), (
-            f'Failed to create Verilog file: {container_manager.get_error()}'
-        )
+        assert container_manager.create_file(
+            f'{working_dir}/inverter.v', verilog_content
+        ), f'Failed to create Verilog file: {container_manager.get_error()}'
 
         # Debug: Check if commands are running at all
         rc, out, err = executor.run_cmd('echo "Test command working"')
@@ -226,9 +226,9 @@ endmodule
         # Create Verilog file
         verilog_content = verilog_files['and_gate.v']
         working_dir = container_manager._workdir
-        assert container_manager.create_file(f'{working_dir}/and_gate.v', verilog_content), (
-            f'Failed to create Verilog file: {container_manager.get_error()}'
-        )
+        assert container_manager.create_file(
+            f'{working_dir}/and_gate.v', verilog_content
+        ), f'Failed to create Verilog file: {container_manager.get_error()}'
 
         # Synthesis with statistics
         yosys_cmd = 'yosys -p "read_verilog and_gate.v; synth; stat"'
@@ -253,9 +253,9 @@ endmodule
         # Create Verilog file
         verilog_content = verilog_files['inverter.v']
         working_dir = container_manager._workdir
-        assert container_manager.create_file(f'{working_dir}/inverter.v', verilog_content), (
-            f'Failed to create Verilog file: {container_manager.get_error()}'
-        )
+        assert container_manager.create_file(
+            f'{working_dir}/inverter.v', verilog_content
+        ), f'Failed to create Verilog file: {container_manager.get_error()}'
 
         # Synthesis to JSON
         yosys_cmd = 'yosys -p "read_verilog inverter.v; synth; write_json inverter.json"'
@@ -290,9 +290,9 @@ module broken_module(
   missing endmodule
 """
         working_dir = container_manager._workdir
-        assert container_manager.create_file(f'{working_dir}/broken.v', invalid_verilog), (
-            f'Failed to create invalid Verilog file: {container_manager.get_error()}'
-        )
+        assert container_manager.create_file(
+            f'{working_dir}/broken.v', invalid_verilog
+        ), f'Failed to create invalid Verilog file: {container_manager.get_error()}'
 
         # Try to synthesize invalid file
         yosys_cmd = 'yosys -p "read_verilog broken.v; synth"'
@@ -301,9 +301,9 @@ module broken_module(
 
         # Check that error message is informative
         combined_output = out + err
-        assert 'syntax error' in combined_output.lower() or 'error' in combined_output.lower(), (
-            f'Error output should contain error information: {combined_output}'
-        )
+        assert (
+            'syntax error' in combined_output.lower() or 'error' in combined_output.lower()
+        ), f'Error output should contain error information: {combined_output}'
 
     def test_multiple_file_synthesis(self, yosys_executor, verilog_files):
         """Test synthesis with multiple Verilog files."""
@@ -320,9 +320,9 @@ module broken_module(
         # Create multiple Verilog files
         working_dir = container_manager._workdir
         for filename, content in verilog_files.items():
-            assert container_manager.create_file(f'{working_dir}/{filename}', content), (
-                f'Failed to create {filename}: {container_manager.get_error()}'
-            )
+            assert container_manager.create_file(
+                f'{working_dir}/{filename}', content
+            ), f'Failed to create {filename}: {container_manager.get_error()}'
 
         # Synthesis with multiple files
         yosys_cmd = 'yosys -p "read_verilog *.v; synth; write_verilog combined_synth.v"'
@@ -352,9 +352,9 @@ module broken_module(
         # Create Verilog file
         verilog_content = verilog_files['counter.v']
         working_dir = container_manager._workdir
-        assert container_manager.create_file(f'{working_dir}/counter.v', verilog_content), (
-            f'Failed to create Verilog file: {container_manager.get_error()}'
-        )
+        assert container_manager.create_file(
+            f'{working_dir}/counter.v', verilog_content
+        ), f'Failed to create Verilog file: {container_manager.get_error()}'
 
         # Synthesis with technology mapping (using basic cell library)
         yosys_cmd = 'yosys -p "read_verilog counter.v; synth; dfflibmap -liberty /dev/null; abc; write_verilog counter_mapped.v"'
@@ -382,9 +382,9 @@ module broken_module(
         # Create Verilog file
         verilog_content = verilog_files['and_gate.v']
         working_dir = container_manager._workdir
-        assert container_manager.create_file(f'{working_dir}/and_gate.v', verilog_content), (
-            f'Failed to create Verilog file: {container_manager.get_error()}'
-        )
+        assert container_manager.create_file(
+            f'{working_dir}/and_gate.v', verilog_content
+        ), f'Failed to create Verilog file: {container_manager.get_error()}'
 
         # Create Yosys script
         yosys_script = """
@@ -394,9 +394,9 @@ stat
 write_verilog and_gate_script.v
 """
         working_dir = container_manager._workdir
-        assert container_manager.create_file(f'{working_dir}/synth.ys', yosys_script), (
-            f'Failed to create Yosys script: {container_manager.get_error()}'
-        )
+        assert container_manager.create_file(
+            f'{working_dir}/synth.ys', yosys_script
+        ), f'Failed to create Yosys script: {container_manager.get_error()}'
 
         # Execute script
         rc, out, err = executor.run_cmd('yosys -s synth.ys')
