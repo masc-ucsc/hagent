@@ -268,8 +268,8 @@ class DockerFileSystem(FileSystem):
         """Execute command in Docker container."""
         # Build command with environment variables and working directory
         if env:
-            env_vars = ' '.join(f'{k}="{v}"' for k, v in env.items())
-            command = f'env {env_vars} {command}'
+            env_vars = ' '.join(f'{k}={repr(v)}' for k, v in env.items())
+            command = f'export {env_vars} && {command}'
 
         if cwd and cwd != '.':
             command = f'cd "{cwd}" && {command}'
