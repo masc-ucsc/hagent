@@ -1047,11 +1047,6 @@ class FileTrackerDocker:
         self._tracked_dirs: List[Dict[str, Any]] = []  # [{'path': str, 'ext': Optional[str]}]
         self._baseline: Dict[str, str] = {}  # path -> content (from initial snapshot)
 
-        # Basic validation: container must be ready
-        repo_dir = str(self.path_manager.repo_dir)
-        if not str(repo_dir).startswith('/code/workspace/'):
-            self.logger.warning('FileTrackerDocker expected container paths for repo_dir')
-
         # No-op setup; defer checks to operations
 
     # ---- helpers ----

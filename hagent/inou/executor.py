@@ -322,11 +322,12 @@ class DockerExecutor:
 
     def _setup_hagent_environment(self) -> Dict[str, str]:
         """Setup HAGENT environment variables for Docker execution."""
+        # Inside Docker container, use container paths not host paths
         env_vars = {
             'HAGENT_EXECUTION_MODE': 'docker',
-            'HAGENT_REPO_DIR': str(self.path_manager.repo_dir),
-            'HAGENT_BUILD_DIR': str(getattr(self.path_manager, 'build_dir', '')),
-            'HAGENT_CACHE_DIR': str(self.path_manager.cache_dir),
+            'HAGENT_REPO_DIR': '/code/workspace/repo',
+            'HAGENT_BUILD_DIR': '/code/workspace/build',
+            'HAGENT_CACHE_DIR': '/code/workspace/cache',
         }
         return env_vars
 
