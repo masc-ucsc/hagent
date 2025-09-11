@@ -52,12 +52,9 @@ class Builder:
         self.config = {}
         self.has_config = False
 
-        try:
-            self.config_path = config_path or self._find_config()
-            # Note: Config loading deferred until setup() when FileSystem is available
-        except (FileNotFoundError, ValueError):
-            # Config not found or invalid - Builder can still work without it
-            pass
+        # Store config_path parameter, but defer config discovery until setup()
+        # This makes both local and Docker modes consistent and ensures proper initialization order
+        self._provided_config_path = config_path
 
     @staticmethod
     def _find_config() -> str:
@@ -135,6 +132,14 @@ class Builder:
             except Exception as e:
                 self.set_error(f'FileSystem initialization failed: {e}')
                 success = False
+
+        # Discover config path now that environment is set up
+        if not self.config_path:
+            try:
+                self.config_path = self._provided_config_path or self._find_config()
+            except (FileNotFoundError, ValueError):
+                # Config not found or invalid - Builder can still work without it
+                pass
 
         # Try to load config - if Runner setup failed, try local file reading for dry run compatibility
         if self.config_path:
@@ -227,18 +232,35 @@ class Builder:
         if build_dir is None:
             build_dir = path_manager.build_dir
 
-        env = os.environ.copy()
+        # In Docker mode, start with empty env and let container provide defaults
+        # In local mode, inherit host environment
+        if self.runner and self.runner.is_docker_mode():
+            env = {}  # Let Docker container provide its own environment
+        else:
+            env = os.environ.copy()  # Use host environment for local mode
+
         cfg = profile.get('configuration', {})
 
         if isinstance(cfg, dict):
             for k, v in (cfg.get('environment') or {}).items():
-                # Allow $VAR expansion in YAML values
-                env[k] = os.path.expandvars(v)
+                # In Docker mode, be careful about PATH - the container already has the right PATH
+                # In local mode, expand variables using host environment
+                if self.runner and self.runner.is_docker_mode():
+                    # For PATH in Docker mode, skip if it's trying to extend PATH with $PATH
+                    # since the container already has the correct PATH setup
+                    if k == 'PATH' and v.startswith('$PATH:'):
+                        # Skip overriding PATH - use the container's default PATH
+                        continue
+                    else:
+                        # Pass other env vars as-is for Docker expansion
+                        env[k] = v
+                else:
+                    # Allow $VAR expansion in YAML values for local mode
+                    env[k] = os.path.expandvars(v)
 
-        # Use PathManager for consistent path handling
-        env['HAGENT_REPO_DIR'] = str(path_manager.repo_dir)
-        env['HAGENT_BUILD_DIR'] = str(build_dir)
-        env['HAGENT_CACHE_DIR'] = str(path_manager.cache_dir)
+        # Don't override user-controlled HAGENT_* environment variables
+        # These should only be set by the user for Docker volume mounting
+        # The execution environment will handle path translation as needed
         env['HAGENT_EXECUTION_MODE'] = path_manager.execution_mode
         return env
 
@@ -293,7 +315,50 @@ class Builder:
         else:
             resolved_path = path
 
+        # In Docker mode, translate host paths to container paths for file tracking
+        if self.runner and self.runner.is_docker_mode():
+            resolved_path = self._translate_to_container_path(resolved_path)
+
         return resolved_path, func_type, ext
+
+    def _translate_to_container_path(self, host_path: str) -> str:
+        """
+        Translate host paths to container paths for Docker mode.
+
+        Args:
+            host_path: Host filesystem path
+
+        Returns:
+            Container filesystem path
+        """
+        if not self.runner:
+            return host_path
+
+        path_manager = self.runner.path_manager
+        host_path_obj = Path(host_path).resolve()
+
+        # Check if this is a known host path that should be translated
+        try:
+            # Try to translate repo_dir path
+            if host_path_obj == path_manager.repo_dir or path_manager.repo_dir in host_path_obj.parents:
+                relative = host_path_obj.relative_to(path_manager.repo_dir)
+                return str(Path('/code/workspace/repo') / relative)
+
+            # Try to translate build_dir path
+            if host_path_obj == path_manager.build_dir or path_manager.build_dir in host_path_obj.parents:
+                relative = host_path_obj.relative_to(path_manager.build_dir)
+                return str(Path('/code/workspace/build') / relative)
+
+            # Try to translate cache_dir path
+            if host_path_obj == path_manager.cache_dir or path_manager.cache_dir in host_path_obj.parents:
+                relative = host_path_obj.relative_to(path_manager.cache_dir)
+                return str(Path('/code/workspace/cache') / relative)
+
+        except (ValueError, AttributeError):
+            # If path translation fails, use the original path
+            pass
+
+        return host_path
 
     def _setup_file_tracking(self, profile: dict, build_dir: Optional[Path] = None) -> None:
         """
@@ -425,7 +490,7 @@ class Builder:
         extra_args: Optional[List[str]] = None,
         build_dir: Optional[Path] = None,
         dry_run: bool = False,
-        quiet: bool = False,
+        quiet: bool = True,
     ) -> Tuple[int, str, str]:
         """
         Execute a command from a profile.
@@ -482,11 +547,19 @@ class Builder:
         else:
             repo_dir = self.runner.path_manager.repo_dir
 
-        command = command.replace('$HAGENT_BUILD_DIR', str(build_dir)).replace('$HAGENT_REPO_DIR', str(repo_dir))
+        # In Docker mode, use container paths for string replacement
+        if self.runner and self.runner.is_docker_mode():
+            repo_dir_str = self._translate_to_container_path(str(repo_dir))
+            build_dir_str = self._translate_to_container_path(str(build_dir))
+        else:
+            repo_dir_str = str(repo_dir)
+            build_dir_str = str(build_dir)
+
+        command = command.replace('$HAGENT_BUILD_DIR', build_dir_str).replace('$HAGENT_REPO_DIR', repo_dir_str)
 
         # Determine working directory
-        cwd = command_info.get('cwd', str(repo_dir))
-        cwd = cwd.replace('$HAGENT_BUILD_DIR', str(build_dir)).replace('$HAGENT_REPO_DIR', str(repo_dir))
+        cwd = command_info.get('cwd', repo_dir_str)
+        cwd = cwd.replace('$HAGENT_BUILD_DIR', build_dir_str).replace('$HAGENT_REPO_DIR', repo_dir_str)
 
         if dry_run:
             return 0, f'Would execute: {command} in {cwd}', ''
@@ -506,7 +579,7 @@ class Builder:
         extra_args: Optional[List[str]] = None,
         build_dir: Optional[Path] = None,
         dry_run: bool = False,
-        quiet: bool = False,
+        quiet: bool = True,
     ) -> Tuple[int, str, str]:
         """
         Convenience method to select profile and execute command in one call.
@@ -530,31 +603,6 @@ class Builder:
 
         profile = self._select_profile(exact_name, title_query)
         return self._run_api(profile, command_name, extra_args, build_dir, dry_run, quiet)
-
-    # Backward-compatible aliases (deprecated). Prefer run_api().
-    def _execute_command(
-        self,
-        profile: dict,
-        command_name: str,
-        extra_args: Optional[List[str]] = None,
-        build_dir: Optional[Path] = None,
-        dry_run: bool = False,
-        quiet: bool = False,
-    ) -> Tuple[int, str, str]:
-        return self._run_api(profile, command_name, extra_args, build_dir, dry_run, quiet)
-
-    def execute(
-        self,
-        exact_name: Optional[str] = None,
-        title_query: Optional[str] = None,
-        command_name: str = '',
-        extra_args: Optional[List[str]] = None,
-        build_dir: Optional[Path] = None,
-        dry_run: bool = False,
-        quiet: bool = False,
-    ) -> Tuple[int, str, str]:
-        """Backward-compatible alias for run_api()."""
-        return self.run_api(exact_name, title_query, command_name, extra_args, build_dir, dry_run, quiet)
 
     # ---------------------------- listing methods ----------------------------
 

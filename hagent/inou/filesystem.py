@@ -198,14 +198,14 @@ class DockerFileSystem(FileSystem):
         self.container_manager = container_manager
 
     def exists(self, path: str) -> bool:
-        exit_code, _, _ = self.container_manager.run_cmd(f'test -e "{path}"')
+        exit_code, _, _ = self.container_manager.run_cmd(f'test -e "{path}"', quiet=True)
         return exit_code == 0
 
     def read_file(self, path: str, encoding: Optional[str] = 'utf-8') -> str:
         if encoding is None:
             # Binary mode - read as base64 to handle binary content safely
             cmd = f"python3 -c \"import base64; print(base64.b64encode(open('{path}', 'rb').read()).decode())\""
-            exit_code, content, stderr = self.container_manager.run_cmd(cmd)
+            exit_code, content, stderr = self.container_manager.run_cmd(cmd, quiet=True)
             if exit_code != 0:
                 raise FileNotFoundError(f'Cannot read {path}: {stderr}')
 
@@ -215,7 +215,7 @@ class DockerFileSystem(FileSystem):
             return base64.b64decode(content.strip()).decode('latin1')
         else:
             # Text mode
-            exit_code, content, stderr = self.container_manager.run_cmd(f'cat "{path}"')
+            exit_code, content, stderr = self.container_manager.run_cmd(f'cat "{path}"', quiet=True)
             if exit_code != 0:
                 raise FileNotFoundError(f'Cannot read {path}: {stderr}')
             return content
@@ -226,7 +226,7 @@ class DockerFileSystem(FileSystem):
             # Use POSIX semantics inside the container
             parent_dir = posixpath.dirname(path)
             if parent_dir:
-                self.container_manager.run_cmd(f'mkdir -p "{parent_dir}"')
+                self.container_manager.run_cmd(f'mkdir -p "{parent_dir}"', quiet=True)
 
             if encoding is None:
                 # Binary mode - content is string representation of bytes
@@ -242,24 +242,24 @@ class DockerFileSystem(FileSystem):
                 encoded_content = base64.b64encode(content.encode(encoding)).decode('ascii')
                 cmd = f"python3 -c \"import base64; open('{path}', 'w', encoding='{encoding}').write(base64.b64decode('{encoded_content}').decode('{encoding}'))\""
 
-            exit_code, _, _ = self.container_manager.run_cmd(cmd)
+            exit_code, _, _ = self.container_manager.run_cmd(cmd, quiet=True)
             return exit_code == 0
         except Exception:
             return False
 
     def list_dir(self, path: str) -> List[str]:
-        exit_code, output, _ = self.container_manager.run_cmd(f'ls -1 "{path}" 2>/dev/null || true')
+        exit_code, output, _ = self.container_manager.run_cmd(f'ls -1 "{path}" 2>/dev/null || true', quiet=True)
         if exit_code != 0 or not output.strip():
             return []
         return [line.strip() for line in output.strip().split('\n') if line.strip()]
 
     def makedirs(self, path: str, exist_ok: bool = True) -> bool:
         cmd = f'mkdir -p "{path}"' if exist_ok else f'mkdir "{path}"'
-        exit_code, _, _ = self.container_manager.run_cmd(cmd)
+        exit_code, _, _ = self.container_manager.run_cmd(cmd, quiet=True)
         return exit_code == 0
 
     def remove(self, path: str) -> bool:
-        exit_code, _, _ = self.container_manager.run_cmd(f'rm -rf "{path}"')
+        exit_code, _, _ = self.container_manager.run_cmd(f'rm -rf "{path}"', quiet=True)
         return exit_code == 0
 
     def run_cmd(
@@ -284,7 +284,7 @@ class DockerFileSystem(FileSystem):
 
         # For Docker, resolve relative to container working directory
         # This may need adjustment based on container setup
-        exit_code, pwd_output, _ = self.container_manager.run_cmd('pwd')
+        exit_code, pwd_output, _ = self.container_manager.run_cmd('pwd', quiet=True)
         if exit_code == 0:
             container_cwd = pwd_output.strip()
             return posixpath.join(container_cwd, path)

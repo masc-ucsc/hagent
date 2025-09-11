@@ -585,7 +585,7 @@ class ContainerManager:
             # Resolve symlinks (important on macOS where /var -> /private/var)
             cache_dir_path = os.path.realpath(cache_dir_path)
 
-            print(f' docker MOUNT /code/workspace/cache {cache_dir_path}')
+            # print(f' docker MOUNT /code/workspace/cache {cache_dir_path}')
 
             cache_mount = docker.types.Mount(target='/code/workspace/cache', source=cache_dir_path, type='bind')
             mount_objs.append(cache_mount)
@@ -612,7 +612,7 @@ class ContainerManager:
             # Resolve symlinks (important on macOS where /var -> /private/var)
             resolved_repo_path = os.path.realpath(repo_dir_path)
 
-            print(f' docker MOUNT /code/workspace/repo {resolved_repo_path}')
+            # print(f' docker MOUNT /code/workspace/repo {resolved_repo_path}')
 
             repo_mount = docker.types.Mount(target='/code/workspace/repo', source=resolved_repo_path, type='bind')
             mount_objs.append(repo_mount)
@@ -638,7 +638,7 @@ class ContainerManager:
             # Resolve symlinks (important on macOS where /var -> /private/var)
             build_dir_path = os.path.realpath(build_dir_path)
 
-            print(f' docker MOUNT /code/workspace/build {build_dir_path}')
+            # print(f' docker MOUNT /code/workspace/build {build_dir_path}')
 
             build_mount = docker.types.Mount(target='/code/workspace/build', source=build_dir_path, type='bind')
             mount_objs.append(build_mount)
@@ -1183,7 +1183,7 @@ def _cleanup_all_containers():
     try:
         managers_to_cleanup = list(_container_manager_registry)
         if managers_to_cleanup:
-            print(f'\n⚠️  atexit: Cleaning up {len(managers_to_cleanup)} remaining ContainerManager instances...')
+            # print(f'\n⚠️  atexit: Cleaning up {len(managers_to_cleanup)} remaining ContainerManager instances...')
 
             for manager in managers_to_cleanup:
                 try:

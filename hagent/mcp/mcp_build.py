@@ -24,49 +24,86 @@ def get_mcp_schema() -> Dict[str, Any]:
     profiles_description = ''
 
     try:
-        # For schema generation, temporarily set required environment variables if not set
-        # This allows schema generation to work without a full project setup
-        import tempfile
-
-        temp_dir = tempfile.mkdtemp(prefix='hagent_schema_')
+        # Check if environment is already properly set up
+        required_env_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
+        env_already_set = all(var in os.environ for var in required_env_vars)
 
         env_backup = {}
-        required_env_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
-        env_defaults = {
-            'HAGENT_EXECUTION_MODE': 'local',
-            'HAGENT_REPO_DIR': temp_dir,
-            'HAGENT_BUILD_DIR': temp_dir,
-            'HAGENT_CACHE_DIR': temp_dir,
-        }
-        for var in required_env_vars:
-            if var not in os.environ:
-                env_backup[var] = None
-                os.environ[var] = env_defaults[var]  # Set appropriate default for schema generation
-            else:
-                env_backup[var] = os.environ[var]
+        temp_dir = None
+
+        if not env_already_set:
+            # For schema generation, temporarily set required environment variables if not set
+            # This allows schema generation to work without a full project setup
+            import tempfile
+
+            temp_dir = tempfile.mkdtemp(prefix='hagent_schema_')
+
+            env_defaults = {
+                'HAGENT_EXECUTION_MODE': 'local',
+                'HAGENT_REPO_DIR': temp_dir,
+                'HAGENT_BUILD_DIR': temp_dir,
+                'HAGENT_CACHE_DIR': temp_dir,
+            }
+            for var in required_env_vars:
+                if var not in os.environ:
+                    env_backup[var] = None
+                    os.environ[var] = env_defaults[var]  # Set appropriate default for schema generation
+                else:
+                    env_backup[var] = os.environ[var]
+
+        # Initialize profiles to empty list in case of failure
+        profiles = []
 
         try:
             # Use Builder directly to get profiles in current environment
-            # For schema generation, we don't need Docker - just YAML config reading
-            builder = Builder()
+            # In Docker mode, we need to setup Docker to access mounted config files
+            # Suppress all output during schema generation to avoid polluting JSON output
+            from contextlib import redirect_stdout, redirect_stderr
+            from io import StringIO
+
+            # Capture all output during schema generation
+            captured_output = StringIO()
+            captured_errors = StringIO()
+
+            docker_image = os.environ.get('HAGENT_DOCKER')
+            builder = None
+            try:
+                with redirect_stdout(captured_output), redirect_stderr(captured_errors):
+                    builder = Builder(docker_image=docker_image)
+                    setup_success = builder.setup()
+
+                if not setup_success:
+                    # If setup fails, we can't get profiles - use empty list
+                    profiles = []
+                else:
+                    # Get profiles with output still suppressed
+                    with redirect_stdout(captured_output), redirect_stderr(captured_errors):
+                        profiles = builder.get_all_profiles()
+            finally:
+                # Always clean up the builder to avoid atexit warnings
+                if builder:
+                    with redirect_stdout(captured_output), redirect_stderr(captured_errors):
+                        builder.cleanup()
+                    builder = None
+
         finally:
-            # Restore original environment
+            # Restore original environment if we modified it
             for var, original_value in env_backup.items():
                 if original_value is None:
                     os.environ.pop(var, None)
                 else:
                     os.environ[var] = original_value
 
-            # Clean up temp directory
-            import shutil
+            # Clean up temp directory if we created one
+            if temp_dir:
+                import shutil
 
-            try:
-                shutil.rmtree(temp_dir)
-            except Exception:
-                pass  # Ignore cleanup errors
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception:
+                    pass  # Ignore cleanup errors
 
-        # Get all profiles and APIs
-        profiles = builder.get_all_profiles()
+        # Process the profiles we retrieved (with suppressed output)
         available_profiles = [p.get('name', '') for p in profiles if p.get('name')]
 
         # Collect unique API names across all profiles
@@ -82,7 +119,8 @@ def get_mcp_schema() -> Dict[str, Any]:
             description_lines = []
             for p in profiles:
                 name = p.get('name', '<unnamed>')
-                title = builder.profile_title(p) or 'N/A'
+                # Get profile title, preferring 'title' over 'description' for backward compatibility
+                title = (p.get('title') or p.get('description') or '').strip() or 'N/A'
                 description_lines.append(f'\nname: {name}')
                 description_lines.append(f'  title: {title}')
                 description_lines.append('  APIs:')
@@ -150,8 +188,9 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
     """
     builder = None
     try:
-        # Initialize Builder
-        builder = Builder()
+        # Initialize Builder with Docker configuration from environment
+        docker_image = os.environ.get('HAGENT_DOCKER')
+        builder = Builder(docker_image=docker_image)
 
         # Handle parameters
         exact_name = params.get('name')
@@ -326,13 +365,10 @@ def main():
             print('ERROR: mcp_builder needs a HAGENT_DOCKER specified to run tools')
             return 3
 
-        # Handle operations that don't require Docker first
+        # Initialize builder
         builder = Builder(config_path=args.config, docker_image=docker_image)
-        if args.list:
-            builder.list_profiles()
-            return 0
 
-        # Setup for all operations - but for dry runs, config loading should work even if Runner setup fails
+        # Setup builder (required for config discovery)
         if not builder.setup():
             # For dry runs, allow operation if we at least have config, even if Runner setup failed
             if args.dry_run and builder.has_config:
@@ -341,6 +377,10 @@ def main():
                 print(f'Error: Builder setup failed: {builder.get_error()}', file=sys.stderr)
                 return 1
 
+        if args.list:
+            builder.list_profiles()
+            return 0
+
         # List APIs for selected profiles.
         if args.list_apis:
             success = builder.list_apis_for_profile(args.name, args.profile)
@@ -348,13 +388,13 @@ def main():
 
         # Execute selected API
         if args.api:
-            exit_code, stdout, stderr = builder.execute(
+            exit_code, stdout, stderr = builder.run_api(
                 exact_name=args.name,
                 title_query=args.profile,
                 command_name=args.api,
                 extra_args=args.extra_args,
                 dry_run=args.dry_run,
-                quiet=False,
+                quiet=True,
             )
 
             # Print stdout and stderr if they contain anything

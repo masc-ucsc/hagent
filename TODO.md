@@ -1,5 +1,15 @@
 -------
 
+No python code (except tests) should set HAGENT_... as those are environment variables.
+
+Remove and fix accordingly
+
+-------
+
+The docker run output has /code/workspace/... directories, but the message passed back should "search-replace" the docker for the HAGENT_... variable set. Otherwise, the MCP can not know the path to fix.
+
+-------
+
 hagent/inou has several objects, but Python classes outside hagent should only use Runner or Builder.
 
 
