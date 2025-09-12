@@ -74,7 +74,7 @@ class TestFileTrackerInitialization:
             assert len(tracker._tracked_files) == 0
             assert len(tracker._tracked_dirs) == 0
 
-    @patch('hagent.inou.file_tracker.sys.exit')
+    @patch('hagent.inou.file_tracker_local.sys.exit')
     @patch('pathlib.Path.exists', return_value=False)
     def test_repo_dir_not_exists(self, mock_exists, mock_exit):
         """Test failure when repo directory doesn't exist."""
@@ -85,7 +85,7 @@ class TestFileTrackerInitialization:
 
         mock_exit.assert_called_once_with(1)
 
-    @patch('hagent.inou.file_tracker.sys.exit')
+    @patch('hagent.inou.file_tracker_local.sys.exit')
     @patch('pathlib.Path.exists')
     def test_not_git_repo(self, mock_exists, mock_exit):
         """Test failure when directory is not a git repository."""
@@ -99,7 +99,7 @@ class TestFileTrackerInitialization:
 
         mock_exit.assert_called_once_with(1)
 
-    @patch('hagent.inou.file_tracker.sys.exit')
+    @patch('hagent.inou.file_tracker_local.sys.exit')
     @patch('hagent.inou.file_tracker_local.subprocess.run')
     @patch('pathlib.Path.exists', return_value=True)
     def test_git_command_not_available(self, mock_exists, mock_subprocess, mock_exit):

@@ -100,7 +100,7 @@ class TestPathManagerIntegration:
     def test_file_tracker_with_path_manager_validation_error(self):
         """Test FileTracker behavior when PathManager validation fails."""
         with patch.dict('os.environ', {}, clear=True):
-            with patch('hagent.inou.file_tracker.sys.exit') as mock_exit:
+            with patch('hagent.inou.file_tracker_local.sys.exit') as mock_exit:
                 # PathManager should fail fast due to missing env vars
                 try:
                     PathManager()
@@ -462,7 +462,7 @@ class TestErrorRecoveryIntegration:
         mock_path_manager.cache_dir = Path('/nonexistent/cache')
 
         # Should fail fast due to invalid repo
-        with patch('hagent.inou.file_tracker.sys.exit') as mock_exit:
+        with patch('hagent.inou.file_tracker_local.sys.exit') as mock_exit:
             FileTracker(mock_path_manager)
             mock_exit.assert_called_with(1)
 
