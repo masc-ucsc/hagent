@@ -709,6 +709,7 @@ class FileTrackerLocal:
 
     def _container_parent_exists(self, path: str) -> bool:
         import posixpath
+
         if not self._is_container_path(path):
             return False
         # Use 'test -d' on parent directory in container

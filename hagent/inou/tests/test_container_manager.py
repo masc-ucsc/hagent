@@ -558,11 +558,23 @@ class TestContainerManager:
 
     def test_destructor_cleanup(self):
         """Test cleanup on object destruction."""
+        import gc
+
+        # Force garbage collection to ensure previous test instances are cleaned up
+        gc.collect()
+
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 with patch.object(ContainerManager, 'cleanup') as mock_cleanup:
                     manager = ContainerManager('mascucsc/hagent-simplechisel:2025.09r')
+
+                    # Reset mock call count to ensure we only count calls from this instance
+                    mock_cleanup.reset_mock()
+
                     del manager
+
+                    # Force garbage collection to trigger __del__ immediately
+                    gc.collect()
 
                     mock_cleanup.assert_called_once()
 

@@ -12,7 +12,7 @@ from .filesystem_base import FileSystem
 from .filesystem_local import FileSystemLocal
 from .filesystem_docker import FileSystemDocker
 
-# Keep old names as aliases for backward compatibility  
+# Keep old names as aliases for backward compatibility
 LocalFileSystem = FileSystemLocal
 DockerFileSystem = FileSystemDocker
 
