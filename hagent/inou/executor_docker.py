@@ -1,0 +1,183 @@
+"""
+Docker Executor for HAgent
+
+Provides Docker command execution strategy that runs commands within Docker containers.
+"""
+
+import os
+from pathlib import Path
+from typing import Dict, Optional, Tuple
+
+from .path_manager import PathManager
+from .container_manager import is_docker_mode
+
+
+class DockerExecutor:
+    """Execution strategy that runs commands within Docker containers."""
+
+    def __init__(self, container_manager=None, path_manager: Optional[PathManager] = None):
+        """
+        Initialize DockerExecutor.
+
+        Args:
+            container_manager: ContainerManager instance for Docker operations
+            path_manager: PathManager instance for path resolution
+        """
+        self.path_manager = path_manager or PathManager()
+
+        if container_manager is not None:
+            self.container_manager = container_manager
+        else:
+            # Create a new container_manager if not provided
+            from .container_manager import ContainerManager
+
+            self.container_manager = ContainerManager(
+                image='mascucsc/hagent-simplechisel:2025.09r', path_manager=self.path_manager
+            )
+
+        # Container instance for reuse
+        self._container = None
+        self.error_message = ''
+
+    def set_error(self, message: str) -> None:
+        """Set error message following Tool pattern."""
+        self.error_message = message
+
+    def get_error(self) -> str:
+        """Get current error message following Tool pattern."""
+        return self.error_message
+
+    def _setup_hagent_environment(self) -> Dict[str, str]:
+        """Setup HAGENT environment variables for Docker execution."""
+        # Inside Docker container, use container paths not host paths
+        env_vars = {
+            'HAGENT_EXECUTION_MODE': 'docker',
+            'HAGENT_REPO_DIR': '/code/workspace/repo',
+            'HAGENT_BUILD_DIR': '/code/workspace/build',
+            'HAGENT_CACHE_DIR': '/code/workspace/cache',
+        }
+        return env_vars
+
+    def setup(self) -> bool:
+        """
+        Setup Docker execution environment.
+        Working directory is always /code/workspace/repo.
+
+        Returns:
+            True if setup successful, False otherwise
+        """
+        success = self.container_manager.setup()
+        if not success:
+            self.set_error(f'Container setup failed: {self.container_manager.get_error()}')
+        return success
+
+    def set_cwd(self, new_workdir: str) -> bool:
+        """
+        Change the working directory with validation.
+
+        Args:
+            new_workdir: New working directory path (relative to /code/workspace/repo or absolute)
+
+        Returns:
+            True if successful, False if path doesn't exist
+        """
+        success = self.container_manager.set_cwd(new_workdir)
+        if not success:
+            self.set_error(self.container_manager.get_error())
+        return success
+
+    def get_cwd(self) -> str:
+        """
+        Get the current working directory.
+
+        Returns:
+            Current working directory path
+        """
+        return self.container_manager.get_cwd()
+
+    def run_cmd(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]:
+        """
+        Execute command using ContainerManager or File_manager (Docker).
+
+        Args:
+            command: The command to execute
+            cwd: Working directory (will be converted for container, defaults to ".")
+            env: Additional environment variables (set in the host environment, HAGENT vars are automatically included)
+            quiet: Whether to run in quiet mode
+
+        Returns:
+            Tuple of (exit_code, stdout, stderr)
+        """
+        # Convert host paths to container paths if needed
+        if cwd == '.':
+            # Default to container's working directory instead of translating host path
+            container_cwd = '.'  # ContainerManager will use its internal _workdir
+        else:
+            container_cwd = self._translate_path_to_container(cwd)
+
+        # Set environment variables in the current process
+        # (they'll be inherited by the Docker execution)
+        hagent_env = self._setup_hagent_environment()
+        combined_env = hagent_env.copy()
+        if env:
+            combined_env.update(env)  # Additional env vars override defaults
+
+        old_env = {}
+        for key, value in combined_env.items():
+            old_env[key] = os.environ.get(key)
+            os.environ[key] = value
+
+        try:
+            # Use ContainerManager approach
+            return self.container_manager.run_cmd(command, container_cwd, quiet)
+        finally:
+            # Restore previous environment
+            for key, old_value in old_env.items():
+                if old_value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = old_value
+
+    # Backward-compatible alias (deprecated). Prefer run_cmd().
+    def run(
+        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ) -> Tuple[int, str, str]:
+        return self.run_cmd(command, cwd, env, quiet)
+
+    def _translate_path_to_container(self, host_path: str) -> str:
+        """
+        Translate host paths to container paths.
+
+        Args:
+            host_path: Absolute path on the host system
+
+        Returns:
+            Corresponding path inside the container
+        """
+        host_path_obj = Path(host_path).resolve()
+
+        # Check if this is a known host path that should be translated
+        if is_docker_mode():
+            try:
+                # Try to translate repo_dir path
+                if host_path_obj == self.path_manager.repo_dir or self.path_manager.repo_dir in host_path_obj.parents:
+                    relative = host_path_obj.relative_to(self.path_manager.repo_dir)
+                    return str(Path('/code/workspace/repo') / relative)
+
+                # Try to translate build_dir path
+                if host_path_obj == self.path_manager.build_dir or self.path_manager.build_dir in host_path_obj.parents:
+                    relative = host_path_obj.relative_to(self.path_manager.build_dir)
+                    return str(Path('/code/workspace/build') / relative)
+
+                # Try to translate cache_dir path
+                if host_path_obj == self.path_manager.cache_dir or self.path_manager.cache_dir in host_path_obj.parents:
+                    relative = host_path_obj.relative_to(self.path_manager.cache_dir)
+                    return str(Path('/code/workspace/cache') / relative)
+            except (ValueError, AttributeError):
+                # If path translation fails, use the original path
+                pass
+
+        # Default: return the original path (may work in some container setups)
+        return str(host_path_obj)

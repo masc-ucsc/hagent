@@ -11,7 +11,9 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from hagent.inou.executor import LocalExecutor, DockerExecutor, ExecutorFactory, create_executor, run_cmd
+from hagent.inou.executor import ExecutorFactory, create_executor, run_cmd
+from hagent.inou.executor_local import LocalExecutor
+from hagent.inou.executor_docker import DockerExecutor
 
 
 class TestLocalExecutor:
@@ -19,7 +21,7 @@ class TestLocalExecutor:
 
     def test_initialization(self):
         """Test LocalExecutor initialization."""
-        with patch('hagent.inou.executor.PathManager') as mock_pm_class:
+        with patch('hagent.inou.executor_local.PathManager') as mock_pm_class:
             mock_pm = MagicMock()
             mock_pm_class.return_value = mock_pm
 
@@ -133,7 +135,7 @@ class TestDockerExecutor:
     def test_initialization_with_file_manager(self):
         """Test DockerExecutor initialization without managers (creates default container_manager)."""
         with patch('hagent.inou.container_manager.ContainerManager') as mock_cm_class:
-            with patch('hagent.inou.executor.PathManager') as mock_pm_class:
+            with patch('hagent.inou.executor_docker.PathManager') as mock_pm_class:
                 mock_cm = MagicMock()
                 mock_pm = MagicMock()
                 mock_cm_class.return_value = mock_cm
@@ -163,7 +165,7 @@ class TestDockerExecutor:
     def test_initialization_no_managers(self):
         """Test DockerExecutor initialization without managers (creates container_manager)."""
         with patch('hagent.inou.container_manager.ContainerManager') as mock_cm_class:
-            with patch('hagent.inou.executor.PathManager') as mock_pm_class:
+            with patch('hagent.inou.executor_docker.PathManager') as mock_pm_class:
                 mock_cm = MagicMock()
                 mock_pm = MagicMock()
                 mock_cm_class.return_value = mock_cm
@@ -235,7 +237,7 @@ class TestDockerExecutor:
             os.environ.clear()
             os.environ.update(original_env)
 
-    @patch('hagent.inou.executor.is_docker_mode', return_value=True)
+    @patch('hagent.inou.executor_docker.is_docker_mode', return_value=True)
     def test_translate_path_to_container_repo_dir(self, mock_is_docker_mode):
         """Test path translation for repo directory."""
         mock_cm = MagicMock()
@@ -254,7 +256,7 @@ class TestDockerExecutor:
         result = executor._translate_path_to_container('/host/repo')
         assert result == '/code/workspace/repo'
 
-    @patch('hagent.inou.executor.is_docker_mode', return_value=True)
+    @patch('hagent.inou.executor_docker.is_docker_mode', return_value=True)
     def test_translate_path_to_container_build_dir(self, mock_is_docker_mode):
         """Test path translation for build directory."""
         mock_cm = MagicMock()
@@ -269,7 +271,7 @@ class TestDockerExecutor:
         result = executor._translate_path_to_container('/host/build/output')
         assert result == '/code/workspace/build/output'
 
-    @patch('hagent.inou.executor.is_docker_mode', return_value=True)
+    @patch('hagent.inou.executor_docker.is_docker_mode', return_value=True)
     def test_translate_path_to_container_cache_dir(self, mock_is_docker_mode):
         """Test path translation for cache directory."""
         mock_cm = MagicMock()
@@ -284,7 +286,7 @@ class TestDockerExecutor:
         result = executor._translate_path_to_container('/host/cache/logs')
         assert result == '/code/workspace/cache/logs'
 
-    @patch('hagent.inou.executor.is_docker_mode', return_value=True)
+    @patch('hagent.inou.executor_docker.is_docker_mode', return_value=True)
     def test_translate_path_to_container_no_match(self, mock_is_docker_mode):
         """Test path translation for unknown path."""
         mock_cm = MagicMock()
@@ -299,7 +301,7 @@ class TestDockerExecutor:
         result = executor._translate_path_to_container('/other/path')
         assert result == str(Path('/other/path').resolve())
 
-    @patch('hagent.inou.executor.is_docker_mode', return_value=False)
+    @patch('hagent.inou.executor_docker.is_docker_mode', return_value=False)
     def test_translate_path_to_container_non_docker_mode(self, mock_is_docker_mode):
         """Test path translation in non-Docker mode."""
         mock_cm = MagicMock()
@@ -387,7 +389,7 @@ class TestExecutorFactory:
             mock_pm.execution_mode = 'local'
             mock_pm_class.return_value = mock_pm
 
-            with patch('hagent.inou.executor.LocalExecutor'):
+            with patch('hagent.inou.executor_local.LocalExecutor'):
                 ExecutorFactory.create_executor()
                 mock_pm_class.assert_called_once()
 
