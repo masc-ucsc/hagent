@@ -34,6 +34,15 @@ from hagent.tool.docker_diff_applier import DockerDiffApplier
 from hagent.tool.equiv_check import Equiv_check
 from hagent.inou.builder import Builder
 
+# Import components
+try:
+    from .components.bug_info import BugInfo
+    from .components.hints_generator import HintsGenerator
+except ImportError:
+    # Fallback for direct execution or testing
+    from components.bug_info import BugInfo
+    from components.hints_generator import HintsGenerator
+
 
 class V2chisel_batch(Step):
     """V2chisel_batch that runs REAL pipeline with real LLM calls"""
@@ -85,13 +94,17 @@ class V2chisel_batch(Step):
         # print('[V2chisel_batch] LLM components initialized')
         # print(f'[V2chisel_batch] Using model: {final_llm_config.get("model", "default")}')
 
-        # Initialize module_finder
-        self.module_finder = Module_finder()
-        # print('[V2chisel_batch] Module_finder initialized')
-
         # Configuration - you can adjust these
         self.chisel_source_pattern = './tmp/src/main/scala/*/*.scala'  # Default pattern
         self.debug = True  # Enable debug output
+
+        # Initialize module_finder
+        self.module_finder = Module_finder()
+        # print('[V2chisel_batch] Module_finder initialized')
+        
+        # Initialize HintsGenerator
+        self.hints_generator = HintsGenerator(self.module_finder, debug=self.debug)
+        # print('[V2chisel_batch] HintsGenerator initialized')
 
     def _run_docker_command(self, cmd_list, timeout=None):
         """Helper method to run Docker commands through Runner instead of subprocess
@@ -2858,22 +2871,17 @@ class V2chisel_batch(Step):
         self, bug_idx: int, bug_entry: dict, local_files: list, docker_container: str, docker_patterns: list
     ) -> dict:
         """Process a single bug entry with module_finder"""
-        print(f'\n🔄 Processing Bug #{bug_idx + 1}: {bug_entry.get("file", "unknown")}')
-
-        # Extract information from bug entry
-        file_name = bug_entry.get('file', 'unknown')
-        unified_diff = bug_entry.get('unified_diff', '')
-
-        print('✅ Step 3: Per-Bug Processing - START')
-
-        # Show verilog_diff as requested
-        print('=' * 60)
-        print('📋 [DEBUG] Verilog diff from input:')
-        print(unified_diff)
-        print('=' * 60)
-
-        # Extract module name from file name (remove .sv extension)
-        module_name = os.path.splitext(file_name)[0] if file_name else None
+        
+        # Create BugInfo object to handle bug data extraction
+        bug_info = BugInfo(bug_entry, bug_idx)
+        
+        # Print debug information (matches original output exactly)
+        bug_info.print_debug_info()
+        
+        # Extract variables for backwards compatibility with existing code
+        file_name = bug_info.file_name
+        unified_diff = bug_info.unified_diff
+        module_name = bug_info.module_name
 
         # print(f'Processing module: {module_name}')
         # print(f'Docker container: {docker_container}')
@@ -2886,96 +2894,20 @@ class V2chisel_batch(Step):
         all_files = local_files + docker_files
         # print(f'📁 Total files for this bug: {len(all_files)} (local: {len(local_files)}, docker: {len(docker_files)})')
 
-        # Prepare files for module_finder (handle Docker files)
-        # print('🔧 Preparing files for module_finder...')
-        prepared_files = self._prepare_files_for_module_finder(all_files)
-        # print(f'✅ Prepared {len(prepared_files)} files (including {len(getattr(self, "temp_files", []))} temp files)')
-
         # Search for actual Verilog files in Docker to improve module context
         verilog_context = self._find_verilog_files_in_docker(docker_container, module_name)
 
-        # Call module_finder
-        # print('🚀 Calling module_finder...')
-        try:
-            hits = self.module_finder.find_modules(
-                scala_files=prepared_files, verilog_module=module_name, verilog_diff=unified_diff
-            )
-
-            # print(f'✅ Module_finder returned {len(hits)} hits')
-
-            # Map temp file paths back to original Docker paths
-            mapped_hits = []
-            for hit in hits:
-                original_path = getattr(self, 'temp_to_original', {}).get(hit.file_name, hit.file_name)
-                # Create new hit with original path
-                mapped_hit = type(hit)(
-                    file_name=original_path,
-                    module_name=hit.module_name,
-                    start_line=hit.start_line,
-                    end_line=hit.end_line,
-                    confidence=hit.confidence,
-                )
-                mapped_hits.append(mapped_hit)
-
-            # Display results
-            if mapped_hits:
-                # print('📋 Module finder results:')
-                # for i, hit in enumerate(mapped_hits[:3]):  # Show top 3 hits
-                #     confidence_bar = '█' * int(hit.confidence * 10) + '░' * (10 - int(hit.confidence * 10))
-                #     confidence_emoji = '🟢' if hit.confidence >= 0.8 else '🟡' if hit.confidence >= 0.5 else '🔴'
-                #     print(f'  [{i + 1}] {confidence_emoji} {hit.module_name} ({hit.confidence:.2f}) [{confidence_bar}]')
-                #
-                #     # Show if it's a Docker file
-                #     if hit.file_name.startswith('docker:'):
-                #         container_info = hit.file_name.split(':')[1]
-                #         file_path = hit.file_name.split(':', 2)[2]
-                #         print(f'      🐳 Container: {container_info}')
-                #         print(f'      📁 File: {file_path}')
-                #     else:
-                #         print(f'      📁 File: {hit.file_name}')
-                #
-                #     print(f'      📍 Lines: {hit.start_line}-{hit.end_line}')
-                #
-                # if len(mapped_hits) > 3:
-                #     print(f'      ... and {len(mapped_hits) - 3} more hits')
-                pass  # Module finder results commented out
-            else:
-                pass  # No module matches found
-
-            hits = mapped_hits  # Use mapped hits for further processing
-
-        except Exception as e:
-            print(f'❌ Module_finder failed: {e}')
-            hits = []
-        finally:
-            # Clean up temp files
-            self._cleanup_temp_files()
-
-        # HYBRID APPROACH: If module_finder failed or found no good hits, try metadata fallback
-        use_metadata_fallback = False
-        metadata_hints = ''
-
-        if not hits or len(hits) == 0:
-            # print('🔄 Module_finder found no hits - trying metadata fallback...')
-            use_metadata_fallback = True
-        elif max(hit.confidence for hit in hits) < 0.5:
-            # print('🔄 Module_finder confidence too low - trying metadata fallback...')
-            use_metadata_fallback = True
-
-        if use_metadata_fallback:
-            metadata_hints = self._get_metadata_fallback_hints(docker_container, file_name, unified_diff)
-
-        # Prepare final hints for LLM
+        # Step 4: Use HintsGenerator to find hints
         print('✅ Step 4: Hint Generation - START')
-        final_hints = ''
-        hints_source = ''
-
-        if hits and len(hits) > 0 and max(hit.confidence for hit in hits) >= 0.5:
-            # Use module_finder results - extract actual code content
-            hints_source = 'module_finder'
-            final_hints = f'// Module finder results for {module_name}\n\n'
-
-            # Print hint files and paths
+        hints_result = self.hints_generator.find_hints(bug_info, all_files, docker_container)
+        
+        # Extract results for backwards compatibility
+        final_hints = hints_result['hints']
+        hints_source = hints_result['source']
+        hits = hints_result.get('hits', [])
+        
+        # Print hint files and paths (matches original output format)
+        if hints_source == 'module_finder' and hits:
             print('Hint files:')
             for i, hit in enumerate(hits[:5]):  # Show first 5 hits
                 if hit.file_name.startswith('docker:'):
@@ -2985,24 +2917,6 @@ class V2chisel_batch(Step):
                     print(
                         f'  [{i + 1}] {hit.file_name} (lines {hit.start_line}-{hit.end_line}, confidence: {hit.confidence:.2f})'
                     )
-
-            # Extract actual Chisel code from the hits
-            code_hints = self._extract_code_from_hits(hits, docker_container)
-            final_hints += code_hints
-
-            # print(f'✅ Using module_finder hints: {len(hits)} hits')
-
-        elif metadata_hints.strip():
-            # Use metadata fallback
-            hints_source = 'metadata_fallback'
-            final_hints = metadata_hints
-            # print(f'✅ Using metadata fallback hints: {len(metadata_hints)} characters')
-
-        else:
-            # No hints available
-            hints_source = 'none'
-            final_hints = f'// No hints found for {module_name} via module_finder or metadata fallback'
-            # print(f'❌ No hints available for {module_name}')
 
         # print(f'📝 Final hints source: {hints_source}')
 
