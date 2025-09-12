@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-from hagent.inou.file_tracker import FileTrackerLocal as FileTracker
+from hagent.inou.file_tracker_local import FileTrackerLocal as FileTracker
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +45,7 @@ def reset_docker_state():
 class TestFileTrackerInitialization:
     """Test FileTracker initialization and validation."""
 
-    @patch('hagent.inou.file_tracker.subprocess.run')
+    @patch('hagent.inou.file_tracker_local.subprocess.run')
     @patch('pathlib.Path.exists')
     def test_successful_initialization(self, mock_exists, mock_subprocess):
         """Test successful FileTracker initialization."""
@@ -100,7 +100,7 @@ class TestFileTrackerInitialization:
         mock_exit.assert_called_once_with(1)
 
     @patch('hagent.inou.file_tracker.sys.exit')
-    @patch('hagent.inou.file_tracker.subprocess.run')
+    @patch('hagent.inou.file_tracker_local.subprocess.run')
     @patch('pathlib.Path.exists', return_value=True)
     def test_git_command_not_available(self, mock_exists, mock_subprocess, mock_exit):
         """Test failure when git command is not available."""
@@ -121,7 +121,7 @@ class TestFileTrackerInitialization:
 class TestSnapshotManagement:
     """Test git stash snapshot management."""
 
-    @patch('hagent.inou.file_tracker.subprocess.run')
+    @patch('hagent.inou.file_tracker_local.subprocess.run')
     def test_create_baseline_snapshot_with_changes(self, mock_subprocess):
         """Test baseline snapshot creation when changes exist."""
         mock_path_manager = MagicMock()
@@ -145,7 +145,7 @@ class TestSnapshotManagement:
             assert tracker._baseline_stash == 'abc123'
             assert 'abc123' in tracker._hagent_stashes
 
-    @patch('hagent.inou.file_tracker.subprocess.run')
+    @patch('hagent.inou.file_tracker_local.subprocess.run')
     def test_create_baseline_snapshot_no_changes(self, mock_subprocess):
         """Test baseline snapshot when no changes exist."""
         mock_path_manager = MagicMock()
@@ -163,7 +163,7 @@ class TestSnapshotManagement:
             assert tracker._baseline_stash is None
             assert len(tracker._hagent_stashes) == 0
 
-    @patch('hagent.inou.file_tracker.subprocess.run')
+    @patch('hagent.inou.file_tracker_local.subprocess.run')
     def test_create_snapshot(self, mock_subprocess):
         """Test creating a snapshot."""
         mock_path_manager = MagicMock()
@@ -182,7 +182,7 @@ class TestSnapshotManagement:
             assert result == 'def456'
             mock_subprocess.assert_called_once()
 
-    @patch('hagent.inou.file_tracker.subprocess.run')
+    @patch('hagent.inou.file_tracker_local.subprocess.run')
     def test_store_snapshot(self, mock_subprocess):
         """Test storing a snapshot."""
         mock_path_manager = MagicMock()
@@ -202,7 +202,7 @@ class TestSnapshotManagement:
             assert result is True
             assert 'def456' in tracker._hagent_stashes
 
-    @patch('hagent.inou.file_tracker.subprocess.run')
+    @patch('hagent.inou.file_tracker_local.subprocess.run')
     def test_cleanup_snapshots(self, mock_subprocess):
         """Test cleanup of snapshots."""
         mock_path_manager = MagicMock()

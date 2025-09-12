@@ -12,7 +12,8 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-from hagent.inou.file_tracker import FileTracker, FileTrackerLocal
+from hagent.inou.file_tracker import FileTracker
+from hagent.inou.file_tracker_local import FileTrackerLocal
 from hagent.inou.path_manager import PathManager
 
 

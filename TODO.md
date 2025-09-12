@@ -6,6 +6,10 @@ Remove and fix accordingly
 
 -------
 
+ Add a check to look for too long functions. Then rank them error based on function lenght. If more than 1-2 scrren (60LoC), issue waring to refactor.
+
+-------
+
 The docker run output has /code/workspace/... directories, but the message passed back should "search-replace" the docker for the HAGENT_... variable set. Otherwise, the MCP can not know the path to fix.
 
 -------

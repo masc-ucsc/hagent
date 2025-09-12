@@ -97,6 +97,14 @@ else
   note "No coverage.xml found; skipping coverage-based hints."
 fi
 
+# 6) Code complexity checks (spaghetti code detection)
+section "Code complexity checks"
+if $PYTHON_RUN scripts/avoid_spagetti_code.py .; then
+  note "No complexity issues found."
+else
+  issues=$((issues+1))
+fi
+
 if [ "$issues" -ne 0 ]; then
   echo "\nOne or more checks reported issues."
   exit 1
