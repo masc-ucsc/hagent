@@ -283,7 +283,7 @@ class Control extends Module {
         hit = SimpleNamespace()
         hit.file_name = scala_file
         hit.module_name = 'Control'
-        hit.start_line = 15
+        hit.start_line = 14
         hit.end_line = 25
         hit.confidence = 0.9
         mock_module_finder.find_modules.return_value = [hit]
