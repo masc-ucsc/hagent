@@ -17,7 +17,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Iterable, List, Optional, Set, Tuple
 
 
 DEFAULT_EXCLUDE_DIRS = {
@@ -75,12 +75,12 @@ def iter_py_files(root: Path, include_tests: bool, test_globs: List[str], exclud
 def count_significant_lines(source_lines: List[str], start_line: int, end_line: int) -> int:
     """
     Count lines of code excluding comments and blank lines.
-    
+
     Args:
         source_lines: List of source code lines (0-indexed)
         start_line: Start line number (1-indexed, inclusive)
         end_line: End line number (1-indexed, inclusive)
-        
+
     Returns:
         Number of significant lines of code
     """
@@ -132,19 +132,19 @@ class FileComplexityInfo:
 
 class CodeComplexityVisitor(ast.NodeVisitor):
     """AST visitor to collect complexity information."""
-    
+
     def __init__(self, file: Path, source_lines: List[str]):
         self.file = file
         self.source_lines = source_lines
         self.functions: List[FunctionInfo] = []
         self.classes: List[ClassInfo] = []
         self.class_stack: List[str] = []
-        
+
     def _get_node_end_line(self, node: ast.AST) -> int:
         """Get the end line of an AST node."""
         if hasattr(node, 'end_lineno') and node.end_lineno is not None:
             return node.end_lineno
-        
+
         # Fallback: find the maximum line number in the subtree
         max_lineno = getattr(node, 'lineno', 1)
         for child in ast.walk(node):
@@ -153,59 +153,56 @@ class CodeComplexityVisitor(ast.NodeVisitor):
             if hasattr(child, 'end_lineno') and child.end_lineno is not None:
                 max_lineno = max(max_lineno, child.end_lineno)
         return max_lineno
-        
+
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_function(node)
-        
+
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._visit_function(node)
-        
+
     def _visit_function(self, node) -> None:
         """Handle both sync and async function definitions."""
         start_line = node.lineno
         end_line = self._get_node_end_line(node)
         loc = count_significant_lines(self.source_lines, start_line, end_line)
-        
+
         class_name = self.class_stack[-1] if self.class_stack else None
-        
-        self.functions.append(FunctionInfo(
-            file=self.file,
-            name=node.name,
-            start_line=start_line,
-            end_line=end_line,
-            loc=loc,
-            class_name=class_name
-        ))
-        
+
+        self.functions.append(
+            FunctionInfo(file=self.file, name=node.name, start_line=start_line, end_line=end_line, loc=loc, class_name=class_name)
+        )
+
         self.generic_visit(node)
-        
+
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self.class_stack.append(node.name)
-        
+
         start_line = node.lineno
         end_line = self._get_node_end_line(node)
         loc = count_significant_lines(self.source_lines, start_line, end_line)
-        
+
         # Count methods in this class
         method_count = 0
         for child in node.body:
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 method_count += 1
-                
+
         # Simple heuristic for trivial classes
         # A class is trivial if it has few methods and few lines
         is_trivial = method_count <= 2 and loc <= 20
-        
-        self.classes.append(ClassInfo(
-            file=self.file,
-            name=node.name,
-            start_line=start_line,
-            end_line=end_line,
-            loc=loc,
-            method_count=method_count,
-            is_trivial=is_trivial
-        ))
-        
+
+        self.classes.append(
+            ClassInfo(
+                file=self.file,
+                name=node.name,
+                start_line=start_line,
+                end_line=end_line,
+                loc=loc,
+                method_count=method_count,
+                is_trivial=is_trivial,
+            )
+        )
+
         self.generic_visit(node)
         self.class_stack.pop()
 
@@ -217,61 +214,53 @@ def analyze_file(file_path: Path) -> Tuple[List[FunctionInfo], List[ClassInfo], 
         source_lines = source.splitlines()
     except Exception:
         return [], [], FileComplexityInfo(file_path, 0, 0, 0, [])
-    
+
     try:
         tree = ast.parse(source, filename=str(file_path))
     except SyntaxError:
         return [], [], FileComplexityInfo(file_path, 0, 0, 0, [])
-    
+
     visitor = CodeComplexityVisitor(file_path, source_lines)
     visitor.visit(tree)
-    
+
     # Calculate file-level metrics
     total_loc = count_significant_lines(source_lines, 1, len(source_lines))
     non_trivial_classes = [c for c in visitor.classes if not c.is_trivial]
-    
+
     file_info = FileComplexityInfo(
         file=file_path,
         total_loc=total_loc,
         class_count=len(visitor.classes),
         non_trivial_class_count=len(non_trivial_classes),
-        classes=visitor.classes
+        classes=visitor.classes,
     )
-    
+
     return visitor.functions, visitor.classes, file_info
 
 
 def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Check for code complexity issues (spaghetti code detection)",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        description='Check for code complexity issues (spaghetti code detection)',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument(
-        'directory',
-        nargs='?',
-        default='.',
-        help='Directory to analyze (default: current directory)'
-    )
+    parser.add_argument('directory', nargs='?', default='.', help='Directory to analyze (default: current directory)')
     parser.add_argument(
         '--function-threshold',
         type=int,
         default=FUNCTION_LOC_THRESHOLD,
-        help='Threshold for long function detection (lines of code)'
+        help='Threshold for long function detection (lines of code)',
     )
     parser.add_argument(
-        '--class-threshold',
-        type=int,
-        default=CLASS_LOC_THRESHOLD,
-        help='Threshold for large class detection (lines of code)'
+        '--class-threshold', type=int, default=CLASS_LOC_THRESHOLD, help='Threshold for large class detection (lines of code)'
     )
     parser.add_argument(
         '--multi-class-threshold',
         type=int,
         default=FILE_MULTIPLE_CLASSES_THRESHOLD,
-        help='Threshold for files with multiple classes'
+        help='Threshold for files with multiple classes',
     )
-    
+
     return parser.parse_args(argv)
 
 
@@ -280,16 +269,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parse_arguments(argv)
     root = Path(args.directory).resolve()
     test_globs = list(DEFAULT_TEST_FILE_PATTERNS)
-    
+
     # Use configured thresholds
     function_threshold = args.function_threshold
     class_threshold = args.class_threshold
     multi_class_threshold = args.multi_class_threshold
-    
+
     all_functions: List[FunctionInfo] = []
     all_classes: List[ClassInfo] = []
     all_file_infos: List[FileComplexityInfo] = []
-    
+
     # Collect data from all Python files
     files = list(iter_py_files(root, include_tests=False, test_globs=test_globs, exclude_dirs=DEFAULT_EXCLUDE_DIRS))
     for file_path in files:
@@ -297,45 +286,45 @@ def main(argv: Optional[List[str]] = None) -> int:
         all_functions.extend(functions)
         all_classes.extend(classes)
         all_file_infos.append(file_info)
-    
+
     issues: List[str] = []
-    
+
     # 1. Long functions (over threshold)
     long_functions = [f for f in all_functions if f.loc > function_threshold]
     long_functions.sort(key=lambda f: f.loc, reverse=True)  # Sort by length, longest first
-    
+
     for func in long_functions:
-        location = f"{func.class_name}.{func.name}" if func.class_name else func.name
+        location = f'{func.class_name}.{func.name}' if func.class_name else func.name
         issues.append(
-            f"LONG_FUNCTION: {func.file}:{func.start_line} {location} has {func.loc} lines "
-            f"(threshold: {function_threshold}). Hint: Consider breaking into smaller functions."
+            f'LONG_FUNCTION: {func.file}:{func.start_line} {location} has {func.loc} lines '
+            f'(threshold: {function_threshold}). Hint: Consider breaking into smaller functions.'
         )
-    
+
     # 2. Large classes (over threshold)
     large_classes = [c for c in all_classes if c.loc > class_threshold and not c.is_trivial]
     large_classes.sort(key=lambda c: c.loc, reverse=True)  # Sort by length, longest first
-    
+
     for cls in large_classes:
         issues.append(
-            f"LARGE_CLASS: {cls.file}:{cls.start_line} {cls.name} has {cls.loc} lines "
-            f"(threshold: {class_threshold}). Hint: Consider splitting into multiple classes or modules."
+            f'LARGE_CLASS: {cls.file}:{cls.start_line} {cls.name} has {cls.loc} lines '
+            f'(threshold: {class_threshold}). Hint: Consider splitting into multiple classes or modules.'
         )
-    
+
     # 3. Files with multiple complex classes
     complex_files = [f for f in all_file_infos if f.non_trivial_class_count >= multi_class_threshold]
     complex_files.sort(key=lambda f: f.non_trivial_class_count, reverse=True)
-    
+
     for file_info in complex_files:
         class_names = [c.name for c in file_info.classes if not c.is_trivial]
         issues.append(
-            f"MULTI_CLASS_FILE: {file_info.file} has {file_info.non_trivial_class_count} complex classes: "
-            f"{', '.join(class_names)}. Hint: Consider splitting into separate modules."
+            f'MULTI_CLASS_FILE: {file_info.file} has {file_info.non_trivial_class_count} complex classes: '
+            f'{", ".join(class_names)}. Hint: Consider splitting into separate modules.'
         )
-    
+
     # Emit issues
     for issue in issues:
         print(issue)
-    
+
     return 1 if issues else 0
 
 
