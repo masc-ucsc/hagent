@@ -101,7 +101,7 @@ class V2chisel_batch(Step):
         # Initialize module_finder
         self.module_finder = Module_finder()
         # print('[V2chisel_batch] Module_finder initialized')
-        
+
         # Initialize HintsGenerator
         self.hints_generator = HintsGenerator(self.module_finder, debug=self.debug)
         # print('[V2chisel_batch] HintsGenerator initialized')
@@ -2871,13 +2871,13 @@ class V2chisel_batch(Step):
         self, bug_idx: int, bug_entry: dict, local_files: list, docker_container: str, docker_patterns: list
     ) -> dict:
         """Process a single bug entry with module_finder"""
-        
+
         # Create BugInfo object to handle bug data extraction
         bug_info = BugInfo(bug_entry, bug_idx)
-        
+
         # Print debug information (matches original output exactly)
         bug_info.print_debug_info()
-        
+
         # Extract variables for backwards compatibility with existing code
         file_name = bug_info.file_name
         unified_diff = bug_info.unified_diff
@@ -2900,12 +2900,12 @@ class V2chisel_batch(Step):
         # Step 4: Use HintsGenerator to find hints
         print('✅ Step 4: Hint Generation - START')
         hints_result = self.hints_generator.find_hints(bug_info, all_files, docker_container)
-        
+
         # Extract results for backwards compatibility
         final_hints = hints_result['hints']
         hints_source = hints_result['source']
         hits = hints_result.get('hits', [])
-        
+
         # Print hint files and paths (matches original output format)
         if hints_source == 'module_finder' and hits:
             print('Hint files:')
