@@ -12,8 +12,8 @@ Follow these concise rules when working in this repo.
 
 ### RTL/HDL Execution Environment
 - Set one execution mode (required):
-  - `export HAGENT_EXECUTION_MODE=docker`  (recommended), or
-  - `export HAGENT_EXECUTION_MODE=local`   (debug/dev).
+  - `export HAGENT_EXECUTION_MODE=docker`  (use docker build setup), or
+  - `export HAGENT_EXECUTION_MODE=local`   (use locally installed tools).
 - Both models can set paths BUT Local mode requires all paths set. Remember these path is NOT hagent code but RTL/Verilog/HDL code.
   - `export HAGENT_REPO_DIR=/path/to/git/root`
   - `export HAGENT_BUILD_DIR=/path/to/build`

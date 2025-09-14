@@ -187,6 +187,8 @@ uv run python hagent/step/trivial/trivial.py hagent/step/trivial/tests/input1.ya
 ##### Docker Mode (Recommended)
 For Docker execution (production, complex builds), only set the execution mode:
 
+Docker images are recommended to be derived from hagent-builer like hagent-simplechisel from https://github.com/masc-ucsc/docker-images
+
 ```bash
 # Required for Docker mode
 export HAGENT_EXECUTION_MODE=docker
