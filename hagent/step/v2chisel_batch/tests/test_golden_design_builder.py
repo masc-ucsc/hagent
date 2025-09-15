@@ -74,13 +74,12 @@ class TestGoldenDesignBuilder:
         assert result['success'] is False
         assert 'Baseline Verilog generation was not successful' in result['error']
 
-    @patch('subprocess.run')
-    def test_create_golden_directory_success(self, mock_subprocess):
+    def test_create_golden_directory_success(self):
         """Test successful golden directory creation."""
-        # Mock successful subprocess calls
-        mock_subprocess.return_value.returncode = 0
-
+        # Mock successful builder run_cmd calls
         mock_builder = Mock()
+        mock_builder.run_cmd.return_value = (0, '', '')  # (exit_code, stdout, stderr)
+
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
         result = golden_builder._create_golden_directory('test_container')
@@ -89,28 +88,22 @@ class TestGoldenDesignBuilder:
         assert result['directory'] == '/code/workspace/repo/lec_golden'
 
         # Verify rm and mkdir commands were called
-        assert mock_subprocess.call_count == 2
+        assert mock_builder.run_cmd.call_count == 2
 
         # Check rm command
-        rm_call = mock_subprocess.call_args_list[0]
-        assert 'rm' in rm_call[0][0]
-        assert '/code/workspace/repo/lec_golden' in rm_call[0][0]
+        rm_call = mock_builder.run_cmd.call_args_list[0]
+        assert 'rm -rf /code/workspace/repo/lec_golden' in rm_call[0][0]
 
         # Check mkdir command
-        mkdir_call = mock_subprocess.call_args_list[1]
-        assert 'mkdir' in mkdir_call[0][0]
-        assert '/code/workspace/repo/lec_golden' in mkdir_call[0][0]
+        mkdir_call = mock_builder.run_cmd.call_args_list[1]
+        assert 'mkdir -p /code/workspace/repo/lec_golden' in mkdir_call[0][0]
 
-    @patch('subprocess.run')
-    def test_create_golden_directory_failure(self, mock_subprocess):
+    def test_create_golden_directory_failure(self):
         """Test golden directory creation failure."""
         # Mock failed mkdir command
-        mock_result = Mock()
-        mock_result.returncode = 1
-        mock_result.stderr = 'Permission denied'
-        mock_subprocess.return_value = mock_result
-
         mock_builder = Mock()
+        mock_builder.run_cmd.return_value = (1, '', 'Permission denied')  # (exit_code, stdout, stderr)
+
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
         result = golden_builder._create_golden_directory('test_container')
@@ -119,13 +112,12 @@ class TestGoldenDesignBuilder:
         assert 'Failed to create golden directory' in result['error']
         assert 'Permission denied' in result['error']
 
-    @patch('subprocess.run')
-    def test_copy_baseline_to_golden_success(self, mock_subprocess):
+    def test_copy_baseline_to_golden_success(self):
         """Test successful copying of baseline files to golden directory."""
         # Mock successful cp commands
-        mock_subprocess.return_value.returncode = 0
-
         mock_builder = Mock()
+        mock_builder.run_cmd.return_value = (0, '', '')  # (exit_code, stdout, stderr)
+
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
         baseline_verilog = {
@@ -143,28 +135,21 @@ class TestGoldenDesignBuilder:
         assert result['total_copied'] == 2
 
         # Verify cp commands were called
-        assert mock_subprocess.call_count == 2
+        assert mock_builder.run_cmd.call_count == 2
 
-    @patch('subprocess.run')
-    def test_copy_baseline_to_golden_partial_failure(self, mock_subprocess):
+    def test_copy_baseline_to_golden_partial_failure(self):
         """Test copying with some failures."""
 
         # Mock mixed success/failure
-        def mock_run_side_effect(*args, **kwargs):
-            cmd = args[0]
+        def mock_run_cmd_side_effect(cmd):
             if 'Control.sv' in str(cmd):
-                result = Mock()
-                result.returncode = 0
-                return result
+                return (0, '', '')  # success
             else:  # ALU.sv fails
-                result = Mock()
-                result.returncode = 1
-                result.stderr = 'File not found'
-                return result
-
-        mock_subprocess.side_effect = mock_run_side_effect
+                return (1, '', 'File not found')  # failure
 
         mock_builder = Mock()
+        mock_builder.run_cmd.side_effect = mock_run_cmd_side_effect
+
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
         baseline_verilog = {
@@ -180,16 +165,12 @@ class TestGoldenDesignBuilder:
         assert len(result['failed_copies']) == 1
         assert 'ALU.sv' in result['failed_copies']
 
-    @patch('subprocess.run')
-    def test_copy_baseline_to_golden_all_fail(self, mock_subprocess):
+    def test_copy_baseline_to_golden_all_fail(self):
         """Test copying when all files fail."""
         # Mock all failures
-        mock_result = Mock()
-        mock_result.returncode = 1
-        mock_result.stderr = 'Permission denied'
-        mock_subprocess.return_value = mock_result
-
         mock_builder = Mock()
+        mock_builder.run_cmd.return_value = (1, '', 'Permission denied')  # (exit_code, stdout, stderr)
+
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
         baseline_verilog = {'/code/workspace/build/Control.sv': '/code/workspace/cache/backup1/Control.sv'}
@@ -282,13 +263,11 @@ class TestGoldenDesignBuilder:
             assert result['success'] is False
             assert 'Could not import DockerDiffApplier' in result['error']
 
-    @patch('subprocess.run')
-    def test_find_verilog_files_in_path_success(self, mock_subprocess):
+    def test_find_verilog_files_in_path_success(self):
         """Test successful Verilog file discovery."""
-        mock_subprocess.return_value.returncode = 0
-        mock_subprocess.return_value.stdout = '/path/Control.sv\n/path/ALU.sv\n'
-
         mock_builder = Mock()
+        mock_builder.run_cmd.return_value = (0, '/path/Control.sv\n/path/ALU.sv\n', '')  # (exit_code, stdout, stderr)
+
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
         result = golden_builder._find_verilog_files_in_path('test_container', '/code/workspace/build')
@@ -297,25 +276,22 @@ class TestGoldenDesignBuilder:
         assert '/path/Control.sv' in result
         assert '/path/ALU.sv' in result
 
-    @patch('subprocess.run')
-    def test_find_verilog_files_in_path_no_files(self, mock_subprocess):
+    def test_find_verilog_files_in_path_no_files(self):
         """Test Verilog file discovery when no files found."""
-        mock_subprocess.return_value.returncode = 0
-        mock_subprocess.return_value.stdout = ''
-
         mock_builder = Mock()
+        mock_builder.run_cmd.return_value = (0, '', '')  # (exit_code, stdout, stderr)
+
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
         result = golden_builder._find_verilog_files_in_path('test_container', '/code/workspace/build')
 
         assert len(result) == 0
 
-    @patch('subprocess.run')
-    def test_find_verilog_files_in_path_command_failure(self, mock_subprocess):
+    def test_find_verilog_files_in_path_command_failure(self):
         """Test Verilog file discovery when command fails."""
-        mock_subprocess.return_value.returncode = 1
-
         mock_builder = Mock()
+        mock_builder.run_cmd.return_value = (1, '', 'Command failed')  # (exit_code, stdout, stderr)
+
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
         result = golden_builder._find_verilog_files_in_path('test_container', '/code/workspace/build')
@@ -326,8 +302,8 @@ class TestGoldenDesignBuilder:
         """Integration test for baseline Verilog generation."""
         mock_builder = Mock()
 
-        # Mock builder.run calls - SBT first, then copy
-        mock_builder.run.side_effect = [
+        # Mock builder.run_cmd calls - SBT first, then copy
+        mock_builder.run_cmd.side_effect = [
             (0, 'SBT Success', ''),  # SBT generation
             (0, 'Copy Success', ''),  # File copy
         ]
@@ -344,8 +320,8 @@ class TestGoldenDesignBuilder:
             assert 'backup_result' in result
 
             # Verify SBT command was called (should be first call)
-            assert mock_builder.run.call_count >= 1
-            first_call = mock_builder.run.call_args_list[0]
+            assert mock_builder.run_cmd.call_count >= 1
+            first_call = mock_builder.run_cmd.call_args_list[0]
             sbt_call = first_call[0][0]
             assert 'sbt "runMain dinocpu.SingleCycleCPUNoDebug"' in sbt_call
 

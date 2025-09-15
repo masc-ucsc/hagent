@@ -90,21 +90,20 @@ def test_golden_design_builder_method_signatures():
 
     # Test backup_existing_original_verilog signature
     try:
-        with patch('subprocess.run') as mock_subprocess:
-            mock_subprocess.return_value.returncode = 1  # Simulate failure to trigger early return
-            mock_subprocess.return_value.stdout = ''
+        # Mock the builder run_cmd to simulate failure and trigger early return
+        mock_builder.run_cmd.return_value = (1, '', 'Error')  # (exit_code, stdout, stderr)
 
-            result = golden_builder.backup_existing_original_verilog(docker_container='test_container', backup_id='test_backup')
-            assert 'success' in result
-            assert 'files' in result
-            print('✅ backup_existing_original_verilog signature correct')
+        result = golden_builder.backup_existing_original_verilog(docker_container='test_container', backup_id='test_backup')
+        assert 'success' in result
+        assert 'files' in result
+        print('✅ backup_existing_original_verilog signature correct')
     except Exception as e:
         print(f'❌ backup_existing_original_verilog signature test failed: {e}')
         return False
 
     # Test generate_baseline_verilog signature
     try:
-        mock_builder.run.return_value = (1, '', 'Error')  # Simulate SBT failure
+        mock_builder.run_cmd.return_value = (1, '', 'Error')  # Simulate SBT failure
 
         result = golden_builder.generate_baseline_verilog(docker_container='test_container', backup_id='test_backup')
         assert 'success' in result
@@ -140,10 +139,10 @@ def test_realistic_golden_design_workflow():
 -  wire _signals_T_132 = io_opcode == 7'h3B;
 +  wire _signals_T_132 = io_opcode == 7'h3F;"""
 
-    # Mock all subprocess calls and DockerDiffApplier import
-    with patch('subprocess.run') as mock_subprocess, patch('builtins.__import__') as mock_import:
+    # Mock all builder run_cmd calls and DockerDiffApplier import
+    with patch('builtins.__import__') as mock_import:
         # Mock successful operations
-        mock_subprocess.return_value.returncode = 0
+        mock_builder.run_cmd.return_value = (0, '', '')  # (exit_code, stdout, stderr)
 
         # Mock DockerDiffApplier import and usage
         mock_applier = Mock()

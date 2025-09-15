@@ -344,7 +344,7 @@ class V2chisel_batch(Step):
     def generate_fresh_baseline_verilog(self, docker_container=None):
         """Generate fresh baseline Verilog before any modifications"""
         print('🏭 [V2chisel_batch] Generating fresh baseline Verilog from pristine Chisel...')
-        
+
         # Use Builder API - no need for container name since Builder handles this
         if docker_container is None:
             docker_container = 'hagent'  # Default fallback, but Builder API will handle this
@@ -597,7 +597,7 @@ class V2chisel_batch(Step):
     def _find_chisel_files_docker_filtered(self, container_name: str, docker_patterns: list, module_name: str = None) -> list:
         """Find Chisel files inside Docker container with smart filtering"""
         # Use Builder API instead of subprocess for container access
-        
+
         print(f'[DEBUG] Searching for Chisel files for module: {module_name}')
         docker_files = []
 
@@ -610,7 +610,7 @@ class V2chisel_batch(Step):
                     # Use builder.run_cmd instead of subprocess
                     find_cmd = f"find {pattern} -name '*.scala' -type f -exec grep -il 'class.*{module_name}\\|object.*{module_name}' {{}} \\;"
                     exit_code, stdout, stderr = self.builder.run_cmd(find_cmd)
-                    
+
                     if exit_code == 0:
                         files = [f.strip() for f in stdout.split('\n') if f.strip()]
                         print(f'     ✅ Found {len(files)} files matching "{module_name}"')
@@ -674,7 +674,7 @@ class V2chisel_batch(Step):
             if exit_code != 0:
                 print(f'❌ Failed to find Verilog files: {stderr}')
                 return ''
-            
+
             verilog_files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
 
             # print(f'Found {len(verilog_files)} Verilog files in Docker container')
@@ -764,7 +764,7 @@ class V2chisel_batch(Step):
         if len(parts) != 3 or parts[0] != 'docker':
             raise ValueError(f'Invalid docker path format: {docker_path}')
 
-        container_name = parts[1]  # This is now ignored since we use Builder API
+        # parts[1] is container name - ignored since we use Builder API
         file_path = parts[2]
 
         try:
@@ -1323,30 +1323,14 @@ class V2chisel_batch(Step):
         print('🔍 [MAIN_CHECK] Checking for Main object...')
 
         try:
-            import subprocess
+            # Check if Main.scala or similar already exists using Builder API
+            find_cmd_str = 'find /code/workspace/repo/src -name "*.scala" -exec grep -l "object Main" {} \;'
 
-            # Check if Main.scala or similar already exists
-            find_cmd = [
-                'docker',
-                'exec',
-                docker_container,
-                'find',
-                '/code/workspace/repo/src',
-                '-name',
-                '*.scala',
-                '-exec',
-                'grep',
-                '-l',
-                'object Main',
-                '{}',
-                ';',
-            ]
+            exit_code, stdout, stderr = self.builder.run_cmd(find_cmd_str)
 
-            result = subprocess.run(find_cmd, capture_output=True, text=True)
-
-            if result.returncode == 0 and result.stdout.strip():
+            if exit_code == 0 and stdout.strip():
                 print('✅ [MAIN_CHECK] Main object already exists')
-                existing_files = result.stdout.strip().split('\n')
+                existing_files = stdout.strip().split('\n')
                 return {'success': True, 'main_exists': True, 'files': existing_files}
 
             # Main object doesn't exist - create one
@@ -1356,20 +1340,11 @@ class V2chisel_batch(Step):
             if module_name:
                 top_module = module_name
             else:
-                # Try to find the top module from existing code
-                grep_cmd = [
-                    'docker',
-                    'exec',
-                    docker_container,
-                    'grep',
-                    '-r',
-                    '-l',
-                    'class.*extends.*Module',
-                    '/code/workspace/repo/src',
-                ]
-                grep_result = subprocess.run(grep_cmd, capture_output=True, text=True)
+                # Try to find the top module from existing code using Builder API
+                grep_cmd_str = 'grep -r -l "class.*extends.*Module" /code/workspace/repo/src'
+                grep_exit_code, grep_stdout, grep_stderr = self.builder.run_cmd(grep_cmd_str)
 
-                if grep_result.returncode == 0 and grep_result.stdout.strip():
+                if grep_exit_code == 0 and grep_stdout.strip():
                     # Use a generic approach
                     top_module = 'Top'  # Default
                 else:
@@ -1394,19 +1369,16 @@ class V2chisel_batch(Step):
 }}
 """
 
-            # Write the Main.scala file
+            # Write the Main.scala file using Builder filesystem API
             main_file_path = '/code/workspace/repo/src/main/scala/MainGen.scala'
 
-            # Create the file using docker exec
-            write_cmd = ['docker', 'exec', docker_container, 'bash', '-c', f'echo "{main_content}" > {main_file_path}']
-
-            write_result = subprocess.run(write_cmd, capture_output=True, text=True)
-
-            if write_result.returncode == 0:
+            # Write the file using Builder filesystem API instead of subprocess
+            try:
+                self.builder.filesystem.write_file(main_file_path, main_content)
                 print('✅ [MAIN_CHECK] Main object created successfully')
                 return {'success': True, 'main_exists': False, 'created_file': main_file_path, 'top_module': top_module}
-            else:
-                return {'success': False, 'error': f'Failed to create Main object: {write_result.stderr}'}
+            except Exception as write_error:
+                return {'success': False, 'error': f'Failed to create Main object: {str(write_error)}'}
 
         except Exception as e:
             return {'success': False, 'error': f'Main object check error: {str(e)}'}
@@ -1804,7 +1776,9 @@ class V2chisel_batch(Step):
             print('🏭 [BASELINE] Generating fresh baseline Verilog from pristine Chisel...')
 
             print('🔧 [BASELINE] Running: sbt "runMain dinocpu.SingleCycleCPUNoDebug"')
-            exit_code, stdout, stderr = self.builder.run_cmd('bash -l -c \'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"\'')
+            exit_code, stdout, stderr = self.builder.run_cmd(
+                'bash -l -c \'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"\''
+            )
 
             if exit_code == 0:
                 print('✅ [BASELINE] Fresh baseline Verilog generated successfully')
@@ -1814,7 +1788,9 @@ class V2chisel_batch(Step):
                 # so they're available in the location the backup method expects
                 self.builder.run_cmd('mkdir -p /code/workspace/build/build_singlecyclecpu_nd')
 
-                copy_exit_code, copy_stdout, copy_stderr = self.builder.run_cmd('cp -r /code/workspace/build/build_singlecyclecpu_d/* /code/workspace/build/build_singlecyclecpu_nd/')
+                copy_exit_code, copy_stdout, copy_stderr = self.builder.run_cmd(
+                    'cp -r /code/workspace/build/build_singlecyclecpu_d/* /code/workspace/build/build_singlecyclecpu_nd/'
+                )
 
                 if copy_exit_code == 0:
                     print('✅ [BASELINE] Copied baseline files to expected location')
@@ -1822,7 +1798,9 @@ class V2chisel_batch(Step):
                     print(f'⚠️  [BASELINE] Copy had issues: {copy_stderr}')
 
                 # DEBUG: Check what opcode is actually in the generated baseline
-                debug_exit_code, debug_stdout, debug_stderr = self.builder.run_cmd('grep -n _signals_T_132 /code/workspace/build/build_singlecyclecpu_nd/Control.sv')
+                debug_exit_code, debug_stdout, debug_stderr = self.builder.run_cmd(
+                    'grep -n _signals_T_132 /code/workspace/build/build_singlecyclecpu_nd/Control.sv'
+                )
                 if debug_exit_code == 0:
                     print(f'🔍 [BASELINE] Baseline contains: {debug_stdout.strip()}')
                 else:
@@ -2903,7 +2881,9 @@ class V2chisel_batch(Step):
                             print('✅ VERILOG_GENERATION: Success')
 
                             # NEW: Create golden design for LEC using GoldenDesignBuilder component
-                            golden_result = self.golden_design_builder.create_golden_design(unified_diff, master_backup_info, docker_container)
+                            golden_result = self.golden_design_builder.create_golden_design(
+                                unified_diff, master_backup_info, docker_container
+                            )
 
                             if golden_result.get('success', False):
                                 print('✅ GOLDEN_DESIGN: Success')
@@ -3419,9 +3399,15 @@ def main():
             processor.chisel_source_pattern = './tmp/src/main/scala/*/*.scala'
             processor.debug = True
             processor.module_finder = Module_finder()  # Initialize module finder
-            processor.hints_generator = HintsGenerator(processor.module_finder, builder=processor.builder, debug=processor.debug)  # Initialize hints generator
-            processor.golden_design_builder = GoldenDesignBuilder(processor.builder, debug=processor.debug)  # Initialize golden design builder
-            processor.baseline_verilog_generator = BaselineVerilogGenerator(processor.builder, debug=processor.debug)  # Initialize baseline verilog generator
+            processor.hints_generator = HintsGenerator(
+                processor.module_finder, builder=processor.builder, debug=processor.debug
+            )  # Initialize hints generator
+            processor.golden_design_builder = GoldenDesignBuilder(
+                processor.builder, debug=processor.debug
+            )  # Initialize golden design builder
+            processor.baseline_verilog_generator = BaselineVerilogGenerator(
+                processor.builder, debug=processor.debug
+            )  # Initialize baseline verilog generator
 
             # Create mock template_config for LLM calls
             class MockTemplateConfig:

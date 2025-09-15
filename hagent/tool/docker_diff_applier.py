@@ -2,7 +2,6 @@
 # hagent/tool/docker_diff_applier.py
 # See LICENSE file for details
 
-import tempfile
 import os
 from typing import List, Optional
 from .chisel_diff_applier import ChiselDiffApplier
@@ -72,10 +71,10 @@ class DockerDiffApplier:
         try:
             # Use Builder's filesystem write method
             self.builder.filesystem.write_file(file_path, content)
-            
+
             # Try to fix permissions
             self.fix_file_permissions(file_path)
-            
+
             return True
         except Exception as e:
             print(f'❌ Error writing file to Docker: {e}')

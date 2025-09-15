@@ -176,9 +176,9 @@ def test_cli_specific_top_module():
     assert 'SUCCESS: All modules are equivalent!' in stdout, f'Success message not found. stdout={stdout}'
     assert 'Checking equivalence: adder ↔ add_impl' in stdout, f'Adder check not found. stdout={stdout}'
     # Should NOT check multiplier when --top adder is specified
-    assert 'Checking equivalence: multiplier ↔ mult_impl' not in stdout, (
-        f'Multiplier should not be checked with --top adder. stdout={stdout}'
-    )
+    assert (
+        'Checking equivalence: multiplier ↔ mult_impl' not in stdout
+    ), f'Multiplier should not be checked with --top adder. stdout={stdout}'
 
 
 def test_cli_missing_file():
