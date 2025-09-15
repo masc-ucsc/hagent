@@ -241,8 +241,8 @@ class GoldenDesignBuilder:
         try:
             # Remove existing golden directory using Builder API
             exit_code, stdout, stderr = self.builder.run_cmd(f'rm -rf {self.golden_dir}')
-            
-            # Create fresh golden directory using Builder API  
+
+            # Create fresh golden directory using Builder API
             exit_code, stdout, stderr = self.builder.run_cmd(f'mkdir -p {self.golden_dir}')
 
             if exit_code != 0:
@@ -335,12 +335,12 @@ class GoldenDesignBuilder:
     def _find_verilog_files_in_path(self, docker_container: str, search_path: str) -> Dict[str, str]:
         """Find .sv files in a specific path within the Docker container."""
         try:
-            find_cmd = ['docker', 'exec', docker_container, 'find', search_path, '-name', '*.sv', '-type', 'f']
-            result = subprocess.run(find_cmd, capture_output=True, text=True, timeout=30)
+            find_cmd_str = f'find {search_path} -name "*.sv" -type f'
+            exit_code, stdout, stderr = self.builder.run_cmd(find_cmd_str)
 
-            if result.returncode == 0 and result.stdout.strip():
+            if exit_code == 0 and stdout.strip():
                 files = {}
-                for file_path in result.stdout.strip().split('\n'):
+                for file_path in stdout.strip().split('\n'):
                     file_path = file_path.strip()
                     if file_path:
                         files[file_path] = file_path  # Map path to itself for now
