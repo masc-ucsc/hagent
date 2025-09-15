@@ -237,18 +237,16 @@ class GoldenDesignBuilder:
         return {'success': True, 'files': baseline_verilog}
 
     def _create_golden_directory(self, docker_container: str) -> Dict[str, Any]:
-        """Create the golden design directory in the Docker container."""
+        """Create the golden design directory in the Docker container using Builder API."""
         try:
-            # Remove existing golden directory
-            rm_cmd = ['docker', 'exec', docker_container, 'rm', '-rf', self.golden_dir]
-            subprocess.run(rm_cmd, capture_output=True, text=True)
+            # Remove existing golden directory using Builder API
+            exit_code, stdout, stderr = self.builder.run_cmd(f'rm -rf {self.golden_dir}')
+            
+            # Create fresh golden directory using Builder API  
+            exit_code, stdout, stderr = self.builder.run_cmd(f'mkdir -p {self.golden_dir}')
 
-            # Create fresh golden directory
-            mkdir_cmd = ['docker', 'exec', docker_container, 'mkdir', '-p', self.golden_dir]
-            mkdir_result = subprocess.run(mkdir_cmd, capture_output=True, text=True)
-
-            if mkdir_result.returncode != 0:
-                return {'success': False, 'error': f'Failed to create golden directory: {mkdir_result.stderr}'}
+            if exit_code != 0:
+                return {'success': False, 'error': f'Failed to create golden directory: {stderr}'}
 
             if self.debug:
                 print(f'✅ [GOLDEN] Created golden design directory: {self.golden_dir}')
@@ -267,18 +265,17 @@ class GoldenDesignBuilder:
             filename = container_path.split('/')[-1]
             golden_path = f'{self.golden_dir}/{filename}'
 
-            # Copy from backup to golden directory (intra-container copy)
-            copy_cmd = ['docker', 'exec', docker_container, 'cp', backup_path, golden_path]
-            copy_result = subprocess.run(copy_cmd, capture_output=True, text=True)
+            # Copy from backup to golden directory using Builder API
+            exit_code, stdout, stderr = self.builder.run_cmd(f'cp {backup_path} {golden_path}')
 
-            if copy_result.returncode == 0:
+            if exit_code == 0:
                 copied_files.append(golden_path)
                 if self.debug:
                     print(f'     ✅ Copied baseline to golden: {filename}')
             else:
                 failed_copies.append(filename)
                 if self.debug:
-                    print(f'     ⚠️  Failed to copy {filename}: {copy_result.stderr}')
+                    print(f'     ⚠️  Failed to copy {filename}: {stderr}')
 
         if not copied_files:
             return {'success': False, 'error': 'No baseline files were copied to golden directory'}
@@ -303,7 +300,7 @@ class GoldenDesignBuilder:
                 return {'success': False, 'error': f'Could not import DockerDiffApplier: {str(e)}'}
 
             # Create applier configured for golden directory
-            applier = DockerDiffApplier(docker_container)
+            applier = DockerDiffApplier(self.builder)
 
             # Override file search to target golden directory only
             original_find_method = applier.find_file_in_container
@@ -403,7 +400,7 @@ class GoldenDesignBuilder:
         """Generate Verilog using SBT build system."""
         try:
             # Generate SingleCycleCPU Verilog (no debug)
-            exit_code, stdout, stderr = self.builder.run('sbt "runMain dinocpu.SingleCycleCPUNoDebug"', cwd='/code/workspace')
+            exit_code, stdout, stderr = self.builder.run_cmd('sbt "runMain dinocpu.SingleCycleCPUNoDebug"', cwd='/code/workspace')
 
             if exit_code == 0:
                 if self.debug:
@@ -426,7 +423,7 @@ class GoldenDesignBuilder:
     def _copy_generated_files(self, docker_container: str) -> Dict[str, Any]:
         """Copy generated files from build_singlecyclecpu_d to build_singlecyclecpu_nd."""
         try:
-            copy_exit_code, copy_stdout, copy_stderr = self.builder.run(
+            copy_exit_code, copy_stdout, copy_stderr = self.builder.run_cmd(
                 'cp -r build/build_singlecyclecpu_d/* build/build_singlecyclecpu_nd/ 2>/dev/null || true', cwd='/code/workspace'
             )
 

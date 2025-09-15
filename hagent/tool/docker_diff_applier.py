@@ -2,11 +2,11 @@
 # hagent/tool/docker_diff_applier.py
 # See LICENSE file for details
 
-import subprocess
 import tempfile
 import os
 from typing import List, Optional
 from .chisel_diff_applier import ChiselDiffApplier
+from hagent.inou.builder import Builder
 
 
 class DockerDiffApplier:
@@ -19,63 +19,50 @@ class DockerDiffApplier:
     3. Write the changes back to the container
     """
 
-    def __init__(self, container_name: str):
-        self.container_name = container_name
+    def __init__(self, builder: Builder):
+        self.builder = builder
         self.applier = ChiselDiffApplier()
 
     def fix_file_permissions(self, file_path: str) -> bool:
         """Fix file permissions to ensure readability"""
         try:
             # Try to fix permissions as root first, then as user
-            subprocess.run(['docker', 'exec', self.container_name, 'chmod', '644', file_path], capture_output=True, check=True)
-            subprocess.run(
-                ['docker', 'exec', self.container_name, 'chown', 'user:guser', file_path], capture_output=True, check=True
-            )
-            return True
-        except subprocess.CalledProcessError:
-            # If that fails, try as root
-            try:
-                subprocess.run(
-                    ['docker', 'exec', '-u', 'root', self.container_name, 'chmod', '644', file_path],
-                    capture_output=True,
-                    check=True,
-                )
-                subprocess.run(
-                    ['docker', 'exec', '-u', 'root', self.container_name, 'chown', 'user:guser', file_path],
-                    capture_output=True,
-                    check=True,
-                )
-                return True
-            except subprocess.CalledProcessError:
+            exit_code, _, _ = self.builder.run_cmd(f'chmod 644 {file_path}')
+            if exit_code != 0:
                 return False
+            exit_code, _, _ = self.builder.run_cmd(f'chown user:guser {file_path}')
+            return exit_code == 0
+        except Exception:
+            return False
 
     def find_file_in_container(self, filename: str, base_path: str = '/code') -> List[str]:
         """Find all occurrences of a file in the Docker container"""
         try:
-            cmd = ['docker', 'exec', '-u', 'root', self.container_name, 'find', base_path, '-name', filename, '-type', 'f']
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            paths = [p.strip() for p in result.stdout.strip().split('\n') if p.strip()]
+            exit_code, stdout, stderr = self.builder.run_cmd(f'find {base_path} -name {filename} -type f')
+            if exit_code != 0:
+                print(f'❌ Error searching for file in Docker: {stderr}')
+                return []
+            paths = [p.strip() for p in stdout.strip().split('\n') if p.strip()]
             return paths
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             print(f'❌ Error searching for file in Docker: {e}')
             return []
 
     def read_file_from_container(self, file_path: str) -> Optional[str]:
         """Read file content from Docker container"""
         try:
-            cmd = ['docker', 'exec', '-u', 'root', self.container_name, 'cat', file_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            return result.stdout
-        except subprocess.CalledProcessError as e:
+            # Use Builder's filesystem read method
+            content = self.builder.filesystem.read_file(file_path)
+            return content
+        except Exception as e:
             print('❌ Permission error reading file. Attempting to fix permissions...')
             # Try to fix permissions and retry
             if self.fix_file_permissions(file_path):
                 try:
-                    cmd = ['docker', 'exec', '-u', 'root', self.container_name, 'cat', file_path]
-                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                    content = self.builder.filesystem.read_file(file_path)
                     print('✅ Successfully read file after permission fix')
-                    return result.stdout
-                except subprocess.CalledProcessError:
+                    return content
+                except Exception:
                     pass
             print(f'❌ Error reading file from Docker: {e}')
             return None
@@ -83,52 +70,15 @@ class DockerDiffApplier:
     def write_file_to_container(self, file_path: str, content: str) -> bool:
         """Write file content to Docker container"""
         try:
-            # Create temporary file
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.scala') as tmp_file:
-                tmp_file.write(content)
-                tmp_path = tmp_file.name
-
-            # Use docker cp to write directly to target location
-            subprocess.run(['docker', 'cp', tmp_path, f'{self.container_name}:{file_path}'], check=True)
-
-            # Try to fix permissions as user first, then as root if needed
-            try:
-                subprocess.run(
-                    ['docker', 'exec', '-u', 'root', self.container_name, 'chmod', '644', file_path],
-                    capture_output=True,
-                    check=True,
-                )
-                subprocess.run(
-                    ['docker', 'exec', '-u', 'root', self.container_name, 'chown', 'user:guser', file_path],
-                    capture_output=True,
-                    check=True,
-                )
-            except subprocess.CalledProcessError:
-                print('⚠️ Permission fix as user failed, trying as root...')
-                try:
-                    subprocess.run(
-                        ['docker', 'exec', '-u', 'root', self.container_name, 'chmod', '644', file_path],
-                        capture_output=True,
-                        check=True,
-                    )
-                    subprocess.run(
-                        ['docker', 'exec', '-u', 'root', self.container_name, 'chown', 'user:guser', file_path],
-                        capture_output=True,
-                        check=True,
-                    )
-                    print('✅ Fixed permissions as root')
-                except subprocess.CalledProcessError:
-                    print('⚠️ Permission fix failed, but file was written successfully')
-                    # Don't fail the operation - file was written successfully
-
-            # Clean up local temp file
-            os.unlink(tmp_path)
+            # Use Builder's filesystem write method
+            self.builder.filesystem.write_file(file_path, content)
+            
+            # Try to fix permissions
+            self.fix_file_permissions(file_path)
+            
             return True
-        except subprocess.CalledProcessError as e:
-            print(f'❌ Error writing file to Docker: {e}')
-            return False
         except Exception as e:
-            print(f'❌ Unexpected error writing file: {e}')
+            print(f'❌ Error writing file to Docker: {e}')
             return False
 
     def parse_diff_file_path(self, diff_content: str) -> Optional[str]:
@@ -239,7 +189,6 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Apply unified diffs to Chisel files in Docker containers')
-    parser.add_argument('container', help='Docker container name')
     parser.add_argument('diff_file', help='File containing the unified diff')
     parser.add_argument('--dry-run', action='store_true', help='Show what would be changed without applying')
 
@@ -253,8 +202,14 @@ def main():
         print(f'❌ Diff file not found: {args.diff_file}')
         return 1
 
+    # Create builder
+    builder = Builder()
+    if not builder.setup():
+        print(f'❌ Builder setup failed: {builder.get_error()}')
+        return 1
+
     # Apply the diff
-    applier = DockerDiffApplier(args.container)
+    applier = DockerDiffApplier(builder)
     success = applier.apply_diff_to_container(diff_content, args.dry_run)
     return 0 if success else 1
 

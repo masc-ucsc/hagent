@@ -25,15 +25,17 @@ class HintsGenerator:
     5. Extracting actual code content from hits
     """
 
-    def __init__(self, module_finder, debug: bool = True):
+    def __init__(self, module_finder, builder=None, debug: bool = True):
         """
         Initialize HintsGenerator.
 
         Args:
             module_finder: Module_finder instance for finding relevant modules
+            builder: Builder instance for Docker operations
             debug: Enable debug output
         """
         self.module_finder = module_finder
+        self.builder = builder
         self.debug = debug
 
         # State for temporary file management
@@ -162,7 +164,7 @@ class HintsGenerator:
         return prepared_files
 
     def _read_docker_file(self, docker_path: str) -> str:
-        """Read a file from Docker container - extracted from original v2chisel_batch."""
+        """Read a file from Docker container using Builder API."""
         # Parse docker path: docker:container_name:file_path
         parts = docker_path.split(':', 2)
         if len(parts) != 3:
@@ -171,9 +173,14 @@ class HintsGenerator:
         container_name = parts[1]
         file_path = parts[2]
 
-        cmd = ['docker', 'exec', container_name, 'cat', file_path]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        return result.stdout
+        if self.builder:
+            # Use Builder's filesystem to read the file
+            return self.builder.filesystem.read_file(file_path)
+        else:
+            # Fallback to subprocess if no builder available
+            cmd = ['docker', 'exec', container_name, 'cat', file_path]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            return result.stdout
 
     def cleanup_temp_files(self):
         """Clean up temporary files created for Docker content"""
@@ -202,10 +209,23 @@ class HintsGenerator:
                     parts = file_path.split(':', 2)
                     actual_file_path = parts[2]
 
-                    # Read from Docker container
-                    cmd = ['docker', 'exec', docker_container, 'sed', '-n', f'{hit.start_line},{hit.end_line}p', actual_file_path]
-                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-                    code_content = result.stdout.strip()
+                    # Read from Docker container using Builder API
+                    if self.builder:
+                        try:
+                            full_content = self.builder.filesystem.read_file(actual_file_path)
+                            lines = full_content.split('\n')
+                            # Extract specific lines (1-indexed)
+                            start_idx = max(0, hit.start_line - 1)
+                            end_idx = min(len(lines), hit.end_line)
+                            selected_lines = lines[start_idx:end_idx]
+                            code_content = '\n'.join(selected_lines).strip()
+                        except Exception as e:
+                            raise Exception(f'Failed to read file {actual_file_path}: {e}')
+                    else:
+                        # Fallback to subprocess
+                        cmd = ['docker', 'exec', docker_container, 'sed', '-n', f'{hit.start_line},{hit.end_line}p', actual_file_path]
+                        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                        code_content = result.stdout.strip()
                 else:
                     # Local file - read directly
                     actual_file_path = file_path
@@ -323,16 +343,34 @@ class HintsGenerator:
                     for offset in range(-2, 3):  # ±2 lines of context
                         context_lines.add(max(1, line_num + offset))
 
-                # Read file content with context
-                lines_spec = ','.join(str(line_num) for line_num in sorted(context_lines))
-                cmd = ['docker', 'exec', docker_container, 'sed', '-n', f'{lines_spec}p', file_path]
-                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                # Read file content with context using Builder API
+                if self.builder:
+                    try:
+                        full_content = self.builder.filesystem.read_file(file_path)
+                        file_lines = full_content.split('\n')
+                        
+                        # Extract context lines
+                        extracted_lines = []
+                        for line_num in sorted(context_lines):
+                            if 1 <= line_num <= len(file_lines):
+                                extracted_lines.append(f'{line_num:4}: {file_lines[line_num-1]}')
+                        
+                        result_stdout = '\n'.join(extracted_lines)
+                    except Exception as e:
+                        print(f'     ❌ Failed to read file {file_path} with Builder API: {e}')
+                        continue
+                else:
+                    # Fallback to subprocess
+                    lines_spec = ','.join(str(line_num) for line_num in sorted(context_lines))
+                    cmd = ['docker', 'exec', docker_container, 'sed', '-n', f'{lines_spec}p', file_path]
+                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                    result_stdout = result.stdout
 
-                if result.stdout.strip():
+                if result_stdout.strip():
                     hint_block = f"""
 // ========== METADATA HINT: {file_path} ==========
 // Referenced lines: {', '.join(map(str, unique_lines))}
-{result.stdout.strip()}
+{result_stdout.strip()}
 // ========== END METADATA HINT ==========
 """
                     all_hints.append(hint_block)

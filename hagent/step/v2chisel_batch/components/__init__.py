@@ -8,10 +8,12 @@ Components:
 - BugInfo: Handles bug information extraction and parsing
 - HintsGenerator: Manages Chisel code hints generation for bug fixing
 - GoldenDesignBuilder: Creates golden design files for LEC verification
+- BaselineVerilogGenerator: Generates baseline Verilog from pristine Chisel code
 """
 
 from .bug_info import BugInfo
 from .hints_generator import HintsGenerator
 from .golden_design_builder import GoldenDesignBuilder
+from .baseline_verilog_generator import BaselineVerilogGenerator
 
-__all__ = ['BugInfo', 'HintsGenerator', 'GoldenDesignBuilder']
+__all__ = ['BugInfo', 'HintsGenerator', 'GoldenDesignBuilder', 'BaselineVerilogGenerator']
