@@ -38,10 +38,14 @@ from hagent.inou.builder import Builder
 try:
     from .components.bug_info import BugInfo
     from .components.hints_generator import HintsGenerator
+    from .components.golden_design_builder import GoldenDesignBuilder
+    from .components.baseline_verilog_generator import BaselineVerilogGenerator
 except ImportError:
     # Fallback for direct execution or testing
     from components.bug_info import BugInfo
     from components.hints_generator import HintsGenerator
+    from components.golden_design_builder import GoldenDesignBuilder
+    from components.baseline_verilog_generator import BaselineVerilogGenerator
 
 
 class V2chisel_batch(Step):
@@ -103,8 +107,16 @@ class V2chisel_batch(Step):
         # print('[V2chisel_batch] Module_finder initialized')
 
         # Initialize HintsGenerator
-        self.hints_generator = HintsGenerator(self.module_finder, debug=self.debug)
+        self.hints_generator = HintsGenerator(self.module_finder, builder=self.builder, debug=self.debug)
         # print('[V2chisel_batch] HintsGenerator initialized')
+
+        # Initialize GoldenDesignBuilder
+        self.golden_design_builder = GoldenDesignBuilder(self.builder, debug=self.debug)
+        # print('[V2chisel_batch] GoldenDesignBuilder initialized')
+
+        # Initialize BaselineVerilogGenerator
+        self.baseline_verilog_generator = BaselineVerilogGenerator(self.builder, debug=self.debug)
+        # print('[V2chisel_batch] BaselineVerilogGenerator initialized')
 
     def _run_docker_command(self, cmd_list, timeout=None):
         """Helper method to run Docker commands through Runner instead of subprocess
@@ -140,10 +152,10 @@ class V2chisel_batch(Step):
                 # Join remaining command parts
                 command = ' '.join(cmd_list[3:])
 
-            return self.builder.run(command)
+            return self.builder.run_cmd(command)
         else:
             # Fallback: join all parts (shouldn't happen with Docker commands)
-            return self.builder.run(' '.join(cmd_list))
+            return self.builder.run_cmd(' '.join(cmd_list))
 
     def _compile_xiangshan(self, docker_container: str, force_compile: bool = True) -> dict:
         """Override parent compilation to fix permissions and use Runner"""
@@ -152,29 +164,29 @@ class V2chisel_batch(Step):
         try:
             # Step 1: Fix permissions on the repo directory
             print('🔧 [COMPILE] Fixing file permissions in container...')
-            exit_code, stdout, stderr = self.builder.run('chown -R root:root /code/workspace/repo')
+            exit_code, stdout, stderr = self.builder.run_cmd('chown -R root:root /code/workspace/repo')
             if exit_code == 0:
                 print('✅ [COMPILE] Fixed repository permissions')
             else:
                 print(f'⚠️  [COMPILE] Permission fix warning: {stderr}')
 
             # Step 2: Clean any existing target directories that might have wrong permissions
-            self.builder.run('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
+            self.builder.run_cmd('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
             print('🗑️ [COMPILE] Cleaned old target directories')
 
             # Step 3: Install SBT and try compilation
             print('📝 [COMPILE] Installing/ensuring SBT is available...')
-            self.builder.run(
+            self.builder.run_cmd(
                 'curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs'
             )
-            self.builder.run('/usr/local/bin/cs install sbt')
+            self.builder.run_cmd('/usr/local/bin/cs install sbt')
 
             # Verify SBT is now available
-            sbt_check_exit, sbt_check_out, sbt_check_err = self.builder.run('which sbt')
+            sbt_check_exit, sbt_check_out, sbt_check_err = self.builder.run_cmd('which sbt')
             print(f'SBT location: {sbt_check_out.strip()}')
 
             print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
-            exit_code, stdout, stderr = self.builder.run("bash -l -c 'cd /code/workspace/repo && sbt compile'")
+            exit_code, stdout, stderr = self.builder.run_cmd("bash -l -c 'cd /code/workspace/repo && sbt compile'")
 
             if exit_code == 0:
                 print('✅ [COMPILE] SBT compilation successful')
@@ -184,7 +196,7 @@ class V2chisel_batch(Step):
 
                 # Step 4: Try Mill as fallback with Runner
                 print('📝 [COMPILE] Trying Mill fallback via Runner...')
-                exit_code2, stdout2, stderr2 = self.builder.run(
+                exit_code2, stdout2, stderr2 = self.builder.run_cmd(
                     'bash -c "cd /code/workspace/repo && chmod +x ./mill && ./mill root.compile"'
                 )
 
@@ -210,15 +222,15 @@ class V2chisel_batch(Step):
         try:
             # Step 1: Fix permissions on the repo directory
             print('🔧 [VERILOG_GEN] Fixing file permissions in container...')
-            exit_code, stdout, stderr = self.builder.run('chown -R root:root /code/workspace/repo')
+            exit_code, stdout, stderr = self.builder.run_cmd('chown -R root:root /code/workspace/repo')
             if exit_code == 0:
                 print('✅ [VERILOG_GEN] Fixed repository permissions')
             else:
                 print(f'⚠️  [VERILOG_GEN] Permission fix warning: {stderr}')
 
             # Step 2: Clean target directories and create fresh build dirs
-            self.builder.run('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
-            self.builder.run('mkdir -p /code/workspace/build/build_singlecyclecpu_nd')
+            self.builder.run_cmd('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
+            self.builder.run_cmd('mkdir -p /code/workspace/build/build_singlecyclecpu_nd')
             print('🗑️ [VERILOG_GEN] Cleaned target directories and prepared build dirs')
 
             # Step 3: Try Verilog generation commands with Runner (same priority order as parent)
@@ -263,7 +275,7 @@ class V2chisel_batch(Step):
                 print(f'     📝 Trying generation command {i + 1}: {cmd_name}')
 
                 # Use Runner with bash -l -c for login shell
-                exit_code, stdout, stderr = self.builder.run(f"bash -l -c '{gen_cmd_str}'")
+                exit_code, stdout, stderr = self.builder.run_cmd(f"bash -l -c '{gen_cmd_str}'")
 
                 if exit_code == 0:
                     print(f'✅ [VERILOG_GEN] Verilog generation successful with command {i + 1}: {cmd_name}')
@@ -303,7 +315,7 @@ class V2chisel_batch(Step):
         # The golden design phase needs the container to still be running
         if hasattr(self, '_final_cleanup') and self._final_cleanup:
             print('🧹 [CLEANUP] Final cleanup - shutting down Docker container...')
-            if hasattr(self, 'runner') and self.builder:
+            if self.builder:
                 self.builder.cleanup()
         else:
             print('🔄 [CLEANUP] Deferring Docker cleanup - container still needed for golden design...')
@@ -329,15 +341,19 @@ class V2chisel_batch(Step):
 
             self.template_config = MockTemplateConfig()
 
-    def generate_fresh_baseline_verilog(self, docker_container='runner_managed'):
+    def generate_fresh_baseline_verilog(self, docker_container=None):
         """Generate fresh baseline Verilog before any modifications"""
         print('🏭 [V2chisel_batch] Generating fresh baseline Verilog from pristine Chisel...')
+        
+        # Use Builder API - no need for container name since Builder handles this
+        if docker_container is None:
+            docker_container = 'hagent'  # Default fallback, but Builder API will handle this
 
         try:
             # Generate ONLY SingleCycleCPU to match what the gate design will be
             # Use Runner directly like the working cli_executor_simplechisel.py pattern
             print('🔧 [V2chisel_batch] Running: sbt "runMain dinocpu.SingleCycleCPUNoDebug"')
-            exit_code, stdout, stderr = self.builder.run(
+            exit_code, stdout, stderr = self.builder.run_cmd(
                 'bash -l -c \'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"\''
             )
 
@@ -350,7 +366,7 @@ class V2chisel_batch(Step):
 
                 # Copy generated files from build_singlecyclecpu_d to build_singlecyclecpu_nd
                 # so they're available in the location the backup method expects
-                copy_exit_code, copy_stdout, copy_stderr = self.builder.run(
+                copy_exit_code, copy_stdout, copy_stderr = self.builder.run_cmd(
                     'cp -r build/build_singlecyclecpu_d/* build/build_singlecyclecpu_nd/ 2>/dev/null || true',
                     cwd='/code/workspace',
                 )
@@ -361,7 +377,7 @@ class V2chisel_batch(Step):
                     print(f'⚠️  [V2chisel_batch] Copy had issues: {copy_stderr}')
 
                 # DEBUG: Check what opcode is actually in the generated baseline
-                debug_exit_code, debug_stdout, debug_stderr = self.builder.run(
+                debug_exit_code, debug_stdout, debug_stderr = self.builder.run_cmd(
                     'grep -n _signals_T_132 /code/workspace/build/build_singlecyclecpu_nd/Control.sv'
                 )
                 if debug_exit_code == 0:
@@ -398,7 +414,7 @@ class V2chisel_batch(Step):
                     # Convert Docker path to git-relative path
                     if file_path.startswith('/code/workspace/repo/'):
                         git_path = file_path.replace('/code/workspace/repo/', '')
-                        exit_code, stdout, stderr = self.builder.run(
+                        exit_code, stdout, stderr = self.builder.run_cmd(
                             f'git checkout HEAD -- {git_path}', cwd='/code/workspace/repo'
                         )
                         if exit_code == 0:
@@ -410,7 +426,7 @@ class V2chisel_batch(Step):
 
             # Step 2: Clean SBT cache to prevent stale compilation artifacts
             print('🧹 [RESTORE] Cleaning SBT cache...')
-            exit_code, stdout, stderr = self.builder.run("bash -l -c 'cd /code/workspace/repo && sbt clean'")
+            exit_code, stdout, stderr = self.builder.run_cmd("bash -l -c 'cd /code/workspace/repo && sbt clean'")
             if exit_code == 0:
                 print('✅ [RESTORE] SBT cache cleaned')
             else:
@@ -418,19 +434,19 @@ class V2chisel_batch(Step):
 
             # Step 3: Remove generated Verilog files to ensure clean state
             print('🗑️ [RESTORE] Cleaning generated Verilog files...')
-            self.builder.run(
+            self.builder.run_cmd(
                 'rm -rf build/build_singlecyclecpu_d/* build/build_singlecyclecpu_nd/* build/build_pipelined_d/* build/build_gcd/* || true',
                 cwd='/code/workspace',
             )
 
             # Step 4: Remove golden directory
-            self.builder.run('rm -rf lec_golden', cwd='/code/workspace/repo')
+            self.builder.run_cmd('rm -rf lec_golden', cwd='/code/workspace/repo')
             print('✅ [RESTORE] Docker state fully cleaned - ready for next run')
 
             # Step 5: Final Docker container cleanup (now that we're completely done)
             print('🧹 [RESTORE] Final cleanup - shutting down Docker container...')
             self._final_cleanup = True  # Set flag to allow Docker cleanup
-            if hasattr(self, 'runner') and self.builder:
+            if self.builder:
                 self.builder.cleanup()
                 print('✅ [RESTORE] Docker container shut down')
 
@@ -580,91 +596,68 @@ class V2chisel_batch(Step):
 
     def _find_chisel_files_docker_filtered(self, container_name: str, docker_patterns: list, module_name: str = None) -> list:
         """Find Chisel files inside Docker container with smart filtering"""
-        import subprocess
-
-        # print(f'[V2chisel_batch] Searching inside Docker container: {container_name}')
+        # Use Builder API instead of subprocess for container access
+        
+        print(f'[DEBUG] Searching for Chisel files for module: {module_name}')
         docker_files = []
 
         for pattern in docker_patterns:
-            # print(f'  🐳 Docker pattern: {pattern}')
+            print(f'  🐳 Docker pattern: {pattern}')
             try:
                 # OPTIMIZATION: Search for files containing the module name first
                 if module_name:
-                    # print(f'  🔍 Pre-filtering for module: {module_name}')
-                    # Use grep to find files containing the module name (much faster)
-                    grep_cmd = [
-                        'docker',
-                        'exec',
-                        '-u',
-                        'user',  # Run as user to match file permissions
-                        container_name,
-                        'find',
-                        pattern,
-                        '-name',
-                        '*.scala',
-                        '-type',
-                        'f',
-                        '-exec',
-                        'grep',
-                        '-il',  # Add -i for case-insensitive matching
-                        f'class.*{module_name}\\|object.*{module_name}',
-                        '{}',
-                        ';',
-                    ]
-                    result = subprocess.run(grep_cmd, capture_output=True, text=True)
-                    files = [f.strip() for f in result.stdout.split('\n') if f.strip()]
-
-                    # print(f'     Pre-filtered to: {len(files)} files matching "{module_name}"')
+                    print(f'  🔍 Pre-filtering for module: {module_name}')
+                    # Use builder.run_cmd instead of subprocess
+                    find_cmd = f"find {pattern} -name '*.scala' -type f -exec grep -il 'class.*{module_name}\\|object.*{module_name}' {{}} \\;"
+                    exit_code, stdout, stderr = self.builder.run_cmd(find_cmd)
+                    
+                    if exit_code == 0:
+                        files = [f.strip() for f in stdout.split('\n') if f.strip()]
+                        print(f'     ✅ Found {len(files)} files matching "{module_name}"')
+                        for file in files[:3]:  # Show first 3
+                            print(f'       - {file}')
+                    else:
+                        files = []
+                        print(f'     ❌ No files found for module "{module_name}": {stderr}')
 
                     # If no matches with exact name, try broader search
                     if not files and len(module_name) > 3:
-                        # print('  🔍 Trying broader search with partial name...')
+                        print('  🔍 Trying broader search with partial name...')
                         partial_name = module_name[:4] if len(module_name) > 4 else module_name
-                        grep_cmd = [
-                            'docker',
-                            'exec',
-                            '-u',
-                            'user',  # Run as user to match file permissions
-                            container_name,
-                            'find',
-                            pattern,
-                            '-name',
-                            '*.scala',
-                            '-type',
-                            'f',
-                            '-exec',
-                            'grep',
-                            '-il',  # Add -i for case-insensitive matching
-                            f'{partial_name}',
-                            '{}',
-                            ';',
-                        ]
-                        result = subprocess.run(grep_cmd, capture_output=True, text=True)
-                        files = [f.strip() for f in result.stdout.split('\n') if f.strip()][:20]  # Limit to 20 files
-                        # print(f'     Broader search found: {len(files)} files')
+                        find_cmd = f"find {pattern} -name '*.scala' -type f -exec grep -il '{partial_name}' {{}} \\;"
+                        exit_code, stdout, stderr = self.builder.run_cmd(find_cmd)
+                        if exit_code == 0:
+                            files = [f.strip() for f in stdout.split('\n') if f.strip()][:20]  # Limit to 20 files
+                            print(f'     📋 Broader search found: {len(files)} files')
+                        else:
+                            files = []
+                            print(f'     ❌ Broader search failed: {stderr}')
                 else:
                     # Fallback: get all files (but limit to reasonable number)
-                    cmd = ['docker', 'exec', container_name, 'find', pattern, '-name', '*.scala', '-type', 'f']
-                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-                    all_files = [f.strip() for f in result.stdout.split('\n') if f.strip()]
-                    # Limit to first 100 files to avoid performance issues
-                    files = all_files[:100]
-                    # print(f'     Found: {len(all_files)} files, limited to: {len(files)} for performance')
+                    find_cmd = f"find {pattern} -name '*.scala' -type f"
+                    exit_code, stdout, stderr = self.builder.run_cmd(find_cmd)
+                    if exit_code == 0:
+                        all_files = [f.strip() for f in stdout.split('\n') if f.strip()]
+                        # Limit to first 100 files to avoid performance issues
+                        files = all_files[:100]
+                        print(f'     📋 Fallback found: {len(all_files)} files, limited to: {len(files)} for performance')
+                    else:
+                        files = []
+                        print(f'     ❌ Fallback search failed: {stderr}')
 
-                # if files:
-                #     for f in files[:3]:  # Show first 3
-                #         print(f'     - {f}')
-                #     if len(files) > 3:
-                #         print(f'     ... and {len(files) - 3} more')
+                if files:
+                    for f in files[:3]:  # Show first 3
+                        print(f'     - {f}')
+                    if len(files) > 3:
+                        print(f'     ... and {len(files) - 3} more')
 
                 # Add docker: prefix to distinguish from local files
-                docker_files.extend([f'docker:{container_name}:{f}' for f in files])
+                # Use actual container name from builder instead of placeholder
+                actual_container = 'builder_managed'  # Use a consistent name since we're using builder API
+                docker_files.extend([f'docker:{actual_container}:{f}' for f in files])
 
-            except subprocess.CalledProcessError:
-                # print(f'     ❌ Docker command failed: {e}')
-                pass
-            except Exception:
-                # print(f'     ❌ Error: {e}')
+            except Exception as e:
+                print(f'     ❌ Error searching pattern {pattern}: {e}')
                 pass
 
         return docker_files
@@ -675,13 +668,14 @@ class V2chisel_batch(Step):
 
     def _find_verilog_files_in_docker(self, container_name: str, module_name: str) -> str:
         """Find actual Verilog files in Docker container to provide better module context"""
-        import subprocess
-
         try:
-            # Search for Verilog files in the build directory
-            cmd = ['docker', 'exec', '-u', 'root', container_name, 'find', '/code/workspace/build', '-name', '*.sv', '-type', 'f']
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            verilog_files = [f.strip() for f in result.stdout.strip().split('\n') if f.strip()]
+            # Use builder.run_cmd instead of subprocess for Docker operations
+            exit_code, stdout, stderr = self.builder.run_cmd('find /code/workspace/build -name "*.sv" -type f')
+            if exit_code != 0:
+                print(f'❌ Failed to find Verilog files: {stderr}')
+                return ''
+            
+            verilog_files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
 
             # print(f'Found {len(verilog_files)} Verilog files in Docker container')
 
@@ -698,15 +692,15 @@ class V2chisel_batch(Step):
 
                 # Read content from the first matching file to get module context
                 try:
-                    content_cmd = ['docker', 'exec', '-u', 'root', container_name, 'head', '-20', matching_files[0]]
-                    content_result = subprocess.run(content_cmd, capture_output=True, text=True, check=True)
-                    return content_result.stdout
+                    exit_code, stdout, stderr = self.builder.run_cmd(f'head -20 {matching_files[0]}')
+                    if exit_code == 0:
+                        return stdout
                 except Exception:
                     pass
             else:
                 print(f'No Verilog files found matching "{module_name}"')
 
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             print(f'❌ Failed to search Verilog files in Docker: {e}')
 
         return ''
@@ -764,23 +758,25 @@ class V2chisel_batch(Step):
         return unique_files
 
     def _read_docker_file(self, docker_path: str) -> str:
-        """Read file content from Docker container"""
-        import subprocess
-
+        """Read file content from Docker container using Builder API"""
         # Parse docker path: docker:container_name:file_path
         parts = docker_path.split(':', 2)
         if len(parts) != 3 or parts[0] != 'docker':
             raise ValueError(f'Invalid docker path format: {docker_path}')
 
-        container_name = parts[1]
+        container_name = parts[1]  # This is now ignored since we use Builder API
         file_path = parts[2]
 
         try:
-            cmd = ['docker', 'exec', container_name, 'cat', file_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            return result.stdout
-        except subprocess.CalledProcessError as e:
-            raise Exception(f'Failed to read {file_path} from container {container_name}: {e}')
+            # Use builder.run_cmd instead of subprocess
+            exit_code, stdout, stderr = self.builder.run_cmd(f'cat {file_path}')
+            if exit_code == 0:
+                print(f'[DEBUG] Successfully read Docker file: {file_path}')
+                return stdout
+            else:
+                raise Exception(f'Failed to read {file_path}: {stderr}')
+        except Exception as e:
+            raise Exception(f'Failed to read {file_path} from container via Builder API: {e}')
 
     def _prepare_files_for_module_finder(self, chisel_files: list) -> list:
         """Prepare file list for module_finder (handle Docker files)"""
@@ -832,7 +828,6 @@ class V2chisel_batch(Step):
 
     def _parse_metadata_from_rtl(self, docker_container: str, verilog_file: str, verilog_diff: str) -> dict:
         """Parse metadata from RTL files to extract Chisel file:line mappings"""
-        import subprocess
         import re
 
         # print(f'🔍 [METADATA FALLBACK] Parsing RTL metadata for: {verilog_file}')
@@ -842,17 +837,14 @@ class V2chisel_batch(Step):
 
         try:
             # Check if RTL file exists
-            check_cmd = ['docker', 'exec', docker_container, 'test', '-f', rtl_path]
-            result = subprocess.run(check_cmd, capture_output=True)
+            exit_code, _, _ = self.builder.run_cmd(f'test -f {rtl_path}')
 
-            if result.returncode != 0:
+            if exit_code != 0:
                 # print(f'     ❌ RTL file not found: {rtl_path}')
                 return {'success': False, 'error': 'RTL file not found'}
 
-            # Read RTL file content
-            cat_cmd = ['docker', 'exec', docker_container, 'cat', rtl_path]
-            result = subprocess.run(cat_cmd, capture_output=True, text=True, check=True)
-            rtl_content = result.stdout
+            # Read RTL file content using Builder's filesystem
+            rtl_content = self.builder.filesystem.read_file(rtl_path)
 
             print(f'     ✅ Read RTL file: {len(rtl_content)} characters')
 
@@ -878,27 +870,21 @@ class V2chisel_batch(Step):
 
             return {'success': True, 'file_mappings': file_mappings, 'total_metadata': len(metadata_matches)}
 
-        except subprocess.CalledProcessError as e:
-            print(f'     ❌ Failed to read RTL file: {e}')
-            return {'success': False, 'error': str(e)}
         except Exception as e:
-            print(f'     ❌ Metadata parsing error: {e}')
+            print(f'     ❌ Failed to read RTL file: {e}')
             return {'success': False, 'error': str(e)}
 
     def _extract_hints_from_metadata(self, docker_container: str, file_mappings: dict) -> str:
         """Extract actual Chisel code hints from metadata mappings"""
-        import subprocess
-
         # print(f'🔧 [METADATA FALLBACK] Extracting hints from {len(file_mappings)} files...')
 
         all_hints = []
 
         for file_path, line_numbers in file_mappings.items():
             try:
-                # Read the Chisel file from Docker
-                cat_cmd = ['docker', 'exec', docker_container, 'cat', file_path]
-                result = subprocess.run(cat_cmd, capture_output=True, text=True, check=True)
-                file_lines = result.stdout.split('\n')
+                # Read the Chisel file using Builder's filesystem
+                file_content = self.builder.filesystem.read_file(file_path)
+                file_lines = file_content.split('\n')
 
                 # Get unique lines with context
                 unique_lines = sorted(set(line_numbers))
@@ -1055,7 +1041,6 @@ class V2chisel_batch(Step):
         # print('💾 [MASTER_BACKUP] Creating master backup of original files...')
 
         try:
-            import subprocess
             import re
             import time
 
@@ -1080,8 +1065,9 @@ class V2chisel_batch(Step):
             backup_dir = f'/tmp/chisel_master_backup_{backup_id}'
 
             # Create backup directory in container
-            mkdir_cmd = ['docker', 'exec', docker_container, 'mkdir', '-p', backup_dir]
-            subprocess.run(mkdir_cmd, check=True)
+            exit_code, _, _ = self.builder.run_cmd(f'mkdir -p {backup_dir}')
+            if exit_code != 0:
+                raise Exception(f'Failed to create backup directory {backup_dir}')
 
             backed_up_files = []
 
@@ -1089,16 +1075,14 @@ class V2chisel_batch(Step):
                 print('     ⚠️  No Scala files found in diff - will create backup for original Verilog only')
             for file_path in files_to_backup:
                 # Check if file exists before backing up
-                check_cmd = ['docker', 'exec', docker_container, 'test', '-f', file_path]
-                check_result = subprocess.run(check_cmd, capture_output=True)
+                check_exit_code, _, _ = self.builder.run_cmd(f'test -f {file_path}')
 
-                if check_result.returncode == 0:
+                if check_exit_code == 0:
                     # File exists - back it up to MASTER backup
                     backup_file_path = f'{backup_dir}/{file_path.replace("/", "_")}.original'
-                    cp_cmd = ['docker', 'exec', docker_container, 'cp', file_path, backup_file_path]
-                    cp_result = subprocess.run(cp_cmd, capture_output=True, text=True)
+                    cp_exit_code, _, _ = self.builder.run_cmd(f'cp {file_path} {backup_file_path}')
 
-                    if cp_result.returncode == 0:
+                    if cp_exit_code == 0:
                         backed_up_files.append({'original_path': file_path, 'backup_path': backup_file_path})
                         # print(f'     ✅ Master backup created: {file_path}')
                     else:
@@ -1109,9 +1093,9 @@ class V2chisel_batch(Step):
             # print(f'💾 [MASTER_BACKUP] Created master backup with ID: {backup_id} ({len(backed_up_files)} files)')
             # print('     🔒 This backup will be used for ALL restore operations until LEC success')
 
-            # NEW: Backup existing original Verilog files for LEC golden design
+            # NEW: Backup existing original Verilog files for LEC golden design using BaselineVerilogGenerator
             # print('📁 [ORIGINAL_VERILOG] Backing up existing original Verilog files for LEC golden design...')
-            baseline_verilog_result = self._backup_existing_original_verilog(docker_container, backup_id)
+            baseline_verilog_result = self.baseline_verilog_generator.backup_baseline_verilog(backup_id)
 
             # DEBUG: Show what we got from the backup process
             # print('🔍 [DEBUG] Original Verilog backup result:')
@@ -1320,7 +1304,7 @@ class V2chisel_batch(Step):
         # print('🔧 [APPLIER] Starting diff application...')
 
         try:
-            applier = DockerDiffApplier(docker_container)
+            applier = DockerDiffApplier(self.builder)
             success = applier.apply_diff_to_container(chisel_diff, dry_run=False)
 
             if success:
@@ -1435,46 +1419,33 @@ class V2chisel_batch(Step):
         print('⚠️  [VERILOG_GEN] Skipping MainGen.scala creation for DINO project (uses existing main objects)')
 
         try:
-            import subprocess
-
             # Try different Verilog generation commands based on the project
             # Prioritize DINO-specific commands first, then fallbacks
             generation_commands = [
                 # DINO-specific SBT commands (HIGHEST PRIORITY - these work for DINO)
                 # SingleCycleCPU first to match the desired CPU type
-                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"', 'use_login_shell': True},
-                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.Main"', 'use_login_shell': True},
-                {
-                    'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.pipelined.PipelinedDualIssueNoDebug"',
-                    'use_login_shell': True,
-                },
-                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.PipelinedDualIssueNoDebug"', 'use_login_shell': True},
-                {'cmd': 'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUDebug"', 'use_login_shell': True},
+                'bash -l -c "cd /code/workspace/repo && sbt \\"runMain dinocpu.SingleCycleCPUNoDebug\\""',
+                'bash -l -c "cd /code/workspace/repo && sbt \\"runMain dinocpu.Main\\""',
+                'bash -l -c "cd /code/workspace/repo && sbt \\"runMain dinocpu.pipelined.PipelinedDualIssueNoDebug\\""',
+                'bash -l -c "cd /code/workspace/repo && sbt \\"runMain dinocpu.PipelinedDualIssueNoDebug\\""',
+                'bash -l -c "cd /code/workspace/repo && sbt \\"runMain dinocpu.SingleCycleCPUDebug\\""',
                 # Generic SBT commands (fallback for other projects)
-                {'cmd': 'cd /code/workspace/repo && sbt "runMain Main"', 'use_login_shell': True},
-                {'cmd': f'cd /code/workspace/repo && sbt "runMain {module_name}"', 'use_login_shell': True},
-                {'cmd': f'cd /code/workspace/repo && sbt "runMain dinocpu.{module_name}"', 'use_login_shell': True},
-                {'cmd': f'cd /code/workspace/repo && sbt "runMain xiangshan.{module_name}"', 'use_login_shell': True},
+                'bash -l -c "cd /code/workspace/repo && sbt \\"runMain Main\\""',
+                f'bash -l -c "cd /code/workspace/repo && sbt \\"runMain {module_name}\\""',
+                f'bash -l -c "cd /code/workspace/repo && sbt \\"runMain dinocpu.{module_name}\\""',
+                f'bash -l -c "cd /code/workspace/repo && sbt \\"runMain xiangshan.{module_name}\\""',
                 # Mill commands (only try if sbt project doesn't work)
-                {'cmd': 'cd /code/workspace/repo && ./mill root.runMain Main', 'use_login_shell': False},
-                {'cmd': f'cd /code/workspace/repo && ./mill root.runMain {module_name}', 'use_login_shell': False},
+                'bash -c "cd /code/workspace/repo && ./mill root.runMain Main"',
+                f'bash -c "cd /code/workspace/repo && ./mill root.runMain {module_name}"',
             ]
 
             tooling_errors = []
-            for i, gen_cmd_info in enumerate(generation_commands):
-                gen_cmd_str = gen_cmd_info['cmd']
-                use_login_shell = gen_cmd_info['use_login_shell']
-
+            for i, gen_cmd_str in enumerate(generation_commands):
                 print(f'     📝 Trying generation command {i + 1}: {gen_cmd_str.split("&&")[-1].strip()}')
 
-                if use_login_shell:
-                    cmd = ['docker', 'exec', '-u', 'root', docker_container, 'bash', '-l', '-c', gen_cmd_str]
-                else:
-                    cmd = ['docker', 'exec', '-u', 'root', docker_container, 'bash', '-c', gen_cmd_str]
+                exit_code, stdout, stderr = self.builder.run_cmd(gen_cmd_str)
 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 min timeout
-
-                if result.returncode == 0:
+                if exit_code == 0:
                     print(f'✅ [VERILOG_GEN] Verilog generation successful with command {i + 1}')
                     print(f'     Successful command: {gen_cmd_str.split("&&")[-1].strip()}')
 
@@ -1482,9 +1453,9 @@ class V2chisel_batch(Step):
                     if 'SingleCycleCPUNoDebug' not in gen_cmd_str:
                         print('⚠️  WARNING: Expected SingleCycleCPUNoDebug but used different command!')
                         print('           This may generate wrong CPU type for LEC comparison')
-                    return {'success': True, 'output': result.stdout, 'command_used': gen_cmd_str, 'tooling_issue': False}
+                    return {'success': True, 'output': stdout, 'command_used': gen_cmd_str, 'tooling_issue': False}
                 else:
-                    error_msg = result.stderr
+                    error_msg = stderr
                     print(f'     ❌ Command {i + 1} failed: {error_msg[:200]}...')
 
                     # Extra debug for SingleCycleCPUNoDebug failures
@@ -1587,7 +1558,7 @@ class V2chisel_batch(Step):
             return {
                 'success': False,
                 'error': 'All Verilog generation commands failed',
-                'last_stderr': result.stderr if 'result' in locals() else 'No stderr available',
+                'last_stderr': tooling_errors[-1]['error'] if tooling_errors else 'No stderr available',
                 'tooling_issue': is_tooling_failure,
                 'error_details': tooling_errors,
                 'tooling_analysis': {
@@ -1610,8 +1581,11 @@ class V2chisel_batch(Step):
                 },
             }
 
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'error': 'Verilog generation timeout (5 minutes)', 'tooling_issue': True}
+        except Exception as timeout_error:
+            if 'timeout' in str(timeout_error).lower():
+                return {'success': False, 'error': 'Verilog generation timeout (5 minutes)', 'tooling_issue': True}
+            else:
+                raise
         except Exception as e:
             return {'success': False, 'error': f'Verilog generation error: {str(e)}', 'tooling_issue': True}
 
@@ -1827,69 +1801,37 @@ class V2chisel_batch(Step):
     def _generate_fresh_baseline_verilog(self, docker_container: str) -> dict:
         """Generate fresh baseline Verilog from pristine Chisel code"""
         try:
-            import subprocess
-
             print('🏭 [BASELINE] Generating fresh baseline Verilog from pristine Chisel...')
 
-            # Generate ONLY SingleCycleCPU to match what the gate design will be
-            # Use login shell to ensure sbt is in PATH (same as other sbt commands)
-            verilog_cmd = [
-                'docker',
-                'exec',
-                docker_container,
-                'bash',
-                '-l',
-                '-c',
-                'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"',
-            ]
-
             print('🔧 [BASELINE] Running: sbt "runMain dinocpu.SingleCycleCPUNoDebug"')
-            verilog_result = subprocess.run(verilog_cmd, capture_output=True, text=True, timeout=300)
+            exit_code, stdout, stderr = self.builder.run_cmd('bash -l -c \'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"\'')
 
-            if verilog_result.returncode == 0:
+            if exit_code == 0:
                 print('✅ [BASELINE] Fresh baseline Verilog generated successfully')
                 print('     Command used: sbt "runMain dinocpu.SingleCycleCPUNoDebug"')
 
                 # Create target directory and copy generated files from build_singlecyclecpu_d to build_singlecyclecpu_nd
                 # so they're available in the location the backup method expects
-                mkdir_cmd = ['docker', 'exec', docker_container, 'mkdir', '-p', '/code/workspace/build/build_singlecyclecpu_nd']
-                subprocess.run(mkdir_cmd, capture_output=True, text=True)
+                self.builder.run_cmd('mkdir -p /code/workspace/build/build_singlecyclecpu_nd')
 
-                copy_cmd = [
-                    'docker',
-                    'exec',
-                    docker_container,
-                    'bash',
-                    '-c',
-                    'cp -r /code/workspace/build/build_singlecyclecpu_d/* /code/workspace/build/build_singlecyclecpu_nd/',
-                ]
-                copy_result = subprocess.run(copy_cmd, capture_output=True, text=True)
+                copy_exit_code, copy_stdout, copy_stderr = self.builder.run_cmd('cp -r /code/workspace/build/build_singlecyclecpu_d/* /code/workspace/build/build_singlecyclecpu_nd/')
 
-                if copy_result.returncode == 0:
+                if copy_exit_code == 0:
                     print('✅ [BASELINE] Copied baseline files to expected location')
                 else:
-                    print(f'⚠️  [BASELINE] Copy had issues: {copy_result.stderr}')
+                    print(f'⚠️  [BASELINE] Copy had issues: {copy_stderr}')
 
                 # DEBUG: Check what opcode is actually in the generated baseline
-                debug_cmd = [
-                    'docker',
-                    'exec',
-                    docker_container,
-                    'grep',
-                    '-n',
-                    '_signals_T_132',
-                    '/code/workspace/build/build_singlecyclecpu_nd/Control.sv',
-                ]
-                debug_result = subprocess.run(debug_cmd, capture_output=True, text=True)
-                if debug_result.returncode == 0:
-                    print(f'🔍 [BASELINE] Baseline contains: {debug_result.stdout.strip()}')
+                debug_exit_code, debug_stdout, debug_stderr = self.builder.run_cmd('grep -n _signals_T_132 /code/workspace/build/build_singlecyclecpu_nd/Control.sv')
+                if debug_exit_code == 0:
+                    print(f'🔍 [BASELINE] Baseline contains: {debug_stdout.strip()}')
                 else:
-                    print(f'🔍 [BASELINE] Could not find _signals_T_132 in baseline: {debug_result.stderr}')
+                    print(f'🔍 [BASELINE] Could not find _signals_T_132 in baseline: {debug_stderr}')
 
                 return {'success': True}
 
             else:
-                error_msg = f'Fresh baseline Verilog generation failed: {verilog_result.stderr}'
+                error_msg = f'Fresh baseline Verilog generation failed: {stderr}'
                 print(f'❌ [BASELINE] {error_msg}')
                 return {'success': False, 'error': error_msg}
 
@@ -1926,7 +1868,7 @@ class V2chisel_batch(Step):
                 try:
                     # Search for files with similar name (case-insensitive)
                     find_cmd = f'find /code/workspace -iname "{base_filename}" -type f'
-                    exit_code, stdout, stderr = runner.run(find_cmd)
+                    exit_code, stdout, stderr = runner.run_cmd(find_cmd)
 
                     if exit_code == 0 and stdout.strip():
                         actual_files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
@@ -2017,7 +1959,7 @@ class V2chisel_batch(Step):
                 from hagent.tool.docker_diff_applier import DockerDiffApplier
 
                 # Create a custom applier that targets the golden directory specifically
-                applier = DockerDiffApplier(docker_container)
+                applier = DockerDiffApplier(self.builder)
 
                 # Override the file search to target golden directory only
                 original_find_method = applier.find_file_in_container
@@ -2069,13 +2011,13 @@ class V2chisel_batch(Step):
 
             # Task 1: Collect all golden design files (multiple .sv files)
             golden_dir = '/code/workspace/repo/lec_golden'
-            golden_check_cmd = ['docker', 'exec', docker_container, 'find', golden_dir, '-name', '*.sv', '-type', 'f']
-            golden_result = subprocess.run(golden_check_cmd, capture_output=True, text=True, timeout=30)
+            find_cmd = f'find {golden_dir} -name "*.sv" -type f'
+            exit_code, stdout, stderr = self.builder.run_cmd(find_cmd)
 
-            if golden_result.returncode != 0 or not golden_result.stdout.strip():
+            if exit_code != 0 or not stdout.strip():
                 return {'success': False, 'error': 'No golden design files found for LEC'}
 
-            golden_files = [f.strip() for f in golden_result.stdout.strip().split('\n') if f.strip()]
+            golden_files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
             # print(f'📁 [LEC] Task 1 Complete - Found {len(golden_files)} golden design files:')
             for gf in golden_files:
                 print(f'     - {gf}')
@@ -2085,11 +2027,11 @@ class V2chisel_batch(Step):
             gate_files = []
             for gate_path in gate_paths:
                 try:
-                    gate_check_cmd = ['docker', 'exec', docker_container, 'find', gate_path, '-name', '*.sv', '-type', 'f']
-                    gate_result = subprocess.run(gate_check_cmd, capture_output=True, text=True, timeout=30)
+                    find_gate_cmd = f'find {gate_path} -name "*.sv" -type f'
+                    gate_exit_code, gate_stdout, gate_stderr = self.builder.run_cmd(find_gate_cmd)
 
-                    if gate_result.returncode == 0 and gate_result.stdout.strip():
-                        found_gate_files = [f.strip() for f in gate_result.stdout.strip().split('\n') if f.strip()]
+                    if gate_exit_code == 0 and gate_stdout.strip():
+                        found_gate_files = [f.strip() for f in gate_stdout.strip().split('\n') if f.strip()]
                         # Filter out golden design files from gate design files
                         filtered_gate_files = [f for f in found_gate_files if not f.startswith(golden_dir)]
 
@@ -2168,26 +2110,32 @@ class V2chisel_batch(Step):
             for golden_file in golden_files:
                 filename = os.path.basename(golden_file)
                 host_path = os.path.join(temp_golden_dir, filename)
-                copy_cmd = ['docker', 'cp', f'{docker_container}:{golden_file}', host_path]
-                copy_result = subprocess.run(copy_cmd, capture_output=True, text=True)
-                if copy_result.returncode == 0:
+                try:
+                    # Use Builder filesystem API to read file content from container
+                    file_content = self.builder.filesystem.read_file(golden_file)
+                    # Write content to host file
+                    with open(host_path, 'w') as f:
+                        f.write(file_content)
                     copied_golden_files.append(host_path)
                     print(f'     ✅ Copied golden: {filename}')
-                else:
-                    print(f'     ❌ Failed to copy golden: {filename}')
+                except Exception as e:
+                    print(f'     ❌ Failed to copy golden: {filename} - {str(e)}')
 
             # Copy gate files from container to host
             copied_gate_files = []
             for gate_file in gate_files:  # Copy all gate files
                 filename = os.path.basename(gate_file)
                 host_path = os.path.join(temp_gate_dir, filename)
-                copy_cmd = ['docker', 'cp', f'{docker_container}:{gate_file}', host_path]
-                copy_result = subprocess.run(copy_cmd, capture_output=True, text=True)
-                if copy_result.returncode == 0:
+                try:
+                    # Use Builder filesystem API to read file content from container
+                    file_content = self.builder.filesystem.read_file(gate_file)
+                    # Write content to host file
+                    with open(host_path, 'w') as f:
+                        f.write(file_content)
                     copied_gate_files.append(host_path)
                     print(f'     ✅ Copied gate: {filename}')
-                else:
-                    print(f'     ❌ Failed to copy gate: {filename}')
+                except Exception as e:
+                    print(f'     ❌ Failed to copy gate: {filename} - {str(e)}')
 
             if not copied_golden_files or not copied_gate_files:
                 return {'success': False, 'error': 'Failed to copy files for LEC analysis'}
@@ -2502,55 +2450,29 @@ class V2chisel_batch(Step):
         try:
             # Step 1: Fix permissions on the repo directory
             print('🔧 [COMPILE] Fixing file permissions in container...')
-            exit_code, stdout, stderr = self._run_docker_command(
-                ['docker', 'exec', '-u', 'root', docker_container, 'chown', '-R', 'root:root', '/code/workspace/repo']
-            )
+            exit_code, stdout, stderr = self.builder.run_cmd('chown -R root:root /code/workspace/repo')
             if exit_code == 0:
                 print('✅ [COMPILE] Fixed repository permissions')
             else:
                 print(f'⚠️  [COMPILE] Permission fix warning: {stderr}')
 
             # Step 2: Clean any existing target directories that might have wrong permissions
-            self._run_docker_command(
-                [
-                    'docker',
-                    'exec',
-                    '-u',
-                    'root',
-                    docker_container,
-                    'bash',
-                    '-c',
-                    'rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true',
-                ]
-            )
+            self.builder.run_cmd('rm -rf /code/workspace/repo/target /code/workspace/repo/project/target || true')
             print('🗑️ [COMPILE] Cleaned old target directories')
 
             # Step 3: Install SBT and try compilation
             print('📝 [COMPILE] Installing/ensuring SBT is available...')
-            self._run_docker_command(
-                [
-                    'docker',
-                    'exec',
-                    '-u',
-                    'root',
-                    docker_container,
-                    'bash',
-                    '-c',
-                    'curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs',
-                ]
+            self.builder.run_cmd(
+                'curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs'
             )
-            self._run_docker_command(['docker', 'exec', '-u', 'root', docker_container, '/usr/local/bin/cs', 'install', 'sbt'])
+            self.builder.run_cmd('/usr/local/bin/cs install sbt')
 
             # Verify SBT is now available
-            exit_code, sbt_location, stderr = self._run_docker_command(
-                ['docker', 'exec', '-u', 'root', docker_container, 'which', 'sbt']
-            )
+            exit_code, sbt_location, stderr = self.builder.run_cmd('which sbt')
             print(f'SBT location: {sbt_location.strip()}')
 
             print('📝 [COMPILE] Running: sbt compile (via Runner with fixed permissions)')
-            exit_code, stdout, stderr = self._run_docker_command(
-                ['docker', 'exec', '-u', 'root', docker_container, 'bash', '-l', '-c', 'cd /code/workspace/repo && sbt compile']
-            )
+            exit_code, stdout, stderr = self.builder.run_cmd("bash -l -c 'cd /code/workspace/repo && sbt compile'")
 
             if exit_code == 0:
                 print('✅ [COMPILE] SBT compilation successful')
@@ -2576,17 +2498,8 @@ class V2chisel_batch(Step):
 
             # Method 2: Try mill as fallback
             print('     📝 Trying Mill fallback via Runner...')
-            mill_exit_code, mill_stdout, mill_stderr = self._run_docker_command(
-                [
-                    'docker',
-                    'exec',
-                    '-u',
-                    'root',
-                    docker_container,
-                    'bash',
-                    '-c',
-                    'cd /code/workspace/repo && ./mill clean && ./mill root.compile',
-                ]
+            mill_exit_code, mill_stdout, mill_stderr = self.builder.run_cmd(
+                'bash -c "cd /code/workspace/repo && ./mill clean && ./mill root.compile"'
             )
 
             if mill_exit_code == 0:
@@ -2989,8 +2902,8 @@ class V2chisel_batch(Step):
                         if verilog_gen_result['success']:
                             print('✅ VERILOG_GENERATION: Success')
 
-                            # NEW: Create golden design for LEC
-                            golden_result = self._create_golden_design(docker_container, unified_diff, master_backup_info)
+                            # NEW: Create golden design for LEC using GoldenDesignBuilder component
+                            golden_result = self.golden_design_builder.create_golden_design(unified_diff, master_backup_info, docker_container)
 
                             if golden_result.get('success', False):
                                 print('✅ GOLDEN_DESIGN: Success')
@@ -3291,7 +3204,7 @@ class V2chisel_batch(Step):
 
         # Get the actual container name from Runner
         actual_container_name = None
-        if hasattr(self, 'runner') and self.builder and hasattr(self.builder, 'container_manager'):
+        if self.builder and hasattr(self.builder, 'container_manager'):
             container_mgr = self.builder.container_manager
             if hasattr(container_mgr, 'container') and container_mgr.container:
                 # Get container name from Docker container object
@@ -3317,7 +3230,7 @@ class V2chisel_batch(Step):
             print(f'❌ [BASELINE] Failed to ensure pristine state: {pristine_result.get("error", "Unknown error")}')
             print('⚠️  [BASELINE] Continuing anyway, but results may be inconsistent')
 
-        baseline_result = self._generate_fresh_baseline_verilog(docker_container)
+        baseline_result = self.baseline_verilog_generator.generate_fresh_baseline(docker_container)
         if not baseline_result['success']:
             print(f'❌ [BASELINE] Failed to generate fresh baseline: {baseline_result.get("error", "Unknown error")}')
             print('⚠️  [BASELINE] Continuing with existing Verilog files (may be stale)')
@@ -3506,6 +3419,9 @@ def main():
             processor.chisel_source_pattern = './tmp/src/main/scala/*/*.scala'
             processor.debug = True
             processor.module_finder = Module_finder()  # Initialize module finder
+            processor.hints_generator = HintsGenerator(processor.module_finder, builder=processor.builder, debug=processor.debug)  # Initialize hints generator
+            processor.golden_design_builder = GoldenDesignBuilder(processor.builder, debug=processor.debug)  # Initialize golden design builder
+            processor.baseline_verilog_generator = BaselineVerilogGenerator(processor.builder, debug=processor.debug)  # Initialize baseline verilog generator
 
             # Create mock template_config for LLM calls
             class MockTemplateConfig:
@@ -3585,26 +3501,26 @@ def main():
 
         # Setup processor's Runner to access Docker commands
         # print('🔧 [V2chisel_batch] Setting up Docker container...')
-        if not processor.runner.setup():
+        if not processor.builder.setup():
             print('❌ Step 1: Initialization & Setup - FAILED')
             return 1
         # print('✅ [V2chisel_batch] Docker container setup successful')
 
         # Install coursier and SBT
         print('📝 [V2chisel_batch] Installing/ensuring SBT is available...')
-        processor.runner.run(
+        processor.builder.run_cmd(
             'curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > /usr/local/bin/cs && chmod +x /usr/local/bin/cs'
         )
-        processor.runner.run('/usr/local/bin/cs install sbt')
+        processor.builder.run_cmd('/usr/local/bin/cs install sbt')
 
         # Verify SBT is now available
-        sbt_check_exit, sbt_check_out, sbt_check_err = processor.runner.run('which sbt')
+        sbt_check_exit, sbt_check_out, sbt_check_err = processor.builder.run_cmd('which sbt')
         print(f'SBT location: {sbt_check_out.strip()}')
 
         # Step 1: Fix git ownership and restore Chisel source files
         print('🔄 [V2chisel_batch] Fixing git ownership and restoring Chisel code...')
-        processor.runner.run('git config --global --add safe.directory /code/workspace/repo')
-        exit_code, stdout, stderr = processor.runner.run(
+        processor.builder.run_cmd('git config --global --add safe.directory /code/workspace/repo')
+        exit_code, stdout, stderr = processor.builder.run_cmd(
             'git -C /code/workspace/repo checkout HEAD -- src/main/scala/components/control.scala'
         )
         if exit_code != 0:
@@ -3614,7 +3530,7 @@ def main():
 
         # Step 2: Clean SBT build cache using the working pattern
         print('🧹 [V2chisel_batch] Cleaning SBT build cache...')
-        exit_code, stdout, stderr = processor.runner.run("bash -l -c 'cd /code/workspace/repo && sbt clean'")
+        exit_code, stdout, stderr = processor.builder.run_cmd("bash -l -c 'cd /code/workspace/repo && sbt clean'")
         if exit_code != 0:
             print(f'⚠️  [V2chisel_batch] SBT clean failed (non-critical): {stderr}')
         else:
@@ -3622,22 +3538,23 @@ def main():
 
         # Also remove target directories and .bloop cache for more aggressive cleaning
         print('🗑️ [V2chisel_batch] Removing target directories and compilation caches...')
-        processor.runner.run('rm -rf target/ project/target/ .bloop/ || true', cwd='/code/workspace/repo')
+        processor.builder.run_cmd('rm -rf target/ project/target/ .bloop/ || true', cwd='/code/workspace/repo')
         print('✅ [V2chisel_batch] Removed compilation artifacts')
 
         # Step 3: Remove any existing golden directory from previous runs
-        processor.runner.run('rm -rf /code/workspace/repo/lec_golden')
+        processor.builder.run_cmd('rm -rf /code/workspace/repo/lec_golden')
         print('✅ [V2chisel_batch] Removed any existing golden directory')
 
         # Step 4: Clean both directories to ensure fresh generation
-        processor.runner.run(
+        processor.builder.run_cmd(
             'rm -rf build/build_singlecyclecpu_d/* build/build_singlecyclecpu_nd/* build/build_pipelined_d/* build/build_gcd/* || true',
             cwd='/code/workspace',
         )
         print('✅ [V2chisel_batch] Cleaned all build directories for fresh generation')
 
         # Now generate fresh baseline from pristine code
-        if not processor.generate_fresh_baseline_verilog():
+        baseline_result = processor.baseline_verilog_generator.generate_fresh_baseline()
+        if not baseline_result.get('success', False):
             print('❌ [V2chisel_batch] Failed to generate fresh baseline - continuing anyway')
         print('✅ [V2chisel_batch] Fresh baseline generation complete')
         print()
@@ -3649,8 +3566,8 @@ def main():
         # CRITICAL: Get the actual container name from Runner and override input_data
         # This ensures the main pipeline uses the same container we set up
         actual_container_name = None
-        if hasattr(processor.runner, 'container_manager') and processor.runner.container_manager:
-            container_mgr = processor.runner.container_manager
+        if hasattr(processor.builder, 'container_manager') and processor.builder.container_manager:
+            container_mgr = processor.builder.container_manager
             if hasattr(container_mgr, 'container') and container_mgr.container:
                 # Get container name from Docker container object
                 actual_container_name = container_mgr.container.name
