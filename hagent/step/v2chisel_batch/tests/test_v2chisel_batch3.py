@@ -549,7 +549,64 @@ def main():
                                         if "7'h3" in line and 'signals_T_132' in line:
                                             print(f'     Generated Line {i + 1}: {line.strip()}')
 
+                                    # DEBUG: Add detailed LEC execution info like v2chisel_batch
+                                    print('🔍 [TEST] Running Logic Equivalence Check for target file: Control.sv')
+                                    print(
+                                        '🔍 [TEST] Using test_v2chisel_batch3 approach: comparing only the specific target file'
+                                    )
+                                    print(f'🔍 [TEST] Golden file (patched): {patched_backup_file}')
+                                    print(f'🔍 [TEST] Gate file (newly generated): {new_compiled_file}')
+                                    print('🔍 [TEST] Reading files for comparison...')
+                                    print('🔍 [TEST] Comparing Control.sv...')
+
+                                    # DEBUG: Print LEC execution details
+                                    print('🔍 [DEBUG] About to call checker.check_equivalence()...')
+                                    print(f'🔍 [DEBUG] Checker class: {type(checker).__name__}')
+                                    print(f'🔍 [DEBUG] Checker module: {type(checker).__module__}')
+                                    print(f'🔍 [DEBUG] Checker use_docker: {getattr(checker, "use_docker", "Unknown")}')
+
+                                    # Monkey patch to capture the yosys command and script content
+                                    original_run_yosys_command = checker._run_yosys_command
+
+                                    def debug_run_yosys_command(command):
+                                        print(f'🔍 [DEBUG] YOSYS COMMAND: {command}')
+
+                                        # Try to read the script file content if it's a script execution
+                                        if '-s check.s' in command and '&&' in command:
+                                            work_dir = command.split('&&')[0].replace('cd ', '').strip()
+                                            script_path = f'{work_dir}/check.s'
+                                            try:
+                                                if checker.use_docker and checker.builder:
+                                                    # Read script from Docker container
+                                                    rc, script_content, err = checker.builder.run_cmd(f'cat {script_path}')
+                                                    if rc == 0:
+                                                        print('🔍 [DEBUG] YOSYS SCRIPT CONTENT:')
+                                                        print('--- BEGIN check.s ---')
+                                                        print(script_content)
+                                                        print('--- END check.s ---')
+                                                    else:
+                                                        print(f'🔍 [DEBUG] Failed to read script: {err}')
+                                                else:
+                                                    # Read script from local filesystem
+                                                    with open(script_path, 'r') as f:
+                                                        script_content = f.read()
+                                                    print('🔍 [DEBUG] YOSYS SCRIPT CONTENT:')
+                                                    print('--- BEGIN check.s ---')
+                                                    print(script_content)
+                                                    print('--- END check.s ---')
+                                            except Exception as e:
+                                                print(f'🔍 [DEBUG] Could not read script file: {e}')
+
+                                        return original_run_yosys_command(command)
+
+                                    checker._run_yosys_command = debug_run_yosys_command
+
+                                    print('🔍 [DEBUG] Calling check_equivalence() now...')
                                     final_result = checker.check_equivalence(patched_content, new_content)
+                                    print(f'🔍 [DEBUG] LEC result: {final_result}')
+
+                                    # Restore original method
+                                    checker._run_yosys_command = original_run_yosys_command
 
                                     if final_result is True:
                                         print('🎉 [TEST] SUCCESS: Files are now equivalent after Chisel patch!')
