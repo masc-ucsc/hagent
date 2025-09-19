@@ -185,56 +185,38 @@ class TestGoldenDesignBuilder:
         mock_builder = Mock()
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
-        with patch('builtins.__import__') as mock_import:
-            # Mock successful DockerDiffApplier import and usage
+        with patch('hagent.tool.docker_diff_applier.DockerDiffApplier') as mock_applier_class:
+            # Mock successful DockerDiffApplier usage
             mock_applier = Mock()
             mock_applier.apply_diff_to_container.return_value = True
+            mock_applier_class.return_value = mock_applier
 
-            mock_applier_class = Mock(return_value=mock_applier)
+            # Mock the verification step to return success
+            with patch.object(golden_builder, '_verify_diff_application') as mock_verify:
+                mock_verify.return_value = {'success': True, 'details': ['Applied successfully']}
 
-            def mock_import_side_effect(name, *args, **kwargs):
-                if name == 'hagent.tool.docker_diff_applier':
-                    mock_module = Mock()
-                    mock_module.DockerDiffApplier = mock_applier_class
-                    return mock_module
-                else:
-                    return __import__(name, *args, **kwargs)
-
-            mock_import.side_effect = mock_import_side_effect
-
-            verilog_diff = """--- a/Control.sv
+                verilog_diff = """--- a/Control.sv
 +++ b/Control.sv
 @@ -1,1 +1,1 @@
 -wire test = 1'b0;
 +wire test = 1'b1;"""
 
-            result = golden_builder._apply_diff_to_golden_files(verilog_diff, 'test_container')
+                result = golden_builder._apply_diff_to_golden_files(verilog_diff, 'test_container')
 
-            assert result['success']
-            assert result['diff_applied']
-            assert 'Diff applied successfully' in result['output']
+                assert result['success']
+                assert result['diff_applied']
+                assert 'Diff applied and verified successfully' in result['output']
 
     def test_apply_diff_to_golden_files_failure(self):
         """Test failed diff application."""
         mock_builder = Mock()
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
-        with patch('builtins.__import__') as mock_import:
+        with patch('hagent.tool.docker_diff_applier.DockerDiffApplier') as mock_applier_class:
             # Mock failed DockerDiffApplier usage
             mock_applier = Mock()
             mock_applier.apply_diff_to_container.return_value = False
-
-            mock_applier_class = Mock(return_value=mock_applier)
-
-            def mock_import_side_effect(name, *args, **kwargs):
-                if name == 'hagent.tool.docker_diff_applier':
-                    mock_module = Mock()
-                    mock_module.DockerDiffApplier = mock_applier_class
-                    return mock_module
-                else:
-                    return __import__(name, *args, **kwargs)
-
-            mock_import.side_effect = mock_import_side_effect
+            mock_applier_class.return_value = mock_applier
 
             verilog_diff = 'invalid diff'
 
@@ -248,20 +230,11 @@ class TestGoldenDesignBuilder:
         mock_builder = Mock()
         golden_builder = GoldenDesignBuilder(mock_builder, debug=False)
 
-        with patch('builtins.__import__') as mock_import:
-
-            def mock_import_side_effect(name, *args, **kwargs):
-                if name == 'hagent.tool.docker_diff_applier':
-                    raise ImportError('Module not found')
-                else:
-                    return __import__(name, *args, **kwargs)
-
-            mock_import.side_effect = mock_import_side_effect
-
+        with patch('hagent.tool.docker_diff_applier.DockerDiffApplier', side_effect=ImportError('Module not found')):
             result = golden_builder._apply_diff_to_golden_files('diff', 'test_container')
 
             assert result['success'] is False
-            assert 'Could not import DockerDiffApplier' in result['error']
+            assert 'Module not found' in result['error']
 
     def test_find_verilog_files_in_path_success(self):
         """Test successful Verilog file discovery."""
@@ -302,8 +275,9 @@ class TestGoldenDesignBuilder:
         """Integration test for baseline Verilog generation."""
         mock_builder = Mock()
 
-        # Mock builder.run_cmd calls - SBT first, then copy
+        # Mock builder.run_cmd calls for clean, SBT generation, and copy operations
         mock_builder.run_cmd.side_effect = [
+            (0, 'Clean Success', ''),  # Clean build directories
             (0, 'SBT Success', ''),  # SBT generation
             (0, 'Copy Success', ''),  # File copy
         ]
@@ -319,11 +293,13 @@ class TestGoldenDesignBuilder:
             assert result['generation_success']
             assert 'backup_result' in result
 
-            # Verify SBT command was called (should be first call)
-            assert mock_builder.run_cmd.call_count >= 1
-            first_call = mock_builder.run_cmd.call_args_list[0]
-            sbt_call = first_call[0][0]
-            assert 'sbt "runMain dinocpu.SingleCycleCPUNoDebug"' in sbt_call
+            # Verify operations were called in correct order
+            assert mock_builder.run_cmd.call_count >= 2
+
+            # Check that clean and SBT commands were called
+            calls = [call[0][0] for call in mock_builder.run_cmd.call_args_list]
+            sbt_found = any('sbt "runMain dinocpu.SingleCycleCPUNoDebug"' in call for call in calls)
+            assert sbt_found
 
     def test_create_golden_design_integration(self):
         """Integration test for complete golden design creation."""

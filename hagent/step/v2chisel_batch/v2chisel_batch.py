@@ -1869,144 +1869,30 @@ class V2chisel_batch(Step):
 
         return '\n'.join(corrected_lines)
 
-    def _create_golden_design(self, docker_container: str, verilog_diff: str, master_backup: dict) -> dict:
-        """Create golden design by applying verilog_diff to baseline Verilog files"""
-        try:
-            import subprocess
-
-            print('🎯 [GOLDEN] Creating golden design from baseline + verilog_diff...')
-
-            # DEBUG: Show what we received in master_backup
-            print('🔍 [DEBUG] Master backup contents:')
-            print(f'     Keys: {list(master_backup.keys())}')
-            print(f'     baseline_verilog_success: {master_backup.get("baseline_verilog_success", False)}')
-            print(f'     original_verilog_files: {len(master_backup.get("original_verilog_files", {}))} files')
-            if master_backup.get('original_verilog_files'):
-                for orig, backup in master_backup.get('original_verilog_files', {}).items():
-                    print(f'       - {orig} -> {backup}')
-
-            # Ensure we have baseline Verilog files
-            baseline_verilog = master_backup.get('original_verilog_files', {})
-            if not baseline_verilog:
-                return {'success': False, 'error': 'No baseline Verilog files available in master backup'}
-
-            baseline_success = master_backup.get('baseline_verilog_success', False)
-            if not baseline_success:
-                return {'success': False, 'error': 'Baseline Verilog generation was not successful'}
-
-            print(f'📁 [GOLDEN] Found {len(baseline_verilog)} baseline Verilog files to process')
-
-            # Create golden design directory in container
-            golden_dir = '/code/workspace/repo/lec_golden'
-            mkdir_cmd = ['docker', 'exec', docker_container, 'mkdir', '-p', golden_dir]
-            mkdir_result = subprocess.run(mkdir_cmd, capture_output=True, text=True)
-
-            if mkdir_result.returncode != 0:
-                return {'success': False, 'error': f'Failed to create golden directory: {mkdir_result.stderr}'}
-
-            print(f'✅ [GOLDEN] Created golden design directory: {golden_dir}')
-
-            # Copy baseline files to golden directory
-            copied_files = []
-            for container_path, backup_path in baseline_verilog.items():
-                # Extract filename
-                filename = container_path.split('/')[-1]
-                golden_path = f'{golden_dir}/{filename}'
-
-                # Copy from backup to golden directory (use docker exec cp for intra-container copy)
-                copy_cmd = ['docker', 'exec', docker_container, 'cp', backup_path, golden_path]
-                copy_result = subprocess.run(copy_cmd, capture_output=True, text=True)
-
-                if copy_result.returncode == 0:
-                    copied_files.append(golden_path)
-                    print(f'     ✅ Copied baseline to golden: {filename}')
-                else:
-                    print(f'     ⚠️  Failed to copy {filename}: {copy_result.stderr}')
-
-            if not copied_files:
-                return {'success': False, 'error': 'No baseline files were copied to golden directory'}
-
-            print(f'📁 [GOLDEN] Copied {len(copied_files)} files to golden directory')
-
-            # Apply verilog_diff to golden files using docker_diff_applier
-            print('🔧 [GOLDEN] Applying verilog_diff to golden design files...')
-
-            try:
-                from hagent.tool.docker_diff_applier import DockerDiffApplier
-
-                # Create a custom applier that targets the golden directory specifically
-                applier = DockerDiffApplier(self.builder)
-
-                # Override the file search to target golden directory only
-                original_find_method = applier.find_file_in_container
-
-                def golden_find_file(filename, base_path='/code/workspace/repo/lec_golden'):
-                    """Find files only in the golden directory"""
-                    return original_find_method(filename, base_path)
-
-                applier.find_file_in_container = golden_find_file
-
-                # Fix filename case in verilog_diff to match actual files
-                corrected_verilog_diff = self._fix_diff_filename_case(verilog_diff, self.builder)
-
-                # Apply the unified diff to files in the golden directory
-                diff_success = applier.apply_diff_to_container(corrected_verilog_diff, dry_run=False)
-
-                if diff_success:
-                    print('✅ Golden design generation: SUCCESS')
-                    return {
-                        'success': True,
-                        'golden_files': copied_files,
-                        'diff_applied': True,
-                        'golden_directory': golden_dir,
-                        'files_modified': [],  # DockerDiffApplier doesn't return file list
-                        'applier_output': 'Diff applied successfully',
-                    }
-                else:
-                    error_msg = 'Diff application failed - check docker_diff_applier output'
-                    print('❌ Golden design generation: FAILED')
-                    return {'success': False, 'error': error_msg}
-
-            except ImportError as e:
-                error_msg = f'Could not import DockerDiffApplier: {str(e)}'
-                print(f'❌ [GOLDEN] {error_msg}')
-                return {'success': False, 'error': error_msg}
-
-        except Exception as e:
-            error_msg = f'Golden design creation failed: {str(e)}'
-            print(f'❌ [GOLDEN] {error_msg}')
-            return {'success': False, 'error': error_msg}
-
     def _run_lec(self, docker_container: str, target_file: str) -> dict:
-        """Run Logic Equivalence Check using the same approach as test_v2chisel_batch3 - only for the target file"""
+        """Run Logic Equivalence Check comparing LLM-fixed file vs golden design (both should have verilog_diff applied)"""
         try:
             print(f'🔍 [LEC] Running Logic Equivalence Check for target file: {target_file}')
-            print('🔍 [LEC] Using test_v2chisel_batch3 approach: comparing only the specific target file')
-
-            # Create golden file exactly like test_v2chisel_batch3 does
-            # Step 1: Define paths
-            source_verilog_file = f'/code/workspace/build/build_singlecyclecpu_d/{target_file}'
-            golden_file = f'/code/workspace/cache/lec_run/bug0_patched_{target_file}'
-            gate_file = (
-                f'/code/workspace/build/build_singlecyclecpu_d/{target_file}'  # Same as source, but will be newly generated
+            print(
+                '🔍 [LEC] CORRECT APPROACH: comparing LLM-fixed file vs golden design (both should match buggy baseline + verilog_diff)'
             )
 
-            print(f'🔍 [LEC] Source Verilog: {source_verilog_file}')
-            print(f'🔍 [LEC] Golden file: {golden_file}')
-            print(f'🔍 [LEC] Gate file: {gate_file}')
+            # Step 1: Define paths correctly
+            gate_file = f'/code/workspace/build/build_singlecyclecpu_d/{target_file}'  # LLM-fixed design
+            golden_file = f'/code/workspace/repo/lec_golden/{target_file}'  # Golden design (baseline + verilog_diff)
 
-            # Step 2: Create lec_run directory if it doesn't exist
-            mkdir_result = self.builder.run_cmd('mkdir -p /code/workspace/cache/lec_run')
-            if mkdir_result[0] != 0:
-                return {'success': False, 'error': f'Failed to create lec_run directory: {mkdir_result[2]}'}
+            print(f'🔍 [LEC] Gate file (LLM-fixed): {gate_file}')
+            print(f'🔍 [LEC] Golden file (baseline + verilog_diff): {golden_file}')
 
-            # Step 3: Copy current verilog to create golden file (like test_v2chisel_batch3 does)
-            print('🔍 [LEC] Creating golden file by copying current Verilog...')
-            copy_result = self.builder.run_cmd(f'cp {source_verilog_file} {golden_file}')
-            if copy_result[0] != 0:
-                return {'success': False, 'error': f'Failed to create golden file: {copy_result[2]}'}
+            # Step 2: Check if golden file exists (should be created by _create_golden_design)
+            golden_check = self.builder.run_cmd(f'ls -la {golden_file}')
+            if golden_check[0] != 0:
+                return {
+                    'success': False,
+                    'error': f'Golden file not found: {golden_file} - golden design creation may have failed',
+                }
 
-            print(f'✅ [LEC] Golden file created: {golden_file}')
+            print(f'✅ [LEC] Using golden file: {golden_file}')
 
             # Step 4: Check if gate file exists (should be the newly compiled Verilog)
             gate_check = self.builder.run_cmd(f'ls -la {gate_file}')
@@ -2022,8 +1908,24 @@ class V2chisel_batch(Step):
 
             # Read both files using Builder filesystem API
             print('🔍 [LEC] Reading files for comparison...')
+            print(f'     📖 Golden file: {golden_file}')
+            print(f'     📖 Gate file: {gate_file}')
+
             golden_content = self.builder.filesystem.read_file(golden_file)
             gate_content = self.builder.filesystem.read_file(gate_file)
+
+            # Show key lines from each file
+            golden_lines = golden_content.split('\n')
+            gate_lines = gate_content.split('\n')
+            print('📊 [LEC] File comparison preview:')
+            print(f'     🥇 Golden: {len(golden_lines)} lines, {len(golden_content)} chars')
+            print(f'     🚪 Gate: {len(gate_lines)} lines, {len(gate_content)} chars')
+
+            # Show line 27 (the critical line mentioned in logs)
+            if len(golden_lines) >= 27:
+                print(f'     🔍 Golden line 27: {golden_lines[26]}')
+            if len(gate_lines) >= 27:
+                print(f'     🔍 Gate line 27: {gate_lines[26]}')
 
             # Run equivalence check (single comparison like test_v2chisel_batch3)
             print(f'🔍 [LEC] Comparing {target_file}...')
@@ -2425,75 +2327,13 @@ class V2chisel_batch(Step):
             print(f'     ❌ LLM retry failed: {e}')
             return {'success': False, 'error': str(e)}
 
-    def _extract_code_from_hits(self, hits: list, docker_container: str) -> str:
-        """Extract actual Chisel code content from module_finder hits"""
-        # print('🔍 [HINTS] Extracting actual code content from hits...')
-
-        all_code_hints = []
-
-        for i, hit in enumerate(hits[:5]):  # Top 5 hits to avoid too much context
-            try:
-                file_path = hit.file_name
-
-                import subprocess
-
-                # Handle Docker vs local paths
-                if file_path.startswith('docker:'):
-                    # Parse docker path: docker:container_name:file_path
-                    parts = file_path.split(':', 2)
-                    actual_file_path = parts[2]
-
-                    # Read from Docker container
-                    cmd = ['docker', 'exec', docker_container, 'sed', '-n', f'{hit.start_line},{hit.end_line}p', actual_file_path]
-                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-                    code_content = result.stdout.strip()
-                else:
-                    # Local file - read directly
-                    actual_file_path = file_path
-                    try:
-                        with open(file_path, 'r') as f:
-                            lines = f.readlines()
-                            # Extract specific lines (1-indexed)
-                            start_idx = max(0, hit.start_line - 1)
-                            end_idx = min(len(lines), hit.end_line)
-                            selected_lines = lines[start_idx:end_idx]
-                            code_content = ''.join(selected_lines).strip()
-                    except Exception as local_error:
-                        print(f'     ❌ Failed to read local file {file_path}: {local_error}')
-                        continue
-
-                if code_content:
-                    # Convert Docker absolute path to repository-relative path
-                    if file_path.startswith('docker:') and actual_file_path.startswith('/code/workspace/repo/'):
-                        relative_path = actual_file_path[len('/code/workspace/repo/') :]
-                    else:
-                        relative_path = actual_file_path
-
-                    hint_block = f"""
-// ========== HIT {i + 1}: {hit.module_name} (confidence: {hit.confidence:.2f}) ==========
-// File: {relative_path}
-// Lines: {hit.start_line}-{hit.end_line}
-{code_content}
-// ========== END HIT {i + 1} ==========
-"""
-                    all_code_hints.append(hint_block)
-                    print(f'     ✅ Extracted {len(code_content)} chars from {hit.module_name}')
-                else:
-                    print(f'     ⚠️  No content found for {hit.module_name}')
-
-            except Exception as e:
-                print(f'     ❌ Failed to extract code from {hit.module_name}: {e}')
-                continue
-
-        combined_hints = '\n'.join(all_code_hints)
-        # print(f'✅ [HINTS] Generated {len(combined_hints)} characters of actual code hints')
-
-        return combined_hints
-
     def _process_single_bug(
         self, bug_idx: int, bug_entry: dict, local_files: list, docker_container: str, docker_patterns: list
     ) -> dict:
         """Process a single bug entry with module_finder"""
+
+        # Initialize golden design success to False
+        golden_design_success = False
 
         # Create BugInfo object to handle bug data extraction
         bug_info = BugInfo(bug_entry, bug_idx)
@@ -2744,9 +2584,27 @@ class V2chisel_batch(Step):
             and verilog_success
         ):
             print('\n🎉 [LEC] Basic pipeline successful - now running final LEC check like test_v2chisel_batch3')
+
+            # Step 2: Create golden design by applying verilog_diff to baseline before LEC
+            print('✅ Step 2: Golden Design Creation - START')
+
+            # Use GoldenDesignBuilder component for cleaner code organization
+            from hagent.step.v2chisel_batch.components.golden_design_builder import GoldenDesignBuilder
+
+            golden_builder = GoldenDesignBuilder(self.builder, debug=True)
+
+            golden_design_result = golden_builder.create_golden_design(unified_diff, master_backup_info, docker_container)
+
+            if golden_design_result['success']:
+                print('✅ [GOLDEN] Golden design created successfully')
+                golden_design_success = True
+            else:
+                print(f'❌ [GOLDEN] Golden design creation failed: {golden_design_result.get("error", "Unknown error")}')
+                golden_design_success = False
+
             print('🔍 [LEC] Step: Running final equivalence check between golden and gate designs...')
 
-            # Run LEC directly (creates its own golden file like test_v2chisel_batch3)
+            # Run LEC directly (compares golden design vs LLM-generated design)
             lec_result = self._run_lec(docker_container, file_name)
 
             if lec_result.get('lec_passed', False):
@@ -2837,7 +2695,7 @@ class V2chisel_batch(Step):
                 and compile_result.get('success', False)
                 and locals().get('verilog_gen_result', {}).get('success', False)
             ),
-            'golden_design_success': locals().get('golden_result', {}).get('success', False),
+            'golden_design_success': locals().get('golden_design_success', False),
             'lec_success': locals().get('lec_result', {}).get('success', False),
             'lec_method': locals().get('lec_result', {}).get('lec_method', 'none'),
         }

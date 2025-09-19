@@ -139,29 +139,23 @@ def test_realistic_golden_design_workflow():
 -  wire _signals_T_132 = io_opcode == 7'h3B;
 +  wire _signals_T_132 = io_opcode == 7'h3F;"""
 
-    # Mock all builder run_cmd calls and DockerDiffApplier import
-    with patch('builtins.__import__') as mock_import:
+    # Mock all builder run_cmd calls and DockerDiffApplier
+    with patch('hagent.tool.docker_diff_applier.DockerDiffApplier') as mock_applier_class:
         # Mock successful operations
         mock_builder.run_cmd.return_value = (0, '', '')  # (exit_code, stdout, stderr)
 
         # Mock DockerDiffApplier import and usage
         mock_applier = Mock()
         mock_applier.apply_diff_to_container.return_value = True
-        mock_applier_class = Mock(return_value=mock_applier)
+        mock_applier_class.return_value = mock_applier
 
-        def mock_import_side_effect(name, *args, **kwargs):
-            if name == 'hagent.tool.docker_diff_applier':
-                mock_module = Mock()
-                mock_module.DockerDiffApplier = mock_applier_class
-                return mock_module
-            else:
-                return __import__(name, *args, **kwargs)
+        # Mock the verification step to return success
+        with patch.object(golden_builder, '_verify_diff_application') as mock_verify:
+            mock_verify.return_value = {'success': True, 'details': ['Applied successfully']}
 
-        mock_import.side_effect = mock_import_side_effect
-
-        result = golden_builder.create_golden_design(
-            verilog_diff=realistic_diff, master_backup=master_backup, docker_container='test_container'
-        )
+            result = golden_builder.create_golden_design(
+                verilog_diff=realistic_diff, master_backup=master_backup, docker_container='test_container'
+            )
 
         print(f'✅ Workflow result: {result.get("success", False)}')
         print(f'✅ Golden files created: {len(result.get("golden_files", []))}')
