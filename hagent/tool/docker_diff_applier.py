@@ -131,12 +131,22 @@ class DockerDiffApplier:
         if original_content is None:
             return False
 
+        # VERILOG-SPECIFIC ENHANCEMENT: Pre-verify the target line exists
+        if not self._verify_target_line_exists(diff_content, original_content):
+            print('❌ Target line for diff not found in file - diff cannot be applied')
+            return False
+
         # print(f"📖 Read {len(original_content.splitlines())} lines from {target_path}")
 
         # Apply the diff
         try:
             modified_content = self.applier.apply_diff(diff_content, original_content)
             # print("✅ Diff applied successfully")
+
+            # VERILOG-SPECIFIC ENHANCEMENT: Post-verify the change was applied
+            if not self._verify_diff_applied(diff_content, modified_content):
+                print('❌ Diff was not correctly applied - verification failed')
+                return False
 
             if dry_run:
                 print('🔍 DRY RUN - Changes that would be applied:')
@@ -181,6 +191,95 @@ class DockerDiffApplier:
 
         for line in diff:
             print(line.rstrip())
+
+    def _verify_target_line_exists(self, diff_content: str, file_content: str) -> bool:
+        """Verify that the line to be removed exists in the file (with flexible matching for Verilog)"""
+        lines = diff_content.strip().split('\n')
+        removal_lines = []
+
+        for line in lines:
+            if line.startswith('-') and not line.startswith('---'):  # Exclude diff headers
+                removal_line = line[1:].strip()  # Remove '-' and strip whitespace
+                if removal_line:  # Skip empty lines
+                    removal_lines.append(removal_line)
+
+        if not removal_lines:
+            return True  # No removals to verify
+
+        file_lines = file_content.splitlines()
+
+        print(f'🔍 [VERIFY] Looking for {len(removal_lines)} removal line(s) in file...')
+
+        for removal_line in removal_lines:
+            found = False
+            for i, file_line in enumerate(file_lines):
+                # Flexible matching for Verilog: normalize whitespace around key patterns
+                normalized_file_line = self._normalize_verilog_line(file_line.strip())
+                normalized_removal_line = self._normalize_verilog_line(removal_line)
+
+                if normalized_file_line == normalized_removal_line:
+                    print(f'     ✅ Found removal line at line {i+1}: {file_line.strip()}')
+                    found = True
+                    break
+
+            if not found:
+                print(f'     ❌ Removal line NOT found: {removal_line}')
+                print('     🔍 Looking for lines containing key parts...')
+                # Try to find lines with key parts of the removal line
+                key_parts = removal_line.split()
+                for i, file_line in enumerate(file_lines):
+                    if all(part in file_line for part in key_parts if len(part) > 2):
+                        print(f'         Line {i+1}: {file_line.strip()}')
+                return False
+
+        return True
+
+    def _verify_diff_applied(self, diff_content: str, modified_content: str) -> bool:
+        """Verify that the diff was correctly applied by checking for addition lines"""
+        lines = diff_content.strip().split('\n')
+        addition_lines = []
+
+        for line in lines:
+            if line.startswith('+') and not line.startswith('+++'):  # Exclude diff headers
+                addition_line = line[1:].strip()  # Remove '+' and strip whitespace
+                if addition_line:  # Skip empty lines
+                    addition_lines.append(addition_line)
+
+        if not addition_lines:
+            return True  # No additions to verify
+
+        file_lines = modified_content.splitlines()
+
+        print(f'🔍 [VERIFY] Checking that {len(addition_lines)} addition line(s) are present...')
+
+        for addition_line in addition_lines:
+            found = False
+            for i, file_line in enumerate(file_lines):
+                # Flexible matching for Verilog: normalize whitespace around key patterns
+                normalized_file_line = self._normalize_verilog_line(file_line.strip())
+                normalized_addition_line = self._normalize_verilog_line(addition_line)
+
+                if normalized_file_line == normalized_addition_line:
+                    print(f'     ✅ Found addition line at line {i+1}: {file_line.strip()}')
+                    found = True
+                    break
+
+            if not found:
+                print(f'     ❌ Addition line NOT found: {addition_line}')
+                return False
+
+        return True
+
+    def _normalize_verilog_line(self, line: str) -> str:
+        """Normalize a Verilog line for flexible matching"""
+        import re
+
+        # Remove extra whitespace around operators and normalize spacing
+        line = re.sub(r'\s*=\s*', ' = ', line)  # Normalize around '='
+        line = re.sub(r'\s*==\s*', ' == ', line)  # Normalize around '=='
+        line = re.sub(r'\s+', ' ', line)  # Collapse multiple spaces
+        line = line.strip()
+        return line
 
 
 def main():

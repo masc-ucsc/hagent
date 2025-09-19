@@ -642,6 +642,16 @@ class Equiv_check:
         """
         filename = os.path.join(work_dir, f'{label}.v')
 
+        # Print file info for debugging
+        lines = verilog_code.split('\n')
+        print(f'📁 [LEC] Writing {label}.v file: {filename}')
+        print(f'     📊 File size: {len(verilog_code)} chars, {len(lines)} lines')
+        print('     🔍 First 3 lines:')
+        for i, line in enumerate(lines[:3]):
+            print(f'         {i+1}: {line}')
+        if len(lines) > 3:
+            print(f'     ... ({len(lines)-3} more lines)')
+
         if self.use_docker and self.builder:
             # For Docker mode, create the file in the container using filesystem
             container_work_dir = self.builder.translate_path_to_container(work_dir)
@@ -718,6 +728,7 @@ class Equiv_check:
         else:
             # For local execution, create script file locally
             filename = os.path.join(work_dir, 'check.s')
+
             with open(filename, 'w') as f:
                 f.write(full_cmd + '\n')
             return self._run_yosys_command(f'yosys -s {filename}')
@@ -727,6 +738,9 @@ class Equiv_check:
         Actually call 'yosys' either locally or via Docker.
         Return (exit_code, stdout, stderr).
         """
+        # Print the exact LEC command being executed
+        print(f'🔧 [LEC] Executing command: {command}')
+
         if self.use_docker and self.builder:
             # Docker execution
             try:
