@@ -74,19 +74,35 @@ class V2chisel_batch(Step):
 
         self.template_config = LLM_template(conf_file)
 
+        # Configuration - set these early before LLM initialization
+        self.chisel_source_pattern = './tmp/src/main/scala/*/*.scala'  # Default pattern
+        self.debug = True  # Enable debug output
+
         # Get LLM configuration from template config
         llm_config = self.template_config.template_dict.get('v2chisel_batch', {}).get('llm', {})
 
         # Allow override from input_data while keeping generic structure
-        final_llm_config = {**llm_config, **self.input_data.get('llm', {})}
+        # Note: input LLM config is under v2chisel_batch.llm, not llm directly
+        input_llm_config = self.input_data.get('v2chisel_batch', {}).get('llm', {})
+        final_llm_config = {**llm_config, **input_llm_config}
 
-        # Use same pattern as working examples - pass LLM config directly
+        if self.debug:
+            print(f'🔧 [DEBUG] Template LLM config: {llm_config}')
+            print(f'🔧 [DEBUG] Input LLM config: {input_llm_config}')
+            print(f'🔧 [DEBUG] Final LLM config: {final_llm_config}')
+
+        # Use same pattern as working examples - pass complete config with LLM and prompts
         if final_llm_config:
+            # Get the complete v2chisel_batch configuration (includes prompts)
+            full_config = self.template_config.template_dict.get('v2chisel_batch', {})
+            complete_config = {**full_config}  # Include all prompts
+            complete_config['llm'] = final_llm_config  # Override LLM config
+
             self.lw = LLM_wrap(
                 name='v2chisel_batch',
                 log_file='v2chisel_batch.log',
                 conf_file=conf_file,
-                overwrite_conf=final_llm_config,
+                overwrite_conf=complete_config,
             )
         else:
             self.lw = LLM_wrap(name='v2chisel_batch', log_file='v2chisel_batch.log', conf_file=conf_file)
@@ -97,10 +113,6 @@ class V2chisel_batch(Step):
         # Show which model is being used
         # print('[V2chisel_batch] LLM components initialized')
         # print(f'[V2chisel_batch] Using model: {final_llm_config.get("model", "default")}')
-
-        # Configuration - you can adjust these
-        self.chisel_source_pattern = './tmp/src/main/scala/*/*.scala'  # Default pattern
-        self.debug = True  # Enable debug output
 
         # Initialize module_finder
         self.module_finder = Module_finder()
@@ -453,127 +465,6 @@ class V2chisel_batch(Step):
         except Exception as e:
             print(f'⚠️ [RESTORE] Warning: Could not restore some files: {e}')
             raise
-
-    def _call_llm_for_chisel_diff(
-        self,
-        verilog_diff: str,
-        chisel_hints: str,
-        attempt: int = 1,
-        previous_diff: str = '',
-        error_message: str = '',
-        attempt_history: str = '',
-    ) -> dict:
-        """Call LLM to generate Chisel diff from Verilog diff and hints - REAL LLM CALL"""
-        print(f'🤖 [V2chisel_batch] Calling LLM for Chisel diff generation (attempt {attempt})')
-
-        # Debug: Print the verilog_diff that will be sent to LLM
-        print('=' * 60)
-        print('📋 [DEBUG] Verilog diff being sent to LLM:')
-        print(verilog_diff)
-        print('=' * 60)
-
-        try:
-            # Select the appropriate prompt based on attempt type
-            if attempt == 1 and not error_message:
-                prompt_key = 'prompt_initial'
-                template_data = {
-                    'verilog_diff': verilog_diff,
-                    'chisel_hints': chisel_hints,
-                }
-            elif error_message and 'compilation' in error_message.lower():
-                prompt_key = 'prompt_compile_error'
-                template_data = {
-                    'verilog_diff': verilog_diff,
-                    'previous_chisel_diff': previous_diff,
-                    'compile_error': error_message,
-                    'chisel_hints': chisel_hints,
-                }
-            elif error_message and 'lec' in error_message.lower():
-                prompt_key = 'prompt_lec_error'
-                template_data = {
-                    'verilog_diff': verilog_diff,
-                    'current_chisel_diff': previous_diff,
-                    'lec_error': error_message,
-                    'chisel_hints': chisel_hints,
-                }
-            elif attempt >= 3:
-                prompt_key = 'prompt_final_attempt'
-                template_data = {
-                    'verilog_diff': verilog_diff,
-                    'attempt_history': attempt_history,
-                    'chisel_hints': chisel_hints,
-                }
-            else:
-                # Fallback to initial prompt with enhanced context
-                prompt_key = 'prompt_initial'
-                template_data = {
-                    'verilog_diff': verilog_diff,
-                    'chisel_hints': chisel_hints,
-                }
-
-            print(f'     Using prompt: {prompt_key}')
-            if self.debug:
-                print(f'     Verilog diff length: {len(verilog_diff)} characters')
-                print(f'     Chisel hints length: {len(chisel_hints)} characters')
-
-            # Call LLM using the real LLM_wrap inference method
-            response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
-
-            # Check for LLM errors first
-            if self.lw.last_error:
-                return {
-                    'success': False,
-                    'error': f'LLM error: {self.lw.last_error}',
-                    'prompt_used': prompt_key,
-                    'attempt': attempt,
-                }
-
-            # Process response
-            if not response_list or len(response_list) == 0:
-                return {'success': False, 'error': 'LLM returned empty response', 'prompt_used': prompt_key, 'attempt': attempt}
-
-            chisel_diff = response_list[0].strip()
-
-            # Validate that we got a diff-like response
-            if not chisel_diff or len(chisel_diff) < 10:
-                return {
-                    'success': False,
-                    'error': f'LLM response too short: {len(chisel_diff)} characters',
-                    'prompt_used': prompt_key,
-                    'attempt': attempt,
-                }
-
-            # Basic validation - check if it looks like a diff
-            if not ('---' in chisel_diff or '+++' in chisel_diff or '@@ ' in chisel_diff):
-                print('⚠️  Warning: LLM response does not look like a unified diff')
-                print(f'     Response: {chisel_diff[:100]}...')
-                # Continue anyway - maybe it's a valid diff in different format
-
-            print(f'✅ [V2chisel_batch] LLM generated Chisel diff: {len(chisel_diff)} characters')
-            if self.debug:
-                print('     Chisel diff preview (first 3 lines):')
-                for i, line in enumerate(chisel_diff.split('\n')[:3]):
-                    print(f'       {line}')
-
-            return {
-                'success': True,
-                'chisel_diff': chisel_diff,
-                'prompt_used': prompt_key,
-                'attempt': attempt,
-                'model': getattr(self.lw, 'model', 'unknown'),
-                'input_tokens': len(str(template_data)) // 4,  # Rough estimate
-                'output_tokens': len(chisel_diff) // 4,  # Rough estimate
-            }
-
-        except Exception as e:
-            error_msg = f'Exception during LLM call: {str(e)}'
-            print(f'❌ [V2chisel_batch] {error_msg}')
-            return {
-                'success': False,
-                'error': error_msg,
-                'prompt_used': prompt_key if 'prompt_key' in locals() else 'unknown',
-                'attempt': attempt,
-            }
 
     def _load_bug_list(self, bug_file_path: str) -> list:
         """Load and parse the bug_lists_unified.yaml file"""
@@ -949,7 +840,9 @@ class V2chisel_batch(Step):
         attempt_history: str = '',
     ) -> dict:
         """Call LLM to generate Chisel diff based on Verilog diff and hints"""
-        # print(f'🤖 [LLM] Calling LLM (attempt {attempt})...')
+        print(f'🚀 [LLM_CALL] ENTERING _call_llm_for_chisel_diff (attempt {attempt})')
+        print(f'🔧 [DEBUG] Verilog diff length: {len(verilog_diff)} characters')
+        print(f'🔧 [DEBUG] Chisel hints length: {len(chisel_hints)} characters')
 
         # Choose prompt based on attempt and error type
         if attempt == 1:
@@ -992,17 +885,24 @@ class V2chisel_batch(Step):
             self.lw.chat_template = prompt_template
             self.lw.name = f'v2chisel_batch_attempt_{attempt}'
 
-            # print(f'     🎯 Using prompt: {prompt_key}')
-            # print(f'     📝 Template data keys: {list(template_data.keys())}')
+            print(f'     🎯 Using prompt: {prompt_key}')
+            print(f'     📝 Template data keys: {list(template_data.keys())}')
 
             # Call LLM
+            print(f"🔍 DEBUG: About to call LLM inference with prompt_key='{prompt_key}', n=1")
+            print(f'🔍 DEBUG: Template data has keys: {list(template_data.keys())}')
             response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
+            print(
+                f"🔍 DEBUG: LLM inference returned: {type(response_list)}, len={len(response_list) if response_list else 'None'}"
+            )
 
             # Check for LLM errors first
             if self.lw.last_error:
+                print(f'🔍 DEBUG: LLM error detected: {self.lw.last_error}')
                 return {'success': False, 'error': f'LLM error: {self.lw.last_error}'}
 
             if not response_list or not response_list[0].strip():
+                print(f'🔍 DEBUG: Empty LLM response - response_list: {response_list}')
                 return {'success': False, 'error': 'LLM returned empty response'}
 
             generated_diff = response_list[0].strip()
@@ -2400,6 +2300,9 @@ class V2chisel_batch(Step):
         current_attempt = 1
         previous_attempts = []  # Track previous failed attempts for LLM context
 
+        print(f'🔧 [DEBUG] Final hints length: {len(final_hints)} characters')
+        print(f'🔧 [DEBUG] Final hints (first 200 chars): {final_hints[:200]}...')
+
         if final_hints.strip():
             print('🤖 [LLM] Starting LLM call for Chisel diff generation...')
 
@@ -2415,9 +2318,16 @@ class V2chisel_batch(Step):
             # print('=' * 80)
             # print(f'🔍 [DEBUG] CHISEL_HINTS length: {len(final_hints)} characters')
 
+            print('🔧 [DEBUG] About to call _call_llm_for_chisel_diff with:')
+            print(f'     verilog_diff length: {len(unified_diff)}')
+            print(f'     chisel_hints length: {len(final_hints)}')
+            print(f'     attempt: {current_attempt}')
+
             llm_result = self._call_llm_for_chisel_diff(
                 verilog_diff=unified_diff, chisel_hints=final_hints, attempt=current_attempt
             )
+
+            print(f'🔧 [DEBUG] _call_llm_for_chisel_diff returned: {llm_result}')
 
             # Retry loop for LLM + Applier + Compiler
             while current_attempt <= max_retries:
@@ -2565,6 +2475,8 @@ class V2chisel_batch(Step):
                         print(f'❌ [FINAL] Maximum retries ({max_retries}) reached')
                         break
         else:
+            print('❌ [LLM] No hints available - skipping LLM call')
+            print(f'     final_hints is empty or whitespace only: "{final_hints}"')
             print('⚠️ LLM: Skipped - no hints available')
             llm_result = {'success': False, 'error': 'No hints available for LLM'}
             applier_result = {'success': False, 'error': 'No LLM output to apply'}
@@ -2941,14 +2853,19 @@ def main():
         processor.input_path = args.input_file
         processor.output_path = args.output
 
-        # CRITICAL: Call setup() to initialize all required attributes
+        # CRITICAL: Call set_io() and setup() to initialize all required attributes
         try:
-            # Parse arguments and set I/O first (required by Step.setup())
-            processor.parse_arguments(['-o', args.output, args.input_file])
+            # Use set_io() instead of parse_arguments() for programmatic calls
+            print(f'🔧 [V2chisel_batch] Setting I/O: input={args.input_file}, output={args.output}')
+            processor.set_io(args.input_file, args.output)
+            print('🔧 [V2chisel_batch] I/O set, now calling setup()...')
             processor.setup()
-            print('[V2chisel_batch] Processor setup completed successfully')
+            print('✅ [V2chisel_batch] Processor setup completed successfully')
         except Exception as e:
             print(f'⚠️ [V2chisel_batch] Processor setup had issues but continuing: {e}')
+            import traceback
+
+            traceback.print_exc()
             # Manually set critical attributes as fallback
             processor.chisel_source_pattern = './tmp/src/main/scala/*/*.scala'
             processor.debug = True
@@ -3019,7 +2936,34 @@ def main():
             if not hasattr(processor, 'lw'):
                 try:
                     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'v2chisel_batch_conf.yaml')
-                    processor.lw = LLM_wrap(name='v2chisel_batch', log_file='v2chisel_batch.log', conf_file=conf_file)
+
+                    # Load template config to get default LLM settings
+                    from hagent.core.llm_template import LLM_template
+
+                    template_config = LLM_template(conf_file)
+
+                    # Get the full v2chisel_batch configuration (includes prompts)
+                    full_config = template_config.template_dict.get('v2chisel_batch', {})
+                    llm_config = full_config.get('llm', {})
+
+                    # Allow override from input_data while keeping generic structure
+                    final_llm_config = {**llm_config, **input_data.get('v2chisel_batch', {}).get('llm', {})}
+
+                    # Create complete configuration with LLM and prompts
+                    complete_config = {**full_config}  # Include all prompts
+                    complete_config['llm'] = final_llm_config  # Override LLM config
+
+                    # Use same pattern as working examples - pass complete config
+                    processor.lw = LLM_wrap(
+                        name='v2chisel_batch',
+                        log_file='v2chisel_batch.log',
+                        conf_file=conf_file,
+                        overwrite_conf=complete_config,
+                    )
+
+                    # Also store the template_config for consistency
+                    processor.template_config = template_config
+
                     print('✅ [V2chisel_batch] LLM initialized in fallback')
                 except Exception as llm_error:
                     print(f'❌ [V2chisel_batch] Could not initialize LLM: {llm_error}')

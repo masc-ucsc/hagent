@@ -101,14 +101,76 @@ class DockerDiffApplier:
         Returns:
             True if successful, False otherwise
         """
-        # print(f"🐳 Applying diff to Docker container: {self.container_name}")
+        # Parse multi-file diff into separate sections
+        file_sections = self._parse_multi_file_diff(diff_content)
 
-        # Parse file path from diff
-        file_path = self.parse_diff_file_path(diff_content)
-        if not file_path:
-            print('❌ Could not extract file path from diff')
+        if not file_sections:
+            print('❌ Could not parse any file sections from diff')
             return False
 
+        print(f'📋 Found {len(file_sections)} file section(s) in diff')
+
+        all_success = True
+
+        # Apply each file section separately
+        for i, (file_path, section_diff) in enumerate(file_sections, 1):
+            print(f'\n🔧 [{i}/{len(file_sections)}] Applying diff to: {file_path}')
+            success = self._apply_single_file_diff(file_path, section_diff, dry_run)
+            if not success:
+                print(f'❌ Failed to apply diff to {file_path}')
+                all_success = False
+            else:
+                print(f'✅ Successfully applied diff to {file_path}')
+
+        return all_success
+
+    def _parse_multi_file_diff(self, diff_content: str) -> List[tuple]:
+        """
+        Parse a multi-file diff into separate sections
+
+        Returns:
+            List of tuples (file_path, section_diff)
+        """
+        lines = diff_content.strip().split('\n')
+        sections = []
+        current_section = []
+        current_file = None
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+
+            # Look for diff headers
+            if line.startswith('--- a/'):
+                # If we have a current section, save it
+                if current_file and current_section:
+                    section_diff = '\n'.join(current_section)
+                    sections.append((current_file, section_diff))
+
+                # Start new section
+                current_file = line[6:]  # Remove '--- a/'
+                current_section = [line]
+
+                # Look for the corresponding '+++ b/' line
+                if i + 1 < len(lines) and lines[i + 1].startswith('+++ b/'):
+                    current_section.append(lines[i + 1])
+                    i += 1
+            else:
+                # Add line to current section if we have one
+                if current_file:
+                    current_section.append(line)
+
+            i += 1
+
+        # Don't forget the last section
+        if current_file and current_section:
+            section_diff = '\n'.join(current_section)
+            sections.append((current_file, section_diff))
+
+        return sections
+
+    def _apply_single_file_diff(self, file_path: str, section_diff: str, dry_run: bool = False) -> bool:
+        """Apply a single-file diff section"""
         filename = os.path.basename(file_path)
         print(f'Applier target: {file_path}')
 
@@ -132,19 +194,16 @@ class DockerDiffApplier:
             return False
 
         # VERILOG-SPECIFIC ENHANCEMENT: Pre-verify the target line exists
-        if not self._verify_target_line_exists(diff_content, original_content):
+        if not self._verify_target_line_exists(section_diff, original_content):
             print('❌ Target line for diff not found in file - diff cannot be applied')
             return False
 
-        # print(f"📖 Read {len(original_content.splitlines())} lines from {target_path}")
-
         # Apply the diff
         try:
-            modified_content = self.applier.apply_diff(diff_content, original_content)
-            # print("✅ Diff applied successfully")
+            modified_content = self.applier.apply_diff(section_diff, original_content)
 
             # VERILOG-SPECIFIC ENHANCEMENT: Post-verify the change was applied
-            if not self._verify_diff_applied(diff_content, modified_content):
+            if not self._verify_diff_applied(section_diff, modified_content):
                 print('❌ Diff was not correctly applied - verification failed')
                 return False
 
