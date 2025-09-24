@@ -1,9 +1,10 @@
 v2chisel_batch:
   llm:
-    model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
+    # model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
+    model: "openai/o3-mini-2025-01-31"
     aws_region_name: "us-east-1"
     max_tokens: 2048
-    temperature: 0.1
+    temperature: 1
   
   # Initial prompt for first iteration
   prompt_initial:
