@@ -12,6 +12,9 @@ v2chisel_batch:
       content: |
         You are an expert AI assistant specialized in translating Verilog changes to corresponding Chisel code modifications.
         Your goal is to generate precise Chisel diffs that, when applied, will produce Verilog logically equivalent to the target changes.
+
+        CRITICAL: You must respond with ONLY the unified diff. No explanations, no alternatives, no commentary.
+        Your entire response must be a single, clean unified diff that starts with "---" and contains only the necessary changes.
     
     - role: user
       content: |
@@ -29,13 +32,16 @@ v2chisel_batch:
         
         Please generate a unified diff for the Chisel code that will produce the desired Verilog changes.
         
-        Requirements:
+        CRITICAL REQUIREMENTS - FOLLOW EXACTLY:
         - Output ONLY the unified diff in standard format
         - Use minimal hunks containing only the necessary changes
-        - Do NOT include any explanation, commentary, or notes
+        - Do NOT include any explanation, commentary, notes, or reasoning
+        - Do NOT include multiple diff attempts or alternative solutions
+        - Do NOT include phrases like "should be", "to", "Here is the answer"
         - Ensure the diff can be applied to existing Chisel source files
-        
-        Generate the Chisel unified diff now:
+        - Your response must start with "---" and end with a complete unified diff
+
+        Generate ONLY the Chisel unified diff now:
 
   # Prompt for retry when compilation fails
   prompt_compile_error:
