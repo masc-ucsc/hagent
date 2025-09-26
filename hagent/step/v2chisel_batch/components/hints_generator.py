@@ -175,7 +175,7 @@ class HintsGenerator:
 
         if self.builder:
             # Use Builder's filesystem to read the file
-            return self.builder.filesystem.read_file(file_path)
+            return self.builder.filesystem.read_text(file_path)
         else:
             # Fallback to subprocess if no builder available
             cmd = ['docker', 'exec', container_name, 'cat', file_path]
@@ -212,7 +212,7 @@ class HintsGenerator:
                     # Read from Docker container using Builder API
                     if self.builder:
                         try:
-                            full_content = self.builder.filesystem.read_file(actual_file_path)
+                            full_content = self.builder.filesystem.read_text(actual_file_path)
                             lines = full_content.split('\n')
                             # Extract specific lines (1-indexed)
                             start_idx = max(0, hit.start_line - 1)
@@ -354,7 +354,7 @@ class HintsGenerator:
                 # Read file content with context using Builder API
                 if self.builder:
                     try:
-                        full_content = self.builder.filesystem.read_file(file_path)
+                        full_content = self.builder.filesystem.read_text(file_path)
                         file_lines = full_content.split('\n')
 
                         # Extract context lines

@@ -27,7 +27,7 @@ class FileSystemDocker(FileSystem):
         exit_code, _, _ = self.container_manager.run_cmd(f'test -e "{path}"', quiet=True)
         return exit_code == 0
 
-    def read_file(self, path: str, encoding: Optional[str] = 'utf-8') -> str:
+    def read_file(self, path: str, encoding: str) -> str:
         if encoding is None:
             # Binary mode - read as base64 to handle binary content safely
             cmd = f"python3 -c \"import base64; print(base64.b64encode(open('{path}', 'rb').read()).decode())\""
@@ -46,7 +46,7 @@ class FileSystemDocker(FileSystem):
                 raise FileNotFoundError(f'Cannot read {path}: {stderr}')
             return content
 
-    def write_file(self, path: str, content: str, encoding: Optional[str] = 'utf-8') -> bool:
+    def write_file(self, path: str, content: str, encoding: str) -> bool:
         try:
             # Ensure parent directory exists
             # Use POSIX semantics inside the container

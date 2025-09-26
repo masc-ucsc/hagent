@@ -494,7 +494,7 @@ class GoldenDesignBuilder:
                 return {'success': False, 'error': f'Target file not found: {target_file_path}'}
 
             # Read the golden file content
-            golden_content = self.builder.filesystem.read_file(target_file_path)
+            golden_content = self.builder.filesystem.read_text(target_file_path)
 
             # Check for expected changes based on verilog_diff
             if "7'h3F" in verilog_diff and "7'h3B" in verilog_diff:

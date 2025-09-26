@@ -12,6 +12,19 @@ Remove and fix accordingly
 
 The docker run output has /code/workspace/... directories, but the message passed back should "search-replace" the docker for the HAGENT_... variable set. Otherwise, the MCP can not know the path to fix.
 
+ │ x  hagent.build (hagent MCP Server) {"name":"gcd","api":"compile"}                                                   │
+ │                                                                                                                      │
+ │    MCP error -32603: ❌ COMPILATION FAILED (exit code: 1)                                                            │
+ │                                                                                                                      │
+ │    🔧 SUGGESTION: There appears to be a Scala compilation error. Please check and fix the Scala source files.        │
+ │                                                                                                                      │
+ │    📁 FILES TO CHECK: /code/workspace/repo/src/main/scala/gcd/GCD.scala:34                                           │
+ │                                                                                                                      │
+ │    ❌ ERROR: [error] /code/workspace/repo/src/main/scala/gcd/GCD.scala:34:3: not found: value io_outputGCD...        │
+ │                                                                                                                      │
+ │    🔍 SPECIFIC ERROR: [error] /code/workspace/repo/src/main/scala/gcd/GCD.scala:34:3: not found: value               │
+ │    io_outputGCD...
+
 -------
 
 hagent/inou has several objects, but Python classes outside hagent should only use Runner or Builder.

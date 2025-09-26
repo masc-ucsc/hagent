@@ -734,7 +734,7 @@ class V2chisel_batch(Step):
                 return {'success': False, 'error': 'RTL file not found'}
 
             # Read RTL file content using Builder's filesystem
-            rtl_content = self.builder.filesystem.read_file(rtl_path)
+            rtl_content = self.builder.filesystem.read_text(rtl_path)
 
             print(f'     ✅ Read RTL file: {len(rtl_content)} characters')
 
@@ -773,7 +773,7 @@ class V2chisel_batch(Step):
         for file_path, line_numbers in file_mappings.items():
             try:
                 # Read the Chisel file using Builder's filesystem
-                file_content = self.builder.filesystem.read_file(file_path)
+                file_content = self.builder.filesystem.read_text(file_path)
                 file_lines = file_content.split('\n')
 
                 # Get unique lines with context
@@ -1273,7 +1273,7 @@ class V2chisel_batch(Step):
 
             # Write the file using Builder filesystem API instead of subprocess
             try:
-                self.builder.filesystem.write_file(main_file_path, main_content)
+                self.builder.filesystem.write_text(main_file_path, main_content)
                 print('✅ [MAIN_CHECK] Main object created successfully')
                 return {'success': True, 'main_exists': False, 'created_file': main_file_path, 'top_module': top_module}
             except Exception as write_error:
@@ -1811,8 +1811,8 @@ class V2chisel_batch(Step):
             print(f'     📖 Golden file: {golden_file}')
             print(f'     📖 Gate file: {gate_file}')
 
-            golden_content = self.builder.filesystem.read_file(golden_file)
-            gate_content = self.builder.filesystem.read_file(gate_file)
+            golden_content = self.builder.filesystem.read_text(golden_file)
+            gate_content = self.builder.filesystem.read_text(gate_file)
 
             # Show key lines from each file
             golden_lines = golden_content.split('\n')

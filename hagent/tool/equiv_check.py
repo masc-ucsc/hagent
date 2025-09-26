@@ -168,7 +168,7 @@ class Equiv_check:
                 # Use filesystem to read and write files
                 try:
                     if self.builder.filesystem:
-                        file_content = self.builder.filesystem.read_file(container_file_path)
+                        file_content = self.builder.filesystem.read_text(container_file_path)
                         # Write to local file using standard Python (since this is for local output)
                         with open(local_file_path, 'w') as f:
                             f.write(file_content)
@@ -264,8 +264,8 @@ class Equiv_check:
         ]
 
         for filename, content in files_to_create:
-            # Use the create_file API to avoid escaping issues
-            if not self.builder.create_file(filename, content):
+            # Use the write_text API to avoid escaping issues
+            if not self.builder.write_text(filename, content):
                 print(f'Warning: Failed to create {filename} in Docker: {self.builder.get_error()}', file=sys.stderr)
 
     def check_equivalence(self, gold_code: str, gate_code: str, desired_top: str = '') -> Optional[bool]:
@@ -662,8 +662,8 @@ class Equiv_check:
                 if not self.builder.filesystem.write_text(container_filename, verilog_code):
                     raise RuntimeError(f'Failed to create {label}.v in container using filesystem')
             else:
-                # Fallback to create_file API
-                if not self.builder.create_file(container_filename, verilog_code):
+                # Fallback to write_text API
+                if not self.builder.write_text(container_filename, verilog_code):
                     raise RuntimeError(f'Failed to create {label}.v in container: {self.builder.get_error()}')
 
         # Also create the file locally for reference and compatibility
@@ -712,13 +712,13 @@ class Equiv_check:
             cmd[4] = f'read_verilog -sv {relative_gate}'
             full_cmd = ';\n'.join(cmd) + '\n'
 
-            # Create the script using filesystem or fallback to create_file
+            # Create the script using filesystem or fallback to write_text
             if self.builder.filesystem:
                 if not self.builder.filesystem.write_text(container_script_path, full_cmd):
                     return 1, '', 'Failed to create script in container using filesystem'
             else:
-                # Fallback to create_file API
-                if not self.builder.create_file(container_script_path, full_cmd):
+                # Fallback to write_text API
+                if not self.builder.write_text(container_script_path, full_cmd):
                     error_msg = self.builder.get_error()
                     return 1, '', f'Failed to create script in container: {error_msg}'
 
