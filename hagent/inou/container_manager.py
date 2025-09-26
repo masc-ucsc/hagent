@@ -895,13 +895,6 @@ class ContainerManager:
             self.set_error(f'Command execution failed: {e}')
             return -1, '', str(e)
 
-    # Backward-compatible alias (deprecated). Prefer run_cmd().
-    def run(
-        self, command: str, container_path: Optional[str] = '.', quiet: bool = False, config_sources: Optional[List[str]] = None
-    ) -> Tuple[int, str, str]:
-        # map deprecated container_path to cwd
-        return self.run_cmd(command, container_path, quiet, config_sources)
-
     def image_checkpoint(self, name: Optional[str] = None) -> Optional[str]:
         """
         Create a checkpoint (Docker image) from the current container state.
@@ -1102,51 +1095,6 @@ class ContainerManager:
             return result.exit_code == 0
         except Exception as e:
             print(f"Failed to create directory '{dir_path}': {e}", file=sys.stderr)
-            return False
-
-    def create_file(self, container_path: str, content: str, encoding: str = 'utf-8') -> bool:
-        """
-        Create a file in the container with the given content.
-
-        Note: This is a legacy method. New code should use Builder.filesystem.write_file() instead.
-
-        Args:
-            container_path: Absolute path where the file should be created in the container
-            content: Content to write to the file
-            encoding: Text encoding to use for the original content (default: utf-8)
-
-        Returns:
-            True if file was created successfully, False otherwise
-        """
-        if not self.container:
-            self.set_error('Container not set up. Call setup() first.')
-            return False
-
-        try:
-            # Ensure the parent directory exists
-            parent_dir = posixpath.dirname(container_path)
-            if not self._ensure_container_directory(parent_dir):
-                self.set_error(f'Failed to create parent directory: {parent_dir}')
-                return False
-
-            # Use base64 encoding to avoid shell escaping issues
-            import base64
-
-            encoded_content = base64.b64encode(content.encode(encoding)).decode('ascii')
-
-            # Create the file using python to decode and write the content
-            cmd = f"python3 -c \"import base64; open('{container_path}', 'wb').write(base64.b64decode('{encoded_content}'))\""
-            result = self.container.exec_run(cmd)
-
-            if result.exit_code != 0:
-                error_msg = result.output.decode('utf-8', errors='replace') if result.output else 'Unknown error'
-                self.set_error(f'Failed to create file {container_path}: {error_msg}')
-                return False
-
-            return True
-
-        except Exception as e:
-            self.set_error(f'Exception while creating file {container_path}: {e}')
             return False
 
     def __enter__(self):

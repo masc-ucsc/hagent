@@ -140,12 +140,6 @@ class DockerExecutor:
                 else:
                     os.environ[key] = old_value
 
-    # Backward-compatible alias (deprecated). Prefer run_cmd().
-    def run(
-        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
-    ) -> Tuple[int, str, str]:
-        return self.run_cmd(command, cwd, env, quiet)
-
     def _translate_path_to_container(self, host_path: str) -> str:
         """
         Translate host paths to container paths.

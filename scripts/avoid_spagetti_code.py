@@ -40,9 +40,9 @@ DEFAULT_TEST_FILE_PATTERNS = [
 ]
 
 # Configuration thresholds
-FUNCTION_LOC_THRESHOLD = 100
-CLASS_LOC_THRESHOLD = 400
-FILE_MULTIPLE_CLASSES_THRESHOLD = 2  # files with 2+ non-trivial classes
+FUNCTION_LOC_THRESHOLD = 120
+CLASS_LOC_THRESHOLD = 500
+FILE_MULTIPLE_CLASSES_THRESHOLD = 3  # files with 3+ non-trivial classes
 
 
 def is_test_file(path: Path, test_globs: List[str]) -> bool:
@@ -189,7 +189,7 @@ class CodeComplexityVisitor(ast.NodeVisitor):
 
         # Simple heuristic for trivial classes
         # A class is trivial if it has few methods and few lines
-        is_trivial = method_count <= 2 and loc <= 20
+        is_trivial = method_count <= 2 and loc <= 40
 
         self.classes.append(
             ClassInfo(

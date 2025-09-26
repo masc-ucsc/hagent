@@ -57,20 +57,3 @@ class FileSystem(ABC):
     def resolve_path(self, path: str) -> str:
         """Resolve path to absolute form appropriate for this filesystem."""
         pass
-
-    # Backward compatibility methods (deprecated)
-    def read_text(self, path: str, encoding: str = 'utf-8') -> str:
-        """Deprecated: use read_file() instead."""
-        return self.read_file(path, encoding)
-
-    def write_text(self, path: str, content: str, encoding: str = 'utf-8') -> bool:
-        """Deprecated: use write_file() instead."""
-        return self.write_file(path, content, encoding)
-
-    def read_binary(self, path: str) -> bytes:
-        """Deprecated: use read_file(path, encoding=None).encode('latin1') instead."""
-        return self.read_file(path, encoding=None).encode('latin1')
-
-    def write_binary(self, path: str, content: bytes) -> bool:
-        """Deprecated: use write_file(path, content.decode('latin1'), encoding=None) instead."""
-        return self.write_file(path, content.decode('latin1'), encoding=None)
