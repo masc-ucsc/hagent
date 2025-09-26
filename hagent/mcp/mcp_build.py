@@ -9,19 +9,19 @@ Provides access to HAgent profile-based build operations through the Builder cla
 import os
 import argparse
 import sys
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 from hagent.inou.builder import Builder
 
 
-def get_mcp_schema() -> Dict[str, Any]:
+def get_mcp_schema(config_path: Optional[str] = None) -> Dict[str, Any]:
     """Return MCP tool schema for HAgent build command with dynamic profile/API information."""
 
     # Try to get actual available profiles and APIs from the current environment
     available_profiles = []
     available_apis = []
-    profiles_description = ''
+    profiles_description = 'No profiles found'
 
     try:
         # Check if environment is already properly set up
@@ -69,16 +69,22 @@ def get_mcp_schema() -> Dict[str, Any]:
             builder = None
             try:
                 with redirect_stdout(captured_output), redirect_stderr(captured_errors):
-                    builder = Builder(docker_image=docker_image)
+                    builder = Builder(config_path=config_path, docker_image=docker_image)
                     setup_success = builder.setup()
 
                 if not setup_success:
                     # If setup fails, we can't get profiles - use empty list
                     profiles = []
+                    profiles_description = 'No profiles found'
                 else:
                     # Get profiles with output still suppressed
                     with redirect_stdout(captured_output), redirect_stderr(captured_errors):
                         profiles = builder.get_all_profiles()
+                        # Get description from builder while it's still available
+                        profiles_description = builder.list_profiles()
+                        # Remove leading newline for schema description
+                        if profiles_description and profiles_description.startswith('\n'):
+                            profiles_description = profiles_description[1:]
             finally:
                 # Always clean up the builder to avoid atexit warnings
                 if builder:
@@ -114,24 +120,7 @@ def get_mcp_schema() -> Dict[str, Any]:
                     api_set.add(api.get('name'))
         available_apis = list(api_set)
 
-        # Generate description from profiles
-        if profiles:
-            description_lines = []
-            for p in profiles:
-                name = p.get('name', '<unnamed>')
-                # Get profile title, preferring 'title' over 'description' for backward compatibility
-                title = (p.get('title') or p.get('description') or '').strip() or 'N/A'
-                description_lines.append(f'\nname: {name}')
-                description_lines.append(f'  title: {title}')
-                description_lines.append('  APIs:')
-                for api in p.get('apis', []):
-                    api_name = api.get('name', '<noname>')
-                    api_desc = api.get('description', 'N/A')
-                    description_lines.append(f'    - {api_name}: {api_desc}')
-
-            profiles_description = '\n'.join(description_lines)
-        else:
-            profiles_description = 'No profiles found'
+        # profiles_description is already set in the try block above
 
     except Exception as e:
         profiles_description = f'ERROR: Invalid environment setup. {str(e)}'
@@ -153,22 +142,22 @@ def get_mcp_schema() -> Dict[str, Any]:
             'properties': {
                 'name': {
                     'type': 'string',
-                    'description': 'Profile or target name (exact match, case-insensitive)',
+                    'description': 'Design or profile name to perform the API command (exact match, case-insensitive)',
                     'enum': available_profiles,
                 }
                 if available_profiles
                 else {'type': 'string', 'description': 'Profile or target name (exact match, case-insensitive)'},
                 'profile': {
                     'type': 'string',
-                    'description': 'Profile name or regex pattern to match in titles/descriptions',
+                    'description': 'Design or profile regex pattern to match in titles/descriptions to perform the API command',
                 },
                 'api': {
                     'type': 'string',
-                    'description': 'API or command to execute',
+                    'description': 'API command to execute',
                     'enum': available_apis,
                 }
                 if available_apis
-                else {'type': 'string', 'description': 'API or command to execute'},
+                else {'type': 'string', 'description': 'API command to execute'},
                 'dry_run': {'type': 'boolean', 'description': 'Show what would be executed without running', 'default': False},
             },
             'required': [],
@@ -323,6 +312,7 @@ def create_argument_parser():
     )
 
     parser.add_argument('--config', help='Path to hagent.yaml')
+    parser.add_argument('--schema', action='store_true', help='Print MCP tool schema as JSON')
     parser.add_argument('--list', action='store_true', help='List all profiles')
 
     # Selection:
@@ -344,15 +334,15 @@ def main():
     import sys
     import json
 
-    # Check for --schema flag first for MCP integration
-    if len(sys.argv) > 1 and sys.argv[1] == '--schema':
-        schema = get_mcp_schema()
-        print(json.dumps(schema, indent=2))
-        return 0
-
     # Handle CLI arguments
     parser = create_argument_parser()
     args = parser.parse_args()
+
+    # Handle --schema option
+    if args.schema:
+        schema = get_mcp_schema(config_path=args.config)
+        print(json.dumps(schema, indent=2))
+        return 0
 
     if args.extra_args and args.extra_args[0] == '--':
         args.extra_args = args.extra_args[1:]
@@ -378,13 +368,34 @@ def main():
                 return 1
 
         if args.list:
-            builder.list_profiles()
+            print(builder.list_profiles())
             return 0
 
         # List APIs for selected profiles.
         if args.list_apis:
-            success = builder.list_apis_for_profile(args.name, args.profile)
-            return 0 if success else 2
+            if args.name or args.profile:
+                # List APIs for specific profile(s)
+                success = builder.list_apis_for_profile(args.name, args.profile)
+                return 0 if success else 2
+            else:
+                # List APIs for all profiles
+                if not builder.has_config:
+                    print('Error: No hagent.yaml configuration found. Cannot list profile APIs.', file=sys.stderr)
+                    return 1
+                all_profiles = builder.get_all_profiles()
+                if not all_profiles:
+                    print('No profiles found in configuration.')
+                    return 0
+                for profile in all_profiles:
+                    print(f'\nAPIs for {profile.get("name", "<unnamed>")} [{builder.profile_title(profile) or "N/A"}]:')
+                    for api in profile.get('apis', []):
+                        line = f'  {api.get("name", "<noname>")}: {api.get("description", "N/A")}'
+                        if 'command' in api:
+                            line += f'\n    Command: {api["command"]}'
+                        if 'cwd' in api:
+                            line += f'\n    Working Directory: {api["cwd"]}'
+                        print(line)
+                return 0
 
         # Execute selected API
         if args.api:

@@ -521,8 +521,8 @@ class GoldenDesignBuilder:
             for i, line in enumerate(lines):
                 if 'signals_T_132' in line and "7'h3" in line:
                     if self.debug:
-                        print(f'     🔍 Line {i+1}: {line.strip()}')
-                    verification_details.append(f'{target_filename} line {i+1}: {line.strip()}')
+                        print(f'     🔍 Line {i + 1}: {line.strip()}')
+                    verification_details.append(f'{target_filename} line {i + 1}: {line.strip()}')
 
             return {
                 'success': verification_success,

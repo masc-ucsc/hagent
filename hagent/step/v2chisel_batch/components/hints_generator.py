@@ -361,7 +361,7 @@ class HintsGenerator:
                         extracted_lines = []
                         for line_num in sorted(context_lines):
                             if 1 <= line_num <= len(file_lines):
-                                extracted_lines.append(f'{line_num:4}: {file_lines[line_num-1]}')
+                                extracted_lines.append(f'{line_num:4}: {file_lines[line_num - 1]}')
 
                         result_stdout = '\n'.join(extracted_lines)
                     except Exception as e:

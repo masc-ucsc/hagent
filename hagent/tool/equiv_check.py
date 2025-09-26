@@ -168,7 +168,7 @@ class Equiv_check:
                 # Use filesystem to read and write files
                 try:
                     if self.builder.filesystem:
-                        file_content = self.builder.filesystem.read_text(container_file_path)
+                        file_content = self.builder.filesystem.read_file(container_file_path)
                         # Write to local file using standard Python (since this is for local output)
                         with open(local_file_path, 'w') as f:
                             f.write(file_content)
@@ -648,9 +648,9 @@ class Equiv_check:
         print(f'     📊 File size: {len(verilog_code)} chars, {len(lines)} lines')
         print('     🔍 First 3 lines:')
         for i, line in enumerate(lines[:3]):
-            print(f'         {i+1}: {line}')
+            print(f'         {i + 1}: {line}')
         if len(lines) > 3:
-            print(f'     ... ({len(lines)-3} more lines)')
+            print(f'     ... ({len(lines) - 3} more lines)')
 
         if self.use_docker and self.builder:
             # For Docker mode, create the file in the container using filesystem

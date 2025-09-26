@@ -893,7 +893,7 @@ class V2chisel_batch(Step):
             print(f'🔍 DEBUG: Template data has keys: {list(template_data.keys())}')
             response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
             print(
-                f"🔍 DEBUG: LLM inference returned: {type(response_list)}, len={len(response_list) if response_list else 'None'}"
+                f'🔍 DEBUG: LLM inference returned: {type(response_list)}, len={len(response_list) if response_list else "None"}'
             )
 
             # Check for LLM errors first

@@ -97,7 +97,7 @@ class Builder:
                         config_path_for_fs = posixpath.join(container_repo_dir, relative_path)
 
             # Use FileSystem to read config - works in both local and Docker!
-            content = self.filesystem.read_text(config_path_for_fs)
+            content = self.filesystem.read_file(config_path_for_fs)
             data = yaml.safe_load(content) or {}
             assert isinstance(data, dict), 'Top-level YAML must be a mapping'
             return data
@@ -136,7 +136,12 @@ class Builder:
         # Discover config path now that environment is set up
         if not self.config_path:
             try:
-                self.config_path = self._provided_config_path or self._find_config()
+                if self._provided_config_path:
+                    # Use explicitly provided config path first
+                    self.config_path = self._provided_config_path
+                else:
+                    # Fall back to automatic discovery
+                    self.config_path = self._find_config()
             except (FileNotFoundError, ValueError):
                 # Config not found or invalid - Builder can still work without it
                 pass
@@ -606,29 +611,35 @@ class Builder:
 
     # ---------------------------- listing methods ----------------------------
 
-    def list_profiles(self):
-        """List all available profiles."""
+    def list_profiles(self) -> str:
+        """List all available profiles.
+
+        Returns:
+            String representation of all profiles
+        """
         if not self.has_config:
-            print('\nNo hagent.yaml configuration found.')
-            print('Available operations:')
-            print('  - Use run_cmd() for direct command execution')
-            print('  - File tracking: track_file(), track_dir(), get_diffs()')
-            print('  - Add hagent.yaml configuration to enable profile-based APIs')
-            return
+            output_lines = [
+                '\nNo hagent.yaml configuration found.',
+                'Available operations:',
+                '  - Use run_cmd() for direct command execution',
+                '  - File tracking: track_file(), track_dir(), get_diffs()',
+                '  - Add hagent.yaml configuration to enable profile-based APIs',
+            ]
+            return '\n'.join(output_lines)
 
         profiles = self.get_all_profiles()
         if not profiles:
-            print('\nNo profiles found in configuration.')
-            return
+            return '\nNo profiles found in configuration.'
 
-        print('\nAvailable profiles:')
-        print('-' * 60)
+        output_lines = ['\nAvailable profiles:']
         for p in profiles:
-            print(f'\nname: {p.get("name", "<unnamed>")}')
-            print(f'  title: {self.profile_title(p) or "N/A"}')
-            print('  APIs:')
+            output_lines.append(f'\nname: {p.get("name", "<unnamed>")}')
+            output_lines.append(f'  title: {self.profile_title(p) or "N/A"}')
+            output_lines.append('  APIs:')
             for api in p.get('apis', []):
-                print(f'    - {api.get("name", "<noname>")}: {api.get("description", "N/A")}')
+                output_lines.append(f'    - {api.get("name", "<noname>")}: {api.get("description", "N/A")}')
+
+        return '\n'.join(output_lines)
 
     def list_apis_for_profile(self, exact_name: Optional[str], title_query: Optional[str]):
         """List APIs for given profile selection."""
@@ -653,7 +664,7 @@ class Builder:
             hits = self.find_profile_by_title(title_query)
             if not hits:
                 print(f"Error: --profile '{title_query}' did not match any profile titles.", file=sys.stderr)
-                self.list_profiles()
+                print(self.list_profiles())
                 return False
             if len(hits) > 1:
                 print('Error: Multiple profiles matched --profile. Disambiguate with --name.\nMatches:', file=sys.stderr)

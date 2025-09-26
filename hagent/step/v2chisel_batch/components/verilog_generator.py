@@ -138,7 +138,7 @@ class VerilogGenerator:
                 if self.debug:
                     print(f'🔧 [VERILOG_GEN] Trying: {cmd_info["name"]}')
 
-                exit_code, stdout, stderr = self.builder.run_cmd(f'bash -l -c \'{cmd_info["cmd"]}\'')
+                exit_code, stdout, stderr = self.builder.run_cmd(f"bash -l -c '{cmd_info['cmd']}'")
 
                 if exit_code == 0:
                     if self.debug:
