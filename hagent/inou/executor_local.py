@@ -218,9 +218,3 @@ class LocalExecutor:
 
         except Exception as e:
             return -1, '', f'Command execution failed: {e}'
-
-    # Backward-compatible alias (deprecated). Prefer run_cmd().
-    def run(
-        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
-    ) -> Tuple[int, str, str]:
-        return self.run_cmd(command, cwd, env, quiet)

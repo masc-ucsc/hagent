@@ -336,7 +336,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     continue
                 issues.append(
                     f'PRIVACY: Public method appears internal-only: {m.file}:{m.lineno} {m.class_name}.{m.method}. '
-                    f'Hint: Consider renaming to _{m.method} if not part of public API.'
+                    f'Hint: Consider renaming to _{m.method} if not part of public API or add test or delete it.'
                 )
 
     # Emit

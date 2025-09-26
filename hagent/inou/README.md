@@ -59,9 +59,6 @@ Key methods:
 - `builder.filesystem.list_dir(path)` - List directory contents
 - `builder.filesystem.remove(path)` - Remove file or directory
 
-**Legacy Methods (Backward Compatibility)**:
-- `builder.create_file(path, content, encoding='utf-8')` - Create file (delegates to filesystem)
-
 **Binary File Handling**:
 ```python
 # Binary files: use encoding=None
@@ -77,34 +74,7 @@ read_binary = builder.filesystem.read_file('file.bin', encoding=None).encode('la
 - `PathManager`: Path resolution and environment setup
 - `FileTracker`: File change tracking and diff generation
 - `Executor`: Command execution (local/docker variants)
-- `FileSystem`: **NEW** - Unified file operations abstraction (LocalFileSystem/DockerFileSystem)
+- `FileSystem`: Unified file operations abstraction (LocalFileSystem/DockerFileSystem)
 
 **Do not import or use these internal classes directly.** Use `Builder` which provides access to all functionality.
 
-## Recent Changes (v2.0)
-
-### FileSystem Refactoring
-- **Unified Interface**: Replaced separate `read_text`, `write_text`, `read_binary`, `write_binary` with unified `read_file`/`write_file`
-- **Simplified API**: Single interface for both text and binary operations using `encoding` parameter
-- **Cross-Platform**: Works transparently in both local and Docker execution modes
-- **Backward Compatibility**: Old methods still work but are deprecated
-
-### Migration Guide
-```python
-# OLD (deprecated but still works)
-filesystem.read_text(path)
-filesystem.write_text(path, content)
-filesystem.read_binary(path)  
-filesystem.write_binary(path, data)
-
-# NEW (recommended)
-filesystem.read_file(path)                    # text with UTF-8
-filesystem.write_file(path, content)          # text with UTF-8
-filesystem.read_file(path, encoding=None)     # binary (returns string representation)
-filesystem.write_file(path, data, encoding=None)  # binary (expects string representation)
-```
-
-### Working Directory Fixes
-- Fixed `Runner.run_cmd()` to respect working directory changes made via `set_cwd()`
-- Added `get_cwd()` methods to executors and container managers
-- Unified working directory handling between FileSystem and Executor approaches

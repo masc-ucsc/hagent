@@ -42,11 +42,6 @@ class ExecutionStrategy(Protocol):
         """
         ...
 
-    # Backward-compatible alias (deprecated). Prefer run_cmd().
-    def run(
-        self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = False
-    ) -> Tuple[int, str, str]: ...
-
     def set_cwd(self, new_workdir: str) -> bool:
         """
         Change the working directory with validation.
