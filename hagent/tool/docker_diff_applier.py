@@ -277,7 +277,7 @@ class DockerDiffApplier:
                 normalized_removal_line = self._normalize_verilog_line(removal_line)
 
                 if normalized_file_line == normalized_removal_line:
-                    print(f'     ✅ Found removal line at line {i+1}: {file_line.strip()}')
+                    print(f'     ✅ Found removal line at line {i + 1}: {file_line.strip()}')
                     found = True
                     break
 
@@ -288,7 +288,7 @@ class DockerDiffApplier:
                 key_parts = removal_line.split()
                 for i, file_line in enumerate(file_lines):
                     if all(part in file_line for part in key_parts if len(part) > 2):
-                        print(f'         Line {i+1}: {file_line.strip()}')
+                        print(f'         Line {i + 1}: {file_line.strip()}')
                 return False
 
         return True
@@ -319,7 +319,7 @@ class DockerDiffApplier:
                 normalized_addition_line = self._normalize_verilog_line(addition_line)
 
                 if normalized_file_line == normalized_addition_line:
-                    print(f'     ✅ Found addition line at line {i+1}: {file_line.strip()}')
+                    print(f'     ✅ Found addition line at line {i + 1}: {file_line.strip()}')
                     found = True
                     break
 
