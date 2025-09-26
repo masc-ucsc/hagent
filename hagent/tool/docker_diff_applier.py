@@ -51,14 +51,14 @@ class DockerDiffApplier:
         """Read file content from Docker container"""
         try:
             # Use Builder's filesystem read method
-            content = self.builder.filesystem.read_file(file_path)
+            content = self.builder.filesystem.read_text(file_path)
             return content
         except Exception as e:
             print('❌ Permission error reading file. Attempting to fix permissions...')
             # Try to fix permissions and retry
             if self.fix_file_permissions(file_path):
                 try:
-                    content = self.builder.filesystem.read_file(file_path)
+                    content = self.builder.filesystem.read_text(file_path)
                     print('✅ Successfully read file after permission fix')
                     return content
                 except Exception:
@@ -70,7 +70,7 @@ class DockerDiffApplier:
         """Write file content to Docker container"""
         try:
             # Use Builder's filesystem write method
-            self.builder.filesystem.write_file(file_path, content)
+            self.builder.filesystem.write_text(file_path, content)
 
             # Try to fix permissions
             self.fix_file_permissions(file_path)

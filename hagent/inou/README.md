@@ -27,11 +27,11 @@ builder.track_file('src/main.scala')
 diffs = builder.get_all_diffs()
 
 # NEW: Unified filesystem access (recommended for new code)
-builder.filesystem.write_file('/path/to/file.txt', 'content')
-content = builder.filesystem.read_file('/path/to/file.txt')
+builder.filesystem.write_text('/path/to/file.txt', 'content')
+content = builder.filesystem.read_text('/path/to/file.txt')
 
-# Legacy file creation (maintained for backward compatibility)
-builder.create_file('/path/to/file.txt', 'content')
+# Convenient file creation (UTF-8 text files)
+builder.write_text('/path/to/file.txt', 'content')
 
 # Always cleanup when done
 builder.cleanup()
@@ -52,8 +52,12 @@ Key methods:
 - `list_profiles()` - Show available profiles
 
 **Filesystem Access (NEW - Recommended)**:
-- `builder.filesystem.read_file(path, encoding='utf-8')` - Read file content (text or binary)
-- `builder.filesystem.write_file(path, content, encoding='utf-8')` - Write file content (text or binary)
+- `builder.filesystem.read_text(path)` - Read text file content (UTF-8)
+- `builder.filesystem.write_text(path, content)` - Write text file content (UTF-8)
+- `builder.filesystem.read_binary(path)` - Read binary file content
+- `builder.filesystem.write_binary(path, content)` - Write binary file content
+- `builder.filesystem.read_file(path, encoding)` - Read with explicit encoding
+- `builder.filesystem.write_file(path, content, encoding)` - Write with explicit encoding
 - `builder.filesystem.exists(path)` - Check if file/directory exists
 - `builder.filesystem.makedirs(path)` - Create directory structure
 - `builder.filesystem.list_dir(path)` - List directory contents
@@ -61,8 +65,12 @@ Key methods:
 
 **Binary File Handling**:
 ```python
-# Binary files: use encoding=None
+# Binary files: use convenience methods
 binary_data = b'\x00\x01\x02\xFF'
+builder.filesystem.write_binary('file.bin', binary_data)
+read_binary = builder.filesystem.read_binary('file.bin')
+
+# Or explicitly with encoding=None
 builder.filesystem.write_file('file.bin', binary_data.decode('latin1'), encoding=None)
 read_binary = builder.filesystem.read_file('file.bin', encoding=None).encode('latin1')
 ```

@@ -22,14 +22,26 @@ class FileSystem(ABC):
         pass
 
     @abstractmethod
-    def read_file(self, path: str, encoding: Optional[str] = 'utf-8') -> str:
-        """Read file content. Returns text by default, or bytes if encoding=None."""
+    def read_file(self, path: str, encoding: str) -> str:
+        """Read file content with explicit encoding. Use read_text/read_binary for convenience."""
         pass
 
     @abstractmethod
-    def write_file(self, path: str, content: str, encoding: Optional[str] = 'utf-8') -> bool:
-        """Write file content. Accepts text by default, or bytes if encoding=None."""
+    def write_file(self, path: str, content: str, encoding: str) -> bool:
+        """Write file content with explicit encoding. Use write_text/write_binary for convenience."""
         pass
+
+    def read_text(self, path: str) -> str:
+        return self.read_file(path, encoding='utf-8')
+
+    def write_text(self, path: str, content: str) -> bool:
+        return self.write_file(path, content, encoding='utf-8')
+
+    def read_binary(self, path: str) -> bytes:
+        return self.read_file(path, encoding=None).encode('latin1')
+
+    def write_binary(self, path: str, content: bytes) -> bool:
+        return self.write_file(path, content.decode('latin1'), encoding=None)
 
     @abstractmethod
     def list_dir(self, path: str) -> List[str]:

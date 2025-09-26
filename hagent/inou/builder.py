@@ -97,7 +97,7 @@ class Builder:
                         config_path_for_fs = posixpath.join(container_repo_dir, relative_path)
 
             # Use FileSystem to read config - works in both local and Docker!
-            content = self.filesystem.read_file(config_path_for_fs)
+            content = self.filesystem.read_text(config_path_for_fs)
             data = yaml.safe_load(content) or {}
             assert isinstance(data, dict), 'Top-level YAML must be a mapping'
             return data
@@ -860,26 +860,25 @@ class Builder:
         """Get path to loaded configuration file, or None if no config."""
         return self.config_path if self.has_config else None
 
-    def create_file(self, file_path: str, content: str, encoding: str = 'utf-8') -> bool:
+    def write_text(self, file_path: str, content: str) -> bool:
         """
-        Create a file with the given content.
+        Write text content to a file using UTF-8 encoding.
 
-        This method delegates to the unified filesystem interface,
-        replacing the need for separate create_file implementations.
+        For binary files, use builder.filesystem.write_binary() directly.
+        For other encodings, use builder.filesystem.write_file(path, content, encoding) directly.
 
         Args:
-            file_path: Path where the file should be created
-            content: Content to write to the file
-            encoding: Text encoding to use (default: utf-8)
+            file_path: Path where the file should be written
+            content: Text content to write to the file
 
         Returns:
-            True if file was created successfully, False otherwise
+            True if file was written successfully, False otherwise
         """
         if not self.filesystem:
             self.set_error('FileSystem not initialized - call setup() first')
             return False
 
-        return self.filesystem.write_file(file_path, content, encoding)
+        return self.filesystem.write_text(file_path, content)
 
     def cleanup(self) -> None:
         """

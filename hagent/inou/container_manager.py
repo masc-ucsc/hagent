@@ -18,6 +18,8 @@ import weakref
 import random
 import uuid
 import signal
+import io
+import tarfile
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple, Any
 
@@ -1095,6 +1097,59 @@ class ContainerManager:
             return result.exit_code == 0
         except Exception as e:
             print(f"Failed to create directory '{dir_path}': {e}", file=sys.stderr)
+            return False
+
+    def create_file(self, container_path: str, content: Any, mode: int = 0o644) -> bool:
+        """Create or overwrite a file inside the container.
+
+        Args:
+            container_path: Absolute path inside the container where the file will be written.
+            content: File contents as str or bytes.
+            mode: File permissions (default 0644).
+
+        Returns:
+            True on success, False otherwise with error populated via set_error.
+        """
+        if not self.container:
+            self.set_error('Container not set up. Call setup() first.')
+            return False
+
+        if not container_path:
+            self.set_error('No container path provided for create_file')
+            return False
+
+        try:
+            data = content.encode('utf-8') if isinstance(content, str) else bytes(content)
+        except Exception as encode_error:
+            self.set_error(f'Failed to serialize file content: {encode_error}')
+            return False
+
+        container_dir = posixpath.dirname(container_path) or '.'
+        filename = posixpath.basename(container_path)
+
+        if not self._ensure_container_directory(container_dir):
+            self.set_error(f'Failed to ensure directory exists: {container_dir}')
+            return False
+
+        tar_buffer = io.BytesIO()
+        try:
+            with tarfile.open(fileobj=tar_buffer, mode='w') as tar:
+                tar_info = tarfile.TarInfo(name=filename)
+                tar_info.size = len(data)
+                tar_info.mode = mode
+                tar_info.mtime = int(time.time())
+                tar.addfile(tar_info, io.BytesIO(data))
+
+            tar_buffer.seek(0)
+            success = self.container.put_archive(container_dir, tar_buffer.getvalue())
+            if not success:
+                self.set_error(f'Failed to write file to container: {container_path}')
+                return False
+
+            self.set_error('')
+            return True
+        except Exception as e:
+            self.set_error(f'Failed to create file {container_path}: {e}')
             return False
 
     def __enter__(self):

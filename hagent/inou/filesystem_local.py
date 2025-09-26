@@ -20,7 +20,7 @@ class FileSystemLocal(FileSystem):
     def exists(self, path: str) -> bool:
         return os.path.exists(path)
 
-    def read_file(self, path: str, encoding: Optional[str] = 'utf-8') -> str:
+    def read_file(self, path: str, encoding: str) -> str:
         try:
             if encoding is None:
                 # Binary mode - return content as string representation of bytes
@@ -33,7 +33,7 @@ class FileSystemLocal(FileSystem):
         except IOError as e:
             raise FileNotFoundError(f'Cannot read {path}: {e}')
 
-    def write_file(self, path: str, content: str, encoding: Optional[str] = 'utf-8') -> bool:
+    def write_file(self, path: str, content: str, encoding: str) -> bool:
         try:
             # Ensure parent directory exists
             parent = os.path.dirname(path)
