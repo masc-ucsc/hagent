@@ -6,8 +6,9 @@
 #
 # Optimization: Uses cached template in .cache/setup_simplechisel_mcp for faster setup
 
-# Set default values
-HAGENT_ROOT=${HAGENT_ROOT:-$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}")")" && pwd)}
+# Set default values - find hagent repo root from script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HAGENT_ROOT=${HAGENT_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}
 # Default to 2025.09r image
 HAGENT_DOCKER=${HAGENT_DOCKER:-"mascucsc/hagent-simplechisel:2025.09r"}
 
