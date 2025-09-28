@@ -394,27 +394,8 @@ class EnvironmentSetup:
             os.environ['HAGENT_ROOT'] = HAGENT_ROOT
             logger.info(f'Set HAGENT_ROOT={HAGENT_ROOT}')
 
-        # Setup HAGENT_DOCKER with default
-        if 'HAGENT_DOCKER' not in os.environ:
-            os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-builder:2025.09'
-            logger.info('Set HAGENT_DOCKER=mascucsc/hagent-builder:2025.09')
-
-        # Setup HAGENT_REPO_DIR with intelligent fallbacks
-        if 'HAGENT_REPO_DIR' not in os.environ:
-            EnvironmentSetup._setup_repo_directory()
-
-        # Setup HAGENT_BUILD_DIR (relative to repo)
-        if 'HAGENT_BUILD_DIR' not in os.environ:
-            os.environ['HAGENT_BUILD_DIR'] = './build'
-            logger.info('Set HAGENT_BUILD_DIR=./build')
-
-        # Setup HAGENT_CACHE_DIR (relative to repo)
-        if 'HAGENT_CACHE_DIR' not in os.environ:
-            os.environ['HAGENT_CACHE_DIR'] = './cache'
-            logger.info('Set HAGENT_CACHE_DIR=./cache')
-
         # Log the final environment setup
-        logger.info('Environment setup complete:')
+        logger.info('Environment setup:')
         for var in ['HAGENT_ROOT', 'HAGENT_DOCKER', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
             logger.info(f'  {var}={os.environ.get(var, "NOT_SET")}')
 

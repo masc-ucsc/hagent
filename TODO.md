@@ -6,6 +6,10 @@ Remove and fix accordingly
 
 -------
 
+ Issue with compile singlecycle cpu (does not show in build directory in tmp/potato/build/*)
+
+-------
+
  Add a check to look for too long functions. Then rank them error based on function lenght. If more than 1-2 scrren (60LoC), issue waring to refactor.
 
 -------
