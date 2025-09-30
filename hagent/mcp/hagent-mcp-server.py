@@ -181,31 +181,15 @@ def register_mcp_module_impl(module, mcp_instance):
                     fallback_msg = f'❌ COMMAND FAILED (exit code: {exit_code})\n\nSTDERR:\n{stderr}\n\nSTDOUT:\n{stdout}'
                     return {'_mcp_error': True, 'error_message': fallback_msg}
 
-            # If result contains stdout/stderr, format it for successful executions
+            # For successful executions, return just stdout as a plain string
+            # (FastMCP expects string return values for tool functions)
             if isinstance(result, dict):
-                # Always format the output for MCP client, even if stdout/stderr are empty
-                output_parts = []
-
-                # Add execution status first
-                status = 'SUCCESS'
+                # Return a minimal success indicator
                 exit_code = result.get('exit_code', 0)
-                status_info = f'Execution Status: {status} (exit code: {exit_code})'
+                return f'✓ Command completed successfully (exit code: {exit_code})'
 
-                if result.get('stdout'):
-                    output_parts.append(f'STDOUT:\n{result["stdout"]}')
-                if result.get('stderr'):
-                    output_parts.append(f'STDERR:\n{result["stderr"]}')
-
-                if output_parts:
-                    combined_output = '\n\n'.join(output_parts)
-                    formatted_response = f'{status_info}\n\n{combined_output}'
-                else:
-                    formatted_response = status_info
-
-                # Always return structured output for better MCP client handling
-                return formatted_response
-
-            return result
+            # Fallback for other result types
+            return str(result)
 
         # Set function name and docstring
         tool_wrapper.__name__ = tool_name
