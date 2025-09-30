@@ -177,9 +177,12 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
     """
     builder = None
     try:
+        # Get config path from environment or params
+        config_path = os.environ.get('HAGENT_CONFIG_PATH')
+
         # Initialize Builder with Docker configuration from environment
         docker_image = os.environ.get('HAGENT_DOCKER')
-        builder = Builder(docker_image=docker_image)
+        builder = Builder(config_path=config_path, docker_image=docker_image)
 
         # Handle parameters
         exact_name = params.get('name')
@@ -187,11 +190,22 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
         api_name = params.get('api')
         dry_run = params.get('dry_run', False)
 
-        # If no API specified, this might be a listing request (no setup needed)
+        # If no API specified, this might be a listing request
         if not api_name:
-            # Default to showing available profiles if no specific action
+            # Setup builder for listing operations (needs config)
+            if not builder.setup():
+                # For dry runs, allow operation if we at least have config
+                if not (dry_run and builder.has_config):
+                    return {
+                        'success': False,
+                        'exit_code': 1,
+                        'stdout': '',
+                        'stderr': f'Builder setup failed: {builder.get_error()}',
+                        'params_used': params,
+                    }
+
+            # List APIs for specific profile(s)
             if exact_name or profile_query:
-                # Try to list APIs for the specified profile
                 try:
                     success = builder.list_apis_for_profile(exact_name, profile_query)
                     return {
@@ -212,11 +226,11 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 # List all profiles
                 try:
-                    builder.list_profiles()
+                    profiles_output = builder.list_profiles()
                     return {
                         'success': True,
                         'exit_code': 0,
-                        'stdout': 'Profiles listed successfully',
+                        'stdout': profiles_output,
                         'stderr': '',
                         'params_used': params,
                     }
@@ -233,7 +247,9 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
         if not dry_run and not builder.setup():
             return {
                 'success': False,
-                'error': f'Builder setup failed: {builder.get_error()}',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Builder setup failed: {builder.get_error()}',
                 'params_used': params,
             }
 
@@ -245,7 +261,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
                 title_query=None,
                 command_name=api_name,
                 dry_run=dry_run,
-                quiet=False,
+                quiet=True,
             )
 
             # If exact name failed and we have a profile parameter, try as title query
@@ -255,7 +271,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
                     title_query=profile_query,
                     command_name=api_name,
                     dry_run=dry_run,
-                    quiet=False,
+                    quiet=True,
                 )
 
             return {
@@ -278,7 +294,9 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {
             'success': False,
-            'error': f'Command execution failed: {str(e)}',
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': f'Command execution failed: {str(e)}',
             'params_used': params,
         }
 
@@ -347,77 +365,37 @@ def main():
     if args.extra_args and args.extra_args[0] == '--':
         args.extra_args = args.extra_args[1:]
 
-    builder = None
+    # Set config path in environment if provided
+    if args.config:
+        os.environ['HAGENT_CONFIG_PATH'] = args.config
+
     try:
-        # For execution commands, require Docker
-        docker_image = os.environ.get('HAGENT_DOCKER')
-        if not docker_image:
-            print('ERROR: mcp_builder needs a HAGENT_DOCKER specified to run tools')
-            return 3
+        # Convert CLI args to MCP params format
+        params = {
+            'name': args.name,
+            'profile': args.profile,
+            'api': args.api,
+            'dry_run': args.dry_run if hasattr(args, 'dry_run') else False,
+        }
 
-        # Initialize builder
-        builder = Builder(config_path=args.config, docker_image=docker_image)
+        # Handle list operations (no API specified)
+        if args.list or args.list_apis:
+            params['api'] = None
 
-        # Setup builder (required for config discovery)
-        if not builder.setup():
-            # For dry runs, allow operation if we at least have config, even if Runner setup failed
-            if args.dry_run and builder.has_config:
-                pass  # Continue with dry run using loaded config
-            else:
-                print(f'Error: Builder setup failed: {builder.get_error()}', file=sys.stderr)
-                return 1
+        # Execute through MCP interface
+        result = mcp_execute(params)
 
-        if args.list:
-            print(builder.list_profiles())
-            return 0
+        # Handle output
+        print("STDOUT:")
+        print(result['stdout'], end='')
+        print("STDERR:", file=sys.stderr)
+        print(result['stderr'], end='', file=sys.stderr)
 
-        # List APIs for selected profiles.
-        if args.list_apis:
-            if args.name or args.profile:
-                # List APIs for specific profile(s)
-                success = builder.list_apis_for_profile(args.name, args.profile)
-                return 0 if success else 2
-            else:
-                # List APIs for all profiles
-                if not builder.has_config:
-                    print('Error: No hagent.yaml configuration found. Cannot list profile APIs.', file=sys.stderr)
-                    return 1
-                all_profiles = builder.get_all_profiles()
-                if not all_profiles:
-                    print('No profiles found in configuration.')
-                    return 0
-                for profile in all_profiles:
-                    print(f'\nAPIs for {profile.get("name", "<unnamed>")} [{builder.profile_title(profile) or "N/A"}]:')
-                    for api in profile.get('apis', []):
-                        line = f'  {api.get("name", "<noname>")}: {api.get("description", "N/A")}'
-                        if 'command' in api:
-                            line += f'\n    Command: {api["command"]}'
-                        if 'cwd' in api:
-                            line += f'\n    Working Directory: {api["cwd"]}'
-                        print(line)
-                return 0
+        # Return appropriate exit code
+        if 'exit_code' in result:
+            return result['exit_code']
 
-        # Execute selected API
-        if args.api:
-            exit_code, stdout, stderr = builder.run_api(
-                exact_name=args.name,
-                title_query=args.profile,
-                command_name=args.api,
-                extra_args=args.extra_args,
-                dry_run=args.dry_run,
-                quiet=True,
-            )
-
-            # Print stdout and stderr if they contain anything
-            if stdout:
-                print(stdout, end='')
-            if stderr:
-                print(stderr, end='', file=sys.stderr)
-
-            return exit_code
-
-        parser.print_help()
-        return 0
+        return 0 if result.get('success', False) else 1
 
     except FileNotFoundError as e:
         print(f'Error: {e}', file=sys.stderr)
@@ -432,11 +410,6 @@ def main():
 
         traceback.print_exc()
         return 1
-
-    finally:
-        # Always cleanup Builder resources
-        if builder:
-            builder.cleanup()
 
 
 if __name__ == '__main__':
