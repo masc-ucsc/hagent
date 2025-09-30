@@ -100,7 +100,7 @@ class FileSystemDocker(FileSystem):
         if cwd and cwd != '.':
             command = f'cd "{cwd}" && {command}'
 
-        return self.container_manager.run_cmd(command)
+        return self.container_manager.run_cmd(command, quiet=quiet)
 
     def resolve_path(self, path: str) -> str:
         """Resolve to absolute container path."""
