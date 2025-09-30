@@ -13,6 +13,129 @@ from typing import Dict, Any, Optional
 
 
 from hagent.inou.builder import Builder
+import re
+
+
+def _clean_ansi_codes(text: str) -> str:
+    """Remove ANSI escape codes from text for better pattern matching."""
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', text)
+
+
+def _format_error_response(exit_code: int, stdout: str, stderr: str) -> Dict[str, Any]:
+    """
+    Format error response with intelligent error detection and helpful suggestions.
+
+    Priority order for error detection:
+    1. If stderr has content, use it as the primary error message
+    2. Otherwise, search stdout/stderr for error/warning patterns
+    3. Provide language-specific suggestions when patterns are detected
+
+    Args:
+        exit_code: Command exit code
+        stdout: Standard output from command
+        stderr: Standard error from command
+
+    Returns:
+        Dictionary with formatted error information including error_message and suggestions
+    """
+    combined_output = stderr + stdout
+    clean_output = _clean_ansi_codes(combined_output)
+
+    error_suggestions = []
+    error_summary = None
+    files_to_check = []
+
+    # Priority 1: Use stderr if it has substantial content
+    if stderr and len(stderr.strip()) > 10:
+        error_summary = stderr.strip()
+        # Still check for file references in stderr
+        file_matches = re.findall(r'(/[^:\s]+\.(scala|v|sv|vhd|c|cpp|py|java))(?::(\d+))?', stderr)
+        if file_matches:
+            files_to_check = [f'{f}:{line}' if line else f for f, ext, line in file_matches[:3]]
+
+    # Priority 2: Search for error/warning patterns if no stderr or for additional context
+    else:
+        # Look for common error patterns (case-insensitive)
+        error_patterns = [
+            (r'error[:\]]', 'error'),
+            (r'warning[:\]]', 'warning'),
+            (r'failed', 'failure'),
+            (r'exception', 'exception'),
+        ]
+
+        found_errors = []
+        for pattern, error_type in error_patterns:
+            matches = re.finditer(pattern, clean_output, re.IGNORECASE)
+            for match in matches:
+                # Extract the line containing the error
+                start = max(0, match.start() - 100)
+                end = min(len(clean_output), match.end() + 100)
+                context = clean_output[start:end].strip()
+                # Get just the line with the error
+                lines = context.split('\n')
+                for line in lines:
+                    if re.search(pattern, line, re.IGNORECASE):
+                        found_errors.append(line.strip())
+                        break
+
+        if found_errors:
+            # Use first few unique errors
+            unique_errors = list(dict.fromkeys(found_errors))[:3]
+            error_summary = '\n'.join(unique_errors)
+
+    # Detect language-specific errors and provide suggestions
+    if 'scala' in clean_output.lower() or '.scala' in clean_output:
+        error_suggestions.append(
+            '🔧 SUGGESTION: There appears to be a Scala compilation error. Please check and fix the Scala source files.'
+        )
+
+        # Extract Scala file references
+        scala_matches = re.findall(r'(/[^:\s]+\.scala)(?::(\d+))?', clean_output)
+        if scala_matches:
+            files_to_check.extend([f'{f}:{line}' if line else f for f, line in scala_matches[:3]])
+
+        # Look for specific Scala error patterns
+        if 'not found: value' in clean_output or 'not found: type' in clean_output:
+            not_found = re.findall(r'not found: (?:value|type) (\w+)', clean_output)
+            if not_found:
+                error_suggestions.append(f'❌ MISSING SYMBOLS: {", ".join(not_found[:3])}')
+
+    elif '.v' in clean_output or 'verilog' in clean_output.lower():
+        error_suggestions.append('🔧 SUGGESTION: There appears to be a Verilog error. Please check the Verilog source files.')
+        verilog_matches = re.findall(r'(/[^:\s]+\.v)(?::(\d+))?', clean_output)
+        if verilog_matches:
+            files_to_check.extend([f'{f}:{line}' if line else f for f, line in verilog_matches[:3]])
+
+    elif '.c' in clean_output or '.cpp' in clean_output or 'gcc' in clean_output.lower() or 'g++' in clean_output.lower():
+        error_suggestions.append('🔧 SUGGESTION: There appears to be a C/C++ compilation error. Please check the source files.')
+        c_matches = re.findall(r'(/[^:\s]+\.(?:c|cpp|h|hpp))(?::(\d+))?', clean_output)
+        if c_matches:
+            files_to_check.extend([f'{f}:{line}' if line else f for f, line in c_matches[:3]])
+
+    # Add file references if found
+    if files_to_check:
+        unique_files = list(dict.fromkeys(files_to_check))[:3]
+        error_suggestions.append(f'📁 FILES TO CHECK: {", ".join(unique_files)}')
+
+    # Build formatted error message
+    error_parts = [f'❌ COMPILATION FAILED (exit code: {exit_code})']
+
+    if error_suggestions:
+        error_parts.extend(error_suggestions)
+
+    if error_summary:
+        # Truncate if too long
+        if len(error_summary) > 500:
+            error_summary = error_summary[:500] + '...'
+        error_parts.append(f'\n🔍 ERROR DETAILS:\n{error_summary}')
+
+    formatted_error_message = '\n\n'.join(error_parts)
+
+    return {
+        'error_message': formatted_error_message,
+        'has_errors': True,
+    }
 
 
 def get_mcp_schema(config_path: Optional[str] = None) -> Dict[str, Any]:
@@ -243,15 +366,20 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
                         'params_used': params,
                     }
 
-        # Only setup if not dry run and we need to execute something (setup requires full Docker/Runner infrastructure)
-        if not dry_run and not builder.setup():
-            return {
-                'success': False,
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': f'Builder setup failed: {builder.get_error()}',
-                'params_used': params,
-            }
+        # Setup builder - for dry run, allow operation if we at least have config
+        if not builder.setup():
+            # For dry runs, allow operation if we at least have config, even if Runner setup failed
+            if not (dry_run and builder.has_config):
+                error_msg = f'Builder setup failed: {builder.get_error()}'
+                error_info = _format_error_response(1, '', error_msg)
+                return {
+                    'success': False,
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': error_msg,
+                    'error_message': error_info['error_message'],
+                    'params_used': params,
+                }
 
         # Execute the command
         try:
@@ -274,7 +402,8 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
                     quiet=True,
                 )
 
-            return {
+            # Check if command failed and add formatted error information
+            result = {
                 'success': exit_code == 0,
                 'exit_code': exit_code,
                 'stdout': stdout,
@@ -282,12 +411,20 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
                 'params_used': params,
             }
 
+            # If command failed, add formatted error message
+            if exit_code != 0:
+                error_info = _format_error_response(exit_code, stdout, stderr)
+                result['error_message'] = error_info['error_message']
+
+            return result
+
         except Exception as e:
             return {
                 'success': False,
                 'exit_code': 1,
                 'stdout': '',
                 'stderr': str(e),
+                'error_message': f'❌ EXECUTION EXCEPTION\n\n🔍 ERROR DETAILS:\n{str(e)}',
                 'params_used': params,
             }
 
@@ -297,6 +434,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
             'exit_code': 1,
             'stdout': '',
             'stderr': f'Command execution failed: {str(e)}',
+            'error_message': f'❌ COMMAND EXECUTION FAILED\n\n🔍 ERROR DETAILS:\n{str(e)}',
             'params_used': params,
         }
 
@@ -386,10 +524,16 @@ def main():
         result = mcp_execute(params)
 
         # Handle output
-        print("STDOUT:")
+        print('STDOUT:')
         print(result['stdout'], end='')
-        print("STDERR:", file=sys.stderr)
+        print('STDERR:', file=sys.stderr)
         print(result['stderr'], end='', file=sys.stderr)
+
+        if 'error_message' in result:
+            print('error_message:', file=sys.stderr)
+            print(result['error_message'], end='', file=sys.stderr)
+        else:
+            print('error_message: NONE', file=sys.stderr)
 
         # Return appropriate exit code
         if 'exit_code' in result:

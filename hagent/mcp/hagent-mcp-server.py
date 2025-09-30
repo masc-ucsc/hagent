@@ -167,68 +167,19 @@ def register_mcp_module_impl(module, mcp_instance):
             # Call mcp_execute and ensure we return the structured output properly
             result = module.mcp_execute(params)
 
-            # Check if the command failed and mark it for error response
+            # Check if the command failed and use the pre-formatted error message
             if isinstance(result, dict) and not result.get('success', True):
-                # Format error information for better MCP client display
-                status = 'FAILED'
-                exit_code = result.get('exit_code', 'unknown')
-                stderr_content = result.get('stderr', '')
-                stdout_content = result.get('stdout', '')
-
-                # Look for specific error patterns that suggest file issues
-                error_suggestions = []
-                combined_output = stderr_content + stdout_content
-
-                # Clean ANSI escape codes for better pattern matching
-                import re
-
-                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-                clean_output = ansi_escape.sub('', combined_output)
-
-                if 'error]' in clean_output.lower() or 'Error:' in clean_output or 'error:' in clean_output.lower():
-                    if 'scala' in clean_output.lower():
-                        error_suggestions.append(
-                            '🔧 SUGGESTION: There appears to be a Scala compilation error. Please check and fix the Scala source files.'
-                        )
-
-                    # Extract file references - look for .scala files with line numbers
-                    file_matches = re.findall(r'(/[^:\s]+\.scala):(\d+):', clean_output)
-                    if not file_matches:
-                        # Try alternative pattern: just .scala files mentioned in error context
-                        scala_files = re.findall(r'/[^:\s]*\.scala', clean_output)
-                        if scala_files:
-                            unique_files = list(set(scala_files))
-                            error_suggestions.append(f'📁 FILES TO CHECK: {", ".join(unique_files[:3])}')
-                    else:
-                        error_suggestions.append(
-                            f'📁 FILES TO CHECK: {", ".join([f"{f}:{line_num}" for f, line_num in file_matches[:3]])}'
-                        )
-
-                    # Extract specific error messages
-                    error_lines = [
-                        line.strip()
-                        for line in clean_output.split('\n')
-                        if ('error]' in line.lower() or 'Error:' in line) and 'not found' in line
-                    ]
-                    if error_lines:
-                        error_suggestions.append(f'❌ ERROR: {error_lines[0][:100]}...')
-
-                # Build formatted error response
-                error_parts = [f'❌ COMPILATION FAILED (exit code: {exit_code})']
-                if error_suggestions:
-                    error_parts.extend(error_suggestions)
-
-                # Add a concise summary of the error without full logs
-                if 'not found: value' in clean_output:
-                    error_summary = [line.strip() for line in clean_output.split('\n') if 'not found: value' in line]
-                    if error_summary:
-                        error_parts.append(f'🔍 SPECIFIC ERROR: {error_summary[0][:150]}...')
-
-                # Mark this as an error result that should generate JSON-RPC error in custom handler
-                formatted_error_response = '\n\n'.join(error_parts)
-
-                # Return a special error marker that our custom run_with_logging can detect
-                return {'_mcp_error': True, 'error_message': formatted_error_response}
+                # Use the error_message from mcp_execute if available
+                if 'error_message' in result:
+                    # Return a special error marker that our custom run_with_logging can detect
+                    return {'_mcp_error': True, 'error_message': result['error_message']}
+                else:
+                    # Fallback if no error_message was provided
+                    exit_code = result.get('exit_code', 'unknown')
+                    stderr = result.get('stderr', '')
+                    stdout = result.get('stdout', '')
+                    fallback_msg = f'❌ COMMAND FAILED (exit code: {exit_code})\n\nSTDERR:\n{stderr}\n\nSTDOUT:\n{stdout}'
+                    return {'_mcp_error': True, 'error_message': fallback_msg}
 
             # If result contains stdout/stderr, format it for successful executions
             if isinstance(result, dict):
