@@ -23,6 +23,7 @@ def get_mcp_schema() -> Dict[str, Any]:
         'factory_reset',
         'monitor',
         'idf',
+        'env',
     ]
 
     return {
@@ -259,6 +260,72 @@ def api_idf(args: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
+def api_env(args: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Display ESP-IDF environment setup instructions.
+
+    Args:
+        args: Not used
+
+    Returns:
+        Dictionary with environment setup instructions
+    """
+    import os
+    from pathlib import Path
+
+    cache_dir = os.environ.get('HAGENT_CACHE_DIR')
+    if not cache_dir:
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': 'HAGENT_CACHE_DIR not set. Please set it to continue.',
+        }
+
+    idf_path = Path(cache_dir) / 'esp-idf'
+    export_script = idf_path / 'export.sh'
+
+    if not export_script.exists():
+        instructions = f"""ESP-IDF not found at {idf_path}
+
+Run 'install' API first to install ESP-IDF:
+  {sys.argv[0]} --api install --args "board description"
+"""
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': instructions,
+            'stderr': '',
+        }
+
+    instructions = f"""ESP-IDF Environment Setup
+
+To use ESP-IDF tools (idf.py, esptool.py, etc.), source the environment:
+
+  source {export_script}
+
+Or add to your shell startup (~/.bashrc or ~/.zshrc):
+  alias esp-env='source {export_script}'
+
+Then run:
+  esp-env
+
+This sets up PATH and other variables needed for:
+  - idf.py build
+  - idf.py flash
+  - idf.py monitor
+  - esptool.py
+  - xtensa/riscv toolchains
+"""
+
+    return {
+        'success': True,
+        'exit_code': 0,
+        'stdout': instructions,
+        'stderr': '',
+    }
+
+
 def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
     """
     MCP execution entry point for ESP32 command.
@@ -293,6 +360,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
             'factory_reset': api_factory_reset,
             'monitor': lambda args: api_monitor(args, timeout),
             'idf': api_idf,
+            'env': api_env,
         }
 
         handler = api_handlers.get(api_name)
@@ -349,6 +417,9 @@ def create_argument_parser():
 
   # Run idf.py command
   %(prog)s --api idf --args "menuconfig"
+
+  # Show environment setup instructions
+  %(prog)s --api env
         """,
     )
 
