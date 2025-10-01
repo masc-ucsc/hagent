@@ -288,9 +288,9 @@ module broken_module(
 
         # Check that error message is informative
         combined_output = out + err
-        assert 'syntax error' in combined_output.lower() or 'error' in combined_output.lower(), (
-            f'Error output should contain error information: {combined_output}'
-        )
+        assert (
+            'syntax error' in combined_output.lower() or 'error' in combined_output.lower()
+        ), f'Error output should contain error information: {combined_output}'
 
     def test_multiple_file_synthesis(self, runner_filesystem, verilog_files):
         """Test synthesis with multiple Verilog files."""
