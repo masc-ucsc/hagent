@@ -136,7 +136,7 @@ class CandidateSelector:
 
         # Print summary
         summary = self.ledger.get_summary()
-        print(f"\n📊 Ledger summary: {summary['tried']}/{summary['total']} tried, {summary['success']} successful")
+        print(f'\n📊 Ledger summary: {summary["tried"]}/{summary["total"]} tried, {summary["success"]} successful')
 
     def get_ledger_summary(self) -> dict:
         """

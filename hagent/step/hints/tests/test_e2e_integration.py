@@ -204,7 +204,7 @@ class TestEndToEndIntegration:
             selected = selector.select(candidates, 'test_commit_multi', iteration=i)
 
             if selected is None:
-                print(f'✅ Exhausted all candidates after {i-1} iterations')
+                print(f'✅ Exhausted all candidates after {i - 1} iterations')
                 break
 
             print(f'Selected: {selected.span.name} (score={selected.fused_score:.2f})')
