@@ -63,7 +63,7 @@ def test_openai_o3():
         response_list = lw.inference(test_data, prompt_index='prompt_initial', n=1)
 
         print(f'📊 Response received: {type(response_list)}')
-        print(f"📊 Response length: {len(response_list) if response_list else 'None'}")
+        print(f'📊 Response length: {len(response_list) if response_list else "None"}')
 
         if lw.last_error:
             print(f'❌ LLM error: {lw.last_error}')
@@ -83,4 +83,4 @@ def test_openai_o3():
 
 if __name__ == '__main__':
     success = test_openai_o3()
-    print(f"\n🎯 Test result: {'PASS' if success else 'FAIL'}")
+    print(f'\n🎯 Test result: {"PASS" if success else "FAIL"}')

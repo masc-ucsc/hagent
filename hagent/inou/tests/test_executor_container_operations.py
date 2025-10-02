@@ -221,7 +221,7 @@ class TestExecutorContainerOperations:
         rc, out, err = executor.run_cmd('cat nonexistent.txt')
         assert rc != 0, 'Should fail for nonexistent file'
 
-    @pytest.mark.skip(reason='docker root issues -- disable until new docker is fixed')
+    # @pytest.mark.skip(reason='docker root issues -- disable until new docker is fixed')
     def test_executable_installation(self, executor_setup, temp_files):
         """Test installing and running executable scripts."""
         executor, _ = executor_setup

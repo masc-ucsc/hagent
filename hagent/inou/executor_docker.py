@@ -119,8 +119,7 @@ class DockerExecutor:
 
         # Set environment variables in the current process
         # (they'll be inherited by the Docker execution)
-        hagent_env = self._setup_hagent_environment()
-        combined_env = hagent_env.copy()
+        combined_env = {}
         if env:
             combined_env.update(env)  # Additional env vars override defaults
 

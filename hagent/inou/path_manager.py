@@ -209,9 +209,6 @@ class PathManager:
                     return str(Path(path).resolve())
 
         # If we get here, no valid paths were found
-        repo_dir = os.environ.get('HAGENT_REPO_DIR')
-        if repo_dir:
-            raise FileNotFoundError(f'No hagent.yaml found in HAGENT_REPO_DIR set to {repo_dir} paths')
         raise FileNotFoundError('No hagent.yaml found, try to set HAGENT_REPO_DIR')
 
     @property

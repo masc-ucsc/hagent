@@ -52,7 +52,7 @@ def test_llm_basic():
         response_list = template_config.inference(test_data, prompt_index='prompt_initial', n=1, llm_override={'llm': llm_config})
 
         print(f'📊 Response received: {type(response_list)}')
-        print(f"📊 Response length: {len(response_list) if response_list else 'None'}")
+        print(f'📊 Response length: {len(response_list) if response_list else "None"}')
 
         if lw.last_error:
             print(f'❌ LLM error: {lw.last_error}')
@@ -72,4 +72,4 @@ def test_llm_basic():
 
 if __name__ == '__main__':
     success = test_llm_basic()
-    print(f"\n🎯 Test result: {'PASS' if success else 'FAIL'}")
+    print(f'\n🎯 Test result: {"PASS" if success else "FAIL"}')

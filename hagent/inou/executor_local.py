@@ -147,8 +147,8 @@ class LocalExecutor:
 
             # Prepare environment with HAGENT variables
             full_env = os.environ.copy()
-            hagent_env = self._setup_hagent_environment()
-            full_env.update(hagent_env)
+            # hagent_env = self._setup_hagent_environment()
+            # full_env.update(hagent_env)
             if env:
                 full_env.update(env)  # Additional env vars override defaults
 

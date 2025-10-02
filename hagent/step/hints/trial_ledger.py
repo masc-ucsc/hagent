@@ -230,4 +230,4 @@ class TrialLedger:
     def __repr__(self) -> str:
         """String representation of ledger."""
         summary = self.get_summary()
-        return f"TrialLedger(total={summary['total']}, tried={summary['tried']}, success={summary['success']})"
+        return f'TrialLedger(total={summary["total"]}, tried={summary["tried"]}, success={summary["success"]})'

@@ -166,7 +166,7 @@ class TrialRecord:
     @property
     def module_key(self) -> str:
         """Unique key for this module: file::name"""
-        return f"{self.module_id['file']}::{self.module_id['name']}"
+        return f'{self.module_id["file"]}::{self.module_id["name"]}'
 
 
 @dataclass
