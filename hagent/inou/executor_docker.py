@@ -55,6 +55,7 @@ class DockerExecutor:
             'HAGENT_REPO_DIR': '/code/workspace/repo',
             'HAGENT_BUILD_DIR': '/code/workspace/build',
             'HAGENT_CACHE_DIR': '/code/workspace/cache',
+            'HAGENT_TECH_DIR': '/code/workspace/tech',
         }
         return env_vars
 
@@ -168,6 +169,12 @@ class DockerExecutor:
                 if host_path_obj == self.path_manager.cache_dir or self.path_manager.cache_dir in host_path_obj.parents:
                     relative = host_path_obj.relative_to(self.path_manager.cache_dir)
                     return str(Path('/code/workspace/cache') / relative)
+
+                # Try to translate tech_dir path
+                if self.path_manager.tech_dir:
+                    if host_path_obj == self.path_manager.tech_dir or self.path_manager.tech_dir in host_path_obj.parents:
+                        relative = host_path_obj.relative_to(self.path_manager.tech_dir)
+                        return str(Path('/code/workspace/tech') / relative)
             except (ValueError, AttributeError):
                 # If path translation fails, use the original path
                 pass

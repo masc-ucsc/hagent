@@ -92,7 +92,13 @@ def _validate_docker_workspace(container: 'docker.models.containers.Container') 
         return False
 
     # Check that required workspace directories are available
-    required_dirs = ['/code/workspace', '/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache']
+    required_dirs = [
+        '/code/workspace',
+        '/code/workspace/repo',
+        '/code/workspace/build',
+        '/code/workspace/cache',
+        '/code/workspace/tech',
+    ]
 
     for dir_path in required_dirs:
         try:
@@ -556,6 +562,7 @@ class ContainerManager:
             ('/code/workspace/cache', 'cache_dir', True),
             ('/code/workspace/repo', 'repo_dir', False),
             ('/code/workspace/build', 'build_dir', False),
+            ('/code/workspace/tech', 'tech_dir', False),
         ]
 
         for target, attr_name, required in mounts_config:
@@ -594,7 +601,7 @@ class ContainerManager:
         """
         try:
             # List of mounted directories that need permission fixes
-            mount_points = ['/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache']
+            mount_points = ['/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache', '/code/workspace/tech']
 
             for mount_point in mount_points:
                 # Check if the mount point exists
