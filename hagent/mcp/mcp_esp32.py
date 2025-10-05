@@ -270,11 +270,12 @@ def api_env(args: Optional[str] = None) -> Dict[str, Any]:
     Returns:
         Dictionary with environment setup instructions
     """
-    import os
-    from pathlib import Path
+    from hagent.inou.path_manager import PathManager
 
-    cache_dir = os.environ.get('HAGENT_CACHE_DIR')
-    if not cache_dir:
+    try:
+        path_manager = PathManager()
+        cache_dir = path_manager.cache_dir
+    except SystemExit:
         return {
             'success': False,
             'exit_code': 1,
@@ -282,7 +283,7 @@ def api_env(args: Optional[str] = None) -> Dict[str, Any]:
             'stderr': 'HAGENT_CACHE_DIR not set. Please set it to continue.',
         }
 
-    idf_path = Path(cache_dir) / 'esp-idf'
+    idf_path = cache_dir / 'esp-idf'
     export_script = idf_path / 'export.sh'
 
     if not export_script.exists():

@@ -1,5 +1,26 @@
 -------
 
+When I run pytest with --durations option, I see that these are slow tests:
+
+70.00s call    hagent/step/replicate_code/tests/test_replicate_code.py::test_replicate_code
+21.77s call    hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_multiple_checks
+8.27s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_file_management
+8.26s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_and_gate_equivalence
+8.12s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_equivalent_designs
+8.05s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_syntax_error_handling
+8.03s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_non_equivalent_designs
+7.87s call     hagent/tool/tests/test_equiv_check_docker.py::test_docker_integration_standalone
+4.45s call     hagent/inou/tests/test_executor_yosys_synthesis.py::TestExecutorYosysSynthesis::test_simple_verilog_synthesis
+4.35s call     hagent/inou/tests/test_executor_yosys_synthesis.py::TestExecutorYosysSynthesis::test_multiple_file_synthesis
+4.06s call     hagent/step/trivial/tests/test_cli_trivial.py::TestTrivialCLI::test_docker_execution_with_absolute_paths
+4.03s call     hagent/step/trivial/tests/test_cli_trivial.py::TestTrivialCLI::test_docker_execution_no_env_vars
+3.86s call     hagent/step/trivial/tests/test_cli_trivial.py::TestTrivialCLI::test_docker_execution_with_repo_mount
+3.10s call     hagent/inou/tests/test_executor_yosys_synthesis.py::TestExecutorYosysSynthesis::test_yosys_script_execution
+
+Can we provide test_replicate_code and test_equiv_checker_docker to see which function is using most of the time? We should try to speedup that task.
+
+-----
+
 mada4:
 
  docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2025.09r
