@@ -1,5 +1,21 @@
 -------
 
+mada4:
+
+ docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2025.09r
+
+ fix hagent.yaml so that it can run synth.rb
+
+xiangshan:
+
+ ../../hagent/scripts/synth.py --exclude SimTop.sv --liberty ../tech/sky130_fd_sc_hd__ff_100C_1v95.lib --ignore-unknown-modules -DSYNTHESIS --top XSCore -I ./build_opt/generated-src/ -F ./build_opt/rtl/filelist.f
+
+pipeline:
+
+ ../../hagent/scripts/synth.py --liberty ../tech/sky130_fd_sc_hd__ff_100C_1v95.lib --top PipelinedDualIssueCPU -F ./build_pipelined_d/filelist.f  --sta
+
+-------
+
  Issue with compile singlecycle cpu (does not show in build directory in tmp/potato/build/*)
 
 -------

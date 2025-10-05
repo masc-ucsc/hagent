@@ -31,6 +31,7 @@ class PathManager:
         self._repo_dir: Optional[Path] = None
         self._build_dir: Optional[Path] = None
         self._cache_dir: Optional[Path] = None
+        self._tech_dir: Optional[Path] = None
         self._execution_mode: Optional[str] = None
 
         if validate_env:
@@ -84,6 +85,10 @@ class PathManager:
         else:
             self._cache_dir = Path(cache_dir).resolve()
 
+        tech_dir = os.environ.get('HAGENT_TECH_DIR')
+        if tech_dir:
+            self._tech_dir = Path(tech_dir).resolve()
+
         if missing_vars:
             self._fail_fast(
                 f'Local execution mode requires these environment variables: {", ".join(missing_vars)}\n'
@@ -118,6 +123,12 @@ class PathManager:
         else:
             # Use default container path
             self._cache_dir = Path('/code/workspace/cache')
+
+        if os.environ.get('HAGENT_TECH_DIR'):
+            self._tech_dir = Path(os.environ['HAGENT_TECH_DIR']).resolve()
+        else:
+            # Use default container path
+            self._tech_dir = Path('/code/workspace/tech')
 
     def _create_cache_structure(self) -> None:
         """Create the HAGENT_CACHE_DIR directory structure."""
@@ -231,6 +242,11 @@ class PathManager:
         if not self._cache_dir:
             self._fail_fast('Cache directory not available. Ensure HAGENT_CACHE_DIR is set.')
         return self._cache_dir
+
+    @property
+    def tech_dir(self) -> Optional[Path]:
+        """Get the tech directory path (optional)."""
+        return self._tech_dir
 
     @property
     def execution_mode(self) -> str:
