@@ -16,14 +16,11 @@ from .path_manager import PathManager
 class LocalExecutor:
     """Execution strategy that runs commands directly on the host system."""
 
-    def __init__(self, path_manager: Optional[PathManager] = None):
+    def __init__(self):
         """
         Initialize LocalExecutor.
-
-        Args:
-            path_manager: PathManager instance for path resolution
         """
-        self.path_manager = path_manager or PathManager()
+        self.path_manager = PathManager()
         self._workdir = str(self.path_manager.repo_dir)
         self.error_message = ''
 

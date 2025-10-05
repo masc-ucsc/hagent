@@ -63,7 +63,7 @@ def is_docker_mode() -> bool:
     Returns:
         True if HAGENT_EXECUTION_MODE=docker, False otherwise
     """
-    return os.environ.get('HAGENT_EXECUTION_MODE', 'native') == 'docker'
+    return PathManager().is_docker_mode()
 
 
 def _default_ready_predicate(container: 'docker.models.containers.Container') -> bool:
@@ -263,18 +263,17 @@ class ContainerManager:
     Automatically sets HAGENT_* environment variables inside container.
     """
 
-    def __init__(self, image: str, path_manager: Optional[PathManager] = None):
+    def __init__(self, image: str):
         """
         Initialize ContainerManager.
 
         Args:
             image: Docker image name to use
-            path_manager: PathManager instance for path resolution
         """
         global _cleanup_registered, _container_manager_registry
 
         self.image = image
-        self.path_manager = path_manager or PathManager()
+        self.path_manager = PathManager()
         self.client: Optional[docker.DockerClient] = None
         self.container: Optional[docker.models.containers.Container] = None
         self._reference_container: Optional[docker.models.containers.Container] = None
