@@ -22,7 +22,7 @@ def prepare_checker(monkeypatch):
 
     # Set up minimal environment variables for local mode (if not already set)
     # This allows PathManager to initialize without errors
-    if 'HAGENT_EXECUTION_MODE' not in os.environ:
+    if 'HAGENT_EXECUTION_MODE' not in os.environ or os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
         monkeypatch.setenv('HAGENT_EXECUTION_MODE', 'local')
     if 'HAGENT_REPO_DIR' not in os.environ:
         repo_dir = (test_dir / 'repo').resolve()
