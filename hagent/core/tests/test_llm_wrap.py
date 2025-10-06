@@ -23,15 +23,23 @@ def test_llm_wrap_caching():
 
 
 def test_llm_wrap_n_diff():
+    import litellm
+
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
     lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
+
+    # disable cache
+    cache = litellm.cache
+    litellm.cache = None
 
     res = lw._inference({}, 'use_prompt_random', n=3)
     assert len(res) == 3
     print(res)
     assert res[0] != res[1]
     assert res[0] != res[2]
+
+    litellm.cache = cache
 
 
 def test_bad_config_file_nonexistent():
