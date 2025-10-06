@@ -83,6 +83,11 @@ def test_missing_env_var(monkeypatch):
         'OPENAI_API_KEY',
         'ANTHROPIC_API_KEY',
         'FIREWORKS_AI_API_KEY',
+        'OPENROUTER_API_KEY',
+        'REPLICATE_API_KEY',
+        'COHERE_API_KEY',
+        'TOGETHER_AI_API_KEY',
+        'OLLAMA_API_BASE',
     ]
 
     # Remove all LLM provider environment variables
