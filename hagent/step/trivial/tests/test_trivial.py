@@ -4,9 +4,11 @@ import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+import pytest
 from hagent.step.trivial.trivial import Trivial
 
 
+@pytest.mark.skipif(os.getenv('HAGENT_EXECUTION_MODE') != 'local', reason='Only runs in local mode')
 def test_trivial():
     test_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -51,7 +53,9 @@ def test_trivial():
             # Check that all expected fields are present and match
             for key, value in expected_output.items():
                 assert key in result_data, f'Missing expected key: {key}'
-                assert result_data[key] == value, f'Mismatch for key {key}: expected {value}, got {result_data[key]}'
+                assert result_data[key] == value, (
+                    f'Mismatch for key {key}: expected {value}, got {result_data[key]}'
+                )
 
             # Check that required runtime fields are present
             runtime_fields = [
