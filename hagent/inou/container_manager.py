@@ -715,7 +715,12 @@ class ContainerManager:
             return False
 
     def run_cmd(
-        self, command: str, cwd: Optional[str] = '.', quiet: bool = False, config_sources: Optional[List[str]] = None
+        self,
+        command: str,
+        cwd: Optional[str] = '.',
+        quiet: bool = False,
+        config_sources: Optional[List[str]] = None,
+        skip_profile: bool = False,
     ) -> Tuple[int, str, str]:
         """
         Execute command inside the container.
@@ -749,42 +754,43 @@ class ContainerManager:
                 return -1, '', error_msg
 
         try:
-            # Build the command with robust environment sourcing
-            # Always attempt to source common profile files to make tool shims (e.g., sbt via coursier/sdkman) available.
-            default_sources = [
-                '/etc/profile',
-                '~/.bash_profile',
-                '~/.profile',
-                '~/.bashrc',
-                '~/.sdkman/bin/sdkman-init.sh',
-            ]
+            # Build the command with optional environment sourcing
+            if skip_profile:
+                # Skip profile sourcing for performance-critical simple commands
+                final_command = command
+            else:
+                # Always attempt to source common profile files to make tool shims (e.g., sbt via coursier/sdkman) available.
+                default_sources = [
+                    '/etc/profile',
+                    '~/.bash_profile',
+                    '~/.profile',
+                    '~/.bashrc',
+                    '~/.sdkman/bin/sdkman-init.sh',
+                ]
 
-            # Merge user-provided sources (if any), preserving order and uniqueness
-            merged_sources: List[str] = []
-            for src in (config_sources or []) + default_sources:
-                if src not in merged_sources:
-                    merged_sources.append(src)
+                # Merge user-provided sources (if any), preserving order and uniqueness
+                merged_sources: List[str] = []
+                for src in (config_sources or []) + default_sources:
+                    if src not in merged_sources:
+                        merged_sources.append(src)
 
-            source_cmds = [f'source {s} 2>/dev/null || true' for s in merged_sources]
-            prologue = '; '.join(source_cmds)
+                source_cmds = [f'source {s} 2>/dev/null || true' for s in merged_sources]
+                prologue = '; '.join(source_cmds)
 
-            final_command = f'{prologue}; {command}'
+                final_command = f'{prologue}; {command}'
             if self._has_bash:
                 shell_command = ['/bin/bash', '--login', '-c', final_command]
             else:
                 shell_command = ['/bin/sh', '-c', final_command]
 
-            # Set execution parameters
-            exec_kwargs = {'workdir': workdir, 'demux': True}
-
             if quiet:
-                # Capture all output
-                result = self.container.exec_run(shell_command, **exec_kwargs)
+                # Capture all output - don't use demux for better performance
+                result = self.container.exec_run(shell_command, workdir=workdir, demux=False)
                 exit_code = result.exit_code
-                stdout, stderr = result.output
-                stdout_str = stdout.decode('utf-8', 'replace') if stdout else ''
-                stderr_str = stderr.decode('utf-8', 'replace') if stderr else ''
-                return exit_code, stdout_str, stderr_str
+                output = result.output
+                output_str = output.decode('utf-8', 'replace') if output else ''
+                # Return combined output as both stdout and stderr for compatibility
+                return exit_code, output_str, ''
             else:
                 # Stream output in real-time
                 exec_create_kwargs = {
