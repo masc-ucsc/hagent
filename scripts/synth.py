@@ -207,6 +207,7 @@ def run_synthesis(args, slang_args, top_name):
     yosys_template = f"""read_slang {slang_cmd}
 hierarchy -top {top_name}
 flatten {top_name}
+chformal -remove
 opt
 synth -top {top_name}
 dfflibmap -liberty {args.liberty}
