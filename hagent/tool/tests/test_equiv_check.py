@@ -4,9 +4,7 @@ import subprocess
 import uuid
 import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 from hagent.tool.equiv_check import Equiv_check
-from hagent.inou.path_manager import PathManager
 
 
 @pytest.fixture(scope='function', autouse=False)
