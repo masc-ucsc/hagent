@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from hagent.inou.runner import Runner
+from hagent.inou.path_manager import PathManager
 
 
 class TestRunner:
@@ -21,6 +22,9 @@ class TestRunner:
 
     def setup_method(self):
         """Setup test environment before each test."""
+        # Reset PathManager singleton before each test
+        PathManager.reset()
+
         # Create unique directories for testing
         test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
         self.test_dir = Path('output') / 'test_runner' / test_id
@@ -47,6 +51,9 @@ class TestRunner:
             if var in os.environ:
                 del os.environ[var]
 
+        # Reset PathManager singleton after each test
+        PathManager.reset()
+
         # Leave directories for inspection - they will be in output/
 
     def test_basic_local_execution(self):
@@ -72,6 +79,7 @@ class TestRunner:
         """Test Case 2: Docker mode with image specification."""
         # Switch to docker mode
         os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+        PathManager.reset()  # Reset singleton to pick up new environment
 
         runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
 
@@ -85,6 +93,7 @@ class TestRunner:
     def test_docker_mode_without_image_fails(self):
         """Test Case 3: Docker mode should fail without image specification."""
         os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+        PathManager.reset()  # Reset singleton to pick up new environment
 
         runner = Runner()  # No docker_image provided
 
@@ -290,6 +299,9 @@ class TestRunnerAdvancedUseCases:
 
     def setup_method(self):
         """Setup test environment."""
+        # Reset PathManager singleton before each test
+        PathManager.reset()
+
         test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
         self.test_dir = Path('output') / 'test_runner_advanced' / test_id
         self.test_dir.mkdir(parents=True, exist_ok=True)
@@ -310,6 +322,9 @@ class TestRunnerAdvancedUseCases:
         for var in ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
             if var in os.environ:
                 del os.environ[var]
+
+        # Reset PathManager singleton after each test
+        PathManager.reset()
 
         # Leave directories for inspection - they will be in output/
 

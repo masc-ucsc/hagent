@@ -68,13 +68,12 @@ class ExecutorFactory:
     """Factory for creating appropriate executor instances."""
 
     @staticmethod
-    def create_executor(container_manager=None, path_manager: Optional[PathManager] = None) -> ExecutionStrategy:
+    def create_executor(container_manager=None) -> ExecutionStrategy:
         """
         Create an appropriate executor based on HAGENT_EXECUTION_MODE.
 
         Args:
             container_manager: Optional ContainerManager instance for Docker execution
-            path_manager: Optional PathManager instance
 
         Returns:
             ExecutionStrategy instance (LocalExecutor or DockerExecutor)
@@ -82,34 +81,28 @@ class ExecutorFactory:
         Raises:
             ValueError: If execution mode is invalid
         """
-        if not path_manager:
-            path_manager = PathManager()
-
-        execution_mode = path_manager.execution_mode
-
-        if execution_mode == 'local':
-            return LocalExecutor(path_manager)
-        elif execution_mode == 'docker':
-            return DockerExecutor(container_manager, path_manager)
+        if PathManager().is_local_mode():
+            return LocalExecutor()
+        elif PathManager().is_docker_mode():
+            return DockerExecutor(container_manager)
         else:
-            raise ValueError(f"Invalid execution mode: '{execution_mode}'. Must be 'local' or 'docker'.")
+            raise ValueError(f"Invalid execution mode: '{PathManager().execution_mode}'. Must be 'local' or 'docker'.")
 
 
 # Convenience functions for backward compatibility and ease of use
 
 
-def create_executor(container_manager=None, path_manager: Optional[PathManager] = None) -> ExecutionStrategy:
+def create_executor(container_manager=None) -> ExecutionStrategy:
     """
     Convenience function to create an appropriate executor.
 
     Args:
         container_manager: Optional ContainerManager instance for Docker execution
-        path_manager: Optional PathManager instance
 
     Returns:
         ExecutionStrategy instance
     """
-    return ExecutorFactory.create_executor(container_manager, path_manager)
+    return ExecutorFactory.create_executor(container_manager)
 
 
 def run_cmd(
@@ -118,7 +111,6 @@ def run_cmd(
     env: Optional[Dict[str, str]] = None,
     quiet: bool = False,
     container_manager=None,
-    path_manager: Optional[PathManager] = None,
 ) -> Tuple[int, str, str]:
     """
     Convenience function to run a command using the appropriate executor.
@@ -129,19 +121,16 @@ def run_cmd(
         env: Additional environment variables
         quiet: Whether to run in quiet mode
         container_manager: Optional ContainerManager instance for Docker execution
-        path_manager: Optional PathManager instance
 
     Returns:
         Tuple of (exit_code, stdout, stderr)
     """
-    executor = create_executor(container_manager, path_manager)
+    executor = create_executor(container_manager)
     env = env or {}
 
     # Resolve working directory
     if cwd == '.':
-        if not path_manager:
-            path_manager = PathManager()
-        cwd = str(path_manager.repo_dir)
+        cwd = str(PathManager().repo_dir)
 
     return executor.run_cmd(command, cwd, env, quiet)
 
@@ -153,6 +142,5 @@ def run_command(
     env: Optional[Dict[str, str]] = None,
     quiet: bool = False,
     container_manager=None,
-    path_manager: Optional[PathManager] = None,
 ) -> Tuple[int, str, str]:
-    return run_cmd(command, cwd, env, quiet, container_manager, path_manager)
+    return run_cmd(command, cwd, env, quiet, container_manager)

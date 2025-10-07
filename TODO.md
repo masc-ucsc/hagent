@@ -1,16 +1,65 @@
 -------
 
-No python code (except tests) should set HAGENT_... as those are environment variables.
+`setup_xxx_mcp.sh`-related:
+1. Make existing `setup_simplechisel_mcp.sh` to copy from Docker containers instead of using `create_template` as the first option.
+2. Create a general `setup_xxx_mcp.sh` script so that we don't need one script per core.
 
-Remove and fix accordingly
+-------
+
+When I run pytest with --durations option, I see that these are slow tests:
+
+23.77s call     hagent/step/replicate_code/tests/test_replicate_code.py::test_replicate_code
+8.56s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_multiple_checks
+5.42s call     hagent/tool/tests/test_cli_equiv_check.py::test_cli_equivalent_designs
+5.29s call     hagent/tool/tests/test_cli_equiv_check.py::test_cli_non_equivalent_designs
+4.84s call     hagent/step/trivial/tests/test_cli_trivial.py::TestTrivialCLI::test_docker_execution_no_env_vars
+4.55s call     hagent/step/trivial/tests/test_cli_trivial.py::TestTrivialCLI::test_docker_execution_with_repo_mount
+4.49s call     hagent/tool/tests/test_cli_equiv_check.py::test_cli_specific_top_module
+4.23s call     hagent/step/trivial/tests/test_cli_trivial.py::TestTrivialCLI::test_docker_execution_with_absolute_paths
+4.13s call     hagent/inou/tests/test_executor_yosys_synthesis.py::TestExecutorYosysSynthesis::test_simple_verilog_synthesis
+3.96s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_file_management
+3.84s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_syntax_error_handling
+3.76s call     hagent/tool/tests/test_equiv_check_docker.py::test_docker_integration_standalone
+3.75s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_non_equivalent_designs
+3.71s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_equivalent_designs
+3.58s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_and_gate_equivalence
+
+70.00s call    hagent/step/replicate_code/tests/test_replicate_code.py::test_replicate_code
+21.77s call    hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_multiple_checks
+8.27s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_file_management
+8.26s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_and_gate_equivalence
+8.12s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_equivalent_designs
+8.05s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_syntax_error_handling
+8.03s call     hagent/tool/tests/test_equiv_check_docker.py::TestEquivCheckDocker::test_docker_non_equivalent_designs
+7.87s call     hagent/tool/tests/test_equiv_check_docker.py::test_docker_integration_standalone
+4.45s call     hagent/inou/tests/test_executor_yosys_synthesis.py::TestExecutorYosysSynthesis::test_simple_verilog_synthesis
+4.35s call     hagent/inou/tests/test_executor_yosys_synthesis.py::TestExecutorYosysSynthesis::test_multiple_file_synthesis
+4.06s call     hagent/step/trivial/tests/test_cli_trivial.py::TestTrivialCLI::test_docker_execution_with_absolute_paths
+4.03s call     hagent/step/trivial/tests/test_cli_trivial.py::TestTrivialCLI::test_docker_execution_no_env_vars
+3.86s call     hagent/step/trivial/tests/test_cli_trivial.py::TestTrivialCLI::test_docker_execution_with_repo_mount
+3.10s call     hagent/inou/tests/test_executor_yosys_synthesis.py::TestExecutorYosysSynthesis::test_yosys_script_execution
+
+Can we provide test_replicate_code and test_equiv_checker_docker to see which function is using most of the time? We should try to speedup that task.
+
+-----
+
+mada4:
+
+ docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2025.09r
+
+ fix hagent.yaml so that it can run synth.rb
+
+xiangshan:
+
+ ../../hagent/scripts/synth.py --exclude SimTop.sv --liberty ../tech/sky130_fd_sc_hd__ff_100C_1v95.lib --ignore-unknown-modules -DSYNTHESIS --top XSCore -I ./build_opt/generated-src/ -F ./build_opt/rtl/filelist.f
+
+pipeline:
+
+ ../../hagent/scripts/synth.py --liberty ../tech/sky130_fd_sc_hd__ff_100C_1v95.lib --top PipelinedDualIssueCPU -F ./build_pipelined_d/filelist.f  --sta
 
 -------
 
  Issue with compile singlecycle cpu (does not show in build directory in tmp/potato/build/*)
-
--------
-
- Add a check to look for too long functions. Then rank them error based on function lenght. If more than 1-2 scrren (60LoC), issue waring to refactor.
 
 -------
 
@@ -31,27 +80,6 @@ The docker run output has /code/workspace/... directories, but the message passe
 
 -------
 
-hagent/inou has several objects, but Python classes outside hagent should only use Runner or Builder.
-
-
-Builder is mostly a wrapper around Runner for the case that we have a hagent.yaml configuration.
-
-
-container_manager, FileTracker and PathManager should not be used like equiv_check.py does, but use Runner or Builder (running in the case of equiv_check)
-
-
--------
-
-container_manager has issues with HAGENT_*_DIR setup. It should never be set to /code/workspace/...
-
-The code sets it, and then in several places does not thing if set there. Overall, it should not set the environment variables in container_manager to /cpde/workspace.
-
-If inside docker running hagent, the container_manager should not be called after all.
-
-Not sure that we need the "automount" option in container_manager.setup
-
--------
-
 If HAGENT_LLM_MODEL is set, it uses this LLM for all the queries.
 
 Usuful when users do not have  the keys used for regression testing.
@@ -65,38 +93,9 @@ What are the parameters?
 
 -------
 
-The current @hagent/mcp/hagent-mcp-server.py is a fastmcp server that registers multiple mcp tools like @hagent/mcp/mcp_build.py
-
-The current mcp_build.py schema is not respected and hagent-mcp-server rewrites it in a different way. For example, it provides a 
-very short title instead of a longer description.
-
-When I run:
-```
-export UV_PROJECT="/Users/renau/projs/hagent"
-export HAGENT_ROOT="/Users/renau/projs/hagent"
-export HAGENT_DOCKER="mascucsc/hagent-simplechisel:2025.09r"
-export HAGENT_REPO_DIR="/Users/renau/tmp/potato/repo"
-export HAGENT_BUILD_DIR="/Users/renau/tmp/potato/build"
-export HAGENT_CACHE_DIR="/Users/renau/tmp/potato/cache"
-export HAGENT_OUTPUT_DIR=/Users/renau/tmp/potato/log
-export HAGENT_EXECUTION_MODE="docker"
-
-(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}'; echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'; echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}') | uv run python ./hagent/mcp/hagent-mcp-server.py | jq '.result.tools[] | select(.name == "hagent.build")'
-```
-
-----
-
 The compile/lint should return a bit more structured output
 
 Maybe filter just the error messages, otherwise list files so that gemini can handle it faster, not to start to look for the file.
-
--------
-
-Both gemini and claude code can use the mcp add name script, so we should remove the 
-
-hagent_mcp_conf.json
-
-and associated code for it
 
 -------
 
@@ -172,7 +171,6 @@ cd /code/hagent &&
   UV_PROJECT_ENVIRONMENT=/code/workspace/cache/venv VIRTUAL_ENV=/code/workspace/cache/venv uv run /code/hagent/scripts/hagent-build.py --config $HAGENT_REPO_DIR/hagent.yaml
 
 
-
 -------
 This document has a dump of "potential" TODOs, many are likely to be bad ideas.
 
@@ -190,62 +188,3 @@ print(template.substitute(context1))  # Hello, Bob!
 print(template.substitute(context2))  # Hello, Charlie!
 ```
 
-# Docker
-
-
-
-Avoid warning:
-
- docker run --platform linux/amd64 -it --rm mascucsc/hagent-builder:latest
-
-Overlays:
-
-sudo mkdir -p /mnt/merged
-sudo chown user /mnt/merged
-sudo mount -t overlay overlay -o lowerdir=/mnt/lower,upperdir=/mnt/overlay/upper,workdir=/mnt/overlay/work /mnt/merged
-
-# Small TODOs
-
- check_equivalence should have a "top" argument (multiple modules)
-   Fix v2chisel to pass as argument
-
- Fix all the llm_wrap calls/configs
- Create class to extract code from markdown from text and return in list
-
-# Create easy install for non-hagent developers
-
- Something like this?
-
-```
- npx https://github.com/masc-ucsc/hagent
-```
-
-# Docker related
-
- Mirror a bit the CVDP structure?
-   /code/prompt.json  # entry prompt
-   /code/rtl
-   /code/verif
-   /code/docs
-   /code/rundir  # logs and results from agentic run
-   /app          # installed tools custom run
-
-# New Passes
-
-## Guardrails
-
- Many prompts can have questions/answers that go off-topic. A simple guardrail for user prompt makes sense.
-
-## CompileBugFix
-
- + Use a DB with one-shot sample fixes.
- + Insert markers in comments for location (or region if unclear).
- + Provide specification if existing too
- + Iterate over several LLMs and mixes/prompts for cost saving and speed.
-
-## RungimeBugFix
-
- There are several degrees of feedback that can be passed to fix a bug. Providing all is not always the best https://arxiv.org/abs/2412.03905
-
- Feedback:
-  -

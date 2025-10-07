@@ -49,7 +49,11 @@ class Equiv_check:
         Returns True if Yosys is available (locally or via Docker), False otherwise.
         """
         # Check if HAGENT_EXECUTION_MODE is set to docker - if so, skip local yosys and use Docker
-        if os.environ.get('HAGENT_EXECUTION_MODE', '').lower() == 'docker' and yosys_path is None:
+        from hagent.inou.path_manager import PathManager
+
+        is_docker_mode = PathManager().is_docker_mode()
+
+        if is_docker_mode and yosys_path is None:
             return self._setup_docker_fallback()
 
         command = [yosys_path, '-V'] if yosys_path else ['yosys', '-V']

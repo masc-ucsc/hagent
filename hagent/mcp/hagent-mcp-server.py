@@ -470,15 +470,27 @@ def hagent_info() -> Dict[str, str]:
     # Ensure environment is set up
     EnvironmentSetup._setup_environment()
 
-    # Get environment variables
+    from hagent.inou.path_manager import PathManager
+
+    # Get environment variables - use PathManager when available
     env_vars = {
         'HAGENT_ROOT': os.environ.get('HAGENT_ROOT', 'NOT_SET'),
         'HAGENT_DOCKER': os.environ.get('HAGENT_DOCKER', 'NOT_SET'),
-        'HAGENT_REPO_DIR': os.environ.get('HAGENT_REPO_DIR', 'NOT_SET'),
-        'HAGENT_BUILD_DIR': os.environ.get('HAGENT_BUILD_DIR', 'NOT_SET'),
-        'HAGENT_CACHE_DIR': os.environ.get('HAGENT_CACHE_DIR', 'NOT_SET'),
         'working_directory': os.getcwd(),
     }
+
+    # Try to get path info from PathManager
+    try:
+        path_manager = PathManager()
+        env_vars['HAGENT_REPO_DIR'] = str(path_manager.repo_dir)
+        env_vars['HAGENT_BUILD_DIR'] = str(path_manager.build_dir)
+        env_vars['HAGENT_CACHE_DIR'] = str(path_manager.cache_dir)
+        env_vars['HAGENT_TECH_DIR'] = str(path_manager.tech_dir)
+    except SystemExit:
+        # If PathManager not initialized, fall back to env vars
+        env_vars['HAGENT_REPO_DIR'] = os.environ.get('HAGENT_REPO_DIR', 'NOT_SET')
+        env_vars['HAGENT_BUILD_DIR'] = os.environ.get('HAGENT_BUILD_DIR', 'NOT_SET')
+        env_vars['HAGENT_CACHE_DIR'] = os.environ.get('HAGENT_CACHE_DIR', 'NOT_SET')
 
     return env_vars
 

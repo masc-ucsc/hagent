@@ -5,17 +5,37 @@ import uuid
 import datetime
 from pathlib import Path
 from hagent.tool.equiv_check import Equiv_check
+from hagent.inou.path_manager import PathManager
 
 
-@pytest.fixture
-def prepare_checker():
+@pytest.fixture(scope='function', autouse=False)
+def prepare_checker(monkeypatch):
     """
     Fixture to instantiate the checker and ensure a clean workspace before each test.
+
+    Sets up a minimal valid environment so PathManager can initialize properly.
+    Tests can override these settings with monkeypatch if needed.
     """
     # Create unique directory for test
     test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
-    test_dir = Path('output') / 'equiv_check' / test_id
+    test_dir = (Path('output') / 'equiv_check' / test_id).resolve()
     test_dir.mkdir(parents=True, exist_ok=True)
+
+    # Always set up environment variables for local mode to ensure clean state
+    # Use monkeypatch to ensure proper cleanup
+    monkeypatch.setenv('HAGENT_EXECUTION_MODE', 'local')
+    repo_dir = (test_dir / 'repo').resolve()
+    repo_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv('HAGENT_REPO_DIR', str(repo_dir))
+    build_dir = (test_dir / 'build').resolve()
+    build_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv('HAGENT_BUILD_DIR', str(build_dir))
+    cache_dir = (test_dir / 'cache').resolve()
+    cache_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv('HAGENT_CACHE_DIR', str(cache_dir))
+
+    # Reset PathManager singleton to pick up new environment
+    PathManager.reset()
 
     # Change to test directory for the test
     original_cwd = os.getcwd()
@@ -27,6 +47,9 @@ def prepare_checker():
 
     # Change back to original directory
     os.chdir(original_cwd)
+
+    # Reset PathManager singleton after test
+    PathManager.reset()
 
 
 def test_setup_failure(prepare_checker):
@@ -81,8 +104,6 @@ def test_setup_version_parsing_failure(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
     monkeypatch.setattr('hagent.tool.equiv_check.Equiv_check._setup_docker_fallback', mock_docker_fallback)
-    # Ensure we test the local yosys path, not the Docker path
-    monkeypatch.setenv('HAGENT_EXECUTION_MODE', 'local')
 
     checker = prepare_checker
     result = checker.setup()
@@ -110,8 +131,6 @@ def test_setup_version_too_old(prepare_checker, monkeypatch):
 
     monkeypatch.setattr('subprocess.run', mock_run)
     monkeypatch.setattr('hagent.tool.equiv_check.Equiv_check._setup_docker_fallback', mock_docker_fallback)
-    # Ensure we test the local yosys path, not the Docker path
-    monkeypatch.setenv('HAGENT_EXECUTION_MODE', 'local')
 
     checker = prepare_checker
     result = checker.setup()

@@ -7,6 +7,9 @@ and output_manager.py.
 
 Provides centralized management of HAGENT_* environment variables and
 path validation with fail-fast error handling.
+
+This is implemented as a singleton to ensure consistent path management
+across the entire application.
 """
 
 import os
@@ -19,22 +22,45 @@ class PathManager:
     """
     Manages all path-related operations for HAgent including environment
     variable validation, path resolution, and cache directory structure.
+
+    Singleton pattern: Only one instance exists per process.
     """
 
-    def __init__(self, validate_env: bool = True):
-        """
-        Initialize PathManager with optional environment validation.
+    _instance: Optional['PathManager'] = None
+    _initialized: bool = False
 
-        Args:
-            validate_env: Whether to validate environment variables at initialization
+    def __new__(cls):
         """
+        Singleton pattern implementation.
+
+        Returns:
+            The singleton instance of PathManager
+        """
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        """
+        Initialize PathManager singleton.
+
+        Only initializes once - subsequent calls are no-ops.
+        Always validates and sets up environment.
+        """
+        # Only initialize once
+        if PathManager._initialized:
+            return
+
+        # Initialize attributes to None first (will be set during validation)
         self._repo_dir: Optional[Path] = None
         self._build_dir: Optional[Path] = None
         self._cache_dir: Optional[Path] = None
+        self._tech_dir: Optional[Path] = None
         self._execution_mode: Optional[str] = None
 
-        if validate_env:
-            self._validate_and_setup_environment()
+        self._validate_and_setup_environment()
+
+        PathManager._initialized = True
 
     def _validate_and_setup_environment(self) -> None:
         """
@@ -84,6 +110,17 @@ class PathManager:
         else:
             self._cache_dir = Path(cache_dir).resolve()
 
+        # Tech dir - use cache_dir/tech as default if not specified
+        tech_dir = os.environ.get('HAGENT_TECH_DIR')
+        if tech_dir:
+            self._tech_dir = Path(tech_dir).resolve()
+        elif cache_dir:
+            # Default to cache_dir/tech if cache_dir is set
+            self._tech_dir = Path(cache_dir).resolve() / 'tech'
+        else:
+            # Will be set to a default after validation completes
+            self._tech_dir = Path('/tmp/tech')
+
         if missing_vars:
             self._fail_fast(
                 f'Local execution mode requires these environment variables: {", ".join(missing_vars)}\n'
@@ -118,6 +155,12 @@ class PathManager:
         else:
             # Use default container path
             self._cache_dir = Path('/code/workspace/cache')
+
+        if os.environ.get('HAGENT_TECH_DIR'):
+            self._tech_dir = Path(os.environ['HAGENT_TECH_DIR']).resolve()
+        else:
+            # Use default container path
+            self._tech_dir = Path('/code/workspace/tech')
 
     def _create_cache_structure(self) -> None:
         """Create the HAGENT_CACHE_DIR directory structure."""
@@ -209,9 +252,6 @@ class PathManager:
                     return str(Path(path).resolve())
 
         # If we get here, no valid paths were found
-        repo_dir = os.environ.get('HAGENT_REPO_DIR')
-        if repo_dir:
-            raise FileNotFoundError(f'No hagent.yaml found in HAGENT_REPO_DIR set to {repo_dir} paths')
         raise FileNotFoundError('No hagent.yaml found, try to set HAGENT_REPO_DIR')
 
     @property
@@ -236,11 +276,24 @@ class PathManager:
         return self._cache_dir
 
     @property
+    def tech_dir(self) -> Path:
+        """Get the tech directory path."""
+        return self._tech_dir
+
+    @property
     def execution_mode(self) -> str:
         """Get the execution mode."""
         if not self._execution_mode:
             self._fail_fast('Execution mode not available. Ensure HAGENT_EXECUTION_MODE is set.')
         return self._execution_mode
+
+    def is_docker_mode(self) -> bool:
+        """Check if running in Docker execution mode."""
+        return self.execution_mode == 'docker'
+
+    def is_local_mode(self) -> bool:
+        """Check if running in local execution mode."""
+        return self.execution_mode == 'local'
 
     def get_cache_dir(self) -> str:
         """
@@ -332,3 +385,24 @@ class PathManager:
     def logs_dir(self) -> Path:
         """Directory for log files."""
         return self.inou_dir / 'logs'
+
+    @classmethod
+    def reset(cls) -> None:
+        """
+        Reset the singleton instance.
+
+        Useful for testing when you need to reinitialize with different environment.
+        """
+        cls._instance = None
+        cls._initialized = False
+
+
+# Global singleton instance getter
+def get_path_manager() -> PathManager:
+    """
+    Get the global PathManager singleton instance.
+
+    Returns:
+        The singleton PathManager instance
+    """
+    return PathManager()

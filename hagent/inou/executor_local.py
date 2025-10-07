@@ -16,14 +16,11 @@ from .path_manager import PathManager
 class LocalExecutor:
     """Execution strategy that runs commands directly on the host system."""
 
-    def __init__(self, path_manager: Optional[PathManager] = None):
+    def __init__(self):
         """
         Initialize LocalExecutor.
-
-        Args:
-            path_manager: PathManager instance for path resolution
         """
-        self.path_manager = path_manager or PathManager()
+        self.path_manager = PathManager()
         self._workdir = str(self.path_manager.repo_dir)
         self.error_message = ''
 
@@ -34,16 +31,6 @@ class LocalExecutor:
     def get_error(self) -> str:
         """Get current error message following Tool pattern."""
         return self.error_message
-
-    def _setup_hagent_environment(self) -> Dict[str, str]:
-        """Setup HAGENT environment variables for local execution."""
-        env_vars = {
-            'HAGENT_EXECUTION_MODE': 'local',
-            'HAGENT_REPO_DIR': str(self.path_manager.repo_dir),
-            'HAGENT_BUILD_DIR': str(getattr(self.path_manager, 'build_dir', '')),
-            'HAGENT_CACHE_DIR': str(self.path_manager.cache_dir),
-        }
-        return env_vars
 
     def setup(self) -> bool:
         """
@@ -147,8 +134,6 @@ class LocalExecutor:
 
             # Prepare environment with HAGENT variables
             full_env = os.environ.copy()
-            hagent_env = self._setup_hagent_environment()
-            full_env.update(hagent_env)
             if env:
                 full_env.update(env)  # Additional env vars override defaults
 
