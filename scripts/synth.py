@@ -149,8 +149,22 @@ def main():
                     print(f'error: no .lib files found in {tech_dir}', file=sys.stderr)
                     sys.exit(1)
         else:
-            print('error: either --liberty or --tech-dir (or HAGENT_TECH_DIR env var) must be specified', file=sys.stderr)
-            sys.exit(1)
+            # Try fallback to /code/workspace/tech
+            fallback_tech_dir = '/code/workspace/tech'
+            if Path(fallback_tech_dir).exists():
+                liberty_file = find_liberty_file(fallback_tech_dir)
+                if liberty_file is None:
+                    lib_files = list(Path(fallback_tech_dir).glob('*.lib'))
+                    if len(lib_files) > 1:
+                        print(
+                            f'error: multiple .lib files found in {fallback_tech_dir}, use --liberty to specify which one',
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)
+
+            if liberty_file is None:
+                print('error: either --liberty or --tech-dir (or HAGENT_TECH_DIR env var) must be specified', file=sys.stderr)
+                sys.exit(1)
 
     # Store the liberty file in args for later use
     args.liberty = liberty_file
