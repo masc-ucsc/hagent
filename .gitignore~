@@ -22,5 +22,4 @@ outputs
 .coverage.*
 .testmondata*
 setup_run
-/cache/
-/repo/
+.cache

@@ -8,8 +8,13 @@ Provides complete ESP32 workflow: board setup, project creation, building, flash
 
 import argparse
 import sys
+import os
+import subprocess
+import shutil
 from typing import Dict, Any, Optional
-
+import difflib
+import platform
+import re
 
 def get_mcp_schema() -> Dict[str, Any]:
     """Return MCP tool schema for ESP32 development command."""
@@ -69,11 +74,61 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     # 5. Run ./install.sh <esp32_model>
     # 6. Copy board config to HAGENT_REPO_DIR/AGENTS.md or CLAUDE.md
 
+    configs_path = os.path.join(os.environ["HAGENT_ROOT"], 'hagent', 'mcp', 'configs')
+    if os.path.isdir(configs_path):
+        board_desc_files = [file[:-3] for file in os.listdir(configs_path)]
+        boards, board_details = [], []
+
+        if board_desc_files:
+            if args:
+                boards = difflib.get_close_matches(args, board_desc_files, 3, 0.3)
+
+            boards = board_desc_files if args == None or len(boards) == 0 else boards
+        # Process the filtered the boards
+        for b in boards:
+            file_name = os.path.join(configs_path, f"{b}.md")
+            with open(file_name, 'r') as f:
+                lines = f.read().split('\n')
+                board_details.append({
+                    "name": lines[0].split(':')[1].strip(),
+                    "model": lines[3].split(':')[1].strip(),
+                    "file_name": file_name
+                })
+        # Prompt user for: board name + models
+        for idx, b in enumerate(board_details):
+            print(f"[{idx}] {b['name']} ({b['model']})")
+
+        c = int(input())
+
+        # Check if ESP-IDF exists in HAGENT_CACHE_DIR/esp-idf/; Install if missing
+        idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
+        stdout = ''
+        try:
+            if not os.path.isdir(idf_path):
+                clone_result = subprocess.run(["git", "clone", "--recursive", "https://github.com/espressif/esp-idf.git"], cwd=os.environ["HAGENT_CACHE_DIR"], check=True, capture_output=True, text=True)
+                stdout = stdout + clone_result.stdout
+            install_script = ".\\install.bat" if platform.system() == "Windows" else "./install.sh"
+            install_result = subprocess.run([install_script, board_details[c]['model']], cwd=idf_path, shell=True, check=True, capture_output=True, text=True)
+            stdout = stdout + install_result.stdout
+        except subprocess.CalledProcessError as e:
+            return {
+                'success': False,
+                'exit_code': 1,
+                'stdout': e.stdout,
+                'stderr': e.stderr,
+                }
+        
+        # Append configuration details markdown to $HAGENT_REPO_DIR/AGENTS.md
+        source_file = board_details[c]["file_name"]
+        dest_file = os.path.join(os.environ["HAGENT_REPO_DIR"], "AGENTS.md")
+
+        shutil.copyfile(source_file, dest_file)
+        
     return {
-        'success': False,
-        'exit_code': 1,
-        'stdout': '',
-        'stderr': 'api_install not implemented yet',
+        'success': True,
+        'exit_code': 0,
+        'stdout': stdout,
+        'stderr': '',
     }
 
 
@@ -120,11 +175,57 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     # 6. Run: idf.py set-target <esp32_model>
     # 7. Create esp_env.sh helper script
 
+    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
+    md_path = os.path.join(os.environ["HAGENT_REPO_DIR"], "AGENTS.md")
+    export_script_path = os.path.join(idf_path, "export.bat")
+
+    stdout = ''
+
+    if os.path.isdir(idf_path):
+
+        # with open(md_path, "r") as agent_f:
+        #     content = agent_f.read()
+        #     match = re.search(r"^\s*-\s*ESP32 Model\s*:\s*(.*)$", content, re.MULTILINE | re.IGNORECASE)
+        #     if not match:
+        #         return {
+        #             'success': False,
+        #             'exit_code': 1,
+        #             'stdout': '',
+        #             'stderr': 'Could not find board model in AGENTS.md',
+        #         }
+        #     board_model = match.group(1).strip()
+
+        board_model = 'esp32c3'
+
+        crt_prj_cmd = (
+            f"call {export_script_path} && "
+            f"cd /d {os.environ['HAGENT_REPO_DIR']} && "
+            f"idf.py create-project -p . {args[0]} && "
+            f"idf.py set-target {board_model}"
+        )
+        try:
+            result = subprocess.run( crt_prj_cmd, cwd=os.environ["HAGENT_ROOT"], shell=True, check=True, capture_output=True, text=True)
+            stdout = stdout + result.stdout
+        except subprocess.CalledProcessError as e:
+            return {
+                'success': False,
+                'exit_code': e.returncode,
+                'stdout': e.stdout,
+                'stderr': e.stderr,
+            }
+    else:
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': 'ESP-IDF not installed. Run api_install() before running api_setup()',
+        } 
+
     return {
-        'success': False,
+        'success': True,
         'exit_code': 1,
-        'stdout': '',
-        'stderr': 'api_setup not implemented yet',
+        'stdout': stdout,
+        'stderr': '',
     }
 
 
@@ -145,11 +246,14 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
     # 4. Run: idf.py build
     # 5. Capture and return build output
 
+    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
+    export_script_path = os.path.join(idf_path, "export.bat")
+    result = subprocess.run(f"call {export_script_path} && idf.py build", cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
     return {
-        'success': False,
-        'exit_code': 1,
-        'stdout': '',
-        'stderr': 'api_build not implemented yet',
+        'success': True,
+        'exit_code': result.returncode,
+        'stdout': result.stdout,
+        'stderr': result.stderr,
     }
 
 
@@ -168,12 +272,16 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
     # 2. Navigate to HAGENT_REPO_DIR
     # 3. Run: idf.py flash (with optional port arg)
     # 4. Capture flash output
+    
+    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
+    export_script_path = os.path.join(idf_path, "export.bat")
+    result = subprocess.run(f"call {export_script_path} && idf.py flash", cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
 
     return {
-        'success': False,
-        'exit_code': 1,
-        'stdout': '',
-        'stderr': 'api_flash not implemented yet',
+        'success': True,
+        'exit_code': result.returncode,
+        'stdout': result.stdout,
+        'stderr': result.stderr,
     }
 
 
@@ -406,4 +514,13 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    # sys.exit(api_install("rust board that uses esp32"))
+    # sys.exit(api_setup("newproject"))
+    print("Executable is being built...")
+    api_build()
+    print("Build finished")
+    print("Flashing the firmware...")
+    api_flash()
+    print("Flash completed, exiting...")
+    sys.exit(1)
+    # sys.exit(main())
