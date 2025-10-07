@@ -59,7 +59,7 @@ if [[ ! -d "${CACHE_TEMPLATE_DIR}" ]]; then
     echo "Copying SoomRV workspace from container..."
     for dir in build cache repo logs; do
       echo "  - Copying /code/workspace/${dir} ..."
-      docker cp "${CONTAINER_ID}:/code/workspace/${dir}" "${CACHE_TEMPLATE_DIR}/" 2>/dev/null || mkdir -p "${CACHE_TEMPLATE_DIR}/${dir}"
+      docker cp --archive=false "${CONTAINER_ID}:/code/workspace/${dir}" "${CACHE_TEMPLATE_DIR}/" 2>/dev/null || mkdir -p "${CACHE_TEMPLATE_DIR}/${dir}"
     done
 
     echo "Cleaning up temporary container..."
