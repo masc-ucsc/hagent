@@ -38,12 +38,14 @@ from hagent.inou.builder import Builder
 try:
     from .components.bug_info import BugInfo
     from .components.hints_generator import HintsGenerator
+    from .components.hints_generator_v2 import HintsGeneratorV2
     from .components.golden_design_builder import GoldenDesignBuilder
     from .components.baseline_verilog_generator import BaselineVerilogGenerator
 except ImportError:
     # Fallback for direct execution or testing
     from components.bug_info import BugInfo
     from components.hints_generator import HintsGenerator
+    from components.hints_generator_v2 import HintsGeneratorV2
     from components.golden_design_builder import GoldenDesignBuilder
     from components.baseline_verilog_generator import BaselineVerilogGenerator
 
@@ -57,6 +59,10 @@ class V2chisel_batch(Step):
         self.test_chisel_diff = None
         self.files_to_restore = []  # Track files that need restoration
         self.baseline_generated = False  # Track if we generated fresh baseline
+
+        # Flag to enable new multi-strategy hints system (V2)
+        # Set to False to use original HintsGenerator, True for HintsGeneratorV2
+        self.use_hints_v2 = True  # Default to V2 for testing
 
         # Initialize Builder for automated Docker management
         self.builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.09r')
@@ -77,6 +83,11 @@ class V2chisel_batch(Step):
         # Configuration - set these early before LLM initialization
         self.chisel_source_pattern = './tmp/src/main/scala/*/*.scala'  # Default pattern
         self.debug = True  # Enable debug output
+
+        # Allow override of hints_v2 flag from input YAML
+        if 'use_hints_v2' in self.input_data:
+            self.use_hints_v2 = self.input_data['use_hints_v2']
+            print(f'🔧 [V2chisel_batch] Hints version override from input: use_hints_v2={self.use_hints_v2}')
 
         # Get LLM configuration from template config
         llm_config = self.template_config.template_dict.get('v2chisel_batch', {}).get('llm', {})
@@ -118,8 +129,13 @@ class V2chisel_batch(Step):
         self.module_finder = Module_finder()
         # print('[V2chisel_batch] Module_finder initialized')
 
-        # Initialize HintsGenerator
-        self.hints_generator = HintsGenerator(self.module_finder, builder=self.builder, debug=self.debug)
+        # Initialize HintsGenerator (V1 or V2 based on flag)
+        if self.use_hints_v2:
+            print('🆕 [V2chisel_batch] Using HintsGeneratorV2 (multi-strategy pipeline)')
+            self.hints_generator = HintsGeneratorV2(self.module_finder, builder=self.builder, debug=self.debug)
+        else:
+            print('📦 [V2chisel_batch] Using HintsGenerator (legacy module_finder)')
+            self.hints_generator = HintsGenerator(self.module_finder, builder=self.builder, debug=self.debug)
         # print('[V2chisel_batch] HintsGenerator initialized')
 
         # Initialize GoldenDesignBuilder

@@ -44,34 +44,30 @@ class Runner:
         runner.cleanup()
     """
 
-    def __init__(self, docker_image: Optional[str] = None, path_manager: Optional[PathManager] = None):
+    def __init__(self, docker_image: Optional[str] = None):
         """
         Initialize Runner with optional Docker image.
 
         Args:
             docker_image: Docker image to use if HAGENT_EXECUTION_MODE is 'docker'
-            path_manager: Optional PathManager instance (created if not provided)
         """
         self.docker_image = docker_image
-        self.path_manager = path_manager or PathManager()
+        self.path_manager = PathManager()
         self.container_manager: Optional[ContainerManager] = None
         self.executor = None  # Keep for backward compatibility, but will be deprecated
         self.filesystem: Optional[FileSystem] = None  # New unified approach
         self.file_tracker: Optional[FileTracker] = None  # Lazy initialization
         self.error_message = ''
 
-        # Check execution mode
-        self.execution_mode = self.path_manager.execution_mode
-
         # Create container manager for docker mode
-        if self.execution_mode == 'docker':
+        if self.path_manager.is_docker_mode():
             if not docker_image:
                 self.set_error('Docker image must be provided when HAGENT_EXECUTION_MODE is docker')
                 return
-            self.container_manager = ContainerManager(docker_image, self.path_manager)
+            self.container_manager = ContainerManager(docker_image)
 
         # Create executor (backward compatibility)
-        self.executor = ExecutorFactory.create_executor(self.container_manager, self.path_manager)
+        self.executor = ExecutorFactory.create_executor(self.container_manager)
 
     def set_error(self, message: str) -> None:
         """Set error message following Tool pattern."""
@@ -307,11 +303,11 @@ class Runner:
 
     def is_docker_mode(self) -> bool:
         """Check if running in Docker execution mode."""
-        return self.execution_mode == 'docker'
+        return self.path_manager.is_docker_mode()
 
     def is_local_mode(self) -> bool:
         """Check if running in local execution mode."""
-        return self.execution_mode == 'local'
+        return self.path_manager.is_local_mode()
 
     def __enter__(self):
         """Context manager entry."""

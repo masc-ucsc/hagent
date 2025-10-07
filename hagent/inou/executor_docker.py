@@ -15,25 +15,20 @@ from .container_manager import is_docker_mode
 class DockerExecutor:
     """Execution strategy that runs commands within Docker containers."""
 
-    def __init__(self, container_manager=None, path_manager: Optional[PathManager] = None):
+    def __init__(self, container_manager=None):
         """
         Initialize DockerExecutor.
 
         Args:
             container_manager: ContainerManager instance for Docker operations
-            path_manager: PathManager instance for path resolution
         """
-        self.path_manager = path_manager or PathManager()
-
         if container_manager is not None:
             self.container_manager = container_manager
         else:
             # Create a new container_manager if not provided
             from .container_manager import ContainerManager
 
-            self.container_manager = ContainerManager(
-                image='mascucsc/hagent-simplechisel:2025.09r', path_manager=self.path_manager
-            )
+            self.container_manager = ContainerManager(image='mascucsc/hagent-simplechisel:2025.09r')
 
         # Container instance for reuse
         self._container = None
@@ -55,6 +50,7 @@ class DockerExecutor:
             'HAGENT_REPO_DIR': '/code/workspace/repo',
             'HAGENT_BUILD_DIR': '/code/workspace/build',
             'HAGENT_CACHE_DIR': '/code/workspace/cache',
+            'HAGENT_TECH_DIR': '/code/workspace/tech',
         }
         return env_vars
 
@@ -119,8 +115,7 @@ class DockerExecutor:
 
         # Set environment variables in the current process
         # (they'll be inherited by the Docker execution)
-        hagent_env = self._setup_hagent_environment()
-        combined_env = hagent_env.copy()
+        combined_env = {}
         if env:
             combined_env.update(env)  # Additional env vars override defaults
 
@@ -156,19 +151,24 @@ class DockerExecutor:
         if is_docker_mode():
             try:
                 # Try to translate repo_dir path
-                if host_path_obj == self.path_manager.repo_dir or self.path_manager.repo_dir in host_path_obj.parents:
-                    relative = host_path_obj.relative_to(self.path_manager.repo_dir)
+                if host_path_obj == PathManager().repo_dir or PathManager().repo_dir in host_path_obj.parents:
+                    relative = host_path_obj.relative_to(PathManager().repo_dir)
                     return str(Path('/code/workspace/repo') / relative)
 
                 # Try to translate build_dir path
-                if host_path_obj == self.path_manager.build_dir or self.path_manager.build_dir in host_path_obj.parents:
-                    relative = host_path_obj.relative_to(self.path_manager.build_dir)
+                if host_path_obj == PathManager().build_dir or PathManager().build_dir in host_path_obj.parents:
+                    relative = host_path_obj.relative_to(PathManager().build_dir)
                     return str(Path('/code/workspace/build') / relative)
 
                 # Try to translate cache_dir path
-                if host_path_obj == self.path_manager.cache_dir or self.path_manager.cache_dir in host_path_obj.parents:
-                    relative = host_path_obj.relative_to(self.path_manager.cache_dir)
+                if host_path_obj == PathManager().cache_dir or PathManager().cache_dir in host_path_obj.parents:
+                    relative = host_path_obj.relative_to(PathManager().cache_dir)
                     return str(Path('/code/workspace/cache') / relative)
+
+                # Try to translate tech_dir path
+                if host_path_obj == PathManager().tech_dir or PathManager().tech_dir in host_path_obj.parents:
+                    relative = host_path_obj.relative_to(PathManager().tech_dir)
+                    return str(Path('/code/workspace/tech') / relative)
             except (ValueError, AttributeError):
                 # If path translation fails, use the original path
                 pass

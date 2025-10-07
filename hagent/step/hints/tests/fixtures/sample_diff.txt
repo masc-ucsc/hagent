@@ -1,0 +1,11 @@
+--- a/ALU.sv
++++ b/ALU.sv
+@@ -10,7 +10,7 @@ module ALU(
+
+   always_comb begin
+     case (operation)
+-      4'b0000: result = inputx + inputy;  // ADD
++      4'b0000: result = inputx - inputy;  // ADD (BUG: should be +)
+       4'b0001: result = inputx - inputy;  // SUB
+       4'b0010: result = inputx & inputy;  // AND
+       4'b0011: result = inputx | inputy;  // OR

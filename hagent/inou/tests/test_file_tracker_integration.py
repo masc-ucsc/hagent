@@ -19,38 +19,27 @@ from hagent.inou.path_manager import PathManager
 
 @pytest.fixture(autouse=True)
 def reset_docker_state():
-    """Reset global Docker state and environment variables before each test."""
+    """Reset global Docker state before each test."""
     import hagent.inou.container_manager as cm
-    import os
-
-    # Store original environment
-    original_env = {}
-    hagent_vars = [k for k in os.environ.keys() if k.startswith('HAGENT_')]
-    for key in hagent_vars:
-        original_env[key] = os.environ[key]
 
     # Reset global state
     cm._docker_workspace_validated = False
 
     yield
 
-    # Restore environment variables
-    current_hagent_vars = [k for k in os.environ.keys() if k.startswith('HAGENT_')]
-    for key in current_hagent_vars:
-        if key not in original_env:
-            del os.environ[key]
-    for key, value in original_env.items():
-        os.environ[key] = value
-
     # Reset global state again
     cm._docker_workspace_validated = False
 
 
+@pytest.mark.serial  # These tests manipulate PathManager singleton - must run serially
 class TestPathManagerIntegration:
     """Test FileTracker integration with PathManager."""
 
     def test_file_tracker_with_real_path_manager(self):
         """Test FileTracker with actual PathManager instance."""
+        # Reset PathManager to pick up new environment
+        PathManager.reset()
+
         with patch.dict(
             'os.environ',
             {
@@ -67,6 +56,7 @@ class TestPathManagerIntegration:
                 patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
                 patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
             ):
+                PathManager.reset()  # Reset after environment change
                 path_manager = PathManager()
                 tracker = FileTracker(path_manager)
 
@@ -76,39 +66,41 @@ class TestPathManagerIntegration:
 
     def test_file_tracker_docker_mode_integration(self):
         """Test FileTracker integration with Docker mode PathManager."""
-        with patch.dict(
-            'os.environ',
-            {
-                'HAGENT_EXECUTION_MODE': 'docker',
-                'HAGENT_REPO_DIR': '/code/workspace/repo',
-                'HAGENT_BUILD_DIR': '/code/workspace/build',
-                'HAGENT_CACHE_DIR': '/code/workspace/cache',
-            },
-        ):
-            with (
-                patch('pathlib.Path.exists', return_value=True),
-                patch('pathlib.Path.mkdir'),
-                patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
-                patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
-                patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
-            ):
-                path_manager = PathManager()
-                tracker = FileTracker(path_manager)
+        # Mock PathManager for docker mode
+        mock_pm = MagicMock()
+        mock_pm.execution_mode = 'docker'
+        mock_pm.is_docker_mode.return_value = True
+        mock_pm.is_local_mode.return_value = False
+        mock_pm.repo_dir = Path('/code/workspace/repo')
 
-                assert tracker.path_manager.execution_mode == 'docker'
+        with (
+            patch('pathlib.Path.exists', return_value=True),
+            patch('pathlib.Path.mkdir'),
+            patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+            patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+            patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
+        ):
+            tracker = FileTracker(mock_pm)
+
+            assert tracker.path_manager.execution_mode == 'docker'
 
     def test_file_tracker_with_path_manager_validation_error(self):
         """Test FileTracker behavior when PathManager validation fails."""
-        with patch.dict('os.environ', {}, clear=True):
-            with patch('hagent.inou.file_tracker_local.sys.exit') as mock_exit:
-                # PathManager should fail fast due to missing env vars
-                try:
-                    PathManager()
-                except SystemExit:
-                    pass  # Expected
+        # This test verifies the contract: PathManager validates environment on initialization
+        # We mock the scenario where validation would fail
+        with patch('hagent.inou.path_manager.sys.exit') as mock_exit:
+            with patch.dict('os.environ', {}, clear=True):
+                # Create a fresh PathManager with empty environment - should trigger sys.exit
+                # Note: We need to patch PathManager class's __new__ to create a new instance
+                with patch.object(PathManager, '_instance', None):
+                    with patch.object(PathManager, '_initialized', False):
+                        try:
+                            PathManager()
+                        except SystemExit:
+                            pass  # Expected
 
-                # Verify the fail-fast behavior would have occurred
-                mock_exit.assert_called_with(1)
+                        # Verify the fail-fast behavior occurred
+                        mock_exit.assert_called_with(1)
 
 
 class TestGitRepositoryIntegration:

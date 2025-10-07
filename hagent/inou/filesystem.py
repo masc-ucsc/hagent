@@ -5,7 +5,7 @@ Eliminates local/docker branching by providing a single abstraction
 that works transparently in both execution modes.
 """
 
-import os
+from .path_manager import PathManager
 
 # Import all components
 from .filesystem_base import FileSystem
@@ -31,9 +31,7 @@ class FileSystemFactory:
         Returns:
             FileSystem implementation appropriate for current execution mode
         """
-        execution_mode = os.environ.get('HAGENT_EXECUTION_MODE', 'local')
-
-        if execution_mode == 'docker':
+        if PathManager().is_docker_mode():
             if not container_manager:
                 raise ValueError('ContainerManager required for Docker execution mode')
             return FileSystemDocker(container_manager)

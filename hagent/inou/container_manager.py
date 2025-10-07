@@ -63,7 +63,7 @@ def is_docker_mode() -> bool:
     Returns:
         True if HAGENT_EXECUTION_MODE=docker, False otherwise
     """
-    return os.environ.get('HAGENT_EXECUTION_MODE', 'native') == 'docker'
+    return PathManager().is_docker_mode()
 
 
 def _default_ready_predicate(container: 'docker.models.containers.Container') -> bool:
@@ -92,7 +92,13 @@ def _validate_docker_workspace(container: 'docker.models.containers.Container') 
         return False
 
     # Check that required workspace directories are available
-    required_dirs = ['/code/workspace', '/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache']
+    required_dirs = [
+        '/code/workspace',
+        '/code/workspace/repo',
+        '/code/workspace/build',
+        '/code/workspace/cache',
+        '/code/workspace/tech',
+    ]
 
     for dir_path in required_dirs:
         try:
@@ -257,18 +263,17 @@ class ContainerManager:
     Automatically sets HAGENT_* environment variables inside container.
     """
 
-    def __init__(self, image: str, path_manager: Optional[PathManager] = None):
+    def __init__(self, image: str):
         """
         Initialize ContainerManager.
 
         Args:
             image: Docker image name to use
-            path_manager: PathManager instance for path resolution
         """
         global _cleanup_registered, _container_manager_registry
 
         self.image = image
-        self.path_manager = path_manager or PathManager()
+        self.path_manager = PathManager()
         self.client: Optional[docker.DockerClient] = None
         self.container: Optional[docker.models.containers.Container] = None
         self._reference_container: Optional[docker.models.containers.Container] = None
@@ -535,18 +540,6 @@ class ContainerManager:
             self.set_error(str(e))
             return False
 
-    def _setup_container_environment(self) -> Dict[str, str]:
-        """Setup HAGENT_* environment variables inside container."""
-        env_vars = {
-            'HAGENT_EXECUTION_MODE': 'docker',
-            'HAGENT_REPO_DIR': '/code/workspace/repo',
-            'HAGENT_BUILD_DIR': '/code/workspace/build',
-            'HAGENT_CACHE_DIR': '/code/workspace/cache',
-            'UV_PROJECT_ENVIRONMENT': '/code/workspace/cache/venv',
-        }
-
-        return env_vars
-
     def _get_security_options(self) -> List[str]:
         """
         Get security options to restrict container capabilities and prevent privilege escalation.
@@ -563,87 +556,40 @@ class ContainerManager:
         """Setup standard mount points based on path manager."""
         mount_objs = []
 
-        # Always mount cache directory - ensure it exists first
-        # Use environment variable directly if available, otherwise use path_manager
-        cache_dir_path = os.environ.get('HAGENT_CACHE_DIR')
+        # Define mount points: (target, path_manager_attr, required)
+        mounts_config = [
+            ('/code/workspace/cache', 'cache_dir', True),
+            ('/code/workspace/repo', 'repo_dir', False),
+            ('/code/workspace/build', 'build_dir', False),
+            ('/code/workspace/tech', 'tech_dir', False),
+        ]
 
-        if not cache_dir_path:
+        for target, attr_name, required in mounts_config:
             try:
-                cache_dir_path = str(self.path_manager.cache_dir)
+                host_path = str(getattr(self.path_manager, attr_name))
             except (AttributeError, TypeError) as e:
-                self.set_error(f'Cache directory not available: {e}')
-                return []
+                if required:
+                    self.set_error(f'{attr_name} not available: {e}')
+                    return []
+                continue  # Optional mount not available
 
-        # Only mount cache directory if it's a real host path (not a container path)
-        if not cache_dir_path.startswith('/code/workspace/'):
+            # Skip if it's already a container path (we're running inside a container)
+            if host_path.startswith('/code/workspace/'):
+                continue
+
             # Validate the mount path for safety
-            is_valid, error_msg = _validate_mount_path(cache_dir_path)
+            is_valid, error_msg = _validate_mount_path(host_path)
             if not is_valid:
-                self.set_error(f'Cache directory mount validation failed: {error_msg}')
+                self.set_error(f'{attr_name} mount validation failed: {error_msg}')
                 return []
 
-            # Ensure cache directory exists before mounting
-            os.makedirs(cache_dir_path, exist_ok=True)
-            # Resolve symlinks (important on macOS where /var -> /private/var)
-            cache_dir_path = os.path.realpath(cache_dir_path)
+            # Ensure directory exists and resolve symlinks (important on macOS)
+            os.makedirs(host_path, exist_ok=True)
+            resolved_path = os.path.realpath(host_path)
 
-            # print(f' docker MOUNT /code/workspace/cache {cache_dir_path}')
-
-            cache_mount = docker.types.Mount(target='/code/workspace/cache', source=cache_dir_path, type='bind')
-            mount_objs.append(cache_mount)
-
-        # Mount repo directory if available
-        repo_dir_path = os.environ.get('HAGENT_REPO_DIR')
-
-        if not repo_dir_path:
-            try:
-                repo_dir_path = str(self.path_manager.repo_dir)
-            except (AttributeError, TypeError):
-                # Repo dir not available - container will use image default
-                repo_dir_path = None
-
-        if repo_dir_path and not repo_dir_path.startswith('/code/workspace/'):
-            # Validate the mount path for safety
-            is_valid, error_msg = _validate_mount_path(repo_dir_path)
-            if not is_valid:
-                self.set_error(f'Repo directory mount validation failed: {error_msg}')
-                return []
-
-            # Ensure repo directory exists before mounting
-            os.makedirs(repo_dir_path, exist_ok=True)
-            # Resolve symlinks (important on macOS where /var -> /private/var)
-            resolved_repo_path = os.path.realpath(repo_dir_path)
-
-            # print(f' docker MOUNT /code/workspace/repo {resolved_repo_path}')
-
-            repo_mount = docker.types.Mount(target='/code/workspace/repo', source=resolved_repo_path, type='bind')
-            mount_objs.append(repo_mount)
-
-        # Mount build directory if available
-        build_dir_path = os.environ.get('HAGENT_BUILD_DIR')
-        if not build_dir_path:
-            try:
-                build_dir_path = str(self.path_manager.build_dir)
-            except (AttributeError, TypeError):
-                # Build dir not available - container will use image default
-                build_dir_path = None
-
-        if build_dir_path and not build_dir_path.startswith('/code/workspace/'):
-            # Validate the mount path for safety
-            is_valid, error_msg = _validate_mount_path(build_dir_path)
-            if not is_valid:
-                self.set_error(f'Build directory mount validation failed: {error_msg}')
-                return []
-
-            # Ensure build directory exists before mounting
-            os.makedirs(build_dir_path, exist_ok=True)
-            # Resolve symlinks (important on macOS where /var -> /private/var)
-            build_dir_path = os.path.realpath(build_dir_path)
-
-            # print(f' docker MOUNT /code/workspace/build {build_dir_path}')
-
-            build_mount = docker.types.Mount(target='/code/workspace/build', source=build_dir_path, type='bind')
-            mount_objs.append(build_mount)
+            # Create and add mount
+            mount = docker.types.Mount(target=target, source=resolved_path, type='bind')
+            mount_objs.append(mount)
 
         return mount_objs
 
@@ -654,7 +600,7 @@ class ContainerManager:
         """
         try:
             # List of mounted directories that need permission fixes
-            mount_points = ['/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache']
+            mount_points = ['/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache', '/code/workspace/tech']
 
             for mount_point in mount_points:
                 # Check if the mount point exists
@@ -671,14 +617,10 @@ class ContainerManager:
             self.set_error(f'Failed to fix mounted directory permissions: {e}')
             return False
 
-    def setup(self, automount: bool = True) -> bool:
+    def setup(self) -> bool:
         """
         Create and start Docker container with new mount structure.
         Working directory is always /code/workspace/repo.
-
-        Args:
-            automount: If True (default), automatically mount repo, build, and cache directories.
-                      If False, create container with no automatic mounts.
 
         Returns:
             True if setup successful, False otherwise
@@ -717,14 +659,10 @@ class ContainerManager:
                 return False
 
             # Setup mount points and environment based on automount setting
-            if automount:
-                mount_objs = self._setup_mount_points()
-                env_vars = self._setup_container_environment()
-            else:
-                mount_objs = []
-                env_vars = {
-                    'HAGENT_EXECUTION_MODE': 'docker',
-                }
+            # if automount:
+            mount_objs = self._setup_mount_points()
+            # else:
+            #     mount_objs = []
 
             # Create the container with security restrictions
             # Run as root consistently for simplified permission handling
@@ -732,7 +670,6 @@ class ContainerManager:
                 self.image,
                 command='tail -f /dev/null',  # Keep container running
                 mounts=mount_objs,
-                environment=env_vars,
                 working_dir=self._workdir,
                 detach=True,
                 user='root',  # Always use root
@@ -760,8 +697,8 @@ class ContainerManager:
                 return False
 
             # Fix permissions for mounted directories to match container user (only if automount is enabled)
-            if automount and not self._fix_mounted_directory_permissions():
-                return False
+            # if automount and not self._fix_mounted_directory_permissions():
+            #     return False
 
             # Check if bash exists in the container
             result = self.container.exec_run(['test', '-x', '/bin/bash'])
@@ -778,7 +715,12 @@ class ContainerManager:
             return False
 
     def run_cmd(
-        self, command: str, cwd: Optional[str] = '.', quiet: bool = False, config_sources: Optional[List[str]] = None
+        self,
+        command: str,
+        cwd: Optional[str] = '.',
+        quiet: bool = False,
+        config_sources: Optional[List[str]] = None,
+        skip_profile: bool = False,
     ) -> Tuple[int, str, str]:
         """
         Execute command inside the container.
@@ -812,42 +754,43 @@ class ContainerManager:
                 return -1, '', error_msg
 
         try:
-            # Build the command with robust environment sourcing
-            # Always attempt to source common profile files to make tool shims (e.g., sbt via coursier/sdkman) available.
-            default_sources = [
-                '/etc/profile',
-                '~/.bash_profile',
-                '~/.profile',
-                '~/.bashrc',
-                '~/.sdkman/bin/sdkman-init.sh',
-            ]
+            # Build the command with optional environment sourcing
+            if skip_profile:
+                # Skip profile sourcing for performance-critical simple commands
+                final_command = command
+            else:
+                # Always attempt to source common profile files to make tool shims (e.g., sbt via coursier/sdkman) available.
+                default_sources = [
+                    '/etc/profile',
+                    '~/.bash_profile',
+                    '~/.profile',
+                    '~/.bashrc',
+                    '~/.sdkman/bin/sdkman-init.sh',
+                ]
 
-            # Merge user-provided sources (if any), preserving order and uniqueness
-            merged_sources: List[str] = []
-            for src in (config_sources or []) + default_sources:
-                if src not in merged_sources:
-                    merged_sources.append(src)
+                # Merge user-provided sources (if any), preserving order and uniqueness
+                merged_sources: List[str] = []
+                for src in (config_sources or []) + default_sources:
+                    if src not in merged_sources:
+                        merged_sources.append(src)
 
-            source_cmds = [f'source {s} 2>/dev/null || true' for s in merged_sources]
-            prologue = '; '.join(source_cmds)
+                source_cmds = [f'source {s} 2>/dev/null || true' for s in merged_sources]
+                prologue = '; '.join(source_cmds)
 
-            final_command = f'{prologue}; {command}'
+                final_command = f'{prologue}; {command}'
             if self._has_bash:
                 shell_command = ['/bin/bash', '--login', '-c', final_command]
             else:
                 shell_command = ['/bin/sh', '-c', final_command]
 
-            # Set execution parameters
-            exec_kwargs = {'workdir': workdir, 'demux': True}
-
             if quiet:
-                # Capture all output
-                result = self.container.exec_run(shell_command, **exec_kwargs)
+                # Capture all output - don't use demux for better performance
+                result = self.container.exec_run(shell_command, workdir=workdir, demux=False)
                 exit_code = result.exit_code
-                stdout, stderr = result.output
-                stdout_str = stdout.decode('utf-8', 'replace') if stdout else ''
-                stderr_str = stderr.decode('utf-8', 'replace') if stderr else ''
-                return exit_code, stdout_str, stderr_str
+                output = result.output
+                output_str = output.decode('utf-8', 'replace') if output else ''
+                # Return combined output as both stdout and stderr for compatibility
+                return exit_code, output_str, ''
             else:
                 # Stream output in real-time
                 exec_create_kwargs = {

@@ -17,33 +17,33 @@ from hagent.inou.path_manager import PathManager
 class TestPathManager:
     """Test PathManager functionality."""
 
-    def test_initialization_without_validation(self):
-        """Test PathManager initialization with validation disabled."""
-        pm = PathManager(validate_env=False)
-        assert pm._repo_dir is None
-        assert pm._build_dir is None
-        assert pm._cache_dir is None
-        assert pm._execution_mode is None
+    def setup_method(self, method):
+        """Reset PathManager singleton before each test."""
+        PathManager.reset()
+
+    def teardown_method(self, method):
+        """Reset PathManager singleton after each test."""
+        PathManager.reset()
 
     @patch.dict(os.environ, {}, clear=True)
     def test_missing_execution_mode_fails_fast(self):
         """Test that missing HAGENT_EXECUTION_MODE causes fail-fast exit."""
         with patch('sys.exit') as mock_exit:
-            PathManager(validate_env=True)
+            PathManager()
             mock_exit.assert_called_once_with(1)
 
     @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'invalid'}, clear=True)
     def test_invalid_execution_mode_fails_fast(self):
         """Test that invalid HAGENT_EXECUTION_MODE causes fail-fast exit."""
         with patch('sys.exit') as mock_exit:
-            PathManager(validate_env=True)
+            PathManager()
             mock_exit.assert_called_once_with(1)
 
     @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'local'}, clear=True)
     def test_local_mode_missing_variables_fails_fast(self):
         """Test that local mode with missing variables causes fail-fast exit."""
         with patch('sys.exit') as mock_exit:
-            PathManager(validate_env=True)
+            PathManager()
             mock_exit.assert_called_once_with(1)
 
     def test_local_mode_valid_environment(self):
@@ -65,7 +65,7 @@ class TestPathManager:
             }
 
             with patch.dict(os.environ, env_vars, clear=True):
-                pm = PathManager(validate_env=True)
+                pm = PathManager()
 
                 assert pm.execution_mode == 'local'
                 assert pm.repo_dir == repo_dir.resolve()
@@ -81,7 +81,7 @@ class TestPathManager:
     @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'docker'}, clear=True)
     def test_docker_mode_minimal_environment(self):
         """Test Docker mode with minimal environment (only HAGENT_EXECUTION_MODE)."""
-        pm = PathManager(validate_env=True)
+        pm = PathManager()
         assert pm.execution_mode == 'docker'
         # In Docker mode without host-mounted variables, use default container paths
         assert pm._repo_dir == Path('/code/workspace/repo')
@@ -107,7 +107,7 @@ class TestPathManager:
             }
 
             with patch.dict(os.environ, env_vars, clear=True):
-                pm = PathManager(validate_env=True)
+                pm = PathManager()
 
                 assert pm.execution_mode == 'docker'
                 assert pm.repo_dir == repo_dir.resolve()
@@ -162,7 +162,9 @@ class TestPathManager:
         """Test get_cache_dir method."""
         with tempfile.TemporaryDirectory() as temp_dir:
             cache_dir = Path(temp_dir) / 'cache'
-            pm = PathManager(validate_env=False)
+            # Use mocking to avoid validation
+            with patch.object(PathManager, '_validate_and_setup_environment'):
+                pm = PathManager()
             pm._cache_dir = cache_dir.resolve()
 
             result = pm.get_cache_dir()
@@ -173,7 +175,9 @@ class TestPathManager:
         """Test get_cache_path with valid relative path."""
         with tempfile.TemporaryDirectory() as temp_dir:
             cache_dir = Path(temp_dir) / 'cache'
-            pm = PathManager(validate_env=False)
+            # Use mocking to avoid validation
+            with patch.object(PathManager, '_validate_and_setup_environment'):
+                pm = PathManager()
             pm._cache_dir = cache_dir.resolve()
 
             result = pm.get_cache_path('test.log')
@@ -184,7 +188,9 @@ class TestPathManager:
         """Test get_cache_path with invalid absolute path."""
         with tempfile.TemporaryDirectory() as temp_dir:
             cache_dir = Path(temp_dir) / 'cache'
-            pm = PathManager(validate_env=False)
+            # Use mocking to avoid validation
+            with patch.object(PathManager, '_validate_and_setup_environment'):
+                pm = PathManager()
             pm._cache_dir = cache_dir.resolve()
 
             with patch('sys.exit') as mock_exit:
@@ -195,7 +201,9 @@ class TestPathManager:
         """Test get_cache_path with path trying to escape cache directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
             cache_dir = Path(temp_dir) / 'cache'
-            pm = PathManager(validate_env=False)
+            # Use mocking to avoid validation
+            with patch.object(PathManager, '_validate_and_setup_environment'):
+                pm = PathManager()
             pm._cache_dir = cache_dir.resolve()
 
             with patch('sys.exit') as mock_exit:
@@ -206,7 +214,9 @@ class TestPathManager:
         """Test get_log_dir method."""
         with tempfile.TemporaryDirectory() as temp_dir:
             cache_dir = Path(temp_dir) / 'cache'
-            pm = PathManager(validate_env=False)
+            # Use mocking to avoid validation
+            with patch.object(PathManager, '_validate_and_setup_environment'):
+                pm = PathManager()
             pm._cache_dir = cache_dir.resolve()
 
             result = pm.get_log_dir()
@@ -217,7 +227,9 @@ class TestPathManager:
         """Test get_build_cache_dir method."""
         with tempfile.TemporaryDirectory() as temp_dir:
             cache_dir = Path(temp_dir) / 'cache'
-            pm = PathManager(validate_env=False)
+            # Use mocking to avoid validation
+            with patch.object(PathManager, '_validate_and_setup_environment'):
+                pm = PathManager()
             pm._cache_dir = cache_dir.resolve()
 
             result = pm.get_build_cache_dir()
@@ -228,7 +240,9 @@ class TestPathManager:
         """Test _get_venv_dir method."""
         with tempfile.TemporaryDirectory() as temp_dir:
             cache_dir = Path(temp_dir) / 'cache'
-            pm = PathManager(validate_env=False)
+            # Use mocking to avoid validation
+            with patch.object(PathManager, '_validate_and_setup_environment'):
+                pm = PathManager()
             pm._cache_dir = cache_dir.resolve()
 
             result = pm._get_venv_dir()
@@ -237,7 +251,9 @@ class TestPathManager:
 
     def test_property_access_without_values_fails_fast(self):
         """Test that accessing properties without values causes fail-fast exit."""
-        pm = PathManager(validate_env=False)
+        # Use mocking to avoid validation
+        with patch.object(PathManager, '_validate_and_setup_environment'):
+            pm = PathManager()
 
         with patch('sys.exit') as mock_exit:
             _ = pm.repo_dir
@@ -269,12 +285,12 @@ class TestPathManager:
 
             with patch.dict(os.environ, env_vars, clear=True):
                 with patch('sys.exit') as mock_exit:
-                    PathManager(validate_env=True)
+                    PathManager()
                     mock_exit.assert_called_once_with(1)
 
     @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'local', 'HAGENT_REPO_DIR': '/nonexistent'}, clear=True)
     def test_nonexistent_repo_dir_fails_fast(self):
         """Test that non-existent repo directory causes fail-fast exit."""
         with patch('sys.exit') as mock_exit:
-            PathManager(validate_env=True)
+            PathManager()
             mock_exit.assert_called_once_with(1)

@@ -5,7 +5,9 @@ Provides filesystem operations that work inside Docker containers
 for Docker execution mode.
 """
 
+import io
 import posixpath
+import tarfile
 from typing import List, Dict, Tuple, Optional
 
 from .filesystem_base import FileSystem
@@ -28,50 +30,149 @@ class FileSystemDocker(FileSystem):
         return exit_code == 0
 
     def read_file(self, path: str, encoding: str) -> str:
-        if encoding is None:
-            # Binary mode - read as base64 to handle binary content safely
-            cmd = f"python3 -c \"import base64; print(base64.b64encode(open('{path}', 'rb').read()).decode())\""
-            exit_code, content, stderr = self.container_manager.run_cmd(cmd, quiet=True)
-            if exit_code != 0:
-                raise FileNotFoundError(f'Cannot read {path}: {stderr}')
+        """Read file from Docker container using get_archive API."""
+        try:
+            # Use Docker's get_archive API to read the file
+            # This avoids exec overhead
+            container = self.container_manager.container
 
-            import base64
+            # get_archive returns (tar_stream, stat_dict)
+            tar_stream, _ = container.get_archive(path)
 
-            # Return as string representation of bytes using latin1
-            return base64.b64decode(content.strip()).decode('latin1')
-        else:
-            # Text mode
-            exit_code, content, stderr = self.container_manager.run_cmd(f'cat "{path}"', quiet=True)
-            if exit_code != 0:
-                raise FileNotFoundError(f'Cannot read {path}: {stderr}')
-            return content
+            # Extract the file content from tar stream
+            tar_bytes = b''.join(tar_stream)
+            tar_buffer = io.BytesIO(tar_bytes)
+
+            with tarfile.open(fileobj=tar_buffer, mode='r') as tar:
+                # Get the first (and only) member
+                members = tar.getmembers()
+                if not members:
+                    raise FileNotFoundError(f'No content in archive for {path}')
+
+                member = members[0]
+                file_obj = tar.extractfile(member)
+                if file_obj is None:
+                    raise FileNotFoundError(f'Cannot extract {path}')
+
+                content_bytes = file_obj.read()
+
+                if encoding is None:
+                    # Binary mode - return as string representation of bytes
+                    return content_bytes.decode('latin1')
+                else:
+                    # Text mode - decode with specified encoding
+                    return content_bytes.decode(encoding)
+
+        except Exception:
+            # Fallback to old method if tar API fails
+            if encoding is None:
+                # Binary mode - read as base64 to handle binary content safely
+                cmd = f"python3 -c \"import base64; print(base64.b64encode(open('{path}', 'rb').read()).decode())\""
+                exit_code, content, stderr = self.container_manager.run_cmd(cmd, quiet=True, skip_profile=True)
+                if exit_code != 0:
+                    raise FileNotFoundError(f'Cannot read {path}: {stderr}')
+
+                import base64
+
+                # Return as string representation of bytes using latin1
+                return base64.b64decode(content.strip()).decode('latin1')
+            else:
+                # Text mode
+                exit_code, content, stderr = self.container_manager.run_cmd(f'cat "{path}"', quiet=True, skip_profile=True)
+                if exit_code != 0:
+                    raise FileNotFoundError(f'Cannot read {path}: {stderr}')
+                return content
 
     def write_file(self, path: str, content: str, encoding: str) -> bool:
+        """Write file to Docker container using put_archive API."""
         try:
-            # Ensure parent directory exists
-            # Use POSIX semantics inside the container
-            parent_dir = posixpath.dirname(path)
-            if parent_dir:
-                self.container_manager.run_cmd(f'mkdir -p "{parent_dir}"', quiet=True)
+            container = self.container_manager.container
 
+            # Prepare file content as bytes
             if encoding is None:
                 # Binary mode - content is string representation of bytes
-                import base64
-
-                binary_content = content.encode('latin1')  # Convert back to bytes
-                encoded_content = base64.b64encode(binary_content).decode('ascii')
-                cmd = f"python3 -c \"import base64; open('{path}', 'wb').write(base64.b64decode('{encoded_content}'))\""
+                content_bytes = content.encode('latin1')
             else:
-                # Text mode - use base64 encoding to avoid shell escaping issues
-                import base64
+                # Text mode
+                content_bytes = content.encode(encoding)
 
-                encoded_content = base64.b64encode(content.encode(encoding)).decode('ascii')
-                cmd = f"python3 -c \"import base64; open('{path}', 'w', encoding='{encoding}').write(base64.b64decode('{encoded_content}').decode('{encoding}'))\""
+            # Create tar archive in memory
+            tar_buffer = io.BytesIO()
+            with tarfile.open(fileobj=tar_buffer, mode='w') as tar:
+                # Create TarInfo for the file
+                import time
 
-            exit_code, _, _ = self.container_manager.run_cmd(cmd, quiet=True)
-            return exit_code == 0
+                tarinfo = tarfile.TarInfo(name=posixpath.basename(path))
+                tarinfo.size = len(content_bytes)
+                tarinfo.mode = 0o644
+                tarinfo.mtime = int(time.time())  # Set modification time to now
+
+                # Add file to tar
+                tar.addfile(tarinfo, io.BytesIO(content_bytes))
+
+            tar_buffer.seek(0)
+            tar_data = tar_buffer.read()
+
+            # Get parent directory
+            # If path is absolute, use its directory; if relative, resolve to absolute
+            if posixpath.isabs(path):
+                parent_dir = posixpath.dirname(path)
+                if not parent_dir:
+                    parent_dir = '/'
+            else:
+                # For relative paths, we need to resolve to absolute path first
+                # Get current working directory from container
+                exit_code, cwd_output, _ = self.container_manager.run_cmd('pwd', quiet=True, skip_profile=True)
+                if exit_code == 0:
+                    container_cwd = cwd_output.strip()
+                    # Build absolute path
+                    abs_path = posixpath.join(container_cwd, path)
+                    parent_dir = posixpath.dirname(abs_path)
+                    if not parent_dir:
+                        parent_dir = container_cwd
+                else:
+                    # Fallback - use '.' but this might not work
+                    parent_dir = posixpath.dirname(path) or '.'
+
+            # Try to write using put_archive
+            # put_archive puts files into the specified directory
+            try:
+                container.put_archive(parent_dir, tar_data)
+                return True
+            except Exception as put_err:
+                # If put_archive fails (e.g., directory doesn't exist), create directory and retry
+                if parent_dir and parent_dir not in ('/', '.'):
+                    self.container_manager.run_cmd(f'mkdir -p "{parent_dir}"', quiet=True, skip_profile=True)
+                    container.put_archive(parent_dir, tar_data)
+                    return True
+                else:
+                    raise put_err
+
         except Exception:
-            return False
+            # Fallback to old method if tar API fails
+            try:
+                parent_dir = posixpath.dirname(path)
+                if parent_dir:
+                    self.container_manager.run_cmd(f'mkdir -p "{parent_dir}"', quiet=True, skip_profile=True)
+
+                if encoding is None:
+                    # Binary mode
+                    import base64
+
+                    binary_content = content.encode('latin1')
+                    encoded_content = base64.b64encode(binary_content).decode('ascii')
+                    cmd = f"python3 -c \"import base64; open('{path}', 'wb').write(base64.b64decode('{encoded_content}'))\""
+                else:
+                    # Text mode
+                    import base64
+
+                    encoded_content = base64.b64encode(content.encode(encoding)).decode('ascii')
+                    cmd = f"python3 -c \"import base64; open('{path}', 'w', encoding='{encoding}').write(base64.b64decode('{encoded_content}').decode('{encoding}'))\""
+
+                exit_code, _, _ = self.container_manager.run_cmd(cmd, quiet=True, skip_profile=True)
+                return exit_code == 0
+            except Exception:
+                return False
 
     def list_dir(self, path: str) -> List[str]:
         exit_code, output, _ = self.container_manager.run_cmd(f'ls -1 "{path}" 2>/dev/null || true', quiet=True)

@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 from hagent.step.trivial.trivial import Trivial
+from hagent.inou.path_manager import PathManager
 
 
 def test_trivial():
@@ -31,6 +32,9 @@ def test_trivial():
         }
 
         with patch.dict(os.environ, env_vars, clear=True):
+            # Reset PathManager singleton to pick up new environment
+            PathManager.reset()
+
             trivial_step = Trivial()
 
             trivial_step.set_io(inp_file=inp_file, out_file='test_trivial_output.yaml')
@@ -73,6 +77,9 @@ def test_trivial():
             assert result_data['pwd_ret'] == '0', 'pwd command should succeed'
             assert len(result_data['uname_out']) > 0, 'uname should produce output'
             assert len(result_data['pwd_out']) > 0, 'pwd should produce output'
+
+            # Reset PathManager singleton after test
+            PathManager.reset()
 
 
 if __name__ == '__main__':  # pragma: no cover

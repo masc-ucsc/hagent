@@ -30,7 +30,7 @@ class FileTracker:
         self.filesystem = filesystem
 
         # Keep existing implementation as fallback
-        if path_manager.execution_mode == 'docker' and container_manager is not None:
+        if path_manager.is_docker_mode() and container_manager is not None:
             self._impl = FileTrackerDocker(path_manager, container_manager)
         else:
             self._impl = FileTrackerLocal(path_manager, container_manager)
