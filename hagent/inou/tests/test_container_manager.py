@@ -633,3 +633,33 @@ class TestContainerManager:
                 assert '/code/workspace/cache' in mount_targets
                 assert '/code/workspace/repo' in mount_targets
                 assert '/code/workspace/build' in mount_targets
+
+    def test_mcp_build_script_execution(self, container_manager_with_cleanup, setup_local_directory):
+        """Test that mcp_build.py script can be executed directly inside the container."""
+        local_dirs = setup_local_directory
+
+        # Create a real PathManager with test environment
+        with patch.dict(
+            'os.environ',
+            {
+                'HAGENT_EXECUTION_MODE': 'docker',
+                'HAGENT_REPO_DIR': str(local_dirs['repo_dir']),
+                'HAGENT_BUILD_DIR': str(local_dirs['build_dir']),
+                'HAGENT_CACHE_DIR': str(local_dirs['cache_dir']),
+            },
+        ):
+            # Create container manager using the fixture for cleanup
+            manager = container_manager_with_cleanup('mascucsc/hagent-builder:2025.10')
+
+            # Setup the container
+            setup_result = manager.setup()
+            assert setup_result is True, f'Container setup failed: {manager.get_error()}'
+
+            # Run the mcp_build.py script with -h flag
+            exit_code, stdout, stderr = manager.run_cmd('/code/hagent/hagent/mcp/mcp_build.py -h', quiet=True)
+
+            # Verify the script executed successfully
+            assert exit_code == 0, f'Script execution failed with exit code {exit_code}\nstdout: {stdout}\nstderr: {stderr}'
+
+            # Verify the expected usage message is in the output
+            assert 'usage: mcp_build.py' in stdout, f'Expected usage message not found in stdout: {stdout}'
