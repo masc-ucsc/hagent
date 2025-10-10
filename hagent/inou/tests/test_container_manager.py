@@ -303,13 +303,14 @@ class TestContainerManager:
 
                 mounts = manager._setup_mount_points()
 
-                # Should have 3 mounts (cache, repo, build)
-                assert len(mounts) == 3
-                assert mock_mount.call_count == 3
+                # Should have 4 mounts (hagent, cache, repo, build)
+                assert len(mounts) == 4
+                assert mock_mount.call_count == 4
 
                 # Verify mount calls
                 calls = mock_mount.call_args_list
                 mount_targets = [call[1]['target'] for call in calls]
+                assert '/code/hagent' in mount_targets
                 assert '/code/workspace/cache' in mount_targets
                 assert '/code/workspace/repo' in mount_targets
                 assert '/code/workspace/build' in mount_targets
@@ -583,13 +584,14 @@ class TestContainerManager:
 
                 mounts = manager._setup_mount_points()
 
-                # Should have 3 mounts (cache, repo, build)
-                assert len(mounts) == 3
-                assert mock_mount.call_count == 3
+                # Should have 4 mounts (hagent, cache, repo, build)
+                assert len(mounts) == 4
+                assert mock_mount.call_count == 4
 
                 # Verify mount calls
                 calls = mock_mount.call_args_list
                 mount_targets = [call[1]['target'] for call in calls]
+                assert '/code/hagent' in mount_targets
                 assert '/code/workspace/cache' in mount_targets
                 assert '/code/workspace/repo' in mount_targets
                 assert '/code/workspace/build' in mount_targets
@@ -620,13 +622,14 @@ class TestContainerManager:
 
                 mounts = manager._setup_mount_points()
 
-                # Should have 3 mounts (cache, repo, build)
-                assert len(mounts) == 3
-                assert mock_mount.call_count == 3
+                # Should have 4 mounts (hagent, cache, repo, build)
+                assert len(mounts) == 4
+                assert mock_mount.call_count == 4
 
                 # Verify mount calls
                 calls = mock_mount.call_args_list
                 mount_targets = [call[1]['target'] for call in calls]
+                assert '/code/hagent' in mount_targets
                 assert '/code/workspace/cache' in mount_targets
                 assert '/code/workspace/repo' in mount_targets
                 assert '/code/workspace/build' in mount_targets
