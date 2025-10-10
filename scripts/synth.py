@@ -124,9 +124,21 @@ def main():
     parser.add_argument('--netlist', default='netlist.v', help='Output netlist file path (default: netlist.v)')
     parser.add_argument('--sta', action='store_true', help='Run STA analysis instead of synthesis')
     parser.add_argument('--exclude', action='append', help='Exclude files matching regex pattern (can be used multiple times)')
+    parser.add_argument('--top-synthesis', help='Top module for synthesis (when different from elaboration top in --top)')
 
     # Parse known args to separate our args from slang args
     args, slang_args = parser.parse_known_args()
+
+    # Check if --top was in the original arguments but not in slang_args
+    # This happens when --top appears before other arguments
+    top_from_argv = None
+    for i, arg in enumerate(sys.argv):
+        if arg == '--top' and i + 1 < len(sys.argv):
+            top_from_argv = sys.argv[i + 1]
+            # Add it back to slang_args if not already there
+            if '--top' not in slang_args:
+                slang_args = ['--top', top_from_argv] + slang_args
+            break
 
     # Handle liberty file logic
     liberty_file = None
@@ -173,17 +185,20 @@ def main():
     if args.exclude:
         slang_args = filter_args_and_patch_filelists(slang_args, args.exclude)
 
-    # Extract top module name
-    top_name = find_top_name(slang_args)
-    if not top_name:
+    # Extract top module name from slang args
+    elaborate_top = find_top_name(slang_args)
+    if not elaborate_top:
         print('error: --top <module_name> is required', file=sys.stderr)
         parser.print_help()
         sys.exit(1)
 
+    # Determine synthesis top (may differ from elaborate top)
+    synth_top = args.top_synthesis if args.top_synthesis else elaborate_top
+
     if args.sta:
-        run_sta(args, slang_args, top_name)
+        run_sta(args, slang_args, synth_top)
     else:
-        run_synthesis(args, slang_args, top_name)
+        run_synthesis(args, slang_args, synth_top)
 
 
 def needs_recompilation(slang_args, netlist_path):
@@ -214,34 +229,129 @@ def run_synthesis(args, slang_args, top_name):
         print('error: synth.py yosys-slang module is not installed', file=sys.stderr)
         sys.exit(1)
 
-    # Build slang command arguments with synthesis define
-    slang_cmd = f'-DSYNTHESIS {" ".join(slang_args)}'
+    # Determine if we need --keep-hierarchy
+    elaborate_top = find_top_name(slang_args)
+    needs_hierarchy = elaborate_top != top_name
 
-    # Yosys script template using read_slang
-    yosys_template = f"""read_slang {slang_cmd}
-hierarchy -top {top_name}
-flatten {top_name}
-chformal -remove
-opt
-synth -top {top_name}
-dfflibmap -liberty {args.liberty}
-printattrs
-stat
-abc -liberty {args.liberty} -dff -keepff -g aig
-stat
-write_verilog {args.netlist}
+    # Build slang command arguments with synthesis define
+    # Note: slang_args already contains --top for elaboration
+    keep_hierarchy_flag = '--keep-hierarchy' if needs_hierarchy else ''
+    slang_cmd = f'-DSYNTHESIS {keep_hierarchy_flag} {" ".join(slang_args)}'.strip()
+
+    # Yosys script template using read_slang with TCL
+    # If we need hierarchy, use TCL to find the matching module
+    if needs_hierarchy:
+        import tempfile
+        import os
+
+        # Create unique temp file path
+        temp_fd, temp_path = tempfile.mkstemp(suffix='_yosys_modules.txt')
+        os.close(temp_fd)  # Close the file descriptor, we'll let yosys write to it
+
+        yosys_template = f"""yosys read_slang {slang_cmd}
+yosys tee -q -o {temp_path} ls
+set fp [open "{temp_path}" r]
+set mods [read $fp]
+close $fp
+file delete {temp_path}
+set lines [split $mods "\\n"]
+set top_module ""
+set candidates [list]
+set rejected [list]
+
+# Collect all matching candidates
+foreach line $lines {{
+    set trimmed [string trim $line]
+    if {{$trimmed ne "" && [string first "{top_name}" $trimmed] >= 0 && [string first "modules:" $trimmed] < 0 && [string first "memories:" $trimmed] < 0 && [string first "processes:" $trimmed] < 0}} {{
+        lappend candidates $trimmed
+    }}
+}}
+
+# Prioritize: prefer modules starting with the target name (possibly with backslash)
+foreach candidate $candidates {{
+    # Remove leading backslash if present
+    set clean_name [string trimleft $candidate "\\\\"]
+    # Check if it starts with the top_name
+    if {{[string first "{top_name}" $clean_name] == 0}} {{
+        if {{$top_module eq ""}} {{
+            set top_module $candidate
+        }} else {{
+            lappend rejected $candidate
+        }}
+    }} else {{
+        lappend rejected $candidate
+    }}
+}}
+
+# If no prioritized match, take the first candidate
+if {{$top_module eq "" && [llength $candidates] > 0}} {{
+    set top_module [lindex $candidates 0]
+    set rejected [lrange $candidates 1 end]
+}}
+
+if {{$top_module eq ""}} {{
+    error "Could not find module matching '{top_name}'"
+}}
+
+puts "Selected module: $top_module"
+puts stderr "info: Selected module: $top_module"
+if {{[llength $rejected] > 0}} {{
+    puts "Rejected candidates:"
+    puts stderr "info: Rejected [llength $rejected] candidate(s)"
+    foreach rej $rejected {{
+        puts "  - $rej"
+    }}
+}}
+yosys hierarchy -top $top_module
+yosys flatten
+yosys chformal -remove
+yosys opt
+yosys synth
+yosys dfflibmap -liberty {args.liberty}
+yosys printattrs
+yosys stat
+yosys abc -liberty {args.liberty} -dff -keepff -g aig
+yosys stat
+if {{$top_module ne "{top_name}"}} {{
+    puts "Renaming module $top_module to {top_name}"
+    yosys rename $top_module {top_name}
+}}
+yosys write_verilog {args.netlist}
+"""
+    else:
+        yosys_template = f"""yosys read_slang {slang_cmd}
+yosys hierarchy -top {top_name}
+yosys flatten {top_name}
+yosys chformal -remove
+yosys opt
+yosys synth -top {top_name}
+yosys dfflibmap -liberty {args.liberty}
+yosys printattrs
+yosys stat
+yosys abc -liberty {args.liberty} -dff -keepff -g aig
+yosys stat
+yosys write_verilog {args.netlist}
 """
 
-    # Write the modified content to {top}_yosys.s
-    yosys_script_name = f'{top_name}_yosys.s'
+    # Write the modified content to {top}_yosys.tcl
+    yosys_script_name = f'{top_name}_yosys.tcl'
     with open(yosys_script_name, 'w') as f:
         f.write(yosys_template)
 
-    # Run yosys with slang module and the script
+    # Determine stdout log file path based on netlist path
+    netlist_path = Path(args.netlist)
+    stdout_log = netlist_path.parent / f'{netlist_path.stem}_yosys.stdout'
+
+    # Run yosys with slang module and TCL mode, redirect output
     try:
-        subprocess.run(['yosys', '-m', 'slang', '-s', yosys_script_name], check=True)
+        with open(stdout_log, 'w') as log_file:
+            subprocess.run(
+                ['yosys', '-m', 'slang', '-c', yosys_script_name], stdout=log_file, stderr=subprocess.STDOUT, check=True
+            )
+        print(f'Yosys output written to {stdout_log}', file=sys.stderr)
     except subprocess.CalledProcessError as e:
         print(f'Error running yosys: {e}', file=sys.stderr)
+        print(f'Check {stdout_log} for details', file=sys.stderr)
         sys.exit(1)
 
 
@@ -262,11 +372,19 @@ def find_clock_signal(netlist_path):
 
     ports_section = module_match.group(1)
 
-    # Look for clock signals in the ports
-    if re.search(r'\bclk\b', ports_section):
+    # Extract all port names
+    port_matches = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', ports_section)
+
+    # Look for exact clock signals first
+    if 'clk' in port_matches:
         return 'clk'
-    elif re.search(r'\bclock\b', ports_section):
+    elif 'clock' in port_matches:
         return 'clock'
+
+    # Fall back to finding any signal with "clk" or "clock" substring
+    for port in port_matches:
+        if 'clk' in port.lower() or 'clock' in port.lower():
+            return port
 
     return None
 
