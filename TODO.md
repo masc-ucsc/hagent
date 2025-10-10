@@ -1,5 +1,20 @@
 -------
 
+ciel ls-remote --pdk-family sky130 | head -1
+6971617b18b2f322d8f574af7e53f79ddd75dafe
+
+ciel enable --pdk-family sky130 6971617b18b2f322d8f574af7e53f79ddd75dafe
+
+ls ${HOME}/.ciel/ciel/sky130/versions/6971617b18b2f322d8f574af7e53f79ddd75dafe/sky130A/libs.ref/sky130_fd_sc_hd/lib/
+sky130_fd_sc_hd__ff_100C_1v65.lib           sky130_fd_sc_hd__ff_n40C_1v95.lib  sky130_fd_sc_hd__ss_n40C_1v44.lib
+sky130_fd_sc_hd__ff_100C_1v95.lib           sky130_fd_sc_hd__ss_100C_1v40.lib  sky130_fd_sc_hd__ss_n40C_1v60_ccsnoise.lib
+sky130_fd_sc_hd__ff_n40C_1v56.lib           sky130_fd_sc_hd__ss_100C_1v60.lib  sky130_fd_sc_hd__ss_n40C_1v60.lib
+sky130_fd_sc_hd__ff_n40C_1v65.lib           sky130_fd_sc_hd__ss_n40C_1v28.lib  sky130_fd_sc_hd__ss_n40C_1v76.lib
+sky130_fd_sc_hd__ff_n40C_1v76.lib           sky130_fd_sc_hd__ss_n40C_1v35.lib  sky130_fd_sc_hd__tt_025C_1v80.lib
+sky130_fd_sc_hd__ff_n40C_1v95_ccsnoise.lib  sky130_fd_sc_hd__ss_n40C_1v40.lib  sky130_fd_sc_hd__tt_100C_1v80.lib
+
+-------
+
 `setup_xxx_mcp.sh`-related:
 1. Make existing `setup_simplechisel_mcp.sh` to copy from Docker containers instead of using `create_template` as the first option.
 2. Create a general `setup_xxx_mcp.sh` script so that we don't need one script per core.
