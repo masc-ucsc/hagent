@@ -1,4 +1,23 @@
-#!/usr/bin/env python3
+#!/bin/sh
+"true" '''\'
+# Shell portion: Bootstrap uv run with proper project directory
+
+# Determine the project root using Python for maximum portability
+SCRIPT_PATH="$0"
+PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/../.." && pwd)"
+
+# If UV_PROJECT_ENVIRONMENT is not set, use /code/workspace/cache/.venv if available
+# This handles the Docker case where /code/hagent is read-only
+if [ -z "$UV_PROJECT_ENVIRONMENT" ] && [ -d "/code/workspace/cache" ]; then
+    export UV_PROJECT_ENVIRONMENT="/code/workspace/cache/.venv"
+fi
+
+exec uv run --directory "$PROJECT_DIR" python "$SCRIPT_PATH" "$@"
+'''
+
+# ruff: noqa: E402
+# The above shebang wrapper ensures uv run is executed from the project root
+# In Docker, UV_PROJECT_ENVIRONMENT points to cache to avoid read-only filesystem issues
 """
 MCP Command: Build
 
@@ -10,10 +29,16 @@ import os
 import argparse
 import sys
 from typing import Dict, Any, Optional
+from pathlib import Path
+import re
 
+# Ensure we can import hagent by adding project root to sys.path
+script_path = Path(__file__).resolve()
+project_root = script_path.parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from hagent.inou.builder import Builder
-import re
 
 
 def _clean_ansi_codes(text: str) -> str:
