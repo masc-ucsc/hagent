@@ -638,14 +638,20 @@ class TestContainerManager:
         """Test that mcp_build.py script can be executed directly inside the container."""
         local_dirs = setup_local_directory
 
+        # Create container_manager_cache directory for persistent uv cache across test runs
+        # This speeds up successive runs significantly by avoiding uv sync on each run
+        container_cache_dir = Path('./setup_run/container_manager_cache')
+        container_cache_dir.mkdir(parents=True, exist_ok=True)
+
         # Create a real PathManager with test environment
+        # Use container_manager_cache for faster successive test runs
         with patch.dict(
             'os.environ',
             {
                 'HAGENT_EXECUTION_MODE': 'docker',
                 'HAGENT_REPO_DIR': str(local_dirs['repo_dir']),
                 'HAGENT_BUILD_DIR': str(local_dirs['build_dir']),
-                'HAGENT_CACHE_DIR': str(local_dirs['cache_dir']),
+                'HAGENT_CACHE_DIR': str(container_cache_dir),
             },
         ):
             # Create container manager using the fixture for cleanup
@@ -655,11 +661,11 @@ class TestContainerManager:
             setup_result = manager.setup()
             assert setup_result is True, f'Container setup failed: {manager.get_error()}'
 
-            # Run the mcp_build.py script with -h flag using uv run
-            # The script has a shell polyglot wrapper that requires proper execution
-            # Set UV_PROJECT_ENVIRONMENT to use cache dir since /code/hagent is read-only
+            # Run the mcp_build.py script directly to test the polyglot wrapper
+            # The wrapper should automatically set UV_PROJECT_ENVIRONMENT=/code/workspace/cache/.venv
+            # when /code/workspace/cache exists (Docker mode detection)
             exit_code, stdout, stderr = manager.run_cmd(
-                'export UV_PROJECT_ENVIRONMENT=/code/workspace/cache/.venv && cd /code/hagent && uv run python hagent/mcp/mcp_build.py -h',
+                '/code/hagent/hagent/mcp/mcp_build.py --help',
                 quiet=True,
             )
 

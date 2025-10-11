@@ -85,7 +85,6 @@ cat >"${BASE_DIR}/hagent_server.sh" <<EOF
 # Usage: ./hagent_server.sh [--debug]
 # Use --debug for detailed logging and raw I/O transaction logs in cache/mcp/
 
-export UV_PROJECT="${HAGENT_ROOT}"
 export HAGENT_ROOT="${HAGENT_ROOT}"
 export HAGENT_DOCKER="${HAGENT_DOCKER}"
 export HAGENT_EXECUTION_MODE="docker"
