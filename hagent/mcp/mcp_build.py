@@ -1,26 +1,22 @@
 #!/bin/sh
-(
-    'true'
-    """\'
-# Shell portion: Bootstrap uv run with proper project directory
-
-# Determine the project root using Python for maximum portability
-SCRIPT_PATH="$0"
-PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/../.." && pwd)"
-
-# If UV_PROJECT_ENVIRONMENT is not set, use /code/workspace/cache/.venv if available
-# This handles the Docker case where /code/hagent is read-only
+# fmt: off
+''''
+# If UV_PROJECT_ENVIRONMENT is not set and /code/workspace/cache exists (Docker case),
+# use /code/workspace/cache/.venv to avoid read-only filesystem issues
 if [ -z "$UV_PROJECT_ENVIRONMENT" ] && [ -d "/code/workspace/cache" ]; then
     export UV_PROJECT_ENVIRONMENT="/code/workspace/cache/.venv"
 fi
 
-exec uv run --directory "$PROJECT_DIR" python "$SCRIPT_PATH" "$@"
-"""
-)
+# Ensure uv discovers the hagent project even when invoked from a different cwd
+PROJECT_ROOT="$(cd "$(dirname "$0")"/../.. && pwd -P)"
+if [ -z "$UV_PROJECT" ]; then
+    export UV_PROJECT="$PROJECT_ROOT"
+fi
 
+exec uv run --project "$PROJECT_ROOT" python "$0" "$@"
+'''
+# fmt: on
 # ruff: noqa: E402
-# The above shebang wrapper ensures uv run is executed from the project root
-# In Docker, UV_PROJECT_ENVIRONMENT points to cache to avoid read-only filesystem issues
 """
 MCP Command: Build
 
