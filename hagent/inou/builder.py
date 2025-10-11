@@ -496,6 +496,7 @@ class Builder:
         build_dir: Optional[Path] = None,
         dry_run: bool = False,
         quiet: bool = True,
+        options: Optional[Dict[str, str]] = None,
     ) -> Tuple[int, str, str]:
         """
         Execute a command from a profile.
@@ -507,6 +508,7 @@ class Builder:
             build_dir: Build directory
             dry_run: If True, validate but don't execute
             quiet: Whether to run in quiet mode
+            options: Optional dictionary of option name -> value mappings for command customization
 
         Returns:
             Tuple of (exit_code, stdout, stderr)
@@ -542,6 +544,43 @@ class Builder:
 
         # Compose command; replace simple placeholders
         command = command_info['command']
+
+        # Process options if defined in the command
+        if 'options' in command_info:
+            options_config = command_info['options']
+            options = options or {}  # Initialize if None
+
+            # Build replacement dictionary for option placeholders
+            option_replacements = {}
+            for opt_spec in options_config:
+                opt_name = opt_spec.get('name')
+                if not opt_name:
+                    continue
+
+                # Determine the argument string to use
+                if opt_name in options:
+                    # User provided a value - use format with replacement
+                    format_str = opt_spec.get('format', '{value}')
+                    arg_value = format_str.replace('{value}', options[opt_name])
+                else:
+                    # Use default value with format applied
+                    default_value = opt_spec.get('default', '')
+                    if default_value:
+                        # Apply format to default value
+                        format_str = opt_spec.get('format', '{value}')
+                        arg_value = format_str.replace('{value}', default_value)
+                    else:
+                        # Empty default stays empty
+                        arg_value = ''
+
+                # Store the replacement for this option's placeholder
+                placeholder = f'{{{{{opt_name}_arg}}}}'
+                option_replacements[placeholder] = arg_value
+
+            # Replace all option placeholders in the command
+            for placeholder, value in option_replacements.items():
+                command = command.replace(placeholder, value)
+
         if extra_args:
             command = f'{command} {" ".join(extra_args)}'
 
@@ -585,6 +624,7 @@ class Builder:
         build_dir: Optional[Path] = None,
         dry_run: bool = False,
         quiet: bool = True,
+        options: Optional[Dict[str, str]] = None,
     ) -> Tuple[int, str, str]:
         """
         Convenience method to select profile and execute command in one call.
@@ -597,6 +637,7 @@ class Builder:
             build_dir: Build directory
             dry_run: If True, validate but don't execute
             quiet: Whether to run in quiet mode
+            options: Optional dictionary of option name -> value mappings for command customization
 
         Returns:
             Tuple of (exit_code, stdout, stderr)
@@ -607,7 +648,7 @@ class Builder:
             return -1, '', error_msg
 
         profile = self._select_profile(exact_name, title_query)
-        return self._run_api(profile, command_name, extra_args, build_dir, dry_run, quiet)
+        return self._run_api(profile, command_name, extra_args, build_dir, dry_run, quiet, options)
 
     # ---------------------------- listing methods ----------------------------
 
