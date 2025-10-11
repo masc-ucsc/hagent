@@ -120,7 +120,7 @@ class MockV2chisel_batch(V2chisel_batch):
         self.module_finder = None  # Will be set if needed
 
         # Initialize Builder for automated Docker management
-        self.runner = Builder(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        self.runner = Builder(docker_image='mascucsc/hagent-simplechisel:2025.10')
 
         # Setup runner and get container name
         self.runner.setup()

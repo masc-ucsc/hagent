@@ -65,7 +65,7 @@ class V2chisel_batch(Step):
         self.use_hints_v2 = True  # Default to V2 for testing
 
         # Initialize Builder for automated Docker management
-        self.builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        self.builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.10')
 
     def setup(self):
         """Initialize the batch processing step"""

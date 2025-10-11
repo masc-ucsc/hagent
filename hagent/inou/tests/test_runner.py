@@ -81,11 +81,11 @@ class TestRunner:
         os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
         PathManager.reset()  # Reset singleton to pick up new environment
 
-        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.10')
 
         assert runner.is_docker_mode()
         assert not runner.is_local_mode()
-        assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.09r'
+        assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.10'
         assert runner.container_manager is not None
 
         runner.cleanup()

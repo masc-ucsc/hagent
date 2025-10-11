@@ -1,5 +1,7 @@
 #!/bin/sh
-"true" '''\'
+(
+    'true'
+    """\'
 # Shell portion: Bootstrap uv run with proper project directory
 
 # Determine the project root using Python for maximum portability
@@ -13,7 +15,8 @@ if [ -z "$UV_PROJECT_ENVIRONMENT" ] && [ -d "/code/workspace/cache" ]; then
 fi
 
 exec uv run --directory "$PROJECT_DIR" python "$SCRIPT_PATH" "$@"
-'''
+"""
+)
 
 # ruff: noqa: E402
 # The above shebang wrapper ensures uv run is executed from the project root
