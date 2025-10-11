@@ -28,7 +28,7 @@ class DockerExecutor:
             # Create a new container_manager if not provided
             from .container_manager import ContainerManager
 
-            self.container_manager = ContainerManager(image='mascucsc/hagent-simplechisel:2025.09r')
+            self.container_manager = ContainerManager(image='mascucsc/hagent-simplechisel:2025.10')
 
         # Container instance for reuse
         self._container = None

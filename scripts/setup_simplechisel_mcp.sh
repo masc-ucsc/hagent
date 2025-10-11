@@ -9,8 +9,8 @@
 # Set default values - find hagent repo root from script location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HAGENT_ROOT=${HAGENT_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}
-# Default to 2025.09r image
-HAGENT_DOCKER=${HAGENT_DOCKER:-"mascucsc/hagent-simplechisel:2025.09r"}
+# Default to 2025.10 image
+HAGENT_DOCKER=${HAGENT_DOCKER:-"mascucsc/hagent-simplechisel:2025.10"}
 
 # Use current directory as base directory unless specified
 BASE_DIR=${1:-$(pwd)}
