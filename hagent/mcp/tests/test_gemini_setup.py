@@ -183,7 +183,7 @@ class TestGeminiMCPIntegration(unittest.TestCase):
             text=True,
             timeout=30,
             cwd=str(self.hagent_root),
-            env={**os.environ, 'HAGENT_ROOT': str(self.hagent_root), 'UV_PROJECT': str(self.hagent_root)},
+            env={**os.environ, 'HAGENT_ROOT': str(self.hagent_root)},
         )
 
         if result.returncode != 0:

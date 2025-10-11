@@ -1,19 +1,28 @@
 #!/bin/sh
 # fmt: off
 ''''
-# If UV_PROJECT_ENVIRONMENT is not set and /code/workspace/cache exists (Docker case),
-# use /code/workspace/cache/.venv to avoid read-only filesystem issues
-if [ -z "$UV_PROJECT_ENVIRONMENT" ] && [ -d "/code/workspace/cache" ]; then
-    export UV_PROJECT_ENVIRONMENT="/code/workspace/cache/.venv"
-fi
-
 # Ensure uv discovers the hagent project even when invoked from a different cwd
 PROJECT_ROOT="$(cd "$(dirname "$0")"/../.. && pwd -P)"
-if [ -z "$UV_PROJECT" ]; then
-    export UV_PROJECT="$PROJECT_ROOT"
-fi
 
-exec uv run --project "$PROJECT_ROOT" python "$0" "$@"
+# Docker detection: if /code/workspace/cache exists, we're in Docker
+if [ -d "/code/workspace/cache" ]; then
+    # In Docker: /code/hagent is read-only, so use cache venv
+    VENV_DIR="/code/workspace/cache/.venv"
+    if [ -z "$UV_PROJECT_ENVIRONMENT" ]; then
+        export UV_PROJECT_ENVIRONMENT="$VENV_DIR"
+    fi
+
+    # Ensure venv exists - if not, create it once
+    if [ ! -f "$VENV_DIR/bin/python" ]; then
+        cd "$PROJECT_ROOT" && uv venv "$VENV_DIR" && uv sync --frozen
+    fi
+
+    # Use the venv Python directly (no sync needed, much faster)
+    exec "$VENV_DIR/bin/python" "$0" "$@"
+else
+    # Local: use uv run to manage environment (handles sync automatically)
+    exec uv run --project "$PROJECT_ROOT" python "$0" "$@"
+fi
 '''
 # fmt: on
 # ruff: noqa: E402

@@ -142,7 +142,6 @@ class TestMCPBuildDocker(unittest.TestCase):
         # Set up environment variables for Docker execution
         test_env = {
             **os.environ,
-            'UV_PROJECT': str(self.hagent_root),
             'HAGENT_ROOT': str(self.hagent_root),
             'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
             'HAGENT_EXECUTION_MODE': 'docker',
@@ -154,7 +153,7 @@ class TestMCPBuildDocker(unittest.TestCase):
 
         print('Running mcp_build.py with environment:')
         for key, value in test_env.items():
-            if key.startswith('HAGENT_') or key in ['UV_PROJECT']:
+            if key.startswith('HAGENT_'):
                 print(f'  {key}={value}')
 
         # Run mcp_build.py directly with gcd compilation
@@ -232,7 +231,6 @@ class TestMCPBuildDocker(unittest.TestCase):
 
         test_env = {
             **os.environ,
-            'UV_PROJECT': str(self.hagent_root),
             'HAGENT_ROOT': str(self.hagent_root),
             'HAGENT_EXECUTION_MODE': 'docker',
         }
@@ -278,7 +276,6 @@ class TestMCPBuildDocker(unittest.TestCase):
 
         test_env = {
             **os.environ,
-            'UV_PROJECT': str(self.hagent_root),
             'HAGENT_ROOT': str(self.hagent_root),
             'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
             'HAGENT_EXECUTION_MODE': 'docker',
