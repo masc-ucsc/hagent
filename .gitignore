@@ -24,3 +24,5 @@ outputs
 setup_run
 /cache/
 /repo/
+.DS_Store
+project_env.sh
