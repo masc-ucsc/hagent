@@ -301,7 +301,7 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
     export_script_cmd = f"call {os.path.join(idf_path, 'export.bat')}" if platform.system() == "Windows" else f"source {os.path.join(idf_path, 'export.sh')}"
 
     try:
-        # Check if idf.py is in PATH; source export.sh/export.bat before build if not in path  
+        # Check if idf.py is in PATH; source export.sh/export.bat before flash if not in path  
         if shutil.which('idf.py'):
             result = subprocess.run(f"idf.py flash", cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
         else:
