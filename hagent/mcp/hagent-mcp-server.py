@@ -457,9 +457,10 @@ class EnvironmentSetup:
 
 
 # Define FastMCP tools
+# Note: hagent.info is available via the mcp__hagent__hagent_info MCP tool,
+# so we don't need to register it here as a separate tool
 
 
-@mcp.tool(name='hagent.info')
 def hagent_info() -> Dict[str, str]:
     """
     Return HAgent environment information

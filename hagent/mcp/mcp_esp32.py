@@ -27,7 +27,7 @@ def get_mcp_schema() -> Dict[str, Any]:
     ]
 
     return {
-        'name': 'esp32',
+        'name': 'hagent_esp32',
         'description': 'ESP32 development tool for managing boards, projects, building, and flashing',
         'inputSchema': {
             'type': 'object',

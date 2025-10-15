@@ -154,6 +154,27 @@ class MCPMessageHandlers:
             error = self._create_jsonrpc_error(-32602, f'Unknown root ID: {root_id}')
             return self._create_jsonrpc_response(request_id, error=error)
 
+    def handle_prompts_list(self, request_id: Optional[str]) -> Dict[str, Any]:
+        """Handle 'prompts/list' method."""
+        self.raw_logger.info('Handling prompts/list request')
+        # Return empty prompts list
+        result = {'prompts': []}
+        return self._create_jsonrpc_response(request_id, result)
+
+    def handle_resources_list(self, request_id: Optional[str]) -> Dict[str, Any]:
+        """Handle 'resources/list' method."""
+        self.raw_logger.info('Handling resources/list request')
+        # Return empty resources list
+        result = {'resources': []}
+        return self._create_jsonrpc_response(request_id, result)
+
+    def handle_resources_templates_list(self, request_id: Optional[str]) -> Dict[str, Any]:
+        """Handle 'resources/templates/list' method."""
+        self.raw_logger.info('Handling resources/templates/list request')
+        # Return empty resource templates list
+        result = {'resourceTemplates': []}
+        return self._create_jsonrpc_response(request_id, result)
+
     def handle_notifications_initialized(self, request_id: Optional[str]) -> Optional[Dict[str, Any]]:
         """Handle 'notifications/initialized' method."""
         self.raw_logger.info('Handling notifications/initialized request')
@@ -309,6 +330,12 @@ def handle_mcp_stdio_request(request: Dict[str, Any], handlers: MCPMessageHandle
         return handlers.handle_tools_list(request_id), False
     elif method == 'tools/call':
         return handlers.handle_tools_call(request_id, params), False
+    elif method == 'prompts/list':
+        return handlers.handle_prompts_list(request_id), False
+    elif method == 'resources/list':
+        return handlers.handle_resources_list(request_id), False
+    elif method == 'resources/templates/list':
+        return handlers.handle_resources_templates_list(request_id), False
     elif method == 'roots/list':
         return handlers.handle_roots_list(request_id), False
     elif method == 'roots/get':
