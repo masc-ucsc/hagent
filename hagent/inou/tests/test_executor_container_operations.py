@@ -98,7 +98,7 @@ class TestExecutorContainerOperations:
             os.makedirs(cache_dir, exist_ok=True)
 
         PathManager()  # Initialize the singleton
-        container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.09r')
+        container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
         executor = ExecutorFactory.create_executor(container_manager)
 
         assert executor.setup(), f'Executor setup failed: {executor.get_error()}'

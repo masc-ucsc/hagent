@@ -14,9 +14,10 @@ Docker image which includes Yosys synthesis tools. Tests cover:
 import os
 import pytest
 from hagent.tool.equiv_check import Equiv_check
+from hagent.inou.path_manager import PathManager
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope='class', autouse=True)
 def setup_hagent_environment():
     """Setup HAGENT environment variables for Docker mode tests."""
     original_env = {}
@@ -25,6 +26,9 @@ def setup_hagent_environment():
     hagent_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
     for var in hagent_vars:
         original_env[var] = os.environ.get(var)
+
+    # Reset PathManager singleton to pick up new environment
+    PathManager.reset()
 
     # Set Docker mode environment with host-accessible paths for testing
     os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
@@ -54,6 +58,9 @@ def setup_hagent_environment():
             os.environ.pop(var, None)
         else:
             os.environ[var] = value
+
+    # Reset PathManager singleton again after tests
+    PathManager.reset()
 
 
 class TestEquivCheckDocker:
@@ -355,6 +362,9 @@ endmodule
         os.environ['HAGENT_CACHE_DIR'] = cache_dir
 
     os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+
+    # Reset PathManager to pick up the new environment
+    PathManager.reset()
 
     try:
         # Test Docker fallback setup

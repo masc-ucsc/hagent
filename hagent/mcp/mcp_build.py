@@ -1,4 +1,31 @@
-#!/usr/bin/env python3
+#!/bin/sh
+# fmt: off
+''''
+# Ensure uv discovers the hagent project even when invoked from a different cwd
+PROJECT_ROOT="$(cd "$(dirname "$0")"/../.. && pwd -P)"
+
+# Docker detection: if /code/workspace/cache exists, we're in Docker
+if [ -d "/code/workspace/cache" ]; then
+    # In Docker: /code/hagent is read-only, so use cache venv
+    VENV_DIR="/code/workspace/cache/.venv"
+    if [ -z "$UV_PROJECT_ENVIRONMENT" ]; then
+        export UV_PROJECT_ENVIRONMENT="$VENV_DIR"
+    fi
+
+    # Ensure venv exists - if not, create it once
+    if [ ! -f "$VENV_DIR/bin/python" ]; then
+        cd "$PROJECT_ROOT" && uv venv "$VENV_DIR" && uv sync --frozen
+    fi
+
+    # Use the venv Python directly (no sync needed, much faster)
+    exec "$VENV_DIR/bin/python" "$0" "$@"
+else
+    # Local: use uv run to manage environment (handles sync automatically)
+    exec uv run --project "$PROJECT_ROOT" python "$0" "$@"
+fi
+'''
+# fmt: on
+# ruff: noqa: E402
 """
 MCP Command: Build
 
@@ -10,10 +37,16 @@ import os
 import argparse
 import sys
 from typing import Dict, Any, Optional
+from pathlib import Path
+import re
 
+# Ensure we can import hagent by adding project root to sys.path
+script_path = Path(__file__).resolve()
+project_root = script_path.parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from hagent.inou.builder import Builder
-import re
 
 
 def _clean_ansi_codes(text: str) -> str:
