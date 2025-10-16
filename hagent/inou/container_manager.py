@@ -556,6 +556,25 @@ class ContainerManager:
         """Setup standard mount points based on path manager."""
         mount_objs = []
 
+        # Mount hagent repository root to /code/hagent
+        # This provides access to hagent source code inside the container
+        try:
+            # Get the hagent repository root (3 levels up from this file)
+            current_file = os.path.realpath(__file__)
+            hagent_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+
+            # Create mount for hagent source
+            hagent_mount = docker.types.Mount(
+                target='/code/hagent',
+                source=hagent_root,
+                type='bind',
+                read_only=True,  # Mount as read-only for safety
+            )
+            mount_objs.append(hagent_mount)
+        except Exception as e:
+            self.set_error(f'Failed to mount hagent repository: {e}')
+            return []
+
         # Define mount points: (target, path_manager_attr, required)
         mounts_config = [
             ('/code/workspace/cache', 'cache_dir', True),

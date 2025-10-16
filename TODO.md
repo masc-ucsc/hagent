@@ -1,5 +1,35 @@
 -------
 
+Add to hagent.yaml in cva6 how to synthesize a submodule
+
+/code/hagent/scripts/synth.py --sta --tech-dir /code/workspace/tech --netlist  ../build/netlist_id_stage.v --top cva6  --top-synthesis id_stage    --ignore-unknown-modules --allow-use-before-declare    core/include/cv64a6_imafdc_sv39_wb_config_pkg.sv -f ./core/Flist.cva6
+
+
+time /code/hagent/scripts/synth.py --sta --tech-dir /code/workspace/tech --netlist  ../build/netlist.v --top cva6   --ignore-unknown-modules --allow-use-before-declare    core/include/cv64a6_imafdc_sv39_wb_config_pkg.sv -f ./core/Flist.cva6
+
+-------
+
+ciel ls-remote --pdk-family sky130 | head -1
+6971617b18b2f322d8f574af7e53f79ddd75dafe
+
+ciel enable --pdk-family sky130 6971617b18b2f322d8f574af7e53f79ddd75dafe
+
+ls ${HOME}/.ciel/ciel/sky130/versions/6971617b18b2f322d8f574af7e53f79ddd75dafe/sky130A/libs.ref/sky130_fd_sc_hd/lib/
+sky130_fd_sc_hd__ff_100C_1v65.lib           sky130_fd_sc_hd__ff_n40C_1v95.lib  sky130_fd_sc_hd__ss_n40C_1v44.lib
+sky130_fd_sc_hd__ff_100C_1v95.lib           sky130_fd_sc_hd__ss_100C_1v40.lib  sky130_fd_sc_hd__ss_n40C_1v60_ccsnoise.lib
+sky130_fd_sc_hd__ff_n40C_1v56.lib           sky130_fd_sc_hd__ss_100C_1v60.lib  sky130_fd_sc_hd__ss_n40C_1v60.lib
+sky130_fd_sc_hd__ff_n40C_1v65.lib           sky130_fd_sc_hd__ss_n40C_1v28.lib  sky130_fd_sc_hd__ss_n40C_1v76.lib
+sky130_fd_sc_hd__ff_n40C_1v76.lib           sky130_fd_sc_hd__ss_n40C_1v35.lib  sky130_fd_sc_hd__tt_025C_1v80.lib
+sky130_fd_sc_hd__ff_n40C_1v95_ccsnoise.lib  sky130_fd_sc_hd__ss_n40C_1v40.lib  sky130_fd_sc_hd__tt_100C_1v80.lib
+
+-------
+
+`setup_xxx_mcp.sh`-related:
+1. Make existing `setup_simplechisel_mcp.sh` to copy from Docker containers instead of using `create_template` as the first option.
+2. Create a general `setup_xxx_mcp.sh` script so that we don't need one script per core.
+
+-------
+
 When I run pytest with --durations option, I see that these are slow tests:
 
 23.77s call     hagent/step/replicate_code/tests/test_replicate_code.py::test_replicate_code
@@ -39,7 +69,7 @@ Can we provide test_replicate_code and test_equiv_checker_docker to see which fu
 
 mada4:
 
- docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2025.09r
+ docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2025.10
 
  fix hagent.yaml so that it can run synth.rb
 

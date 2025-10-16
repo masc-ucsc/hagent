@@ -21,7 +21,7 @@ Input YAML Format:
     # Docker settings (script will start/stop container automatically)
     docker_patterns:  # Paths to scan in Docker
       - "/code/workspace/repo/src/main/scala"
-    docker_image: "mascucsc/hagent-simplechisel:2025.09r"  # Docker image
+    docker_image: "mascucsc/hagent-simplechisel:2025.10"  # Docker image
 
     # Optional
     repo_path: "."  # For git commit tracking
@@ -91,7 +91,7 @@ def generate_hints(input_data: Dict[str, Any]) -> None:
     print('-' * 70)
 
     # Initialize Builder and Docker container
-    docker_image = input_data.get('docker_image', 'mascucsc/hagent-simplechisel:2025.09r')
+    docker_image = input_data.get('docker_image', 'mascucsc/hagent-simplechisel:2025.10')
     print('\n🐳 Step 0: Initializing Docker Container')
     print(f'   Docker image: {docker_image}')
 
@@ -280,7 +280,7 @@ unified_diff: |
 # Docker settings (script will start/stop container automatically)
 docker_patterns:
   - "/code/workspace/repo/src/main/scala"
-docker_image: "mascucsc/hagent-simplechisel:2025.09r"
+docker_image: "mascucsc/hagent-simplechisel:2025.10"
 
 # Optional
 repo_path: "."
