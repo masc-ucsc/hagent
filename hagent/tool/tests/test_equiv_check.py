@@ -16,6 +16,8 @@ def prepare_checker(monkeypatch):
     Sets up a minimal valid environment so PathManager can initialize properly.
     Tests can override these settings with monkeypatch if needed.
     """
+    PathManager.reset()
+
     # Create unique directory for test
     test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
     test_dir = (Path('output') / 'equiv_check' / test_id).resolve()
