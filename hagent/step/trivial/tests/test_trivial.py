@@ -57,9 +57,7 @@ def test_trivial():
             # Check that all expected fields are present and match
             for key, value in expected_output.items():
                 assert key in result_data, f'Missing expected key: {key}'
-                assert result_data[key] == value, (
-                    f'Mismatch for key {key}: expected {value}, got {result_data[key]}'
-                )
+                assert result_data[key] == value, f'Mismatch for key {key}: expected {value}, got {result_data[key]}'
 
             # Check that required runtime fields are present
             runtime_fields = [
