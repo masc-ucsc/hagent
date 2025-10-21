@@ -117,16 +117,6 @@ class Runner:
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
-        # Issue warning if command contains hardcoded container paths
-        if '/code/workspace/' in command:
-            import sys
-
-            print(f'WARNING: Command contains hardcoded /code/workspace path: {command}', file=sys.stderr)
-            print(
-                '  Use cwd argument or set_cwd instead to hardcoding /code/workspace to support local/docker seamlessly',
-                file=sys.stderr,
-            )
-
         # Use new unified FileSystem approach if available
         if self.filesystem:
             # Translate cwd='.' to executor's current working directory

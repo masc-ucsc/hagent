@@ -236,9 +236,9 @@ class TestExecutorContainerOperations:
             with open(script_path, 'w') as f:
                 f.write(script_content)
 
-            # Note: In new API, we would need to implement file copying via container_manager
-            # For now, we'll create the script in build directory to avoid repo mount execution restrictions
-            custom_name = '/code/workspace/build/my_custom_tool'
+            # Use /tmp inside container for executables, as mounted volumes may have noexec flag
+            # This avoids permission issues with Docker volume mounts
+            custom_name = '/tmp/my_custom_tool'
 
             # Create script in container
             rc, out, err = executor.run_cmd(f"echo '{script_content}' > {custom_name}")

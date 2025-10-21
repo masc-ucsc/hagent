@@ -11,6 +11,8 @@ import subprocess
 import pytest
 from pathlib import Path
 
+DEFAULT_HAGENT_DOCKER = 'mascucsc/hagent-builder:2025.09'
+
 
 class TestTrivialCLI:
     """Test trivial step CLI with different execution modes."""
@@ -84,6 +86,7 @@ class TestTrivialCLI:
         """Test Docker execution with only execution mode (no directory mounts)."""
         env = os.environ.copy()
         env['HAGENT_EXECUTION_MODE'] = 'docker'
+        env['HAGENT_DOCKER'] = DEFAULT_HAGENT_DOCKER
 
         # Remove any existing HAGENT directory env vars to test defaults
         for key in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
@@ -129,6 +132,7 @@ class TestTrivialCLI:
         env.update(
             {
                 'HAGENT_EXECUTION_MODE': 'docker',
+                'HAGENT_DOCKER': DEFAULT_HAGENT_DOCKER,
                 'HAGENT_REPO_DIR': str(repo_path),
             }
         )
@@ -178,6 +182,7 @@ class TestTrivialCLI:
         env.update(
             {
                 'HAGENT_EXECUTION_MODE': 'docker',
+                'HAGENT_DOCKER': DEFAULT_HAGENT_DOCKER,
                 'HAGENT_REPO_DIR': str(repo_dir),
                 'HAGENT_CACHE_DIR': str(cache_dir),
             }

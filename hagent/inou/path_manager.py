@@ -207,7 +207,6 @@ class PathManager:
         paths.extend(
             [
                 '/code/workspace/repo/hagent.yaml',
-                '/code/workspace/hagent.yaml',
             ]
         )
 
@@ -235,24 +234,75 @@ class PathManager:
         Raises:
             FileNotFoundError: If no configuration file is found
         """
-        possible_paths = PathManager.possible_config_paths()
         execution_mode = os.environ.get('HAGENT_EXECUTION_MODE', 'local')
+        possible_paths = PathManager.possible_config_paths()
+        for candidate in possible_paths:
+            resolved = PathManager._resolve_readable_config_path(candidate, execution_mode)
+            if resolved:
+                return resolved
 
-        # For local mode, check if files actually exist locally
-        if execution_mode == 'local':
-            for path in possible_paths:
-                if path and os.path.exists(path):
-                    return str(Path(path).resolve())
-        else:
-            # For Docker mode, return the first valid path (existence will be checked by FileSystem later)
-            # Priority order: HAGENT_REPO_DIR first, then standard container paths
-            for path in possible_paths:
-                if path:
-                    # Return resolved path for consistency with local mode
-                    return str(Path(path).resolve())
-
-        # If we get here, no valid paths were found
+        # If we get here, no readable paths were found
         raise FileNotFoundError('No hagent.yaml found, try to set HAGENT_REPO_DIR')
+
+    @staticmethod
+    def _resolve_readable_config_path(path: Optional[str], execution_mode: str) -> Optional[str]:
+        """
+        Resolve a candidate configuration path if it exists and is readable.
+
+        Args:
+            path: Candidate path string to validate.
+            execution_mode: Current execution mode (local or docker).
+
+        Returns:
+            Resolved host path string if readable, otherwise None.
+        """
+        if not path:
+            return None
+
+        candidate = Path(path)
+
+        # Helper to check readability of a path
+        def _is_readable(p: Path) -> bool:
+            return p.exists() and os.access(p, os.R_OK)
+
+        try:
+            resolved_candidate = candidate.resolve()
+        except FileNotFoundError:
+            resolved_candidate = candidate
+
+        if _is_readable(resolved_candidate):
+            return str(resolved_candidate)
+
+        # Attempt to translate known Docker container paths to host paths for validation
+        docker_prefix_map = {
+            Path('/code/workspace/repo'): os.environ.get('HAGENT_REPO_DIR'),
+            Path('/code/workspace/build'): os.environ.get('HAGENT_BUILD_DIR'),
+            Path('/code/workspace/cache'): os.environ.get('HAGENT_CACHE_DIR'),
+        }
+
+        for container_prefix, host_prefix in docker_prefix_map.items():
+            if not host_prefix:
+                continue
+
+            try:
+                relative = candidate.relative_to(container_prefix)
+            except ValueError:
+                continue
+
+            host_candidate = Path(host_prefix) / relative
+            try:
+                resolved_host_candidate = host_candidate.resolve()
+            except FileNotFoundError:
+                continue
+
+            if _is_readable(resolved_host_candidate):
+                return str(resolved_host_candidate)
+
+        # For Docker mode, allow returning container paths when host translation is unavailable
+        if execution_mode == 'docker' and candidate.as_posix().startswith('/code/workspace/'):
+            return str(candidate)
+
+        return None
 
     @property
     def repo_dir(self) -> Path:

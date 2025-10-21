@@ -5,6 +5,7 @@ rm -f *.yaml
 rm -rf equiv_check_* chisel2v_*
 rm -f tmp_*txt
 rm -rf output
+rm -rf .cache/setup_*_mcp
 
 if [ -n "$(docker ps -qa)" ]; then
   docker kill $(docker ps -qa)

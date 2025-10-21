@@ -55,6 +55,37 @@ uv sync --extra dev
 uv run python -c "import hagent; print('HAgent installed successfully')"
 ```
 
+#### Synthesis Installation
+
+The hagent dockers (https://github.com/masc-ucsc/docker-images) have the tools installed, but not
+the large technology files. For the open source flow, the suggested setup is to use ceil:
+
+```
+python3 -m pip install --user --upgrade --no-cache-dir ciel
+
+# List latest available PDKs for sky130
+ciel ls-remote --pdk sky130 | head
+
+# Download one like XXXX: (latest in ls-remote?)
+ciel enable --pdk-family sky130 XXXX
+
+# List installed. Example:
+ ciel ls --pdk sky130
+In /Users/renau/.ciel/ciel/sky130/versions:
+└── e3262351fb1f5a3cc262ced1c76ebe3f2a5218fb (2025.10.15) (enabled)
+```
+
+Then find the corner (25C?) that you want to run as default (no multi-corner in default opensta settings):
+```
+ls -al /Users/renau/.ciel/ciel/sky130/versions/e3262351fb1f5a3cc262ced1c76ebe3f2a5218fb/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+-rw-r--r--@ 1 renau  staff    12M Oct 19 16:24 /Users/renau/.ciel/ciel/sky130/versions/e3262351fb1f5a3cc262ced1c76ebe3f2a5218fb/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+```
+
+Set the HAGENT_TECH_DIR (same as the lib directory, not the file):
+```
+export HAGENT_TECH_DIR=/Users/renau/.ciel/ciel/sky130/versions/e3262351fb1f5a3cc262ced1c76ebe3f2a5218fb/sky130A/libs.ref/sky130_fd_sc_hd/lib
+```
+
 #### Updating HAgent
 
 If updating HAgent, you may need to update dependencies too:

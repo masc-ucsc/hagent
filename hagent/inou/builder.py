@@ -38,11 +38,47 @@ class Builder:
 
         Args:
             config_path: Path to the YAML configuration file (auto-discovered if None)
-            docker_image: Docker image for container execution (if needed)
+            docker_image: Docker image for container execution. If provided, this forces
+                Docker mode and temporarily overrides the HAGENT_DOCKER environment value.
         """
-        # Always initialize Runner first
-        self.runner = Runner(docker_image)
         self.error_message = ''
+
+        # Track environment overrides so we can restore them on cleanup
+        self._original_execution_mode: Optional[str] = None
+        self._original_docker_image: Optional[str] = None
+        self._env_override_applied = False
+        self._docker_image_env_overridden = False
+
+        env_execution_mode = os.environ.get('HAGENT_EXECUTION_MODE')
+
+        effective_docker_image = docker_image
+
+        # Ensure HAGENT_DOCKER matches the explicitly provided docker image
+        if docker_image is not None:
+            current_docker_image = os.environ.get('HAGENT_DOCKER')
+            if current_docker_image != docker_image:
+                self._original_docker_image = current_docker_image
+                os.environ['HAGENT_DOCKER'] = docker_image
+                self._docker_image_env_overridden = True
+
+        # If execution mode isn't docker but a docker image is provided, force docker mode
+        if env_execution_mode != 'docker' and docker_image is not None:
+            self._original_execution_mode = env_execution_mode
+            os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+            self._env_override_applied = True
+            # Reset PathManager so it re-reads the new execution mode
+            PathManager.reset()
+            env_execution_mode = 'docker'
+
+        # Determine docker image when running in docker mode without explicit override
+        if env_execution_mode == 'docker':
+            if effective_docker_image is None:
+                effective_docker_image = os.environ.get('HAGENT_DOCKER')
+        else:
+            effective_docker_image = None
+
+        # Always initialize Runner first with the effective docker image (if any)
+        self.runner = Runner(effective_docker_image)
 
         # Initialize FileSystem (will be set after Runner setup)
         self.filesystem: Optional[FileSystem] = None
@@ -929,6 +965,28 @@ class Builder:
         """
         if self.runner:
             self.runner.cleanup()
+
+        # Restore environment overrides if we applied any
+        reset_path_manager = False
+
+        if self._docker_image_env_overridden:
+            if self._original_docker_image is None:
+                os.environ.pop('HAGENT_DOCKER', None)
+            else:
+                os.environ['HAGENT_DOCKER'] = self._original_docker_image
+            self._docker_image_env_overridden = False
+
+        if self._env_override_applied:
+            if self._original_execution_mode is None:
+                os.environ.pop('HAGENT_EXECUTION_MODE', None)
+            else:
+                os.environ['HAGENT_EXECUTION_MODE'] = self._original_execution_mode
+            self._env_override_applied = False
+            reset_path_manager = True
+
+        if reset_path_manager:
+            PathManager.reset()
+
         self.error_message = ''
 
     def __enter__(self):
