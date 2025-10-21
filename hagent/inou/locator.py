@@ -385,8 +385,12 @@ class Locator:
 
         return verilog_patterns
 
-    def _build_hierarchy_cache(self) -> dict:
-        """Execute slang-hier and parse output into hierarchy mapping."""
+    def _build_hierarchy_cache(self, target_type: Optional[RepresentationType] = None) -> dict:
+        """Execute slang-hier and parse output into hierarchy mapping.
+
+        Args:
+            target_type: Optional target representation type (currently not used, kept for API compatibility)
+        """
         # Check cache first
         cached = self._load_cache('hierarchy')
         if cached is not None:
@@ -431,6 +435,8 @@ class Locator:
             if 'slang-hier' in base_command:
                 slang_hier_cmd = base_command
             else:
+                # Always use RTL files from -F filelist.f for hierarchy
+                # (works for both verilog and netlist targets)
                 # Try to extract slang args from synth.py/synth.rb using --dry-run
                 slang_args = self._extract_slang_args_from_synth(base_command, cwd)
 
@@ -913,7 +919,7 @@ class Locator:
         3. Partial hierarchy suffix: "pipeB_aluControl.io_aluop" → matches any instance ending with pipeB_aluControl
         4. Case-insensitive matching: "gcd.x" matches "GCD" module
         """
-        hierarchy = self._build_hierarchy_cache()
+        hierarchy = self._build_hierarchy_cache(target_type=target_type)
         if not hierarchy:
             return []
 
@@ -972,8 +978,66 @@ class Locator:
         locations = []
         seen_files = set()  # Avoid duplicate searches in same file
 
-        # For Chisel/Netlist targets: first find Verilog locations, then map to target
-        if target_type in [RepresentationType.CHISEL, RepresentationType.NETLIST]:
+        # For NETLIST target: search for escaped identifier in netlist file
+        if target_type == RepresentationType.NETLIST:
+            # In flat netlists, hierarchical signals use escaped identifiers
+            # Example: PipelinedCPU.aluControl.io_aluop → \aluControl.io_aluop
+            # (backslash prefix, space suffix, without top module)
+
+            # Get netlist file path from synth.py command
+            cmd_info = self._get_synthesis_command()
+            if cmd_info:
+                base_command = cmd_info['command']
+                # Substitute templates
+                apis = self._profile_config.get('apis', []) if self._profile_config else []
+                for api in apis:
+                    if 'synth.py' in api.get('command', ''):
+                        if 'options' in api:
+                            for option in api['options']:
+                                option_name = option.get('name', '')
+                                default_value = option.get('default', '')
+                                if option_name and default_value:
+                                    base_command = base_command.replace(f'{{{{{option_name}}}}}', default_value)
+                        break
+
+                # Extract netlist path
+                import re as re_module
+
+                netlist_match = re_module.search(r'--netlist\s+(\S+)', base_command)
+                if netlist_match:
+                    netlist_file = netlist_match.group(1)
+
+                    # Construct escaped identifier pattern from hierarchical path
+                    # Remove top module from path: PipelinedCPU.aluControl.io_aluop → aluControl.io_aluop
+                    hierarchical_name = '.'.join(parts[1:]) if len(parts) > 1 else var_name
+
+                    # Search for escaped identifier: \aluControl.io_aluop (with space after)
+                    # Escaped identifiers in Verilog: backslash + name + space
+                    escaped_pattern = f'\\\\{re_module.escape(hierarchical_name)}\\s'
+
+                    # Search directly in netlist file (inline to avoid regex transformation)
+                    netlist_path = Path(self.builder.runner.path_manager.build_dir) / netlist_file
+                    try:
+                        content = self.builder.filesystem.read_text(str(netlist_path))
+                        if content:
+                            lines = content.splitlines()
+                            for i, line in enumerate(lines, 1):
+                                if re_module.search(escaped_pattern, line):
+                                    locations.append(
+                                        SourceLocation(
+                                            file_path=str(netlist_path),
+                                            module_name='',
+                                            line_start=i,
+                                            line_end=i,
+                                            confidence=1.0,
+                                            representation=target_type,
+                                        )
+                                    )
+                    except Exception:
+                        pass
+
+        # For Chisel target: first find Verilog locations, then map to Chisel
+        elif target_type == RepresentationType.CHISEL:
             # Step 1: Find variable in Verilog files from hierarchy
             verilog_files_with_var = set()
 
@@ -999,7 +1063,7 @@ class Locator:
             seen_target_files = set()
 
             for verilog_file_path in verilog_files_with_var:
-                # Use Module_finder to map this specific Verilog file to Chisel/Netlist
+                # Use Module_finder to map this specific Verilog file to Chisel
                 chisel_file = self._map_verilog_file_to_chisel(verilog_file_path)
 
                 if chisel_file and chisel_file not in seen_target_files:

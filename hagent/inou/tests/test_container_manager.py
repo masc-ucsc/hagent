@@ -382,20 +382,25 @@ class TestContainerManager:
                 MagicMock(),  # After pull succeeds
             ]
             mock_container = MagicMock()
-            # Update the mock side effects to match the new simplified root-based architecture
-            # The new architecture has workspace validation built into the setup process
-            mock_container.exec_run.side_effect = [
-                # Docker workspace validation (5 calls - added tech_dir)
-                MagicMock(exit_code=0),  # /code/workspace
-                MagicMock(exit_code=0),  # /code/workspace/repo
-                MagicMock(exit_code=0),  # /code/workspace/build
-                MagicMock(exit_code=0),  # /code/workspace/cache
-                MagicMock(exit_code=0),  # /code/workspace/tech
-                # Working directory creation
-                MagicMock(exit_code=0),  # mkdir workdir
-                # Bash test
-                MagicMock(exit_code=1),  # bash test fails
-            ]
+
+            def exec_run_side_effect(command, *args, **kwargs):
+                """Return deterministic mocks irrespective of call ordering."""
+                cmd = kwargs.get('cmd', command)
+                if isinstance(cmd, (list, tuple)):
+                    cmd_str = ' '.join(cmd)
+                else:
+                    cmd_str = cmd
+
+                if cmd_str.startswith('test -x /bin/bash'):
+                    return MagicMock(exit_code=1, output=b'')
+
+                if cmd_str.startswith('ls -la'):
+                    return MagicMock(exit_code=0, output=b'')
+
+                # Default successful command (workspace validation, mkdir, etc.)
+                return MagicMock(exit_code=0, output=b'')
+
+            mock_container.exec_run.side_effect = exec_run_side_effect
             mock_container.reload.return_value = None
             mock_container.status = 'running'
             mock_container.attrs = {'State': {'Status': 'running', 'Health': None}}
