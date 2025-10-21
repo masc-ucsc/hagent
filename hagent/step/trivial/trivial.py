@@ -6,17 +6,12 @@ from hagent.core.step import Step
 
 from typing import Dict
 
-import os
-
 
 # Trivial example of extending the Pass class
 class Trivial(Step):
     def setup(self):
         super().setup()  # superclass
-        if os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
-            self.builder = Builder(docker_image='mascucsc/hagent-builder:2025.09')
-        else:
-            self.builder = Builder()
+        self.builder = Builder()
 
         if not self.builder.setup():
             self.error(f'OOPS in trivial.py error from builder:{self.builder.get_error()}')

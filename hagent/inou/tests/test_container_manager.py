@@ -303,9 +303,9 @@ class TestContainerManager:
 
                 mounts = manager._setup_mount_points()
 
-                # Should have 4 mounts (hagent, cache, repo, build)
-                assert len(mounts) == 4
-                assert mock_mount.call_count == 4
+                # Should have 5 mounts (hagent, cache, repo, build, tech)
+                assert len(mounts) == 5
+                assert mock_mount.call_count == 5
 
                 # Verify mount calls
                 calls = mock_mount.call_args_list
@@ -314,6 +314,7 @@ class TestContainerManager:
                 assert '/code/workspace/cache' in mount_targets
                 assert '/code/workspace/repo' in mount_targets
                 assert '/code/workspace/build' in mount_targets
+                assert '/code/workspace/tech' in mount_targets
 
     @patch('docker.types.Mount')
     def test_setup_success(self, mock_mount, setup_local_directory):
@@ -584,9 +585,9 @@ class TestContainerManager:
 
                 mounts = manager._setup_mount_points()
 
-                # Should have 4 mounts (hagent, cache, repo, build)
-                assert len(mounts) == 4
-                assert mock_mount.call_count == 4
+                # Should have 5 mounts (hagent, cache, repo, build, tech)
+                assert len(mounts) == 5
+                assert mock_mount.call_count == 5
 
                 # Verify mount calls
                 calls = mock_mount.call_args_list
@@ -622,9 +623,9 @@ class TestContainerManager:
 
                 mounts = manager._setup_mount_points()
 
-                # Should have 4 mounts (hagent, cache, repo, build)
-                assert len(mounts) == 4
-                assert mock_mount.call_count == 4
+                # Should have 5 mounts (hagent, cache, repo, build, tech)
+                assert len(mounts) == 5
+                assert mock_mount.call_count == 5
 
                 # Verify mount calls
                 calls = mock_mount.call_args_list

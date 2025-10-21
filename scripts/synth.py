@@ -96,18 +96,96 @@ def patch_filelist(filelist_path, exclude_patterns):
 
 
 def find_liberty_file(tech_dir):
-    """Find the single .lib file in tech directory"""
+    """Find the best .lib file in tech directory using smart filtering"""
     tech_path = Path(tech_dir)
     if not tech_path.exists():
         return None
 
     lib_files = list(tech_path.glob('*.lib'))
-    if len(lib_files) == 1:
-        return str(lib_files[0])
-    elif len(lib_files) > 1:
-        return None  # Multiple files found, require explicit --liberty
-    else:
+    if len(lib_files) == 0:
         return None  # No .lib files found
+    elif len(lib_files) == 1:
+        return str(lib_files[0])
+
+    # Multiple files found - apply smart filtering
+    candidates = [str(f) for f in lib_files]
+
+    # Step 1: Filter for typical corner (tt, typ, typical)
+    typical_files = [f for f in candidates if any(x in f.lower() for x in ['_tt_', '_typ_', '_typical_'])]
+    if typical_files:
+        candidates = typical_files
+
+    # Step 2: Filter for 25C temperature
+    temp_25_files = [f for f in candidates if '_025c_' in f.lower() or '_25c_' in f.lower()]
+    if temp_25_files:
+        candidates = temp_25_files
+
+    # Step 3: Filter for medium voltage (1v8, 1.8v, or similar)
+    # Look for 1v8, 1.8v patterns
+    medium_v_files = [f for f in candidates if any(x in f.lower() for x in ['1v8', '1.8v', '1_8v'])]
+    if medium_v_files:
+        candidates = medium_v_files
+
+    # If we still have multiple candidates, just pick the first one
+    if len(candidates) > 0:
+        selected = candidates[0]
+        print(f'info: Multiple liberty files found, selected: {Path(selected).name}', file=sys.stderr)
+        return selected
+
+    # Fallback: return first from original list
+    return str(lib_files[0])
+
+
+def print_dry_run(args, slang_args, synth_top, elaborate_top):
+    """Print command line arguments without executing"""
+    print('=== Dry Run Mode ===')
+    print(f'Mode: {"STA" if args.sta else "Synthesis"}')
+    print(f'Liberty file: {args.liberty}')
+    print(f'Output netlist: {args.netlist}')
+    print(f'Elaboration top: {elaborate_top}')
+    print(f'Synthesis top: {synth_top}')
+    if args.exclude:
+        print(f'Exclude patterns: {args.exclude}')
+
+    # Check for file existence and collect warnings
+    warnings = []
+
+    # Check liberty file
+    if not Path(args.liberty).exists():
+        warnings.append(f'Liberty file not found: {args.liberty}')
+
+    # Check source files from slang_args
+    for arg in slang_args:
+        # Skip flags and their arguments
+        if arg.startswith('-'):
+            continue
+        # Check if it looks like a file path (has extension or exists)
+        if '.' in arg or Path(arg).exists():
+            if not Path(arg).exists():
+                warnings.append(f'Source file not found: {arg}')
+
+    # Print warnings if any
+    if warnings:
+        print('\nWarnings:')
+        for warning in warnings:
+            print(f'  - {warning}', file=sys.stderr)
+
+    # Build slang command arguments
+    needs_hierarchy = elaborate_top != synth_top
+    keep_hierarchy_flag = '--keep-hierarchy' if needs_hierarchy else ''
+    slang_cmd = f'-DSYNTHESIS {keep_hierarchy_flag} {" ".join(slang_args)}'.strip()
+
+    print(f'\nSlang arguments: {slang_cmd}')
+
+    if args.sta:
+        print(f'\nSTA script would be written to: {synth_top}_opensta.tcl')
+        print(f'Command: sta {synth_top}_opensta.tcl')
+    else:
+        print(f'\nYosys script would be written to: {synth_top}_yosys.tcl')
+        print(f'Command: yosys -m slang -c {synth_top}_yosys.tcl')
+        netlist_path = Path(args.netlist)
+        stdout_log = netlist_path.parent / f'{netlist_path.stem}_yosys.stdout'
+        print(f'Output log would be written to: {stdout_log}')
 
 
 def main():
@@ -125,6 +203,7 @@ def main():
     parser.add_argument('--sta', action='store_true', help='Run STA analysis instead of synthesis')
     parser.add_argument('--exclude', action='append', help='Exclude files matching regex pattern (can be used multiple times)')
     parser.add_argument('--top-synthesis', help='Top module for synthesis (when different from elaboration top in --top)')
+    parser.add_argument('--dry-run', action='store_true', help='Show command line arguments without executing')
 
     # Parse known args to separate our args from slang args
     args, slang_args = parser.parse_known_args()
@@ -144,6 +223,13 @@ def main():
     liberty_file = None
     if args.liberty:
         liberty_file = args.liberty
+    elif args.dry_run:
+        # In dry-run mode, use placeholder if no liberty file specified
+        tech_dir = args.tech_dir or os.environ.get('HAGENT_TECH_DIR')
+        if tech_dir:
+            liberty_file = f'{tech_dir}/placeholder.lib'
+        else:
+            liberty_file = '/code/workspace/tech/placeholder.lib'
     else:
         # Try to use tech-dir or HAGENT_TECH_DIR
         tech_dir = args.tech_dir or os.environ.get('HAGENT_TECH_DIR')
@@ -153,11 +239,7 @@ def main():
                 if not Path(tech_dir).exists():
                     print(f'error: tech directory does not exist: {tech_dir}', file=sys.stderr)
                     sys.exit(1)
-                lib_files = list(Path(tech_dir).glob('*.lib'))
-                if len(lib_files) > 1:
-                    print(f'error: multiple .lib files found in {tech_dir}, use --liberty to specify which one', file=sys.stderr)
-                    sys.exit(1)
-                elif len(lib_files) == 0:
+                else:
                     print(f'error: no .lib files found in {tech_dir}', file=sys.stderr)
                     sys.exit(1)
         else:
@@ -165,14 +247,6 @@ def main():
             fallback_tech_dir = '/code/workspace/tech'
             if Path(fallback_tech_dir).exists():
                 liberty_file = find_liberty_file(fallback_tech_dir)
-                if liberty_file is None:
-                    lib_files = list(Path(fallback_tech_dir).glob('*.lib'))
-                    if len(lib_files) > 1:
-                        print(
-                            f'error: multiple .lib files found in {fallback_tech_dir}, use --liberty to specify which one',
-                            file=sys.stderr,
-                        )
-                        sys.exit(1)
 
             if liberty_file is None:
                 print('error: either --liberty or --tech-dir (or HAGENT_TECH_DIR env var) must be specified', file=sys.stderr)
@@ -195,7 +269,9 @@ def main():
     # Determine synthesis top (may differ from elaborate top)
     synth_top = args.top_synthesis if args.top_synthesis else elaborate_top
 
-    if args.sta:
+    if args.dry_run:
+        print_dry_run(args, slang_args, synth_top, elaborate_top)
+    elif args.sta:
         run_sta(args, slang_args, synth_top)
     else:
         run_synthesis(args, slang_args, synth_top)
@@ -218,16 +294,17 @@ def needs_recompilation(slang_args, netlist_path):
 
 
 def run_synthesis(args, slang_args, top_name):
-    # Check if yosys is available
-    if subprocess.run(['which', 'yosys'], capture_output=True).returncode != 0:
-        print('error: synth.py yosys tool is not in the path', file=sys.stderr)
-        sys.exit(1)
+    # Check if yosys is available (skip in dry-run mode)
+    if not args.dry_run:
+        if subprocess.run(['which', 'yosys'], capture_output=True).returncode != 0:
+            print('error: synth.py yosys tool is not in the path', file=sys.stderr)
+            sys.exit(1)
 
-    # Check if yosys-slang module is available
-    result = subprocess.run(['yosys', '-m', 'slang', '-p', 'help read_slang'], capture_output=True, text=True)
-    if result.returncode != 0:
-        print('error: synth.py yosys-slang module is not installed', file=sys.stderr)
-        sys.exit(1)
+        # Check if yosys-slang module is available
+        result = subprocess.run(['yosys', '-m', 'slang', '-p', 'help read_slang'], capture_output=True, text=True)
+        if result.returncode != 0:
+            print('error: synth.py yosys-slang module is not installed', file=sys.stderr)
+            sys.exit(1)
 
     # Determine if we need --keep-hierarchy
     elaborate_top = find_top_name(slang_args)
@@ -390,15 +467,16 @@ def find_clock_signal(netlist_path):
 
 
 def run_sta(args, slang_args, top_name):
-    # Check if sta is available
-    if subprocess.run(['which', 'sta'], capture_output=True).returncode != 0:
-        print('error: synth.py sta tool is not in the path', file=sys.stderr)
-        sys.exit(1)
+    # Check if sta is available (skip in dry-run mode)
+    if not args.dry_run:
+        if subprocess.run(['which', 'sta'], capture_output=True).returncode != 0:
+            print('error: synth.py sta tool is not in the path', file=sys.stderr)
+            sys.exit(1)
 
-    # Check if we need to recompile
-    if needs_recompilation(slang_args, args.netlist):
-        print('Netlist is outdated, running synthesis first...')
-        run_synthesis(args, slang_args, top_name)
+        # Check if we need to recompile
+        if needs_recompilation(slang_args, args.netlist):
+            print('Netlist is outdated, running synthesis first...')
+            run_synthesis(args, slang_args, top_name)
 
     # Find clock signal
     clock_signal = find_clock_signal(args.netlist)

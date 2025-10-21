@@ -158,6 +158,46 @@ class TestPathManager:
             with pytest.raises(FileNotFoundError, match='No hagent.yaml found'):
                 PathManager.find_config()
 
+    def test_find_config_requires_read_permission(self, tmp_path):
+        """Ensure unreadable config files are ignored."""
+        config_file = tmp_path / 'hagent.yaml'
+        config_file.write_text('data: test')
+        config_file.chmod(0o000)
+
+        try:
+            with patch('hagent.inou.path_manager.PathManager.possible_config_paths', return_value=[str(config_file)]):
+                with pytest.raises(FileNotFoundError):
+                    PathManager.find_config()
+        finally:
+            config_file.chmod(0o644)
+
+    def test_find_config_translates_docker_path(self, tmp_path):
+        """Docker-style paths should be translated to host paths when possible."""
+        config_file = tmp_path / 'hagent.yaml'
+        config_file.write_text('test: docker')
+
+        env_vars = {'HAGENT_REPO_DIR': str(tmp_path)}
+
+        with patch.dict(os.environ, env_vars, clear=False):
+            with patch(
+                'hagent.inou.path_manager.PathManager.possible_config_paths',
+                return_value=['/code/workspace/repo/hagent.yaml'],
+            ):
+                found_path = PathManager.find_config()
+
+        assert found_path == str(config_file.resolve())
+
+    @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'docker'}, clear=True)
+    def test_find_config_allows_container_path_fallback(self):
+        """In Docker mode, container paths should be returned when host paths aren't available."""
+        with patch(
+            'hagent.inou.path_manager.PathManager.possible_config_paths',
+            return_value=['/code/workspace/repo/hagent.yaml'],
+        ):
+            found_path = PathManager.find_config()
+
+        assert found_path == '/code/workspace/repo/hagent.yaml'
+
     def test_get_cache_dir(self):
         """Test get_cache_dir method."""
         with tempfile.TemporaryDirectory() as temp_dir:
