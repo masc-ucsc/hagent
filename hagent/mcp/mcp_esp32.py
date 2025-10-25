@@ -299,13 +299,13 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
     
     idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
     export_script_cmd = f"call {os.path.join(idf_path, 'export.bat')}" if platform.system() == "Windows" else f"source {os.path.join(idf_path, 'export.sh')}"
-
+    flash_cmd = "idf.py flash"
     try:
         # Check if idf.py is in PATH; source export.sh/export.bat before flash if not in path  
         if shutil.which('idf.py'):
-            result = subprocess.run(f"idf.py flash", cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
+            result = subprocess.run(flash_cmd, cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
         else:
-            result = subprocess.run(f"{export_script_cmd} && idf.py flash", cwd=[os.environ["HAGENT_REPO_DIR"]], shell=True, capture_output=True, check=True)      
+            result = subprocess.run(f"{export_script_cmd} && {flash_cmd}", cwd=[os.environ["HAGENT_REPO_DIR"]], shell=True, capture_output=True, check=True)      
     except subprocess.CalledProcessError as e:
         return {
             'success': False,
@@ -314,8 +314,6 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
             'stdout': e.stdout,
             'stderror': e.stderr,
         }
-
-    result = subprocess.run(f"{export_script_cmd} && idf.py flash", cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
 
     return {
         'success': True,
@@ -348,7 +346,7 @@ def api_factory_reset(args: Optional[str] = None) -> Dict[str, Any]:
     # 4. Flash hello world
     # 5. Instruct user to press RESET
     # 6. Run monitor briefly to verify
-
+    
     return {
         'success': False,
         'exit_code': 1,
@@ -376,13 +374,54 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
     # 5. Send CTRL+] to exit monitor
     # 6. Return captured output
 
+    repo_dir = os.path.join(os.environ["HAGENT_REPO_DIR"])
+    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
+    export_sh = os.path.join(idf_path, 'export.sh')
+    export_script_cmd = f"bash -c 'source {export_sh} >/dev/null 2>&1 && python3 - <<PY\nimport os, json\nprint(json.dumps(dict(os.environ)))\nPY'"
+    monitor_cmd = "script -q /dev/null idf.py monitor"
+        
+    try:
+        # Check if idf.py is in PATH, source export.sh/export.bat before running the command
+        if shutil.which('idf.py'):
+            print("Starting serial monitor process")
+            proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True, cwd=repo_dir)
+        else:
+            # If idf.py is not in PATH, run a process to add it to the PATH, capture the process' ENV and supply it to the process running the serial monitor
+            print("Setting environment: Adding idf.py to PATH")
+            export_proc = subprocess.run(export_script_cmd, shell=True, text=True, check=True, capture_output=True, cwd=repo_dir)
+            env = json.loads(export_proc.stdout)
+            print("Starting serial monitor process")
+            proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True, cwd=repo_dir, env=env)
+           
+        # Communicate and read stdout from the process monitoring serial output
+        # The communicate function call runs till timeout then throws an exception, which needs to be caught and handled
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        # This is where the function exits by default
+        proc.kill()
+        out, err = proc.communicate()
+        return {
+            'success': True,
+            'exit_code': 0,
+            'stdout': out,
+            'stderr': err
+        }
+    except subprocess.CalledProcessError as e:
+        # This block is reached when the export process fails
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': export_proc.stdout,
+            'stderr': export_proc.stderr 
+        }
+    
+    # The process exits prematurely, before the timeout ends if an error is encountered
     return {
         'success': False,
         'exit_code': 1,
-        'stdout': '',
-        'stderr': 'api_monitor not implemented yet',
+        'stdout': out,
+        'stderr': err,
     }
-
 
 def api_idf(args: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -630,13 +669,24 @@ if __name__ == '__main__':
     # sys.exit(api_setup("newproject"))
     # api_setup("newproject")
     # api_install()
-    print("Executable is being built...")
-    build_result = api_build()
-    print("Build finished")
-    print("Flashing the firmware...")
-    flash_result = api_flash()
-    print(flash_result["stdout"])
-    print("Flash completed, exiting...")
-    #api_install()
+    # print("Executable is being built...")
+    # build_result = api_build()
+    # if build_result['success'] == True:
+    #     print("Build successful ")
+    # else:
+    #     print("Build failed")
+    #     print(f"Build output: {build_result}")
+    #     sys.exit(1)
+
+    # print("Flashing the firmware...")
+    # flash_result = api_flash()
+    # if flash_result['success'] == True:
+    #     print("Flash completed, exiting...")
+    # else:
+    #     print("Flash failed")
+    #     print(f"Flash output: {flash_output}")
+    print("Starting serial monitor for 30 seconds...")
+    monitor_result = api_monitor()
+    print(monitor_result['stdout'])
     sys.exit(1)
     # sys.exit(main())
