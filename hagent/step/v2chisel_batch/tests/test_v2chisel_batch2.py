@@ -399,7 +399,7 @@ def main():
 
 
 if __name__ == '__main__':
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode enabled via HAGENT_DOCKER
     exit_code = main()
     print()
     print('=' * 80)

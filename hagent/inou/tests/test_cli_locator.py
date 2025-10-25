@@ -176,7 +176,7 @@ class TestCLILocatorWithPipelinedD:
         Uses Docker mode with only cache directory mounted. This allows:
         - Prebuilt files (repo, build) inside the Docker image to be used
         - Cache directory for faster re-runs
-        - HAGENT_EXECUTION_MODE=docker
+        - HAGENT_DOCKER set (docker mode)
         - HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.10
         - HAGENT_CACHE_DIR=<temp_dir>/cache (for caching)
         """
@@ -210,7 +210,7 @@ class TestCLILocatorWithPipelinedD:
         # Set execution mode, Docker image, and cache directory
         env.update(
             {
-                'HAGENT_EXECUTION_MODE': 'docker',
+                # Docker mode via HAGENT_DOCKER,
                 'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
                 'HAGENT_CACHE_DIR': str(cache_dir),
             }
@@ -432,7 +432,7 @@ class TestCLILocatorWithGCD:
         # Set execution mode, Docker image, and cache directory
         env.update(
             {
-                'HAGENT_EXECUTION_MODE': 'docker',
+                # Docker mode via HAGENT_DOCKER,
                 'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
                 'HAGENT_CACHE_DIR': str(cache_dir),
             }
@@ -588,7 +588,7 @@ class TestCLILocatorWithPipelinedDHierarchy:
         # Set execution mode, Docker image, and cache directory
         env.update(
             {
-                'HAGENT_EXECUTION_MODE': 'docker',
+                # Docker mode via HAGENT_DOCKER,
                 'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
                 'HAGENT_CACHE_DIR': str(cache_dir),
             }

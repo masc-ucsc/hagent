@@ -8,8 +8,7 @@ Environment Variables:
     HAGENT_REPO_DIR: Repository directory (default: current directory)
     HAGENT_BUILD_DIR: Build output directory
     HAGENT_CACHE_DIR: Cache directory
-    HAGENT_EXECUTION_MODE: 'docker' or 'local'
-    HAGENT_DOCKER: Docker image to use (if in docker mode)
+    HAGENT_DOCKER: Docker image to use (if set, docker mode is enabled)
 
 Examples:
     # Map VCD signal to Verilog source
@@ -283,8 +282,7 @@ Environment Variables:
   HAGENT_REPO_DIR       Repository directory
   HAGENT_BUILD_DIR      Build output directory
   HAGENT_CACHE_DIR      Cache directory
-  HAGENT_EXECUTION_MODE Execution mode (docker or local)
-  HAGENT_DOCKER         Docker image to use
+  HAGENT_DOCKER         Docker image to use (if set, docker mode is enabled)
 
 Examples:
   # Map VCD signal to Verilog

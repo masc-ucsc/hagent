@@ -43,7 +43,6 @@ class TestPathManagerIntegration:
         with patch.dict(
             'os.environ',
             {
-                'HAGENT_EXECUTION_MODE': 'local',
                 'HAGENT_REPO_DIR': '/test/repo',
                 'HAGENT_BUILD_DIR': '/test/build',
                 'HAGENT_CACHE_DIR': '/test/cache',

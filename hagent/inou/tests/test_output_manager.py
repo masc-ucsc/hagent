@@ -14,7 +14,7 @@ from hagent.inou.output_manager import get_output_dir, get_output_path
 class TestOutputManager:
     def setup_method(self):
         self.original_output_dir = os.environ.get('HAGENT_OUTPUT_DIR')
-        self.original_execution_mode = os.environ.get('HAGENT_EXECUTION_MODE')
+        self.original_docker = os.environ.get('HAGENT_DOCKER')
 
     def teardown_method(self):
         # Restore HAGENT_OUTPUT_DIR
@@ -23,16 +23,16 @@ class TestOutputManager:
         elif 'HAGENT_OUTPUT_DIR' in os.environ:
             del os.environ['HAGENT_OUTPUT_DIR']
 
-        # Restore HAGENT_EXECUTION_MODE
-        if self.original_execution_mode is not None:
-            os.environ['HAGENT_EXECUTION_MODE'] = self.original_execution_mode
-        elif 'HAGENT_EXECUTION_MODE' in os.environ:
-            del os.environ['HAGENT_EXECUTION_MODE']
+        # Restore HAGENT_DOCKER
+        if self.original_docker is not None:
+            os.environ['HAGENT_DOCKER'] = self.original_docker
+        elif 'HAGENT_DOCKER' in os.environ:
+            del os.environ['HAGENT_DOCKER']
 
     def test_get_output_dir_with_hagent_output_dir(self):
         """Test that HAGENT_OUTPUT_DIR takes priority."""
         # Clear other environment variables
-        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+        for var in ['HAGENT_OUTPUT_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
@@ -47,7 +47,7 @@ class TestOutputManager:
     def test_get_output_dir_default(self):
         """Test default fallback to 'output' directory."""
         # Clear all relevant environment variables
-        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+        for var in ['HAGENT_OUTPUT_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
@@ -58,7 +58,7 @@ class TestOutputManager:
     def test_get_output_dir_creates_directory(self):
         """Test that output directory is created automatically."""
         # Clear all environment variables
-        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+        for var in ['HAGENT_OUTPUT_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
@@ -75,7 +75,7 @@ class TestOutputManager:
     def test_get_output_path_valid_filename(self):
         """Test get_output_path with simple filename."""
         # Clear all relevant environment variables to test default behavior
-        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+        for var in ['HAGENT_OUTPUT_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
@@ -86,7 +86,7 @@ class TestOutputManager:
     def test_get_output_path_valid_relative_path(self):
         """Test get_output_path with relative path."""
         # Clear all relevant environment variables to test default behavior
-        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+        for var in ['HAGENT_OUTPUT_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
@@ -97,7 +97,7 @@ class TestOutputManager:
     def test_get_output_path_with_hagent_output_dir(self):
         """Test get_output_path with HAGENT_OUTPUT_DIR."""
         # Clear other environment variables
-        for var in ['HAGENT_EXECUTION_MODE']:
+        for var in ['HAGENT_DOCKER']:
             if var in os.environ:
                 del os.environ[var]
 
@@ -136,7 +136,7 @@ class TestOutputManager:
 
     def test_get_output_path_current_directory_reference(self):
         # Clear environment variables
-        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_EXECUTION_MODE']:
+        for var in ['HAGENT_OUTPUT_DIR']:
             if var in os.environ:
                 del os.environ[var]
 

@@ -27,7 +27,7 @@ from ruamel.yaml import YAML
 
 # Set up environment for testing - only set execution mode
 # Let Runner handle all Docker paths internally
-os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+# Docker mode enabled via HAGENT_DOCKER
 
 from hagent.inou.runner import Runner
 from hagent.tool.fuzzy_grep import Fuzzy_grep

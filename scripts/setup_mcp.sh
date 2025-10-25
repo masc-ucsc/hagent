@@ -10,12 +10,16 @@
 # Optimization: Uses cached template in .cache/setup_<project>_mcp for faster setup
 
 set -e
-PROJECT_NAME=${1,,}
+PROJECT_NAME="${1:-}"
 BASE_DIR=${2:-$(pwd)}
 if [[ -z "$PROJECT_NAME" ]]; then
   echo "Usage: $0 <project> [target_dir]" >&2
+  echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan" >&2
   exit 1
 fi
+
+# Normalize project name to lowercase for portability (macOS bash lacks ${var,,})
+PROJECT_NAME=$(printf '%s' "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]')
 
 case "$PROJECT_NAME" in
   cva6)
@@ -40,7 +44,7 @@ case "$PROJECT_NAME" in
     ;;
   *)
     echo "Unknown project: '$PROJECT_NAME'" >&2
-    echo "Availeble projects are: 'cva6', 'simplechisel', 'soomrv', 'verilog-adder', and 'xiangshan'"
+    echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan" >&2
     exit 1
     ;;
 esac
@@ -75,8 +79,21 @@ create_template() {
       echo "Using existing cached repo at ${CACHE_TEMPLATE_DIR}/repo"
     fi
   else
-    echo "Warning: no git repository for $PROJECT_NAME. Creating minimal repo scaffold instead." >&2
-    mkdir -p "${CACHE_TEMPLATE_DIR}/repo"
+    if [[ "$PROJECT_NAME" == "verilog-adder" ]]; then
+      echo "Populating repo from bundled example for verilog-adder."
+      EXAMPLE_DIR="${HAGENT_ROOT}/examples/verilog_adder"
+      if [[ -d "$EXAMPLE_DIR" ]]; then
+        rm -rf "${CACHE_TEMPLATE_DIR}/repo"
+        mkdir -p "${CACHE_TEMPLATE_DIR}/repo"
+        cp -a "${EXAMPLE_DIR}/." "${CACHE_TEMPLATE_DIR}/repo/"
+      else
+        echo "Warning: verilog_adder example not found at ${EXAMPLE_DIR}. Creating minimal repo scaffold instead." >&2
+        mkdir -p "${CACHE_TEMPLATE_DIR}/repo"
+      fi
+    else
+      echo "Warning: no git repository for $PROJECT_NAME. Creating minimal repo scaffold instead." >&2
+      mkdir -p "${CACHE_TEMPLATE_DIR}/repo"
+    fi
   fi
 
   echo "Template created."
@@ -108,6 +125,19 @@ for d in repo build cache logs; do
   cp -a "${CACHE_TEMPLATE_DIR}/${d}" "${BASE_DIR}/" 2>/dev/null || mkdir -p "${BASE_DIR}/${d}"
 done
 mkdir -p "${BASE_DIR}/cache/mcp"
+
+if [[ "$PROJECT_NAME" == "verilog-adder" ]]; then
+  EXAMPLE_DIR="${HAGENT_ROOT}/examples/verilog_adder"
+  if [[ -d "$EXAMPLE_DIR" ]]; then
+    if [[ ! -d "${BASE_DIR}/repo" ]] || [[ -z "$(ls -A "${BASE_DIR}/repo" 2>/dev/null)" ]]; then
+      echo "Copying verilog_adder example into target repo directory."
+      mkdir -p "${BASE_DIR}/repo"
+      cp -a "${EXAMPLE_DIR}/." "${BASE_DIR}/repo/"
+    fi
+  else
+    echo "Warning: verilog_adder example not found at ${EXAMPLE_DIR}. Repo directory left untouched." >&2
+  fi
+fi
 
 # Write server launcher
 MCP_SERVER_PATH="${HAGENT_ROOT}/hagent/mcp/hagent-mcp-server.py"
@@ -143,4 +173,3 @@ echo
 echo "To test manually:"
 echo "  ${BASE_DIR}/hagent_server.sh"
 echo
-

@@ -181,7 +181,7 @@ def get_mcp_schema(config_path: Optional[str] = None) -> Dict[str, Any]:
 
     try:
         # Check if environment is already properly set up
-        required_env_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
+        required_env_vars = ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
         env_already_set = all(var in os.environ for var in required_env_vars)
 
         env_backup = {}
@@ -195,7 +195,6 @@ def get_mcp_schema(config_path: Optional[str] = None) -> Dict[str, Any]:
             temp_dir = tempfile.mkdtemp(prefix='hagent_schema_')
 
             env_defaults = {
-                'HAGENT_EXECUTION_MODE': 'local',
                 'HAGENT_REPO_DIR': temp_dir,
                 'HAGENT_BUILD_DIR': temp_dir,
                 'HAGENT_CACHE_DIR': temp_dir,

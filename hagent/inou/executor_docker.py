@@ -46,7 +46,6 @@ class DockerExecutor:
         """Setup HAGENT environment variables for Docker execution."""
         # Inside Docker container, use container paths not host paths
         env_vars = {
-            'HAGENT_EXECUTION_MODE': 'docker',
             'HAGENT_REPO_DIR': '/code/workspace/repo',
             'HAGENT_BUILD_DIR': '/code/workspace/build',
             'HAGENT_CACHE_DIR': '/code/workspace/cache',

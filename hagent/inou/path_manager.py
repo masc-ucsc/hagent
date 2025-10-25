@@ -66,21 +66,18 @@ class PathManager:
         """
         Validate required HAGENT_* environment variables and setup paths.
         Fails fast with clear error messages if validation fails.
+
+        Execution mode is determined by HAGENT_DOCKER:
+        - If HAGENT_DOCKER is set → docker mode
+        - If HAGENT_DOCKER is not set → local mode
         """
-        self._execution_mode = os.environ.get('HAGENT_EXECUTION_MODE')
-
-        if not self._execution_mode:
-            self._fail_fast("HAGENT_EXECUTION_MODE environment variable is not set.\nMust be either 'local' or 'docker'.")
-            return  # Should not reach here in normal execution, but helps in tests
-
-        if self._execution_mode not in ['local', 'docker']:
-            self._fail_fast(f"Invalid HAGENT_EXECUTION_MODE: '{self._execution_mode}'.\nMust be either 'local' or 'docker'.")
-            return  # Should not reach here in normal execution, but helps in tests
-
-        if self._execution_mode == 'local':
-            self._validate_local_mode()
-        elif self._execution_mode == 'docker':
+        # Determine execution mode based on HAGENT_DOCKER
+        if os.environ.get('HAGENT_DOCKER'):
+            self._execution_mode = 'docker'
             self._validate_docker_mode()
+        else:
+            self._execution_mode = 'local'
+            self._validate_local_mode()
 
         # Create cache directory structure
         self._create_cache_structure()
@@ -130,7 +127,7 @@ class PathManager:
 
     def _validate_docker_mode(self) -> None:
         """Validate environment variables for Docker execution mode."""
-        # In Docker mode, only HAGENT_EXECUTION_MODE is required from user
+        # In Docker mode, only HAGENT_DOCKER is required from user
         # Other variables are optional - if provided, they will be mounted as host directories
         # If not provided, use default container paths
 
@@ -234,7 +231,8 @@ class PathManager:
         Raises:
             FileNotFoundError: If no configuration file is found
         """
-        execution_mode = os.environ.get('HAGENT_EXECUTION_MODE', 'local')
+        # Determine execution mode based on HAGENT_DOCKER
+        execution_mode = 'docker' if os.environ.get('HAGENT_DOCKER') else 'local'
         possible_paths = PathManager.possible_config_paths()
         for candidate in possible_paths:
             resolved = PathManager._resolve_readable_config_path(candidate, execution_mode)
@@ -332,9 +330,9 @@ class PathManager:
 
     @property
     def execution_mode(self) -> str:
-        """Get the execution mode."""
+        """Get the execution mode (docker if HAGENT_DOCKER is set, otherwise local)."""
         if not self._execution_mode:
-            self._fail_fast('Execution mode not available. Ensure HAGENT_EXECUTION_MODE is set.')
+            self._fail_fast('Execution mode not available. Internal error - should be set during initialization.')
         return self._execution_mode
 
     def is_docker_mode(self) -> bool:

@@ -52,7 +52,7 @@ def main():
     args = parser.parse_args()
 
     # Set up environment
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode enabled via HAGENT_DOCKER
 
     # Get the base directory
     base_dir = Path(__file__).parent.parent.parent.parent.parent
@@ -114,7 +114,7 @@ def main():
                 '-c',
                 """
 import os
-os.environ["HAGENT_EXECUTION_MODE"] = "docker"
+# Docker mode enabled via HAGENT_DOCKER
 
 from hagent.step.v2chisel_batch.v2chisel_batch import V2chisel_batch
 from hagent.step.v2chisel_batch.components.bug_info import BugInfo

@@ -23,12 +23,12 @@ def setup_hagent_environment():
     original_env = {}
 
     # Save original environment
-    hagent_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
+    hagent_vars = ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
     for var in hagent_vars:
         original_env[var] = os.environ.get(var)
 
     # Set Docker mode environment with host-accessible paths for testing
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode enabled via HAGENT_DOCKER
 
     # Use local directories that Docker can easily mount
     repo_dir = os.path.abspath('./output/test_executor_yosys_synthesis')

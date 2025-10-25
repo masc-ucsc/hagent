@@ -48,7 +48,7 @@ class Equiv_check:
 
         Returns True if Yosys is available (locally or via Docker), False otherwise.
         """
-        # Check if HAGENT_EXECUTION_MODE is set to docker - if so, skip local yosys and use Docker
+        # Check if HAGENT_DOCKER is set (docker mode enabled) - if so, skip local yosys and use Docker
         from hagent.inou.path_manager import PathManager
 
         is_docker_mode = PathManager().is_docker_mode()
