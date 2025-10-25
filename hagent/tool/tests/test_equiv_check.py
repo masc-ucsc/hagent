@@ -25,7 +25,8 @@ def prepare_checker(monkeypatch):
 
     # Always set up environment variables for local mode to ensure clean state
     # Use monkeypatch to ensure proper cleanup
-    monkeypatch.setenv('HAGENT_EXECUTION_MODE', 'local')
+    # Ensure HAGENT_DOCKER is not set (local mode)
+    monkeypatch.delenv('HAGENT_DOCKER', raising=False)
     repo_dir = (test_dir / 'repo').resolve()
     repo_dir.mkdir(exist_ok=True)
     monkeypatch.setenv('HAGENT_REPO_DIR', str(repo_dir))

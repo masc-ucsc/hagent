@@ -16,7 +16,7 @@ import sys
 import argparse
 
 # Set up environment for Builder (Docker execution mode)
-os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+# Docker mode enabled via HAGENT_DOCKER
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

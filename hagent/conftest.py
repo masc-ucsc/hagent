@@ -76,24 +76,20 @@ def setup_test_environment():
 
     This ensures that tests have the necessary environment variables set
     even when running the full test suite.
+
+    Note: Execution mode is determined by HAGENT_DOCKER:
+    - If HAGENT_DOCKER is set → docker mode
+    - If HAGENT_DOCKER is not set → local mode (default for tests)
     """
     # Store original values to restore later
-    original_execution_mode = os.environ.get('HAGENT_EXECUTION_MODE')
     original_tokenizers = os.environ.get('TOKENIZERS_PARALLELISM')
 
     # Set required environment variables if not already set
-    if 'HAGENT_EXECUTION_MODE' not in os.environ:
-        os.environ['HAGENT_EXECUTION_MODE'] = 'local'
     os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
     yield
 
     # Restore original values
-    if original_execution_mode is None:
-        os.environ.pop('HAGENT_EXECUTION_MODE', None)
-    else:
-        os.environ['HAGENT_EXECUTION_MODE'] = original_execution_mode
-
     if original_tokenizers is None:
         os.environ.pop('TOKENIZERS_PARALLELISM', None)
     else:

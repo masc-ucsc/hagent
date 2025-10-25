@@ -34,8 +34,8 @@ from pathlib import Path
 from typing import Dict, Any
 
 # Set execution mode to docker if not already set
-if 'HAGENT_EXECUTION_MODE' not in os.environ:
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+if 'HAGENT_DOCKER' not in os.environ:
+    os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-simplechisel:2025.10'
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))

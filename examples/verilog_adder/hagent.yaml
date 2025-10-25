@@ -17,25 +17,25 @@ profiles:
     apis:
       - name: compile_verilog
         description: "Compile Verilog source files"
-        command: "iverilog -o build/adder_compiled src/adder.v"
+        command: "iverilog -o $HAGENT_BUILD_DIR/adder_compiled adder.v"
         cwd: "$HAGENT_REPO_DIR"
         
       - name: compile_with_testbench
         description: "Compile Verilog source and testbench"
-        command: "iverilog -o build/adder_test src/adder.v tests/adder_tb.v"
+        command: "iverilog -o $HAGENT_BUILD_DIR/adder_test adder.v adder_tb.v"
         cwd: "$HAGENT_REPO_DIR"
         
       - name: run_testbench
         description: "Run the adder testbench"
-        command: "vvp build/adder_test"
-        cwd: "$HAGENT_REPO_DIR"
+        command: "vvp ./adder_test"
+        cwd: "$HAGENT_BUILD_DIR"
         
       - name: check_syntax
         description: "Check Verilog syntax without compilation"
-        command: "iverilog -t null src/adder.v"
+        command: "iverilog -t null adder.v"
         cwd: "$HAGENT_REPO_DIR"
         
       - name: check_testbench_syntax
         description: "Check testbench syntax"
-        command: "iverilog -t null src/adder.v tests/adder_tb.v"
+        command: "iverilog -t null adder.v adder_tb.v"
         cwd: "$HAGENT_REPO_DIR"

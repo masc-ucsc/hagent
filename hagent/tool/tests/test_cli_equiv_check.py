@@ -13,7 +13,7 @@ def run_cli_command(args):
     cmd = ['uv', 'run', 'python', './hagent/tool/tests/cli_equiv_check.py'] + args
     # Set up environment for Docker mode
     env = os.environ.copy()
-    env['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode via HAGENT_DOCKER
     # Set up output directories
     output_dir = os.path.abspath('./output/test_equiv_check')
     os.makedirs(output_dir, exist_ok=True)
@@ -28,7 +28,7 @@ def run_cli_command(args):
     print(f'DEBUG: Running command: {" ".join(cmd)}')
     print(f'DEBUG: Working directory: {os.getcwd()}')
     print('DEBUG: Environment variables:')
-    for key in ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
+    for key in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
         print(f'  {key}={env.get(key, "NOT_SET")}')
     print('DEBUG: Output directory setup:')
     for dir_path in [env['HAGENT_REPO_DIR'], env['HAGENT_BUILD_DIR'], env['HAGENT_CACHE_DIR']]:

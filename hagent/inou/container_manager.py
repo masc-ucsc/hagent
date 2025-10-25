@@ -61,7 +61,7 @@ def is_docker_mode() -> bool:
     Check if we're running in Docker execution mode.
 
     Returns:
-        True if HAGENT_EXECUTION_MODE=docker, False otherwise
+        True if HAGENT_DOCKER is set (docker mode), False otherwise
     """
     return PathManager().is_docker_mode()
 

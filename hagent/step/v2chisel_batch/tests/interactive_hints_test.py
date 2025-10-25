@@ -29,7 +29,7 @@ from unittest.mock import Mock
 from types import SimpleNamespace
 
 # Set environment before importing
-os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+# Docker mode enabled via HAGENT_DOCKER
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))

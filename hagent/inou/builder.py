@@ -44,12 +44,8 @@ class Builder:
         self.error_message = ''
 
         # Track environment overrides so we can restore them on cleanup
-        self._original_execution_mode: Optional[str] = None
         self._original_docker_image: Optional[str] = None
-        self._env_override_applied = False
         self._docker_image_env_overridden = False
-
-        env_execution_mode = os.environ.get('HAGENT_EXECUTION_MODE')
 
         effective_docker_image = docker_image
 
@@ -60,18 +56,12 @@ class Builder:
                 self._original_docker_image = current_docker_image
                 os.environ['HAGENT_DOCKER'] = docker_image
                 self._docker_image_env_overridden = True
-
-        # If execution mode isn't docker but a docker image is provided, force docker mode
-        if env_execution_mode != 'docker' and docker_image is not None:
-            self._original_execution_mode = env_execution_mode
-            os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
-            self._env_override_applied = True
-            # Reset PathManager so it re-reads the new execution mode
-            PathManager.reset()
-            env_execution_mode = 'docker'
+                # Reset PathManager so it re-reads HAGENT_DOCKER
+                PathManager.reset()
 
         # Determine docker image when running in docker mode without explicit override
-        if env_execution_mode == 'docker':
+        # Docker mode is active when HAGENT_DOCKER is set
+        if os.environ.get('HAGENT_DOCKER'):
             if effective_docker_image is None:
                 effective_docker_image = os.environ.get('HAGENT_DOCKER')
         else:
@@ -302,7 +292,6 @@ class Builder:
         # Don't override user-controlled HAGENT_* environment variables
         # These should only be set by the user for Docker volume mounting
         # The execution environment will handle path translation as needed
-        env['HAGENT_EXECUTION_MODE'] = path_manager.execution_mode
         return env
 
     # ---------------------------- track directive parsing ----------------------------
@@ -967,24 +956,13 @@ class Builder:
             self.runner.cleanup()
 
         # Restore environment overrides if we applied any
-        reset_path_manager = False
-
         if self._docker_image_env_overridden:
             if self._original_docker_image is None:
                 os.environ.pop('HAGENT_DOCKER', None)
             else:
                 os.environ['HAGENT_DOCKER'] = self._original_docker_image
             self._docker_image_env_overridden = False
-
-        if self._env_override_applied:
-            if self._original_execution_mode is None:
-                os.environ.pop('HAGENT_EXECUTION_MODE', None)
-            else:
-                os.environ['HAGENT_EXECUTION_MODE'] = self._original_execution_mode
-            self._env_override_applied = False
-            reset_path_manager = True
-
-        if reset_path_manager:
+            # Reset PathManager to re-read HAGENT_DOCKER
             PathManager.reset()
 
         self.error_message = ''

@@ -35,7 +35,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         """Set up test environment - run once for all tests."""
         # Get the HAgent root directory
         cls.hagent_root = Path(__file__).parent.parent.parent.parent
-        cls.setup_script = cls.hagent_root / 'scripts' / 'setup_simplechisel_mcp.sh'
+        cls.setup_script = cls.hagent_root / 'scripts' / 'setup_mcp.sh'
         cls.mcp_build_script = cls.hagent_root / 'hagent' / 'mcp' / 'mcp_build.py'
 
         # Verify required files exist
@@ -93,7 +93,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         # Set up environment using the setup script
         print(f'Setting up test environment in {self.test_dir}')
         result = subprocess.run(
-            [str(self.setup_script), str(self.test_dir)],
+            [str(self.setup_script), 'simplechisel', str(self.test_dir)],
             capture_output=True,
             text=True,
             timeout=120,
@@ -144,7 +144,6 @@ class TestMCPBuildDocker(unittest.TestCase):
             **os.environ,
             'HAGENT_ROOT': str(self.hagent_root),
             'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
-            'HAGENT_EXECUTION_MODE': 'docker',
             'HAGENT_REPO_DIR': str(self.test_dir / 'repo'),
             'HAGENT_BUILD_DIR': str(self.test_dir / 'build'),
             'HAGENT_CACHE_DIR': str(self.test_dir / 'cache'),
@@ -232,7 +231,6 @@ class TestMCPBuildDocker(unittest.TestCase):
         test_env = {
             **os.environ,
             'HAGENT_ROOT': str(self.hagent_root),
-            'HAGENT_EXECUTION_MODE': 'docker',
         }
 
         # Test schema generation (should work without Docker)
@@ -278,7 +276,6 @@ class TestMCPBuildDocker(unittest.TestCase):
             **os.environ,
             'HAGENT_ROOT': str(self.hagent_root),
             'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
-            'HAGENT_EXECUTION_MODE': 'docker',
             'HAGENT_REPO_DIR': str(self.test_dir / 'repo'),
             'HAGENT_BUILD_DIR': str(self.test_dir / 'build'),
             'HAGENT_CACHE_DIR': str(self.test_dir / 'cache'),

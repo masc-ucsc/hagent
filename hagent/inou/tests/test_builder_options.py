@@ -26,7 +26,7 @@ def test_builder_options_with_defaults(test_config_dir):
     tmpdir, config_path = test_config_dir
 
     # Set environment for local mode - all required variables
-    os.environ['HAGENT_EXECUTION_MODE'] = 'local'
+    os.environ.pop('HAGENT_DOCKER', None)
     os.environ['HAGENT_REPO_DIR'] = tmpdir
     os.environ['HAGENT_BUILD_DIR'] = tmpdir
     os.environ['HAGENT_CACHE_DIR'] = tmpdir
@@ -51,7 +51,7 @@ def test_builder_options_with_custom_values(test_config_dir):
     tmpdir, config_path = test_config_dir
 
     # Set environment for local mode - all required variables
-    os.environ['HAGENT_EXECUTION_MODE'] = 'local'
+    os.environ.pop('HAGENT_DOCKER', None)
     os.environ['HAGENT_REPO_DIR'] = tmpdir
     os.environ['HAGENT_BUILD_DIR'] = tmpdir
     os.environ['HAGENT_CACHE_DIR'] = tmpdir
@@ -81,7 +81,7 @@ def test_builder_options_partial_override(test_config_dir):
     tmpdir, config_path = test_config_dir
 
     # Set environment for local mode - all required variables
-    os.environ['HAGENT_EXECUTION_MODE'] = 'local'
+    os.environ.pop('HAGENT_DOCKER', None)
     os.environ['HAGENT_REPO_DIR'] = tmpdir
     os.environ['HAGENT_BUILD_DIR'] = tmpdir
     os.environ['HAGENT_CACHE_DIR'] = tmpdir
@@ -108,7 +108,7 @@ def test_builder_options_empty_suffix(test_config_dir):
     tmpdir, config_path = test_config_dir
 
     # Set environment for local mode - all required variables
-    os.environ['HAGENT_EXECUTION_MODE'] = 'local'
+    os.environ.pop('HAGENT_DOCKER', None)
     os.environ['HAGENT_REPO_DIR'] = tmpdir
     os.environ['HAGENT_BUILD_DIR'] = tmpdir
     os.environ['HAGENT_CACHE_DIR'] = tmpdir

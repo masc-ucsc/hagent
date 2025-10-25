@@ -71,7 +71,7 @@ ciel enable --pdk-family sky130 XXXX
 
 # List installed. Example:
  ciel ls --pdk sky130
-In /Users/renau/.ciel/ciel/sky130/versions:
+In ${HOME}/.ciel/ciel/sky130/versions:
 └── e3262351fb1f5a3cc262ced1c76ebe3f2a5218fb (2025.10.15) (enabled)
 ```
 
@@ -140,13 +140,13 @@ After installation, run a simple test to verify everything works:
 uv run pytest hagent/step/trivial/tests/
 
 # Run a simple trivial step (Docker mode - recommended)
-export HAGENT_EXECUTION_MODE=docker
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.10
 mkdir -p tmp && cd tmp
 uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -o output.yaml
 cat output.yaml
 
-# Alternative: Run in local mode
-export HAGENT_EXECUTION_MODE=local
+# Alternative: Run in local mode (don't set HAGENT_DOCKER)
+unset HAGENT_DOCKER
 export HAGENT_REPO_DIR=$(pwd)
 export HAGENT_BUILD_DIR=$(pwd)/build
 export HAGENT_CACHE_DIR=$(pwd)/cache
@@ -168,11 +168,11 @@ Basic test commands:
 export AWS_BEARER_TOKEN_BEDROCK=your_aws_bedrock_token_here  # for models starting with bedrock/*
 export OPENAI_API_KEY=your_openai_key_here           # for models starting with openai/*
 
-# Set execution mode (docker is recommended for full testing)
-export HAGENT_EXECUTION_MODE=docker
+# Set Docker image for docker mode (recommended for full testing)
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.10
 
-# For local mode testing, also set:
-# export HAGENT_EXECUTION_MODE=local
+# For local mode testing, don't set HAGENT_DOCKER and set:
+# unset HAGENT_DOCKER
 # export HAGENT_REPO_DIR=$(pwd)/tmp/local/repo
 # export HAGENT_BUILD_DIR=$(pwd)/tmp/local/build
 # export HAGENT_CACHE_DIR=$(pwd)/tmp/local/cache
@@ -201,8 +201,8 @@ HAgent supports two execution modes: **local** and **docker**. The mode is contr
 For local execution (debugging, single tasks), you must set all required environment variables:
 
 ```bash
-# Required for local mode
-export HAGENT_EXECUTION_MODE=local
+# Required for local mode (don't set HAGENT_DOCKER)
+unset HAGENT_DOCKER
 export HAGENT_REPO_DIR=/path/to/your/git/repository     # Git repository root
 export HAGENT_BUILD_DIR=/path/to/your/build/directory   # Build output directory
 export HAGENT_CACHE_DIR=/path/to/your/cache/directory   # HAgent cache directory
@@ -215,13 +215,13 @@ uv run python hagent/step/trivial/trivial.py hagent/step/trivial/tests/input1.ya
 ```
 
 ##### Docker Mode (Recommended)
-For Docker execution (production, complex builds), only set the execution mode:
+For Docker execution (production, complex builds), set HAGENT_DOCKER to your docker image:
 
 Docker images are recommended to be derived from hagent-builer like hagent-simplechisel from https://github.com/masc-ucsc/docker-images
 
 ```bash
-# Required for Docker mode
-export HAGENT_EXECUTION_MODE=docker
+# Required for Docker mode - set HAGENT_DOCKER to activate docker mode
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.10
 
 # Optional: Mount host directories into container
 export HAGENT_REPO_DIR=/path/to/your/git/repository     # Will be mounted to /code/workspace/repo
@@ -479,7 +479,7 @@ Sometimes you need to clean up leftover Docker containers, run ./cleanup.sh
 HAgent uses a modernized container management system that automatically handles Docker setup and execution. Key features include:
 
 **Automatic Container Setup:**
-- Containers are automatically created and configured based on `HAGENT_EXECUTION_MODE`
+- Containers are automatically created and configured when `HAGENT_DOCKER` is set
 - Host directories are mounted to standard container paths (`/code/workspace/repo`, `/code/workspace/build`)
 - Environment variables are automatically set inside containers
 
@@ -495,8 +495,8 @@ HAgent uses a modernized container management system that automatically handles 
 
 **Example Docker Usage:**
 ```bash
-# Set Docker mode
-export HAGENT_EXECUTION_MODE=docker
+# Set Docker mode by setting HAGENT_DOCKER
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.10
 
 # Optionally mount your project directory
 export HAGENT_REPO_DIR=/path/to/your/project

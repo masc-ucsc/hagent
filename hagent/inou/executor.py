@@ -70,7 +70,7 @@ class ExecutorFactory:
     @staticmethod
     def create_executor(container_manager=None) -> ExecutionStrategy:
         """
-        Create an appropriate executor based on HAGENT_EXECUTION_MODE.
+        Create an appropriate executor based on HAGENT_DOCKER setting.
 
         Args:
             container_manager: Optional ContainerManager instance for Docker execution

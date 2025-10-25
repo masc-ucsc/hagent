@@ -22,7 +22,7 @@ def example_simplechisel_with_runner():
     """
 
     # Set execution mode
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode enabled via HAGENT_DOCKER
 
     # Create Runner - automatically handles all the setup
     with Runner(docker_image='mascucsc/hagent-simplechisel:2025.10') as runner:
@@ -78,7 +78,7 @@ def example_xiangshan_with_runner_and_tracking():
     """
 
     # Set execution mode
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode enabled via HAGENT_DOCKER
 
     with Runner(docker_image='mascucsc/hagent-xiangshan:2025.09') as runner:
         if not runner.setup():
@@ -201,7 +201,7 @@ def example_trivial_step_with_runner():
     """
 
     # This could be in the Step.setup() method
-    if os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
+    if os.getenv('HAGENT_DOCKER'):
         runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.10')
     else:
         runner = Runner()  # Local mode

@@ -99,7 +99,7 @@ class FileTrackerDocker:
 
         parent = posixpath.dirname(path.rstrip('/')) or '/'
         if not self._container_exists(parent, is_dir=True):
-            self.logger.warning(f"Cannot track directory - parent doesn't exist (container): {path}")
+            self.logger.warning(f"Cannot track directory -- parent doesn't exist (container): {path}")
             return False
 
         # Store tracked dir and capture baseline snapshot of files currently present

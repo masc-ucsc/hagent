@@ -3,13 +3,12 @@
 Integration tests for GoldenDesignBuilder with V2chisel_batch.
 """
 
-import os
 import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 # Set environment before importing
-os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+# Docker mode enabled via HAGENT_DOCKER
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))

@@ -25,12 +25,12 @@ def setup_hagent_environment():
     original_env = {}
 
     # Save original environment
-    hagent_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
+    hagent_vars = ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
     for var in hagent_vars:
         original_env[var] = os.environ.get(var)
 
     # Set Docker mode environment with host-accessible paths for testing
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode enabled via HAGENT_DOCKER
 
     # Use local directories that Docker can easily mount
     # IMPORTANT: Don't mount the repository root directory - use output subdirectory instead
@@ -177,7 +177,10 @@ class TestExecutorContainerOperations:
         rc, out, err = executor.run_cmd('pwd')
         assert rc == 0, f'pwd command failed - RC: {rc}, ERR: {err}'
         # Should be in the repo workspace directory
-        assert '/code/workspace/repo' in out
+        # Check for expected path based on execution mode
+        path_manager = PathManager()
+        expected_repo_dir = str(path_manager.repo_dir)
+        assert expected_repo_dir in out, f'Expected {expected_repo_dir} in {out}'
 
     def test_multiple_command_execution(self, executor_setup, temp_files):
         """Test executing multiple commands in sequence."""
