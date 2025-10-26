@@ -1,7 +1,7 @@
 This guide explains how to set up and run the __HAgent MCP server__ locally for development and debugging, and how to connect AI tools such as __Gemini__ to interact with it.
 
 # Overview
-Each supported hardware core (e.g., _SimpleChisel_, _SoomRV_, etc.) will have its own setup script under `scripts/`. The available cores can be found in the[MASC group’s docker-images repo](https://github.com/masc-ucsc/docker-images).
+Each supported hardware core (e.g., _SimpleChisel_, _SoomRV_, etc.) will have its own setup script under `scripts/`. The available cores can be found in the [MASC group’s docker-images repo](https://github.com/masc-ucsc/docker-images).
 
 Currently, we only provide the setup script for _SimpleChisel_ — see `setup_simplechisel_mcp.sh` — which serves as a prototype and testing configuration. Future updates will make this setup more general, allowing users to specify which core to set up via command-line flags (see `TODO.md`).
 
