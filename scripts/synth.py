@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -318,9 +319,6 @@ def run_synthesis(args, slang_args, top_name):
     # Yosys script template using read_slang with TCL
     # If we need hierarchy, use TCL to find the matching module
     if needs_hierarchy:
-        import tempfile
-        import os
-
         # Create unique temp file path
         temp_fd, temp_path = tempfile.mkstemp(suffix='_yosys_modules.txt')
         os.close(temp_fd)  # Close the file descriptor, we'll let yosys write to it
@@ -427,8 +425,45 @@ yosys write_verilog {args.netlist}
             )
         print(f'Yosys output written to {stdout_log}', file=sys.stderr)
     except subprocess.CalledProcessError as e:
-        print(f'Error running yosys: {e}', file=sys.stderr)
-        print(f'Check {stdout_log} for details', file=sys.stderr)
+        print(f"warning: slang-yosys flow failed: {e}, falling back to sv2v", file=sys.stderr)
+
+    try:
+        # Convert SystemVerilog to Verilog and store all converted plain-Verilog files in a temporary directory for Yosys synthesis
+        filtered_args = [a for a in slang_args if a.endswith((".sv", ".v"))]
+        tmp_dir = tempfile.mkdtemp(prefix="tmp_", dir=os.getcwd())
+
+        sv2v_cmd = ["sv2v", "-DSYNTHESIS", "-EAlways"] + filtered_args + ["-w"+str(tmp_dir)]
+        print("running:", " ".join(sv2v_cmd))
+        subprocess.run(sv2v_cmd, check=True)
+
+        # Build the plain-Verilog Yosys script
+        yosys_sv2v_script = f"""yosys read_verilog -sv {tmp_dir}/*.v
+yosys hierarchy -top {top_name}
+yosys flatten {top_name}
+yosys chformal -remove
+yosys opt
+yosys synth -top {top_name}
+yosys dfflibmap -liberty {args.liberty}
+yosys printattrs
+yosys stat
+yosys abc -liberty {args.liberty} -dff -keepff -g aig
+yosys stat
+yosys write_verilog {args.netlist}
+"""
+
+        fallback_tcl = f"{top_name}_yosys_sv2v.tcl"
+        with open(fallback_tcl, "w") as f:
+            f.write(yosys_sv2v_script)
+
+        with open(stdout_log, 'a') as log_file:
+            subprocess.run(
+                ["yosys", "-c", fallback_tcl],
+                stdout=log_file, stderr=subprocess.STDOUT, check=True
+            )
+
+        print(f'Fallback sv2v-yosys flow completed, output written to {stdout_log}', file=sys.stderr)
+    except subprocess.CalledProcessError as e:
+        print(f'Fallback to sv2v also failed: {e}', file=sys.stderr)
         sys.exit(1)
 
 
