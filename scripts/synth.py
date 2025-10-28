@@ -294,41 +294,13 @@ def needs_recompilation(slang_args, netlist_path):
     return False
 
 
-def run_synthesis(args, slang_args, top_name):
-    # Create parent directories for netlist output if they don't exist
-    netlist_path = Path(args.netlist)
-    if not netlist_path.parent.exists():
-        netlist_path.parent.mkdir(parents=True, exist_ok=True)
+def _generate_yosys_hierarchy_script(slang_cmd, top_name, liberty_path, netlist_path):
+    """Generate Yosys TCL script for synthesis with hierarchy handling"""
+    # Create unique temp file path for module list
+    temp_fd, temp_path = tempfile.mkstemp(suffix='_yosys_modules.txt')
+    os.close(temp_fd)  # Close the file descriptor, we'll let yosys write to it
 
-    # Check if yosys is available (skip in dry-run mode)
-    if not args.dry_run:
-        if subprocess.run(['which', 'yosys'], capture_output=True).returncode != 0:
-            print('error: synth.py yosys tool is not in the path', file=sys.stderr)
-            sys.exit(1)
-
-        # Check if yosys-slang module is available
-        result = subprocess.run(['yosys', '-m', 'slang', '-p', 'help read_slang'], capture_output=True, text=True)
-        if result.returncode != 0:
-            print('error: synth.py yosys-slang module is not installed', file=sys.stderr)
-            sys.exit(1)
-
-    # Determine if we need --keep-hierarchy
-    elaborate_top = find_top_name(slang_args)
-    needs_hierarchy = elaborate_top != top_name
-
-    # Build slang command arguments with synthesis define
-    # Note: slang_args already contains --top for elaboration
-    keep_hierarchy_flag = '--keep-hierarchy' if needs_hierarchy else ''
-    slang_cmd = f'-DSYNTHESIS {keep_hierarchy_flag} {" ".join(slang_args)}'.strip()
-
-    # Yosys script template using read_slang with TCL
-    # If we need hierarchy, use TCL to find the matching module
-    if needs_hierarchy:
-        # Create unique temp file path
-        temp_fd, temp_path = tempfile.mkstemp(suffix='_yosys_modules.txt')
-        os.close(temp_fd)  # Close the file descriptor, we'll let yosys write to it
-
-        yosys_template = f"""yosys read_slang {slang_cmd}
+    return f"""yosys read_slang {slang_cmd}
 yosys tee -q -o {temp_path} ls
 set fp [open "{temp_path}" r]
 set mods [read $fp]
@@ -387,31 +359,85 @@ yosys flatten
 yosys chformal -remove
 yosys opt
 yosys synth
-yosys dfflibmap -liberty {args.liberty}
+yosys dfflibmap -liberty {liberty_path}
 yosys printattrs
 yosys stat
-yosys abc -liberty {args.liberty} -dff -keepff -g aig
+yosys abc -liberty {liberty_path} -dff -keepff -g aig
 yosys stat
 if {{$top_module ne "{top_name}"}} {{
     puts "Renaming module $top_module to {top_name}"
     yosys rename $top_module {top_name}
 }}
-yosys write_verilog {args.netlist}
+yosys write_verilog {netlist_path}
 """
-    else:
-        yosys_template = f"""yosys read_slang {slang_cmd}
+
+
+def _generate_yosys_simple_script(slang_cmd, top_name, liberty_path, netlist_path):
+    """Generate simple Yosys TCL script for synthesis without hierarchy"""
+    return f"""yosys read_slang {slang_cmd}
 yosys hierarchy -top {top_name}
 yosys flatten {top_name}
 yosys chformal -remove
 yosys opt
 yosys synth -top {top_name}
-yosys dfflibmap -liberty {args.liberty}
+yosys dfflibmap -liberty {liberty_path}
 yosys printattrs
 yosys stat
-yosys abc -liberty {args.liberty} -dff -keepff -g aig
+yosys abc -liberty {liberty_path} -dff -keepff -g aig
 yosys stat
-yosys write_verilog {args.netlist}
+yosys write_verilog {netlist_path}
 """
+
+
+def _generate_yosys_sv2v_script(tmp_dir, top_name, liberty_path, netlist_path):
+    """Generate Yosys TCL script for sv2v fallback synthesis"""
+    return f"""yosys read_verilog -sv {tmp_dir}/*.v
+yosys hierarchy -top {top_name}
+yosys flatten {top_name}
+yosys chformal -remove
+yosys opt
+yosys synth -top {top_name}
+yosys dfflibmap -liberty {liberty_path}
+yosys printattrs
+yosys stat
+yosys abc -liberty {liberty_path} -dff -keepff -g aig
+yosys stat
+yosys write_verilog {netlist_path}
+"""
+
+
+def run_synthesis(args, slang_args, top_name):
+    # Create parent directories for netlist output if they don't exist
+    netlist_path = Path(args.netlist)
+    if not netlist_path.parent.exists():
+        netlist_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Check if yosys is available (skip in dry-run mode)
+    if not args.dry_run:
+        if subprocess.run(['which', 'yosys'], capture_output=True).returncode != 0:
+            print('error: synth.py yosys tool is not in the path', file=sys.stderr)
+            sys.exit(1)
+
+        # Check if yosys-slang module is available
+        result = subprocess.run(['yosys', '-m', 'slang', '-p', 'help read_slang'], capture_output=True, text=True)
+        if result.returncode != 0:
+            print('error: synth.py yosys-slang module is not installed', file=sys.stderr)
+            sys.exit(1)
+
+    # Determine if we need --keep-hierarchy
+    elaborate_top = find_top_name(slang_args)
+    needs_hierarchy = elaborate_top != top_name
+
+    # Build slang command arguments with synthesis define
+    # Note: slang_args already contains --top for elaboration
+    keep_hierarchy_flag = '--keep-hierarchy' if needs_hierarchy else ''
+    slang_cmd = f'-DSYNTHESIS {keep_hierarchy_flag} {" ".join(slang_args)}'.strip()
+
+    # Generate Yosys script using appropriate template
+    if needs_hierarchy:
+        yosys_template = _generate_yosys_hierarchy_script(slang_cmd, top_name, args.liberty, args.netlist)
+    else:
+        yosys_template = _generate_yosys_simple_script(slang_cmd, top_name, args.liberty, args.netlist)
 
     # Write the modified content to {top}_yosys.tcl
     yosys_script_name = f'{top_name}_yosys.tcl'
@@ -441,20 +467,8 @@ yosys write_verilog {args.netlist}
         print('running:', ' '.join(sv2v_cmd))
         subprocess.run(sv2v_cmd, check=True)
 
-        # Build the plain-Verilog Yosys script
-        yosys_sv2v_script = f"""yosys read_verilog -sv {tmp_dir}/*.v
-yosys hierarchy -top {top_name}
-yosys flatten {top_name}
-yosys chformal -remove
-yosys opt
-yosys synth -top {top_name}
-yosys dfflibmap -liberty {args.liberty}
-yosys printattrs
-yosys stat
-yosys abc -liberty {args.liberty} -dff -keepff -g aig
-yosys stat
-yosys write_verilog {args.netlist}
-"""
+        # Generate sv2v fallback Yosys script
+        yosys_sv2v_script = _generate_yosys_sv2v_script(tmp_dir, top_name, args.liberty, args.netlist)
 
         fallback_tcl = f'{top_name}_yosys_sv2v.tcl'
         with open(fallback_tcl, 'w') as f:
