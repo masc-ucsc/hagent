@@ -295,6 +295,11 @@ def needs_recompilation(slang_args, netlist_path):
 
 
 def run_synthesis(args, slang_args, top_name):
+    # Create parent directories for netlist output if they don't exist
+    netlist_path = Path(args.netlist)
+    if not netlist_path.parent.exists():
+        netlist_path.parent.mkdir(parents=True, exist_ok=True)
+
     # Check if yosys is available (skip in dry-run mode)
     if not args.dry_run:
         if subprocess.run(['which', 'yosys'], capture_output=True).returncode != 0:

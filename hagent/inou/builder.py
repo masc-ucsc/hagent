@@ -588,18 +588,12 @@ class Builder:
                     format_str = opt_spec.get('format', '{value}')
                     arg_value = format_str.replace('{value}', options[opt_name])
                 else:
-                    # Use default value with format applied
+                    # Use default value as-is (it's already a complete argument string)
                     default_value = opt_spec.get('default', '')
-                    if default_value:
-                        # Apply format to default value
-                        format_str = opt_spec.get('format', '{value}')
-                        arg_value = format_str.replace('{value}', default_value)
-                    else:
-                        # Empty default stays empty
-                        arg_value = ''
+                    arg_value = default_value
 
                 # Store the replacement for this option's placeholder
-                placeholder = f'{{{{{opt_name}_arg}}}}'
+                placeholder = f'{{{{{opt_name}}}}}'
                 option_replacements[placeholder] = arg_value
 
             # Replace all option placeholders in the command
