@@ -25,7 +25,13 @@ fi
 
 # 1) Method privacy/usage checks (same-file-or-tests for private; suggest private for internal-only)
 section "Method privacy checks"
-if $PYTHON_RUN scripts/method_privacy_check.py .; then
+privacy_issues=0
+for dir in hagent scripts; do
+  if ! $PYTHON_RUN scripts/method_privacy_check.py "$dir"; then
+    privacy_issues=1
+  fi
+done
+if [ $privacy_issues -eq 0 ]; then
   note "No method privacy issues found."
 else
   issues=$((issues+1))
@@ -35,12 +41,12 @@ fi
 is_allowed_path() {
   # $1 is a path; return success if allowed
   case "$1" in
-    hagent/inou/*|hagent/mcp/*) return 0;;
+    hagent/inou/*|hagent/mcp/*|scripts/*) return 0;;
     *) return 1;;
   esac
 }
 
-# 2) HAGENT_.*_DIR usage only in mcp/ or hagent/inou/
+# 2) HAGENT_.*_DIR usage only in mcp/, hagent/inou/, or scripts/
 section "HAGENT_*_DIR usage scope"
 found=0
 while IFS= read -r line; do
@@ -49,17 +55,17 @@ while IFS= read -r line; do
   if echo "$file" | grep -qi 'test'; then continue; fi
   if ! is_allowed_path "$file"; then
     var=$(echo "$rest" | grep -oE 'HAGENT_[A-Z_]*_DIR' | head -n1)
-    echo "ENVVAR: $file:$lineno: $var used outside hagent/mcp/ or hagent/inou/. Hint: Move usage into hagent/inou or hagent/mcp, or use PathManager."
+    echo "ENVVAR: $file:$lineno: $var used outside hagent/mcp/, hagent/inou/, or scripts/. Hint: Move usage into allowed directories or use PathManager."
     found=1
   fi
-done < <(rg -n --no-heading -t py 'HAGENT_.*_DIR' || true)
+done < <(rg -n --no-heading -t py 'HAGENT_.*_DIR' hagent scripts || true)
 if [ $found -eq 1 ]; then
   issues=$((issues+1))
 else
   note "No disallowed HAGENT_*_DIR usages found."
 fi
 
-# 3) '/code/workspace/' only in mcp/ or hagent/inou/
+# 3) '/code/workspace/' only in mcp/, hagent/inou/, or scripts/
 section "Container path references (/code/workspace) scope"
 found=0
 while IFS= read -r line; do
@@ -67,10 +73,10 @@ while IFS= read -r line; do
   # skip test files entirely
   if echo "$file" | grep -qi 'test'; then continue; fi
   if ! is_allowed_path "$file"; then
-    echo "CONTAINER: $file:$lineno: '/code/workspace/' used outside hagent/mcp/ or hagent/inou/. Hint: Centralize path handling (PathManager or hagent/inou or hagent/mcp)."
+    echo "CONTAINER: $file:$lineno: '/code/workspace/' used outside hagent/mcp/, hagent/inou/, or scripts/. Hint: Centralize path handling (PathManager or allowed directories)."
     found=1
   fi
-done < <(rg -n --no-heading -t py '/code/workspace/' || true)
+done < <(rg -n --no-heading -t py '/code/workspace/' hagent scripts || true)
 if [ $found -eq 1 ]; then
   issues=$((issues+1))
 else
@@ -79,7 +85,13 @@ fi
 
 # 4) Methods never called anywhere (including tests) -> add test or remove
 section "Never-called methods"
-if $PYTHON_RUN scripts/method_never_called_check.py .; then
+never_called_issues=0
+for dir in hagent scripts; do
+  if ! $PYTHON_RUN scripts/method_never_called_check.py "$dir"; then
+    never_called_issues=1
+  fi
+done
+if [ $never_called_issues -eq 0 ]; then
   note "No never-called methods found."
 else
   issues=$((issues+1))
@@ -99,7 +111,13 @@ fi
 
 # 6) Code complexity checks (spaghetti code detection)
 section "Code complexity checks"
-if $PYTHON_RUN scripts/avoid_spagetti_code.py .; then
+complexity_issues=0
+for dir in hagent scripts; do
+  if ! $PYTHON_RUN scripts/avoid_spagetti_code.py "$dir"; then
+    complexity_issues=1
+  fi
+done
+if [ $complexity_issues -eq 0 ]; then
   note "No complexity issues found."
 else
   issues=$((issues+1))

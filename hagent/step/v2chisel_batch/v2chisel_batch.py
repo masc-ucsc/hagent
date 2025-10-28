@@ -1239,7 +1239,7 @@ class V2chisel_batch(Step):
 
         try:
             # Check if Main.scala or similar already exists using Builder API
-            find_cmd_str = 'find /code/workspace/repo/src -name "*.scala" -exec grep -l "object Main" {} \;'
+            find_cmd_str = r'find /code/workspace/repo/src -name "*.scala" -exec grep -l "object Main" {} \;'
 
             exit_code, stdout, stderr = self.builder.run_cmd(find_cmd_str)
 
