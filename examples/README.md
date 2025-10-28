@@ -46,8 +46,9 @@ This will list the available tools, and also install needed python packages:
 $HAGENT_ROOT/hagent/mcp/mcp_build.py
 ```
 
-This command will synthesis a sample core and report timing:
+This command will compile (generate Verilog) and then synthesize (generate netlist) a Dino simple CPU core and report timing:
 ```
+$HAGENT_ROOT/hagent/mcp/mcp_build.py --name pipelined_nd --api compile
 $HAGENT_ROOT/hagent/mcp/mcp_build.py --name pipelined_nd --api synth_asic
 ```
 
