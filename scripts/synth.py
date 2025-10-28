@@ -430,15 +430,15 @@ yosys write_verilog {args.netlist}
             )
         print(f'Yosys output written to {stdout_log}', file=sys.stderr)
     except subprocess.CalledProcessError as e:
-        print(f"warning: slang-yosys flow failed: {e}, falling back to sv2v", file=sys.stderr)
+        print(f'warning: slang-yosys flow failed: {e}, falling back to sv2v', file=sys.stderr)
 
     try:
         # Convert SystemVerilog to Verilog and store all converted plain-Verilog files in a temporary directory for Yosys synthesis
-        filtered_args = [a for a in slang_args if a.endswith((".sv", ".v"))]
-        tmp_dir = tempfile.mkdtemp(prefix="tmp_", dir=os.getcwd())
+        filtered_args = [a for a in slang_args if a.endswith(('.sv', '.v'))]
+        tmp_dir = tempfile.mkdtemp(prefix='tmp_', dir=os.getcwd())
 
-        sv2v_cmd = ["sv2v", "-DSYNTHESIS", "-EAlways"] + filtered_args + ["-w"+str(tmp_dir)]
-        print("running:", " ".join(sv2v_cmd))
+        sv2v_cmd = ['sv2v', '-DSYNTHESIS', '-EAlways'] + filtered_args + ['-w' + str(tmp_dir)]
+        print('running:', ' '.join(sv2v_cmd))
         subprocess.run(sv2v_cmd, check=True)
 
         # Build the plain-Verilog Yosys script
@@ -456,15 +456,12 @@ yosys stat
 yosys write_verilog {args.netlist}
 """
 
-        fallback_tcl = f"{top_name}_yosys_sv2v.tcl"
-        with open(fallback_tcl, "w") as f:
+        fallback_tcl = f'{top_name}_yosys_sv2v.tcl'
+        with open(fallback_tcl, 'w') as f:
             f.write(yosys_sv2v_script)
 
         with open(stdout_log, 'a') as log_file:
-            subprocess.run(
-                ["yosys", "-c", fallback_tcl],
-                stdout=log_file, stderr=subprocess.STDOUT, check=True
-            )
+            subprocess.run(['yosys', '-c', fallback_tcl], stdout=log_file, stderr=subprocess.STDOUT, check=True)
 
         print(f'Fallback sv2v-yosys flow completed, output written to {stdout_log}', file=sys.stderr)
     except subprocess.CalledProcessError as e:
