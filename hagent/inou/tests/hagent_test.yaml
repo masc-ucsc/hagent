@@ -13,13 +13,13 @@ profiles:
         cwd: "$HAGENT_REPO_DIR"
       - name: custom_echo
         description: "Echo with optional prefix and suffix parameters"
-        command: "echo {{prefix_arg}}HAGENT_TEST{{suffix_arg}}"
+        command: "echo {{prefix}}HAGENT_TEST{{suffix}}"
         cwd: "$HAGENT_REPO_DIR"
         options:
           - name: prefix
             description: "Optional prefix to add before the message"
             format: "{value}:"
-            default: "INFO"
+            default: "INFO:"
           - name: suffix
             description: "Optional suffix to add after the message"
             format: "({value})"
