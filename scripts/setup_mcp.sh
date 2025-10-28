@@ -22,33 +22,32 @@ fi
 PROJECT_NAME=$(printf '%s' "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]')
 
 case "$PROJECT_NAME" in
-  cva6)
-    DOCKER_IMAGE="mascucsc/hagent-cva6:2025.10"
-    GIT_URL="https://github.com/openhwgroup/cva6.git"
-    ;;
-  simplechisel)
-    DOCKER_IMAGE="mascucsc/hagent-simplechisel:2025.10"
-    GIT_URL="https://github.com/masc-ucsc/simplechisel.git"
-    ;;
-  soomrv)
-    DOCKER_IMAGE="mascucsc/hagent-soomrv:2025.10"
-    GIT_URL="https://github.com/mathis-s/SoomRV.git"
-    ;;
-  verilog-adder)
-    DOCKER_IMAGE="mascucsc/hagent-builder:2025.10"
-    GIT_URL=""
-    ;;
-  xiangshan)
-    DOCKER_IMAGE="mascucsc/hagent-xiangshan:2025.10"
-    GIT_URL="https://github.com/OpenXiangShan/XiangShan.git"
-    ;;
-  *)
-    echo "Unknown project: '$PROJECT_NAME'" >&2
-    echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan" >&2
-    exit 1
-    ;;
+cva6)
+  DOCKER_IMAGE="mascucsc/hagent-cva6:2025.10"
+  GIT_URL="https://github.com/openhwgroup/cva6.git"
+  ;;
+simplechisel)
+  DOCKER_IMAGE="mascucsc/hagent-simplechisel:2025.10"
+  GIT_URL="https://github.com/masc-ucsc/simplechisel.git"
+  ;;
+soomrv)
+  DOCKER_IMAGE="mascucsc/hagent-soomrv:2025.10"
+  GIT_URL="https://github.com/mathis-s/SoomRV.git"
+  ;;
+verilog-adder)
+  DOCKER_IMAGE="mascucsc/hagent-builder:2025.10"
+  GIT_URL=""
+  ;;
+xiangshan)
+  DOCKER_IMAGE="mascucsc/hagent-xiangshan:2025.10"
+  GIT_URL="https://github.com/OpenXiangShan/XiangShan.git"
+  ;;
+*)
+  echo "Unknown project: '$PROJECT_NAME'" >&2
+  echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan" >&2
+  exit 1
+  ;;
 esac
-
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HAGENT_ROOT=${HAGENT_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}
@@ -146,7 +145,6 @@ cat >"${BASE_DIR}/hagent_server.sh" <<EOF
 export UV_PROJECT="${HAGENT_ROOT}"
 export HAGENT_ROOT="${HAGENT_ROOT}"
 export HAGENT_DOCKER="${DOCKER_IMAGE}"
-export HAGENT_EXECUTION_MODE="docker"
 export HAGENT_REPO_DIR="${BASE_DIR}/repo"
 export HAGENT_BUILD_DIR="${BASE_DIR}/build"
 export HAGENT_CACHE_DIR="${BASE_DIR}/cache"
