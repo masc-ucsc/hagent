@@ -21,6 +21,35 @@ gemini mcp add hagent ./hagent_server.sh
 Now, in gemini-cli, you could say:
 "Can you recompile and run tests for verilog_adder?"
 
+## How to run a docker example
+
+```
+mkdir -p ~/tmp/potato4
+cd ~/tmp/potato4
+YOUR_PATH_TO_hagent/scripts/setup_mcp.sh simplechisel
+```
+
+NOTE: Remember to do the Synthesis Installation from README.md to have HAGENT_TECH_DIR set
+```
+# This variable should be defined already
+echo $HAGENT_TECH_DIR
+```
+
+This sets the rest of the environment variables:
+```
+grep -v python hagent_server.sh >env.sh
+source env.sh
+```
+
+This will list the available tools, and also install needed python packages:
+```
+$HAGENT_ROOT/hagent/mcp/mcp_build.py
+```
+
+This command will synthesis a sample core and report timing:
+```
+$HAGENT_ROOT/hagent/mcp/mcp_build.py --name pipelined_nd --api synth_asic
+```
 
 ## TBD: issues, and suggestions
 

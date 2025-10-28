@@ -2,7 +2,11 @@
 # fmt: off
 ''''
 # Ensure uv discovers the hagent project even when invoked from a different cwd
-PROJECT_ROOT="$(cd "$(dirname "$0")"/../.. && pwd -P)"
+if [ -n "$UV_PROJECT" ]; then
+    PROJECT_ROOT="$UV_PROJECT"
+else
+    PROJECT_ROOT="$(cd "$(dirname "$0")"/../.. && pwd -P)"
+fi
 
 # Docker detection: if /code/workspace/cache exists, we're in Docker
 if [ -d "/code/workspace/cache" ]; then
