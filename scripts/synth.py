@@ -141,6 +141,13 @@ def print_dry_run(args, slang_args, synth_top, elaborate_top):
     """Print command line arguments without executing"""
     print('=== Dry Run Mode ===')
     print(f'Mode: {"STA" if args.sta else "Synthesis"}')
+    if not args.sta:
+        if args.sv2v:
+            print('Synthesis flow: sv2v-to-yosys (direct)')
+        elif args.no_sv2v:
+            print('Synthesis flow: read_slang only (no fallback)')
+        else:
+            print('Synthesis flow: read_slang with sv2v fallback')
     print(f'Liberty file: {args.liberty}')
     print(f'Output netlist: {args.netlist}')
     print(f'Elaboration top: {elaborate_top}')
@@ -205,9 +212,16 @@ def main():
     parser.add_argument('--exclude', action='append', help='Exclude files matching regex pattern (can be used multiple times)')
     parser.add_argument('--top-synthesis', help='Top module for synthesis (when different from elaboration top in --top)')
     parser.add_argument('--dry-run', action='store_true', help='Show command line arguments without executing')
+    parser.add_argument('--sv2v', action='store_true', help='Use sv2v-to-yosys flow directly, skipping read_slang')
+    parser.add_argument('--no-sv2v', action='store_true', help='Do not fall back to sv2v if read_slang fails')
 
     # Parse known args to separate our args from slang args
     args, slang_args = parser.parse_known_args()
+
+    # Validate mutually exclusive flags
+    if args.sv2v and args.no_sv2v:
+        print('error: --sv2v and --no-sv2v cannot be used together', file=sys.stderr)
+        sys.exit(1)
 
     # Check if --top was in the original arguments but not in slang_args
     # This happens when --top appears before other arguments
@@ -406,6 +420,29 @@ yosys write_verilog {netlist_path}
 """
 
 
+def run_sv2v_synthesis(args, slang_args, top_name, stdout_log):
+    """Run synthesis using sv2v-to-yosys flow"""
+    # Convert SystemVerilog to Verilog and store all converted plain-Verilog files in a temporary directory for Yosys synthesis
+    filtered_args = [a for a in slang_args if a.endswith(('.sv', '.v'))]
+    tmp_dir = tempfile.mkdtemp(prefix='tmp_', dir=os.getcwd())
+
+    sv2v_cmd = ['sv2v', '-DSYNTHESIS', '-EAlways'] + filtered_args + ['-w' + str(tmp_dir)]
+    print('running:', ' '.join(sv2v_cmd))
+    subprocess.run(sv2v_cmd, check=True)
+
+    # Generate sv2v fallback Yosys script
+    yosys_sv2v_script = _generate_yosys_sv2v_script(tmp_dir, top_name, args.liberty, args.netlist)
+
+    fallback_tcl = f'{top_name}_yosys_sv2v.tcl'
+    with open(fallback_tcl, 'w') as f:
+        f.write(yosys_sv2v_script)
+
+    with open(stdout_log, 'a') as log_file:
+        subprocess.run(['yosys', '-c', fallback_tcl], stdout=log_file, stderr=subprocess.STDOUT, check=True)
+
+    print(f'sv2v-yosys flow completed, output written to {stdout_log}', file=sys.stderr)
+
+
 def run_synthesis(args, slang_args, top_name):
     # Create parent directories for netlist output if they don't exist
     netlist_path = Path(args.netlist)
@@ -448,38 +485,40 @@ def run_synthesis(args, slang_args, top_name):
     netlist_path = Path(args.netlist)
     stdout_log = netlist_path.parent / f'{netlist_path.stem}_yosys.stdout'
 
-    # Run yosys with slang module and TCL mode, redirect output
+    # If --sv2v flag is set, skip read_slang and use sv2v directly
+    if args.sv2v:
+        try:
+            run_sv2v_synthesis(args, slang_args, top_name, stdout_log)
+        except subprocess.CalledProcessError as e:
+            print(f'error: sv2v-yosys flow failed: {e}', file=sys.stderr)
+            sys.exit(1)
+        return
+
+    # Try read_slang flow first
+    slang_success = False
     try:
         with open(stdout_log, 'w') as log_file:
             subprocess.run(
                 ['yosys', '-m', 'slang', '-c', yosys_script_name], stdout=log_file, stderr=subprocess.STDOUT, check=True
             )
         print(f'Yosys output written to {stdout_log}', file=sys.stderr)
+        slang_success = True
     except subprocess.CalledProcessError as e:
-        print(f'warning: slang-yosys flow failed: {e}, falling back to sv2v', file=sys.stderr)
+        if args.no_sv2v:
+            print(f'error: slang-yosys flow failed: {e}', file=sys.stderr)
+            sys.exit(1)
+        else:
+            print(f'warning: slang-yosys flow failed: {e}, falling back to sv2v', file=sys.stderr)
 
+    # If slang succeeded, we're done
+    if slang_success:
+        return
+
+    # Fall back to sv2v flow
     try:
-        # Convert SystemVerilog to Verilog and store all converted plain-Verilog files in a temporary directory for Yosys synthesis
-        filtered_args = [a for a in slang_args if a.endswith(('.sv', '.v'))]
-        tmp_dir = tempfile.mkdtemp(prefix='tmp_', dir=os.getcwd())
-
-        sv2v_cmd = ['sv2v', '-DSYNTHESIS', '-EAlways'] + filtered_args + ['-w' + str(tmp_dir)]
-        print('running:', ' '.join(sv2v_cmd))
-        subprocess.run(sv2v_cmd, check=True)
-
-        # Generate sv2v fallback Yosys script
-        yosys_sv2v_script = _generate_yosys_sv2v_script(tmp_dir, top_name, args.liberty, args.netlist)
-
-        fallback_tcl = f'{top_name}_yosys_sv2v.tcl'
-        with open(fallback_tcl, 'w') as f:
-            f.write(yosys_sv2v_script)
-
-        with open(stdout_log, 'a') as log_file:
-            subprocess.run(['yosys', '-c', fallback_tcl], stdout=log_file, stderr=subprocess.STDOUT, check=True)
-
-        print(f'Fallback sv2v-yosys flow completed, output written to {stdout_log}', file=sys.stderr)
+        run_sv2v_synthesis(args, slang_args, top_name, stdout_log)
     except subprocess.CalledProcessError as e:
-        print(f'Fallback to sv2v also failed: {e}', file=sys.stderr)
+        print(f'error: sv2v-yosys flow also failed: {e}', file=sys.stderr)
         sys.exit(1)
 
 
