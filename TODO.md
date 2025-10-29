@@ -24,12 +24,6 @@ sky130_fd_sc_hd__ff_n40C_1v95_ccsnoise.lib  sky130_fd_sc_hd__ss_n40C_1v40.lib  s
 
 -------
 
-`setup_xxx_mcp.sh`-related:
-1. Make existing `setup_simplechisel_mcp.sh` to copy from Docker containers instead of using `create_template` as the first option.
-2. Create a general `setup_xxx_mcp.sh` script so that we don't need one script per core.
-
--------
-
 When I run pytest with --durations option, I see that these are slow tests:
 
 23.77s call     hagent/step/replicate_code/tests/test_replicate_code.py::test_replicate_code
