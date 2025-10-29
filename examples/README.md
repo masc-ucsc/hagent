@@ -37,7 +37,7 @@ echo $HAGENT_TECH_DIR
 
 This sets the rest of the environment variables:
 ```
-grep -v python hagent_server.sh >env.sh
+grep -e export hagent_server.sh >env.sh
 source env.sh
 ```
 
