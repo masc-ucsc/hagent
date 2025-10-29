@@ -382,7 +382,7 @@ if {{$top_module ne "{top_name}"}} {{
     puts "Renaming module $top_module to {top_name}"
     yosys rename $top_module {top_name}
 }}
-yosys write_verilog {netlist_path}
+yosys write_verilog -simple-lhs {netlist_path}
 """
 
 
@@ -399,7 +399,7 @@ yosys printattrs
 yosys stat
 yosys abc -liberty {liberty_path} -dff -keepff -g aig
 yosys stat
-yosys write_verilog {netlist_path}
+yosys write_verilog -simple-lhs {netlist_path}
 """
 
 
@@ -416,7 +416,7 @@ yosys printattrs
 yosys stat
 yosys abc -liberty {liberty_path} -dff -keepff -g aig
 yosys stat
-yosys write_verilog {netlist_path}
+yosys write_verilog -simple-lhs {netlist_path}
 """
 
 
