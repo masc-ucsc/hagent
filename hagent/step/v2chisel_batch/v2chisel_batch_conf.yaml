@@ -1,4 +1,9 @@
 v2chisel_batch:
+  # Retry configuration
+  retry_config:
+    max_compile_retries: 3  # Max attempts for compilation errors
+    max_lec_retries: 2      # Max attempts for LEC failures
+
   llm:
     # model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
     # model: "openai/o3-mini-2025-01-31"
