@@ -41,6 +41,7 @@ try:
     from .components.hints_generator_v2 import HintsGeneratorV2
     from .components.golden_design_builder import GoldenDesignBuilder
     from .components.baseline_verilog_generator import BaselineVerilogGenerator
+    from .components.pipeline_reporter import PipelineReporter, PipelineReport
 except ImportError:
     # Fallback for direct execution or testing
     from components.bug_info import BugInfo
@@ -48,6 +49,7 @@ except ImportError:
     from components.hints_generator_v2 import HintsGeneratorV2
     from components.golden_design_builder import GoldenDesignBuilder
     from components.baseline_verilog_generator import BaselineVerilogGenerator
+    from components.pipeline_reporter import PipelineReporter, PipelineReport
 
 
 class V2chisel_batch(Step):
@@ -67,6 +69,13 @@ class V2chisel_batch(Step):
         # Initialize Builder for automated Docker management
         self.builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.10')
 
+        # Initialize pipeline reporter for DAC metrics
+        self.pipeline_reporter = PipelineReporter()
+
+        # Retry configuration (will be set from config in setup())
+        self.max_compile_retries = 3  # Default
+        self.max_lec_retries = 2  # Default
+
     def setup(self):
         """Initialize the batch processing step"""
         super().setup()
@@ -83,6 +92,12 @@ class V2chisel_batch(Step):
         # Configuration - set these early before LLM initialization
         self.chisel_source_pattern = './tmp/src/main/scala/*/*.scala'  # Default pattern
         self.debug = True  # Enable debug output
+
+        # Load retry configuration
+        retry_config = self.template_config.template_dict.get('v2chisel_batch', {}).get('retry_config', {})
+        self.max_compile_retries = retry_config.get('max_compile_retries', 3)
+        self.max_lec_retries = retry_config.get('max_lec_retries', 2)
+        print(f'🔧 [V2chisel_batch] Retry config: compile={self.max_compile_retries}, lec={self.max_lec_retries}')
 
         # Allow override of hints_v2 flag from input YAML
         if 'use_hints_v2' in self.input_data:
@@ -2243,10 +2258,80 @@ class V2chisel_batch(Step):
             print(f'     ❌ LLM retry failed: {e}')
             return {'success': False, 'error': str(e)}
 
+    def _retry_llm_with_lec_error(
+        self, verilog_diff: str, chisel_hints: str, current_chisel_diff: str, lec_error: str
+    ) -> dict:
+        """Retry LLM call with LEC failure feedback"""
+        print(f'🔄 [LLM] Retrying with LEC error feedback...')
+
+        # Use the LEC error prompt template for retry
+        template_data = {
+            'verilog_diff': verilog_diff,
+            'chisel_hints': chisel_hints,
+            'current_chisel_diff': current_chisel_diff,
+            'lec_error': lec_error,
+        }
+
+        try:
+            prompt_key = 'prompt_lec_error'
+
+            # Get the prompt configuration
+            full_config = self.template_config.template_dict.get('v2chisel_batch', {})
+            if prompt_key not in full_config:
+                return {'success': False, 'error': f'Prompt {prompt_key} not found in config'}
+
+            prompt_section = full_config[prompt_key]
+            prompt_template = LLM_template(prompt_section)
+
+            # Update LLM wrapper with new template
+            self.lw.chat_template = prompt_template
+            self.lw.name = 'v2chisel_batch_lec_retry'
+
+            # Call LLM
+            response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
+
+            # Check for LLM errors first
+            if self.lw.last_error:
+                return {'success': False, 'error': f'LLM error: {self.lw.last_error}'}
+
+            if not response_list or not response_list[0].strip():
+                return {'success': False, 'error': 'LLM returned empty response'}
+
+            generated_diff = response_list[0].strip()
+
+            if generated_diff is None:
+                return {'success': False, 'error': 'LLM returned None'}
+
+            # Clean up the generated diff
+            if '```' in generated_diff:
+                lines = generated_diff.split('\n')
+                cleaned_lines = []
+                in_code_block = False
+
+                for line in lines:
+                    if line.strip().startswith('```'):
+                        in_code_block = not in_code_block
+                        continue
+                    if in_code_block or not line.strip().startswith('```'):
+                        cleaned_lines.append(line)
+
+                generated_diff = '\n'.join(cleaned_lines).strip()
+
+            print(f'     ✅ LLM LEC retry generated diff: {len(generated_diff)} characters')
+            return {'success': True, 'chisel_diff': generated_diff, 'prompt_used': prompt_key}
+
+        except Exception as e:
+            print(f'     ❌ LLM LEC retry failed: {e}')
+            return {'success': False, 'error': str(e)}
+
     def _process_single_bug(
         self, bug_idx: int, bug_entry: dict, local_files: list, docker_container: str, docker_patterns: list
     ) -> dict:
         """Process a single bug entry with module_finder"""
+
+        # Create pipeline report for DAC metrics tracking
+        file_name = bug_entry.get('file', 'unknown')
+        bug_report = self.pipeline_reporter.create_report(f'bug_{bug_idx}_{file_name}')
 
         # Initialize golden design success to False
         golden_design_success = False
@@ -2312,7 +2397,7 @@ class V2chisel_batch(Step):
         applier_result = {}
         compile_result = {}
         generated_chisel_diff = ''
-        max_retries = 3
+        max_retries = self.max_compile_retries  # Use configured retry count
         current_attempt = 1
         previous_attempts = []  # Track previous failed attempts for LLM context
 
@@ -2347,11 +2432,16 @@ class V2chisel_batch(Step):
 
             # Retry loop for LLM + Applier + Compiler
             while current_attempt <= max_retries:
+                # Track this iteration in reporter
+                bug_report.add_iteration(current_attempt)
+
                 if not llm_result['success']:
                     print(f'❌ [LLM] Failed to generate Chisel diff: {llm_result.get("error", "Unknown error")}')
+                    bug_report.set_error('llm', llm_result.get('error', 'Unknown error'))
                     break
 
                 generated_chisel_diff = llm_result['chisel_diff']
+                bug_report.mark_llm_success(generated_diff=generated_chisel_diff)
                 print(f'LLM Generated Chisel Diff (attempt {current_attempt}):')
                 print('=' * 50)
                 print(generated_chisel_diff)
@@ -2363,6 +2453,7 @@ class V2chisel_batch(Step):
 
                 if applier_result['success']:
                     print('✅ APPLIER: Successfully applied diff')
+                    bug_report.mark_applier_success()
 
                     # STEP 3: Try to compile
                     print('✅ Step 7: Compilation - START')
@@ -2370,6 +2461,7 @@ class V2chisel_batch(Step):
 
                     if compile_result['success']:
                         print('✅ COMPILATION: Success')
+                        bug_report.mark_compilation_success()
 
                         # STEP 4: Try to generate Verilog from compiled Chisel
                         print('✅ Step 8: Verilog Generation - START')
@@ -2377,6 +2469,7 @@ class V2chisel_batch(Step):
 
                         if verilog_gen_result['success']:
                             print('✅ VERILOG_GENERATION: Success')
+                            bug_report.mark_verilog_success()
 
                             # SUCCESS: Basic pipeline completed successfully (compilation + verilog generation)
                             # Clean up MASTER backup since core functionality worked
@@ -2388,6 +2481,7 @@ class V2chisel_batch(Step):
                             is_tooling_issue = verilog_gen_result.get('tooling_issue', False)
 
                             print(f'❌ VERILOG_GENERATION: Failed - {verilog_error}')
+                            bug_report.set_error('verilog_gen', verilog_error)
 
                             # RESTORE: Verilog generation failed, restore to ORIGINAL state
                             restore_result = self._restore_to_original(
@@ -2433,6 +2527,7 @@ class V2chisel_batch(Step):
                         # Compilation failed - restore backup and retry with compilation error feedback
                         compile_error_msg = compile_result.get('error', 'Unknown compilation error')
                         print(f'❌ COMPILATION: Failed - {compile_error_msg}')
+                        bug_report.set_error('compilation', compile_error_msg)
 
                         # DEBUG: Print detailed compilation error
                         print('🔍 [DEBUG] Full compilation error details:')
@@ -2464,6 +2559,7 @@ class V2chisel_batch(Step):
                     # Applier failed - MUST restore since diff might have been partially applied
                     error_msg = applier_result.get('error', 'Unknown error')
                     print(f'❌ APPLIER: Failed - {error_msg}')
+                    bug_report.set_error('applier', error_msg)
 
                     # RESTORE: Applier failed, restore to ORIGINAL state before retry
                     restore_result = self._restore_to_original(docker_container, master_backup_info, 'applier_failure')
@@ -2503,15 +2599,19 @@ class V2chisel_batch(Step):
         if 'verilog_gen_result' in locals():
             verilog_success = verilog_gen_result.get('success', False)
 
-        # RUN LEC ONCE at the end like test_v2chisel_batch3, only if basic pipeline succeeded
+        # RUN LEC WITH RETRY LOOP (max 2 attempts) - only if basic pipeline succeeded
         lec_result = {'success': False, 'lec_passed': False, 'error': 'LEC not attempted'}
+        lec_golden_file = None
+        lec_generated_file = None
+        lec_files_compared = []
+
         if (
             llm_result.get('success', False)
             and applier_result.get('success', False)
             and compile_result.get('success', False)
             and verilog_success
         ):
-            print('\n🎉 [LEC] Basic pipeline successful - now running final LEC check like test_v2chisel_batch3')
+            print('\n🎉 [LEC] Basic pipeline successful - now running LEC with retry logic')
 
             # Step 2: Create golden design by applying verilog_diff to baseline before LEC
             print('✅ Step 2: Golden Design Creation - START')
@@ -2530,16 +2630,97 @@ class V2chisel_batch(Step):
                 print(f'❌ [GOLDEN] Golden design creation failed: {golden_design_result.get("error", "Unknown error")}')
                 golden_design_success = False
 
-            print('🔍 [LEC] Step: Running final equivalence check between golden and gate designs...')
+            # LEC RETRY LOOP (max 2 attempts)
+            max_lec_retries = self.max_lec_retries
+            lec_attempt = 1
 
-            # Run LEC directly (compares golden design vs LLM-generated design)
-            lec_result = self._run_lec(docker_container, file_name)
+            while lec_attempt <= max_lec_retries:
+                print(f'\n🔍 [LEC] Attempt {lec_attempt}/{max_lec_retries}: Running equivalence check...')
 
-            if lec_result.get('lec_passed', False):
-                print('🎉 [LEC] SUCCESS: Designs are equivalent - changes are correct!')
-            else:
-                lec_error = lec_result.get('error', 'Designs are NOT equivalent')
-                print(f'❌ [LEC] FAILED: {lec_error}')
+                # Run LEC directly (compares golden design vs LLM-generated design)
+                lec_result = self._run_lec(docker_container, file_name)
+
+                # Extract LEC file details for DAC metrics
+                if lec_result.get('success', False):
+                    lec_golden_file = lec_result.get('golden_file')
+                    lec_generated_file = lec_result.get('generated_file')
+                    lec_files_compared = [file_name]
+
+                if lec_result.get('lec_passed', False):
+                    print(f'🎉 [LEC] SUCCESS at attempt {lec_attempt}: Designs are equivalent!')
+                    bug_report.mark_lec_success()
+                    break
+                else:
+                    lec_error = lec_result.get('error', 'Designs are NOT equivalent')
+                    print(f'❌ [LEC] FAILED at attempt {lec_attempt}: {lec_error}')
+                    bug_report.set_error('lec', lec_error)
+
+                    if lec_attempt < max_lec_retries:
+                        # Retry with LLM feedback on LEC failure
+                        print(f'🔄 [LEC_RETRY] Attempting LEC retry {lec_attempt + 1}/{max_lec_retries} with LLM feedback')
+
+                        # Call LLM with LEC error feedback
+                        llm_retry_result = self._retry_llm_with_lec_error(
+                            verilog_diff=unified_diff,
+                            chisel_hints=final_hints,
+                            current_chisel_diff=generated_chisel_diff,
+                            lec_error=lec_error,
+                        )
+
+                        if llm_retry_result['success']:
+                            # New iteration for LEC retry
+                            current_attempt += 1
+                            bug_report.add_iteration(current_attempt)
+
+                            generated_chisel_diff = llm_retry_result['chisel_diff']
+                            bug_report.mark_llm_success(generated_diff=generated_chisel_diff)
+
+                            # Restore to original before applying new diff
+                            self._restore_to_original(docker_container, master_backup_info, 'lec_retry')
+
+                            # Apply new diff
+                            applier_result = self._apply_chisel_diff(generated_chisel_diff, docker_container)
+                            if not applier_result['success']:
+                                print(f'❌ [LEC_RETRY] Failed to apply LLM-generated diff: {applier_result.get("error")}')
+                                bug_report.set_error('applier', applier_result.get('error'))
+                                break
+
+                            bug_report.mark_applier_success()
+
+                            # Recompile
+                            compile_result = self._compile_xiangshan(docker_container)
+                            if not compile_result['success']:
+                                print(f'❌ [LEC_RETRY] Compilation failed: {compile_result.get("error")}')
+                                bug_report.set_error('compilation', compile_result.get('error'))
+                                break
+
+                            bug_report.mark_compilation_success()
+
+                            # Regenerate Verilog
+                            verilog_gen_result = self._generate_verilog_from_chisel(docker_container, module_name)
+                            if not verilog_gen_result['success']:
+                                print(f'❌ [LEC_RETRY] Verilog generation failed: {verilog_gen_result.get("error")}')
+                                bug_report.set_error('verilog_gen', verilog_gen_result.get('error'))
+                                break
+
+                            bug_report.mark_verilog_success()
+
+                            # Recreate golden design
+                            golden_design_result = golden_builder.create_golden_design(
+                                unified_diff, master_backup_info, docker_container
+                            )
+                            if not golden_design_result['success']:
+                                print(f'❌ [LEC_RETRY] Golden design creation failed')
+                                break
+
+                            # Continue to next LEC attempt
+                            lec_attempt += 1
+                        else:
+                            print(f'❌ [LEC_RETRY] LLM failed to generate retry diff: {llm_retry_result.get("error")}')
+                            break
+                    else:
+                        print(f'❌ [LEC] Maximum LEC retries ({max_lec_retries}) reached')
+                        break
         else:
             print('\n⚠️  [LEC] Skipping LEC - basic pipeline did not complete successfully')
             lec_result = {'success': False, 'lec_passed': False, 'error': 'Basic pipeline incomplete'}
@@ -2571,6 +2752,19 @@ class V2chisel_batch(Step):
         else:
             print('✅ [FINAL_CHECK] Pipeline fully successful AND LEC confirmed equivalence - keeping changes permanent')
             final_restore_result = {'success': True, 'message': 'No restore needed'}
+
+        # Finalize DAC metrics before building result dict
+        bug_report.finalize_dac_metrics(
+            verilog_diff=unified_diff,
+            has_hints=bool(final_hints.strip()),
+            golden_design_success=locals().get('golden_design_success', False),
+            lec_golden_file=lec_golden_file,
+            lec_generated_file=lec_generated_file,
+            lec_files_compared=lec_files_compared,
+        )
+
+        # Get DAC metrics dict
+        dac_metrics_dict = bug_report.get_dac_report_dict()
 
         # Return results for this bug
         result = {
@@ -2627,6 +2821,9 @@ class V2chisel_batch(Step):
             'lec_success': locals().get('lec_result', {}).get('success', False),
             'lec_method': locals().get('lec_result', {}).get('lec_method', 'none'),
         }
+
+        # Merge DAC metrics into result
+        result.update(dac_metrics_dict)
 
         return result
 
