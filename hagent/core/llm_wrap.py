@@ -244,13 +244,13 @@ class LLM_wrap:
             role = msg.get('role', 'user')
             content = msg.get('content', '')
             if role == 'system':
-                prompt_parts.append(f"System: {content}")
+                prompt_parts.append(f'System: {content}')
             elif role == 'user':
-                prompt_parts.append(f"{content}")
+                prompt_parts.append(f'{content}')
             elif role == 'assistant':
-                prompt_parts.append(f"Assistant: {content}")
+                prompt_parts.append(f'Assistant: {content}')
 
-        input_text = "\n\n".join(prompt_parts)
+        input_text = '\n\n'.join(prompt_parts)
 
         # Call Responses API
         start = time.time()
@@ -345,12 +345,14 @@ class LLM_wrap:
             self.total_time_ms += (end - start) * 1000
 
             # Add final data to log
-            log_data.update({
-                'answers': answers,
-                'tokens': tokens,
-                'cost': cost,
-                'elapsed_ms': (end - start) * 1000,
-            })
+            log_data.update(
+                {
+                    'answers': answers,
+                    'tokens': tokens,
+                    'cost': cost,
+                    'elapsed_ms': (end - start) * 1000,
+                }
+            )
             self._log_event(event_type=f'{self.name}:openai_responses_api', data=log_data)
 
             return answers
@@ -453,15 +455,7 @@ class LLM_wrap:
 
         # Detect if model requires Responses API instead of Chat Completions API
         # These models use OpenAI's newer Responses API endpoint
-        responses_api_keywords = [
-            'gpt-5-codex',
-            'gpt-5',
-            'o3-mini',
-            'o3',
-            'o1-mini',
-            'o1-preview',
-            'o1'
-        ]
+        responses_api_keywords = ['gpt-5-codex', 'gpt-5', 'o3-mini', 'o3', 'o1-mini', 'o1-preview', 'o1']
         use_responses_api = any(keyword in model.lower() for keyword in responses_api_keywords)
 
         # Use OpenAI SDK directly for Responses API models since litellm doesn't support it yet

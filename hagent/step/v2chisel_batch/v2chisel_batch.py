@@ -41,7 +41,7 @@ try:
     from .components.hints_generator_v2 import HintsGeneratorV2
     from .components.golden_design_builder import GoldenDesignBuilder
     from .components.baseline_verilog_generator import BaselineVerilogGenerator
-    from .components.pipeline_reporter import PipelineReporter, PipelineReport
+    from .components.pipeline_reporter import PipelineReporter
 except ImportError:
     # Fallback for direct execution or testing
     from components.bug_info import BugInfo
@@ -49,7 +49,7 @@ except ImportError:
     from components.hints_generator_v2 import HintsGeneratorV2
     from components.golden_design_builder import GoldenDesignBuilder
     from components.baseline_verilog_generator import BaselineVerilogGenerator
-    from components.pipeline_reporter import PipelineReporter, PipelineReport
+    from components.pipeline_reporter import PipelineReporter
 
 
 class V2chisel_batch(Step):
@@ -2258,11 +2258,9 @@ class V2chisel_batch(Step):
             print(f'     ❌ LLM retry failed: {e}')
             return {'success': False, 'error': str(e)}
 
-    def _retry_llm_with_lec_error(
-        self, verilog_diff: str, chisel_hints: str, current_chisel_diff: str, lec_error: str
-    ) -> dict:
+    def _retry_llm_with_lec_error(self, verilog_diff: str, chisel_hints: str, current_chisel_diff: str, lec_error: str) -> dict:
         """Retry LLM call with LEC failure feedback"""
-        print(f'🔄 [LLM] Retrying with LEC error feedback...')
+        print('🔄 [LLM] Retrying with LEC error feedback...')
 
         # Use the LEC error prompt template for retry
         template_data = {
@@ -2710,7 +2708,7 @@ class V2chisel_batch(Step):
                                 unified_diff, master_backup_info, docker_container
                             )
                             if not golden_design_result['success']:
-                                print(f'❌ [LEC_RETRY] Golden design creation failed')
+                                print('❌ [LEC_RETRY] Golden design creation failed')
                                 break
 
                             # Continue to next LEC attempt
@@ -2827,7 +2825,9 @@ class V2chisel_batch(Step):
 
         return result
 
-    def _write_individual_bug_output(self, bug_result: dict, bug_index: int, output_dir: str, input_config: dict, input_basename: str = None):
+    def _write_individual_bug_output(
+        self, bug_result: dict, bug_index: int, output_dir: str, input_config: dict, input_basename: str = None
+    ):
         """Write individual bug result to separate YAML file with statistics"""
         import os
         from pathlib import Path
@@ -2843,6 +2843,7 @@ class V2chisel_batch(Step):
             base_parts = input_basename.replace('all_verilog_diffs_', '')
             # Remove version markers (_A, _B, _C) that appear before the actual name
             import re
+
             base_parts = re.sub(r'^[ABC]_', '', base_parts)  # Remove leading A_, B_, C_
             output_filename = f'result_{base_parts}_{bug_index:02d}.yaml'
         else:
@@ -2871,31 +2872,25 @@ class V2chisel_batch(Step):
             'docker_patterns': input_config.get('docker_patterns', []),
             'chisel_patterns': input_config.get('chisel_patterns', []),
             'v2chisel_batch': input_config.get('v2chisel_batch', {}),
-
             # Bug-specific results with statistics
             'v2chisel_batch_with_llm': {
                 'total_bugs': 1,  # Single bug per file
                 'bug_results': [bug_result],
-
                 # Statistics for this bug
                 'module_finder_successes': 1 if bug_result.get('hints_source') == 'module_finder' else 0,
                 'metadata_fallbacks': 1 if bug_result.get('hints_source') == 'metadata_fallback' else 0,
                 'bugs_with_hints': 1 if bug_result.get('has_hints', False) else 0,
                 'hints_coverage_rate': 100.0 if bug_result.get('has_hints', False) else 0.0,
-
                 'llm_attempts': 1 if bug_result.get('has_hints', False) else 0,
                 'llm_successes': 1 if bug_result.get('llm_success', False) else 0,
                 'llm_success_rate': 100.0 if bug_result.get('llm_success', False) else 0.0,
-
                 'pipeline_successes': 1 if bug_result.get('pipeline_success', False) else 0,
                 'pipeline_success_rate': 100.0 if bug_result.get('pipeline_success', False) else 0.0,
-
                 'golden_design_successes': 1 if bug_result.get('golden_design_success', False) else 0,
                 'lec_attempts': 1 if bug_result.get('lec_method') != 'none' else 0,
                 'lec_successes': 1 if bug_result.get('lec_success', False) else 0,
                 'lec_success_rate': 100.0 if bug_result.get('lec_success', False) else 0.0,
             },
-
             # LLM cost and tokens
             'cost': total_cost,
             'tokens': total_tokens,
@@ -3007,7 +3002,7 @@ class V2chisel_batch(Step):
                     bug_index=i,
                     output_dir=individual_output_dir,
                     input_config=self.input_data,
-                    input_basename=input_basename
+                    input_basename=input_basename,
                 )
 
                 # Show progress based on actual pipeline success
