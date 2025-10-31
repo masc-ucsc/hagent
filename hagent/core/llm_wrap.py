@@ -217,6 +217,149 @@ class LLM_wrap:
         self.last_error = msg
         print(msg, file=sys.stderr)
 
+    def _call_openai_responses_api(self, messages, model, n, llm_args):
+        """Call OpenAI's Responses API directly for gpt-5-codex and similar models.
+
+        litellm doesn't support the Responses API yet, so we use the OpenAI SDK directly.
+        """
+        try:
+            from openai import OpenAI
+        except ImportError:
+            self._set_error('openai package required for gpt-5-codex (Responses API)')
+            return []
+
+        import time
+
+        # Extract model name without provider prefix
+        model_name = model.replace('openai/', '')
+
+        # Create OpenAI client
+        client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+
+        # Convert messages format (litellm format to OpenAI format)
+        # The Responses API expects 'input' parameter instead of 'messages'
+        # For now, concatenate messages into a single prompt
+        prompt_parts = []
+        for msg in messages:
+            role = msg.get('role', 'user')
+            content = msg.get('content', '')
+            if role == 'system':
+                prompt_parts.append(f"System: {content}")
+            elif role == 'user':
+                prompt_parts.append(f"{content}")
+            elif role == 'assistant':
+                prompt_parts.append(f"Assistant: {content}")
+
+        input_text = "\n\n".join(prompt_parts)
+
+        # Call Responses API
+        start = time.time()
+        try:
+            # Note: The Responses API uses different parameters than Chat Completions
+            # - Uses 'input' instead of 'messages'
+            # - Uses 'max_output_tokens' instead of 'max_tokens'
+            # - Does NOT support temperature, top_p, presence_penalty, frequency_penalty for reasoning models
+            response = client.responses.create(
+                model=model_name,
+                input=input_text,
+                max_output_tokens=llm_args.get('max_tokens', 2048),
+            )
+            end = time.time()
+
+            # Convert OpenAI Responses API response to format compatible with our code
+            # The Responses API uses 'output_text' field instead of 'choices'
+            answers = []
+            cost = 0.0
+            tokens = 0
+
+            # Prepare log data structure
+            log_data = {
+                'model': model,
+                'api': 'responses',
+                'input': input_text[:500] + '...' if len(input_text) > 500 else input_text,
+            }
+
+            # Extract text from response - Try multiple fields
+            response_text = None
+
+            # Try all possible response fields
+            if hasattr(response, 'output_text'):
+                response_text = response.output_text
+                extraction_method = 'output_text'
+            elif hasattr(response, 'text'):
+                response_text = response.text
+                extraction_method = 'text'
+            elif hasattr(response, 'content'):
+                response_text = response.content
+                extraction_method = 'content'
+            elif hasattr(response, 'output'):
+                output = response.output
+                if isinstance(output, str):
+                    response_text = output
+                    extraction_method = 'output (string)'
+                elif hasattr(output, 'content'):
+                    response_text = output.content
+                    extraction_method = 'output.content'
+                elif hasattr(output, 'text'):
+                    response_text = output.text
+                    extraction_method = 'output.text'
+                elif isinstance(output, list) and len(output) > 0:
+                    # Sometimes output is a list of message objects
+                    if hasattr(output[0], 'content'):
+                        response_text = output[0].content
+                        extraction_method = 'output[0].content'
+            elif hasattr(response, 'choices') and response.choices:
+                # Fallback to choices structure
+                for choice in response.choices:
+                    if hasattr(choice, 'message') and hasattr(choice.message, 'content'):
+                        response_text = choice.message.content
+                        extraction_method = 'choices[].message.content'
+                        break
+                    elif hasattr(choice, 'text'):
+                        response_text = choice.text
+                        extraction_method = 'choices[].text'
+                        break
+
+            if response_text:
+                answers.append(response_text)
+                log_data['extraction_method'] = extraction_method
+                log_data['response_length'] = len(response_text)
+            else:
+                # Log the actual response structure for debugging
+                log_data['error'] = 'Could not extract text from response'
+                log_data['response_type'] = str(type(response))
+                log_data['response_dict'] = str(response)[:500] if hasattr(response, '__dict__') else 'N/A'
+                self._set_error(f'Responses API returned data but could not extract text. Type: {type(response)}')
+
+            # Calculate cost (GPT-5-Codex pricing: $1.25/M input, $10/M output)
+            if hasattr(response, 'usage'):
+                usage = response.usage
+                input_tokens = getattr(usage, 'prompt_tokens', 0)
+                output_tokens = getattr(usage, 'completion_tokens', 0)
+                tokens = input_tokens + output_tokens
+                cost = (input_tokens / 1_000_000 * 1.25) + (output_tokens / 1_000_000 * 10.0)
+
+            # Update tracking
+            self.total_tokens += tokens
+            self.total_cost += cost
+            self.total_time_ms += (end - start) * 1000
+
+            # Add final data to log
+            log_data.update({
+                'answers': answers,
+                'tokens': tokens,
+                'cost': cost,
+                'elapsed_ms': (end - start) * 1000,
+            })
+            self._log_event(event_type=f'{self.name}:openai_responses_api', data=log_data)
+
+            return answers
+
+        except Exception as e:
+            self._set_error(f'OpenAI Responses API error: {e}')
+            self._log_event(event_type=f'{self.name}:openai_responses_api.error', data={'error': str(e)})
+            return []
+
     def _log_event(self, event_type: str, data: Dict):
         def process_multiline_strings(obj):
             """
@@ -308,6 +451,24 @@ class LLM_wrap:
             self._set_error(f'environment keys not set for {model}')
             return []
 
+        # Detect if model requires Responses API instead of Chat Completions API
+        # These models use OpenAI's newer Responses API endpoint
+        responses_api_keywords = [
+            'gpt-5-codex',
+            'gpt-5',
+            'o3-mini',
+            'o3',
+            'o1-mini',
+            'o1-preview',
+            'o1'
+        ]
+        use_responses_api = any(keyword in model.lower() for keyword in responses_api_keywords)
+
+        # Use OpenAI SDK directly for Responses API models since litellm doesn't support it yet
+        if use_responses_api:
+            print(f'[LLM_wrap] Detected Responses API model: {model}')
+            return self._call_openai_responses_api(messages, model, n, llm_call_args)
+
         # Call litellm
         try:
             start = time.time()
@@ -366,6 +527,7 @@ class LLM_wrap:
                                 f'\n\nThe last response answer was: """{prev_response}""" please try something different.'
                             )
 
+                    # Call litellm completion (Responses API models handled separately above)
                     r = litellm.completion(**call_args)
                     responses.append(r)
 
@@ -386,6 +548,7 @@ class LLM_wrap:
                 # Convert back to ModelResponse-like object for consistency
                 r = litellm.ModelResponse(**r_dict)
             else:
+                # Call litellm completion (Responses API models handled separately above)
                 r = litellm.completion(**llm_call_args)
 
             end = time.time()

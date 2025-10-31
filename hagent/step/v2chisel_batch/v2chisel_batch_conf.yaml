@@ -7,7 +7,8 @@ v2chisel_batch:
   llm:
     # model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
     # model: "openai/o3-mini-2025-01-31"
-    model: "openai/gpt-5-codex"
+    # model: "openai/gpt-4o"
+    model: "openai/gpt-5-codex"  # Uses Responses API (v1/responses)
     aws_region_name: "us-east-1"
     max_tokens: 2048
     temperature: 1

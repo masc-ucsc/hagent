@@ -2827,6 +2827,95 @@ class V2chisel_batch(Step):
 
         return result
 
+    def _write_individual_bug_output(self, bug_result: dict, bug_index: int, output_dir: str, input_config: dict, input_basename: str = None):
+        """Write individual bug result to separate YAML file with statistics"""
+        import os
+        from pathlib import Path
+
+        # Create output directory if it doesn't exist
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        # Generate filename: result_singlecycle_00.yaml or result_bug_00.yaml
+        if input_basename:
+            # Use input file base name (e.g., "all_verilog_diffs_A_singlecycle" -> "result_singlecycle_00.yaml")
+            # Extract meaningful part from input name
+            # Remove prefix and version markers
+            base_parts = input_basename.replace('all_verilog_diffs_', '')
+            # Remove version markers (_A, _B, _C) that appear before the actual name
+            import re
+            base_parts = re.sub(r'^[ABC]_', '', base_parts)  # Remove leading A_, B_, C_
+            output_filename = f'result_{base_parts}_{bug_index:02d}.yaml'
+        else:
+            # Fallback to old naming
+            verilog_file = bug_result.get('verilog_file', 'unknown')
+            verilog_name = verilog_file.replace('.sv', '').replace('.v', '')
+            output_filename = f'result_bug_{bug_index:02d}_{verilog_name}.yaml'
+
+        output_path = os.path.join(output_dir, output_filename)
+
+        # Get LLM statistics from wrapper
+        total_tokens = 0
+        total_cost = 0.0
+
+        if hasattr(self, 'lw') and self.lw:
+            # Get cumulative stats from LLM wrapper
+            if hasattr(self.lw, 'total_tokens'):
+                total_tokens = self.lw.total_tokens
+            if hasattr(self.lw, 'total_cost'):
+                total_cost = self.lw.total_cost
+
+        # Build output structure
+        output_data = {
+            # Echo input configuration
+            'docker_container': input_config.get('docker_container', 'hagent'),
+            'docker_patterns': input_config.get('docker_patterns', []),
+            'chisel_patterns': input_config.get('chisel_patterns', []),
+            'v2chisel_batch': input_config.get('v2chisel_batch', {}),
+
+            # Bug-specific results with statistics
+            'v2chisel_batch_with_llm': {
+                'total_bugs': 1,  # Single bug per file
+                'bug_results': [bug_result],
+
+                # Statistics for this bug
+                'module_finder_successes': 1 if bug_result.get('hints_source') == 'module_finder' else 0,
+                'metadata_fallbacks': 1 if bug_result.get('hints_source') == 'metadata_fallback' else 0,
+                'bugs_with_hints': 1 if bug_result.get('has_hints', False) else 0,
+                'hints_coverage_rate': 100.0 if bug_result.get('has_hints', False) else 0.0,
+
+                'llm_attempts': 1 if bug_result.get('has_hints', False) else 0,
+                'llm_successes': 1 if bug_result.get('llm_success', False) else 0,
+                'llm_success_rate': 100.0 if bug_result.get('llm_success', False) else 0.0,
+
+                'pipeline_successes': 1 if bug_result.get('pipeline_success', False) else 0,
+                'pipeline_success_rate': 100.0 if bug_result.get('pipeline_success', False) else 0.0,
+
+                'golden_design_successes': 1 if bug_result.get('golden_design_success', False) else 0,
+                'lec_attempts': 1 if bug_result.get('lec_method') != 'none' else 0,
+                'lec_successes': 1 if bug_result.get('lec_success', False) else 0,
+                'lec_success_rate': 100.0 if bug_result.get('lec_success', False) else 0.0,
+            },
+
+            # LLM cost and tokens
+            'cost': total_cost,
+            'tokens': total_tokens,
+            'step': 'V2chisel_batch',
+        }
+
+        # Write to YAML file
+        yaml = YAML()
+        yaml.default_flow_style = False
+        yaml.width = 4096
+
+        # Wrap multi-line strings
+        output_data = wrap_literals(output_data)
+
+        with open(output_path, 'w') as f:
+            yaml.dump(output_data, f)
+
+        print(f'📝 Wrote output: {output_path}')
+        return output_path
+
     def run(self, data):
         """Main processing function - Step 1: Read bugs and call module_finder"""
         print('\n🚀 Starting V2chisel_batch processing...')
@@ -2896,10 +2985,30 @@ class V2chisel_batch(Step):
         else:
             print('✅ [BASELINE] Fresh baseline Verilog generation complete\n')
 
+        # Determine output directory from output file
+        output_file = self.output_file if hasattr(self, 'output_file') and self.output_file else 'output.yaml'
+        output_dir = os.path.dirname(output_file) if os.path.dirname(output_file) else '.'
+        individual_output_dir = os.path.join(output_dir, 'individual_results')
+
+        # Extract input basename for individual file naming
+        input_basename = None
+        if hasattr(self, 'input_file') and self.input_file:
+            input_basename = os.path.basename(self.input_file).replace('.yaml', '')
+            print(f'📝 [V2chisel_batch] Individual files will use basename: {input_basename}')
+
         for i, bug_entry in enumerate(bugs):
             try:
                 bug_result = self._process_single_bug(i, bug_entry, local_files, docker_container, docker_patterns)
                 results.append(bug_result)
+
+                # Write individual bug output immediately
+                self._write_individual_bug_output(
+                    bug_result=bug_result,
+                    bug_index=i,
+                    output_dir=individual_output_dir,
+                    input_config=self.input_data,
+                    input_basename=input_basename
+                )
 
                 # Show progress based on actual pipeline success
                 pipeline_success = bug_result.get('pipeline_success', False)
@@ -3294,9 +3403,8 @@ def main():
         llm_successes = pipeline_results.get('llm_successes', 0)
         total_bugs = pipeline_results.get('total_bugs', 0)
 
-        if result and total_bugs > 0 and llm_successes > 0:
-            print('✅ [V2chisel_batch] PIPELINE SUCCESS: Complete pipeline passed!')
-
+        # Always write results, even if all bugs failed
+        if result and total_bugs > 0:
             print('📊 [V2chisel_batch] SUMMARY:')
             print(f'     Total bugs processed: {total_bugs}')
             print(f'     LLM successes: {llm_successes}')
@@ -3314,14 +3422,21 @@ def main():
                 yaml.dump(result, out_file)
 
             print()
-            print('🎉 [V2chisel_batch] COMPLETE PIPELINE: SUCCESS!')
-            print('The v2chisel_batch pipeline works with real LLM calls.')
-            print()
             print(f'📄 [V2chisel_batch] Detailed results saved to: {args.output}')
-            return 0
+            print()
+
+            # Check if pipeline was successful
+            if llm_successes > 0:
+                print('✅ [V2chisel_batch] PIPELINE SUCCESS: Complete pipeline passed!')
+                print('The v2chisel_batch pipeline works with real LLM calls.')
+                return 0
+            else:
+                print('❌ [V2chisel_batch] PIPELINE FAILURE: All bugs failed')
+                print(f'Total bugs: {total_bugs}, LLM successes: {llm_successes}')
+                print('💡 TIP: Check individual result files for detailed error messages')
+                return 1
         else:
-            print('❌ [V2chisel_batch] PIPELINE FAILURE')
-            print(f'Total bugs: {total_bugs}, LLM successes: {llm_successes}')
+            print('❌ [V2chisel_batch] PIPELINE FAILURE: No results generated')
             return 1
 
     except Exception as e:
