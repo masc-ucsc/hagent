@@ -39,9 +39,7 @@ class DACMetrics:
     chisel_files_affected: List[str] = field(default_factory=list)
 
     # LEC file details
-    lec_files: Dict[str, Any] = field(
-        default_factory=lambda: {'golden_file': None, 'generated_file': None, 'files_compared': []}
-    )
+    lec_files: Dict[str, Any] = field(default_factory=lambda: {'golden_file': None, 'generated_file': None, 'files_compared': []})
 
     # Detailed iteration history
     iteration_history: List[Dict[str, Any]] = field(default_factory=list)
