@@ -1,0 +1,194 @@
+"replicate_code_prompt1":
+- "role": |-
+    system
+  "content": |-
+    You are a super smart Verilog and timing expert.You have been tasked with improving the frequency of a verilog code.You provide a higher frequency code which passes LEC.Make sure that you only return the code that passes LEC.Take care that:The semantics are  preserved exactly as in the original netlist (including word instantiation and sign‐extension)while breaking a long combinational critical path.The resultant code is functionally equivalent to the original and passes LEC.
+- "role": |-
+    user
+  "content": |-
+    This is the current Verilog:
+    ```
+    {code_content}
+    ```
+    Please do not change semantics, just split the always blocks in separate always blocks and try to improve the performance when possible.
+"top_name": |-
+  StageReg_1
+"llm":
+  "model": |-
+    openai/o3-mini-2025-01-31
+"threshold": 40
+"code_content": |2-
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  module StageReg_1(clock, reset, io_in_pc, io_in_instruction, io_in_sextImm, io_in_readdata1, io_in_readdata2, io_flush, io_data_pc, io_data_instruction, io_data_sextImm, io_data_readdata1, io_data_readdata2);
+  reg \$auto$verilog_backend.cc:2355:dump_module$465 = 0;
+
+  reg [63:0] _0_;
+
+  reg [63:0] _1_;
+
+  reg [63:0] _2_;
+
+  reg [63:0] _3_;
+
+  reg [63:0] _4_;
+
+  wire [63:0] _RAND_0;
+
+  wire [63:0] _RAND_1;
+
+  wire [63:0] _RAND_2;
+
+  wire [63:0] _RAND_3;
+
+  wire [63:0] _RAND_4;
+
+  input clock;
+  wire clock;
+
+  output [63:0] io_data_instruction;
+  wire [63:0] io_data_instruction;
+
+  output [63:0] io_data_pc;
+  wire [63:0] io_data_pc;
+
+  output [63:0] io_data_readdata1;
+  wire [63:0] io_data_readdata1;
+
+  output [63:0] io_data_readdata2;
+  wire [63:0] io_data_readdata2;
+
+  output [63:0] io_data_sextImm;
+  wire [63:0] io_data_sextImm;
+
+  input io_flush;
+  wire io_flush;
+
+  input [63:0] io_in_instruction;
+  wire [63:0] io_in_instruction;
+
+  input [63:0] io_in_pc;
+  wire [63:0] io_in_pc;
+
+  input [63:0] io_in_readdata1;
+  wire [63:0] io_in_readdata1;
+
+  input [63:0] io_in_readdata2;
+  wire [63:0] io_in_readdata2;
+
+  input [63:0] io_in_sextImm;
+  wire [63:0] io_in_sextImm;
+
+  reg [63:0] reg_instruction;
+
+  reg [63:0] reg_pc;
+
+  reg [63:0] reg_readdata1;
+
+  reg [63:0] reg_readdata2;
+
+  reg [63:0] reg_sextImm;
+
+  input reset;
+  wire reset;
+  always @* begin
+  if (\$auto$verilog_backend.cc:2355:dump_module$465 ) begin end
+  _0_ = reg_instruction;
+  _1_ = reg_pc;
+  _4_ = reg_sextImm;
+  _2_ = reg_readdata1;
+  _3_ = reg_readdata2;
+
+  if (reset) begin
+  _1_ = 64'h0000000000000000;
+  end else begin
+
+  if (io_flush) begin
+  _1_ = 64'h0000000000000000;
+  end else begin
+  _1_ = io_in_pc;
+  end
+  end
+
+  if (reset) begin
+  _0_ = 64'h0000000000000000;
+  end else begin
+
+  if (io_flush) begin
+  _0_ = 64'h0000000000000000;
+  end else begin
+  _0_ = io_in_instruction;
+  end
+  end
+
+  if (reset) begin
+  _4_ = 64'h0000000000000000;
+  end else begin
+
+  if (io_flush) begin
+  _4_ = 64'h0000000000000000;
+  end else begin
+  _4_ = io_in_sextImm;
+  end
+  end
+
+  if (reset) begin
+  _2_ = 64'h0000000000000000;
+  end else begin
+
+  if (io_flush) begin
+  _2_ = 64'h0000000000000000;
+  end else begin
+  _2_ = io_in_readdata1;
+  end
+  end
+
+  if (reset) begin
+  _3_ = 64'h0000000000000000;
+  end else begin
+
+  if (io_flush) begin
+  _3_ = 64'h0000000000000000;
+  end else begin
+  _3_ = io_in_readdata2;
+  end
+  end
+  end
+  always @(posedge clock) begin
+  reg_instruction <= _0_;
+  reg_pc <= _1_;
+  reg_sextImm <= _4_;
+  reg_readdata1 <= _2_;
+  reg_readdata2 <= _3_;
+  end
+  assign io_data_pc = reg_pc;
+  assign io_data_instruction = reg_instruction;
+  assign io_data_sextImm = reg_sextImm;
+  assign io_data_readdata1 = reg_readdata1;
+  assign io_data_readdata2 = reg_readdata2;
+  endmodule

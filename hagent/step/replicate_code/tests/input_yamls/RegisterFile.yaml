@@ -1,0 +1,1467 @@
+"replicate_code_prompt1":
+- "role": |-
+    system
+  "content": |-
+    You are a super smart Verilog and timing expert.You have been tasked with improving the frequency of a verilog code.You provide a higher frequency code which passes LEC.Make sure that you only return the code that passes LEC.Take care that:The semantics are  preserved exactly as in the original netlist (including word instantiation and sign‐extension)while breaking a long combinational critical path.The resultant code is functionally equivalent to the original and passes LEC.
+- "role": |-
+    user
+  "content": |-
+    This is the current Verilog:
+    ```
+    {code_content}
+    ```
+    Please do not change semantics, just split the always blocks in separate always blocks and try to improve the performance when possible.
+"top_name": |-
+  RegisterFile
+"llm":
+  "model": |-
+    openai/o3-mini-2025-01-31
+"threshold": 40
+"code_content": |2-
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  module RegisterFile(clock, io_readreg1, io_readreg2, io_writereg, io_writedata, io_wen, io_readdata1, io_readdata2);
+  reg \$auto$verilog_backend.cc:2355:dump_module$463 = 0;
+
+  reg [63:0] _000_;
+
+  reg [63:0] _001_;
+
+  reg [63:0] _002_;
+
+  reg [63:0] _003_;
+
+  reg [63:0] _004_;
+
+  reg [63:0] _005_;
+
+  reg [63:0] _006_;
+
+  reg [63:0] _007_;
+
+  reg [63:0] _008_;
+
+  reg [63:0] _009_;
+
+  reg [63:0] _010_;
+
+  reg [63:0] _011_;
+
+  reg [63:0] _012_;
+
+  reg [63:0] _013_;
+
+  reg [63:0] _014_;
+
+  reg [63:0] _015_;
+
+  reg [63:0] _016_;
+
+  reg [63:0] _017_;
+
+  reg [63:0] _018_;
+
+  reg [63:0] _019_;
+
+  reg [63:0] _020_;
+
+  reg [63:0] _021_;
+
+  reg [63:0] _022_;
+
+  reg [63:0] _023_;
+
+  reg [63:0] _024_;
+
+  reg [63:0] _025_;
+
+  reg [63:0] _026_;
+
+  reg [63:0] _027_;
+
+  reg [63:0] _028_;
+
+  reg [63:0] _029_;
+
+  reg [63:0] _030_;
+
+  reg [63:0] _031_;
+
+  wire _032_;
+
+  wire _033_;
+
+  wire _034_;
+
+  wire _035_;
+
+  wire _036_;
+
+  wire _037_;
+
+  wire _038_;
+
+  wire _039_;
+
+  wire _040_;
+
+  wire _041_;
+
+  wire _042_;
+
+  wire _043_;
+
+  wire _044_;
+
+  wire _045_;
+
+  wire _046_;
+
+  wire _047_;
+
+  wire _048_;
+
+  wire _049_;
+
+  wire _050_;
+
+  wire _051_;
+
+  wire _052_;
+
+  wire _053_;
+
+  wire _054_;
+
+  wire _055_;
+
+  wire _056_;
+
+  wire _057_;
+
+  wire _058_;
+
+  wire _059_;
+
+  wire _060_;
+
+  wire _061_;
+
+  wire _062_;
+
+  wire _063_;
+
+  wire _064_;
+
+  wire _065_;
+
+  wire _066_;
+
+  wire _067_;
+
+  wire _068_;
+
+  wire _069_;
+
+  wire _070_;
+
+  wire _071_;
+
+  wire _072_;
+
+  wire _073_;
+
+  wire _074_;
+
+  wire _075_;
+
+  wire _076_;
+
+  wire _077_;
+
+  wire _078_;
+
+  wire _079_;
+
+  wire _080_;
+
+  wire _081_;
+
+  wire _082_;
+
+  wire _083_;
+
+  wire _084_;
+
+  wire _085_;
+
+  wire _086_;
+
+  wire _087_;
+
+  wire _088_;
+
+  wire _089_;
+
+  wire _090_;
+
+  wire _091_;
+
+  wire _092_;
+
+  wire _093_;
+
+  wire _094_;
+
+  wire _095_;
+
+  wire _096_;
+
+  wire _097_;
+
+  wire _098_;
+
+  wire _099_;
+
+  wire _100_;
+
+  wire _101_;
+
+  wire _102_;
+
+  wire _103_;
+
+  wire _104_;
+
+  wire _105_;
+
+  wire _106_;
+
+  wire _107_;
+
+  wire _108_;
+
+  wire _109_;
+
+  wire _110_;
+
+  wire _111_;
+
+  wire _112_;
+
+  wire _113_;
+
+  wire _114_;
+
+  wire _115_;
+
+  wire _116_;
+
+  wire _117_;
+
+  wire _118_;
+
+  wire _119_;
+
+  wire _120_;
+
+  wire _121_;
+
+  wire _122_;
+
+  wire _123_;
+
+  wire _124_;
+
+  wire _125_;
+
+  wire _126_;
+
+  wire _127_;
+
+  wire _128_;
+
+  wire _129_;
+
+  wire [63:0] _130_;
+
+  wire [63:0] _131_;
+
+  wire [63:0] _132_;
+
+  wire [63:0] _133_;
+
+  wire [63:0] _134_;
+
+  wire [63:0] _135_;
+
+  wire [63:0] _136_;
+
+  wire [63:0] _137_;
+
+  wire [63:0] _138_;
+
+  wire [63:0] _139_;
+
+  wire [63:0] _140_;
+
+  wire [63:0] _141_;
+
+  wire [63:0] _142_;
+
+  wire [63:0] _143_;
+
+  wire [63:0] _144_;
+
+  wire [63:0] _145_;
+
+  wire [63:0] _146_;
+
+  wire [63:0] _147_;
+
+  wire [63:0] _148_;
+
+  wire [63:0] _149_;
+
+  wire [63:0] _150_;
+
+  wire [63:0] _151_;
+
+  wire [63:0] _152_;
+
+  wire [63:0] _153_;
+
+  wire [63:0] _154_;
+
+  wire [63:0] _155_;
+
+  wire [63:0] _156_;
+
+  wire [63:0] _157_;
+
+  wire [63:0] _158_;
+
+  wire [63:0] _159_;
+
+  wire [63:0] _160_;
+
+  wire [63:0] _161_;
+
+  wire [63:0] _162_;
+
+  wire [63:0] _163_;
+
+  wire [63:0] _164_;
+
+  wire [63:0] _165_;
+
+  wire [63:0] _166_;
+
+  wire [63:0] _167_;
+
+  wire [63:0] _168_;
+
+  wire [63:0] _169_;
+
+  wire [63:0] _170_;
+
+  wire [63:0] _171_;
+
+  wire [63:0] _172_;
+
+  wire [63:0] _173_;
+
+  wire [63:0] _174_;
+
+  wire [63:0] _175_;
+
+  wire [63:0] _176_;
+
+  wire [63:0] _177_;
+
+  wire [63:0] _178_;
+
+  wire [63:0] _179_;
+
+  wire [63:0] _180_;
+
+  wire [63:0] _181_;
+
+  wire [63:0] _182_;
+
+  wire [63:0] _183_;
+
+  wire [63:0] _184_;
+
+  wire [63:0] _185_;
+
+  wire [63:0] _186_;
+
+  wire [63:0] _187_;
+
+  wire [63:0] _188_;
+
+  wire [63:0] _189_;
+
+  wire [63:0] _190_;
+
+  wire [63:0] _191_;
+
+  wire [63:0] _192_;
+
+  wire [63:0] _193_;
+
+  wire [63:0] _GEN_100;
+
+  wire [63:0] _GEN_101;
+
+  wire [63:0] _GEN_102;
+
+  wire [63:0] _GEN_103;
+
+  wire [63:0] _GEN_104;
+
+  wire [63:0] _GEN_105;
+
+  wire [63:0] _GEN_106;
+
+  wire [63:0] _GEN_107;
+
+  wire [63:0] _GEN_108;
+
+  wire [63:0] _GEN_109;
+
+  wire [63:0] _GEN_110;
+
+  wire [63:0] _GEN_111;
+
+  wire [63:0] _GEN_112;
+
+  wire [63:0] _GEN_113;
+
+  wire [63:0] _GEN_114;
+
+  wire [63:0] _GEN_115;
+
+  wire [63:0] _GEN_116;
+
+  wire [63:0] _GEN_117;
+
+  wire [63:0] _GEN_118;
+
+  wire [63:0] _GEN_119;
+
+  wire [63:0] _GEN_120;
+
+  wire [63:0] _GEN_121;
+
+  wire [63:0] _GEN_122;
+
+  wire [63:0] _GEN_123;
+
+  wire [63:0] _GEN_124;
+
+  wire [63:0] _GEN_125;
+
+  wire [63:0] _GEN_126;
+
+  wire [63:0] _GEN_127;
+
+  wire [63:0] _GEN_65;
+
+  wire [63:0] _GEN_66;
+
+  wire [63:0] _GEN_67;
+
+  wire [63:0] _GEN_68;
+
+  wire [63:0] _GEN_69;
+
+  wire [63:0] _GEN_70;
+
+  wire [63:0] _GEN_71;
+
+  wire [63:0] _GEN_72;
+
+  wire [63:0] _GEN_73;
+
+  wire [63:0] _GEN_74;
+
+  wire [63:0] _GEN_75;
+
+  wire [63:0] _GEN_76;
+
+  wire [63:0] _GEN_77;
+
+  wire [63:0] _GEN_78;
+
+  wire [63:0] _GEN_79;
+
+  wire [63:0] _GEN_80;
+
+  wire [63:0] _GEN_81;
+
+  wire [63:0] _GEN_82;
+
+  wire [63:0] _GEN_83;
+
+  wire [63:0] _GEN_84;
+
+  wire [63:0] _GEN_85;
+
+  wire [63:0] _GEN_86;
+
+  wire [63:0] _GEN_87;
+
+  wire [63:0] _GEN_88;
+
+  wire [63:0] _GEN_89;
+
+  wire [63:0] _GEN_90;
+
+  wire [63:0] _GEN_91;
+
+  wire [63:0] _GEN_92;
+
+  wire [63:0] _GEN_93;
+
+  wire [63:0] _GEN_94;
+
+  wire [63:0] _GEN_95;
+
+  wire [63:0] _GEN_97;
+
+  wire [63:0] _GEN_98;
+
+  wire [63:0] _GEN_99;
+
+  wire [63:0] _RAND_0;
+
+  wire [63:0] _RAND_1;
+
+  wire [63:0] _RAND_10;
+
+  wire [63:0] _RAND_11;
+
+  wire [63:0] _RAND_12;
+
+  wire [63:0] _RAND_13;
+
+  wire [63:0] _RAND_14;
+
+  wire [63:0] _RAND_15;
+
+  wire [63:0] _RAND_16;
+
+  wire [63:0] _RAND_17;
+
+  wire [63:0] _RAND_18;
+
+  wire [63:0] _RAND_19;
+
+  wire [63:0] _RAND_2;
+
+  wire [63:0] _RAND_20;
+
+  wire [63:0] _RAND_21;
+
+  wire [63:0] _RAND_22;
+
+  wire [63:0] _RAND_23;
+
+  wire [63:0] _RAND_24;
+
+  wire [63:0] _RAND_25;
+
+  wire [63:0] _RAND_26;
+
+  wire [63:0] _RAND_27;
+
+  wire [63:0] _RAND_28;
+
+  wire [63:0] _RAND_29;
+
+  wire [63:0] _RAND_3;
+
+  wire [63:0] _RAND_30;
+
+  wire [63:0] _RAND_31;
+
+  wire [63:0] _RAND_4;
+
+  wire [63:0] _RAND_5;
+
+  wire [63:0] _RAND_6;
+
+  wire [63:0] _RAND_7;
+
+  wire [63:0] _RAND_8;
+
+  wire [63:0] _RAND_9;
+
+  wire _T;
+
+  wire _T_1;
+
+  wire _T_2;
+
+  input clock;
+  wire clock;
+
+  output [63:0] io_readdata1;
+  wire [63:0] io_readdata1;
+
+  output [63:0] io_readdata2;
+  wire [63:0] io_readdata2;
+
+  input [4:0] io_readreg1;
+  wire [4:0] io_readreg1;
+
+  input [4:0] io_readreg2;
+  wire [4:0] io_readreg2;
+
+  input io_wen;
+  wire io_wen;
+
+  input [63:0] io_writedata;
+  wire [63:0] io_writedata;
+
+  input [4:0] io_writereg;
+  wire [4:0] io_writereg;
+
+  wire potato3;
+
+  reg [63:0] regs_0;
+
+  reg [63:0] regs_1;
+
+  reg [63:0] regs_10;
+
+  reg [63:0] regs_11;
+
+  reg [63:0] regs_12;
+
+  reg [63:0] regs_13;
+
+  reg [63:0] regs_14;
+
+  reg [63:0] regs_15;
+
+  reg [63:0] regs_16;
+
+  reg [63:0] regs_17;
+
+  reg [63:0] regs_18;
+
+  reg [63:0] regs_19;
+
+  reg [63:0] regs_2;
+
+  reg [63:0] regs_20;
+
+  reg [63:0] regs_21;
+
+  reg [63:0] regs_22;
+
+  reg [63:0] regs_23;
+
+  reg [63:0] regs_24;
+
+  reg [63:0] regs_25;
+
+  reg [63:0] regs_26;
+
+  reg [63:0] regs_27;
+
+  reg [63:0] regs_28;
+
+  reg [63:0] regs_29;
+
+  reg [63:0] regs_3;
+
+  reg [63:0] regs_30;
+
+  reg [63:0] regs_31;
+
+  reg [63:0] regs_4;
+
+  reg [63:0] regs_5;
+
+  reg [63:0] regs_6;
+
+  reg [63:0] regs_7;
+
+  reg [63:0] regs_8;
+
+  reg [63:0] regs_9;
+  assign _032_ = _T &
+   io_wen;
+  assign _033_ = _T_1 &
+   io_wen;
+  assign _034_ = 5'h01 ==
+   io_readreg1;
+  assign _035_ = 5'h02 ==
+   io_readreg1;
+  assign _036_ = 5'h03 ==
+   io_readreg1;
+  assign _037_ = 5'h04 ==
+   io_readreg1;
+  assign _038_ = 5'h05 ==
+   io_readreg1;
+  assign _039_ = 5'h06 ==
+   io_readreg1;
+  assign _040_ = 5'h07 ==
+   io_readreg1;
+  assign _041_ = 5'h08 ==
+   io_readreg1;
+  assign _042_ = 5'h09 ==
+   io_readreg1;
+  assign _043_ = 5'h0a ==
+   io_readreg1;
+  assign _044_ = 5'h0b ==
+   io_readreg1;
+  assign _045_ = 5'h0c ==
+   io_readreg1;
+  assign _046_ = 5'h0d ==
+   io_readreg1;
+  assign _047_ = 5'h0e ==
+   io_readreg1;
+  assign _048_ = 5'h0f ==
+   io_readreg1;
+  assign _049_ = 5'h10 ==
+   io_readreg1;
+  assign _050_ = 5'h11 ==
+   io_readreg1;
+  assign _051_ = 5'h12 ==
+   io_readreg1;
+  assign _052_ = 5'h13 ==
+   io_readreg1;
+  assign _053_ = 5'h14 ==
+   io_readreg1;
+  assign _054_ = 5'h15 ==
+   io_readreg1;
+  assign _055_ = 5'h16 ==
+   io_readreg1;
+  assign _056_ = 5'h17 ==
+   io_readreg1;
+  assign _057_ = 5'h18 ==
+   io_readreg1;
+  assign _058_ = 5'h19 ==
+   io_readreg1;
+  assign _059_ = 5'h1a ==
+   io_readreg1;
+  assign _060_ = 5'h1b ==
+   io_readreg1;
+  assign _061_ = 5'h1c ==
+   io_readreg1;
+  assign _062_ = 5'h1d ==
+   io_readreg1;
+  assign _063_ = 5'h1e ==
+   io_readreg1;
+  assign _064_ = 5'h1f ==
+   io_readreg1;
+  assign _065_ = 5'h01 ==
+   io_readreg2;
+  assign _066_ = 5'h02 ==
+   io_readreg2;
+  assign _067_ = 5'h03 ==
+   io_readreg2;
+  assign _068_ = 5'h04 ==
+   io_readreg2;
+  assign _069_ = 5'h05 ==
+   io_readreg2;
+  assign _070_ = 5'h06 ==
+   io_readreg2;
+  assign _071_ = 5'h07 ==
+   io_readreg2;
+  assign _072_ = 5'h08 ==
+   io_readreg2;
+  assign _073_ = 5'h09 ==
+   io_readreg2;
+  assign _074_ = 5'h0a ==
+   io_readreg2;
+  assign _075_ = 5'h0b ==
+   io_readreg2;
+  assign _076_ = 5'h0c ==
+   io_readreg2;
+  assign _077_ = 5'h0d ==
+   io_readreg2;
+  assign _078_ = 5'h0e ==
+   io_readreg2;
+  assign _079_ = 5'h0f ==
+   io_readreg2;
+  assign _080_ = 5'h10 ==
+   io_readreg2;
+  assign _081_ = 5'h11 ==
+   io_readreg2;
+  assign _082_ = 5'h12 ==
+   io_readreg2;
+  assign _083_ = 5'h13 ==
+   io_readreg2;
+  assign _084_ = 5'h14 ==
+   io_readreg2;
+  assign _085_ = 5'h15 ==
+   io_readreg2;
+  assign _086_ = 5'h16 ==
+   io_readreg2;
+  assign _087_ = 5'h17 ==
+   io_readreg2;
+  assign _088_ = 5'h18 ==
+   io_readreg2;
+  assign _089_ = 5'h19 ==
+   io_readreg2;
+  assign _090_ = 5'h1a ==
+   io_readreg2;
+  assign _091_ = 5'h1b ==
+   io_readreg2;
+  assign _092_ = 5'h1c ==
+   io_readreg2;
+  assign _093_ = 5'h1d ==
+   io_readreg2;
+  assign _094_ = 5'h1e ==
+   io_readreg2;
+  assign _095_ = 5'h1f ==
+   io_readreg2;
+  assign _096_ = io_readreg1 ==
+   io_writereg;
+  assign _097_ = io_readreg2 ==
+   io_writereg;
+  assign _098_ = 5'h00 ==
+   io_writereg;
+  assign _099_ = 5'h01 ==
+   io_writereg;
+  assign _100_ = 5'h02 ==
+   io_writereg;
+  assign _101_ = 5'h03 ==
+   io_writereg;
+  assign _102_ = 5'h04 ==
+   io_writereg;
+  assign _103_ = 5'h05 ==
+   io_writereg;
+  assign _104_ = 5'h06 ==
+   io_writereg;
+  assign _105_ = 5'h07 ==
+   io_writereg;
+  assign _106_ = 5'h08 ==
+   io_writereg;
+  assign _107_ = 5'h09 ==
+   io_writereg;
+  assign _108_ = 5'h0a ==
+   io_writereg;
+  assign _109_ = 5'h0b ==
+   io_writereg;
+  assign _110_ = 5'h0c ==
+   io_writereg;
+  assign _111_ = 5'h0d ==
+   io_writereg;
+  assign _112_ = 5'h0e ==
+   io_writereg;
+  assign _113_ = 5'h0f ==
+   io_writereg;
+  assign _114_ = 5'h10 ==
+   io_writereg;
+  assign _115_ = 5'h11 ==
+   io_writereg;
+  assign _116_ = 5'h12 ==
+   io_writereg;
+  assign _117_ = 5'h13 ==
+   io_writereg;
+  assign _118_ = 5'h14 ==
+   io_writereg;
+  assign _119_ = 5'h15 ==
+   io_writereg;
+  assign _120_ = 5'h16 ==
+   io_writereg;
+  assign _121_ = 5'h17 ==
+   io_writereg;
+  assign _122_ = 5'h18 ==
+   io_writereg;
+  assign _123_ = 5'h19 ==
+   io_writereg;
+  assign _124_ = 5'h1a ==
+   io_writereg;
+  assign _125_ = 5'h1b ==
+   io_writereg;
+  assign _126_ = 5'h1c ==
+   io_writereg;
+  assign _127_ = 5'h1d ==
+   io_writereg;
+  assign _128_ = 5'h1e ==
+   io_writereg;
+  assign _129_ = 5'h1f ==
+   io_writereg;
+  assign _130_ = _034_ ?
+   regs_1 : regs_0;
+  assign _131_ = _035_ ?
+   regs_2 : _GEN_65;
+  assign _132_ = _036_ ?
+   regs_3 : _GEN_66;
+  assign _133_ = _037_ ?
+   regs_4 : _GEN_67;
+  assign _134_ = _038_ ?
+   regs_5 : _GEN_68;
+  assign _135_ = _039_ ?
+   regs_6 : _GEN_69;
+  assign _136_ = _040_ ?
+   regs_7 : _GEN_70;
+  assign _137_ = _041_ ?
+   regs_8 : _GEN_71;
+  assign _138_ = _042_ ?
+   regs_9 : _GEN_72;
+  assign _139_ = _043_ ?
+   regs_10 : _GEN_73;
+  assign _140_ = _044_ ?
+   regs_11 : _GEN_74;
+  assign _141_ = _045_ ?
+   regs_12 : _GEN_75;
+  assign _142_ = _046_ ?
+   regs_13 : _GEN_76;
+  assign _143_ = _047_ ?
+   regs_14 : _GEN_77;
+  assign _144_ = _048_ ?
+   regs_15 : _GEN_78;
+  assign _145_ = _049_ ?
+   regs_16 : _GEN_79;
+  assign _146_ = _050_ ?
+   regs_17 : _GEN_80;
+  assign _147_ = _051_ ?
+   regs_18 : _GEN_81;
+  assign _148_ = _052_ ?
+   regs_19 : _GEN_82;
+  assign _149_ = _053_ ?
+   regs_20 : _GEN_83;
+  assign _150_ = _054_ ?
+   regs_21 : _GEN_84;
+  assign _151_ = _055_ ?
+   regs_22 : _GEN_85;
+  assign _152_ = _056_ ?
+   regs_23 : _GEN_86;
+  assign _153_ = _057_ ?
+   regs_24 : _GEN_87;
+  assign _154_ = _058_ ?
+   regs_25 : _GEN_88;
+  assign _155_ = _059_ ?
+   regs_26 : _GEN_89;
+  assign _156_ = _060_ ?
+   regs_27 : _GEN_90;
+  assign _157_ = _061_ ?
+   regs_28 : _GEN_91;
+  assign _158_ = _062_ ?
+   regs_29 : _GEN_92;
+  assign _159_ = _063_ ?
+   regs_30 : _GEN_93;
+  assign _160_ = _064_ ?
+   regs_31 : _GEN_94;
+  assign _161_ = _065_ ?
+   regs_1 : regs_0;
+  assign _162_ = _066_ ?
+   regs_2 : _GEN_97;
+  assign _163_ = _067_ ?
+   regs_3 : _GEN_98;
+  assign _164_ = _068_ ?
+   regs_4 : _GEN_99;
+  assign _165_ = _069_ ?
+   regs_5 : _GEN_100;
+  assign _166_ = _070_ ?
+   regs_6 : _GEN_101;
+  assign _167_ = _071_ ?
+   regs_7 : _GEN_102;
+  assign _168_ = _072_ ?
+   regs_8 : _GEN_103;
+  assign _169_ = _073_ ?
+   regs_9 : _GEN_104;
+  assign _170_ = _074_ ?
+   regs_10 : _GEN_105;
+  assign _171_ = _075_ ?
+   regs_11 : _GEN_106;
+  assign _172_ = _076_ ?
+   regs_12 : _GEN_107;
+  assign _173_ = _077_ ?
+   regs_13 : _GEN_108;
+  assign _174_ = _078_ ?
+   regs_14 : _GEN_109;
+  assign _175_ = _079_ ?
+   regs_15 : _GEN_110;
+  assign _176_ = _080_ ?
+   regs_16 : _GEN_111;
+  assign _177_ = _081_ ?
+   regs_17 : _GEN_112;
+  assign _178_ = _082_ ?
+   regs_18 : _GEN_113;
+  assign _179_ = _083_ ?
+   regs_19 : _GEN_114;
+  assign _180_ = _084_ ?
+   regs_20 : _GEN_115;
+  assign _181_ = _085_ ?
+   regs_21 : _GEN_116;
+  assign _182_ = _086_ ?
+   regs_22 : _GEN_117;
+  assign _183_ = _087_ ?
+   regs_23 : _GEN_118;
+  assign _184_ = _088_ ?
+   regs_24 : _GEN_119;
+  assign _185_ = _089_ ?
+   regs_25 : _GEN_120;
+  assign _186_ = _090_ ?
+   regs_26 : _GEN_121;
+  assign _187_ = _091_ ?
+   regs_27 : _GEN_122;
+  assign _188_ = _092_ ?
+   regs_28 : _GEN_123;
+  assign _189_ = _093_ ?
+   regs_29 : _GEN_124;
+  assign _190_ = _094_ ?
+   regs_30 : _GEN_125;
+  assign _191_ = _095_ ?
+   regs_31 : _GEN_126;
+  assign _192_ = potato3 ?
+   io_writedata : _GEN_95;
+  assign _193_ = _T_2 ?
+   io_writedata : _GEN_127;
+  always @* begin
+  if (\$auto$verilog_backend.cc:2355:dump_module$463 ) begin end
+  _000_ = regs_0;
+  _011_ = regs_1;
+  _022_ = regs_2;
+  _025_ = regs_3;
+  _026_ = regs_4;
+  _027_ = regs_5;
+  _028_ = regs_6;
+  _029_ = regs_7;
+  _030_ = regs_8;
+  _031_ = regs_9;
+  _001_ = regs_10;
+  _002_ = regs_11;
+  _003_ = regs_12;
+  _004_ = regs_13;
+  _005_ = regs_14;
+  _006_ = regs_15;
+  _007_ = regs_16;
+  _008_ = regs_17;
+  _009_ = regs_18;
+  _010_ = regs_19;
+  _012_ = regs_20;
+  _013_ = regs_21;
+  _014_ = regs_22;
+  _015_ = regs_23;
+  _016_ = regs_24;
+  _017_ = regs_25;
+  _018_ = regs_26;
+  _019_ = regs_27;
+  _020_ = regs_28;
+  _021_ = regs_29;
+  _023_ = regs_30;
+  _024_ = regs_31;
+
+  if (io_wen) begin
+
+  if (_098_) begin
+  _000_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_099_) begin
+  _011_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_100_) begin
+  _022_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_101_) begin
+  _025_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_102_) begin
+  _026_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_103_) begin
+  _027_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_104_) begin
+  _028_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_105_) begin
+  _029_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_106_) begin
+  _030_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_107_) begin
+  _031_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_108_) begin
+  _001_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_109_) begin
+  _002_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_110_) begin
+  _003_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_111_) begin
+  _004_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_112_) begin
+  _005_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_113_) begin
+  _006_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_114_) begin
+  _007_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_115_) begin
+  _008_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_116_) begin
+  _009_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_117_) begin
+  _010_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_118_) begin
+  _012_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_119_) begin
+  _013_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_120_) begin
+  _014_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_121_) begin
+  _015_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_122_) begin
+  _016_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_123_) begin
+  _017_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_124_) begin
+  _018_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_125_) begin
+  _019_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_126_) begin
+  _020_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_127_) begin
+  _021_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_128_) begin
+  _023_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+
+  if (io_wen) begin
+
+  if (_129_) begin
+  _024_ = io_writedata;
+  end else begin
+  end
+  end else begin
+  end
+  end
+  always @(posedge clock) begin
+  regs_0 <= _000_;
+  regs_1 <= _011_;
+  regs_2 <= _022_;
+  regs_3 <= _025_;
+  regs_4 <= _026_;
+  regs_5 <= _027_;
+  regs_6 <= _028_;
+  regs_7 <= _029_;
+  regs_8 <= _030_;
+  regs_9 <= _031_;
+  regs_10 <= _001_;
+  regs_11 <= _002_;
+  regs_12 <= _003_;
+  regs_13 <= _004_;
+  regs_14 <= _005_;
+  regs_15 <= _006_;
+  regs_16 <= _007_;
+  regs_17 <= _008_;
+  regs_18 <= _009_;
+  regs_19 <= _010_;
+  regs_20 <= _012_;
+  regs_21 <= _013_;
+  regs_22 <= _014_;
+  regs_23 <= _015_;
+  regs_24 <= _016_;
+  regs_25 <= _017_;
+  regs_26 <= _018_;
+  regs_27 <= _019_;
+  regs_28 <= _020_;
+  regs_29 <= _021_;
+  regs_30 <= _023_;
+  regs_31 <= _024_;
+  end
+  assign _GEN_65 = _130_;
+  assign _GEN_66 = _131_;
+  assign _GEN_67 = _132_;
+  assign _GEN_68 = _133_;
+  assign _GEN_69 = _134_;
+  assign _GEN_70 = _135_;
+  assign _GEN_71 = _136_;
+  assign _GEN_72 = _137_;
+  assign _GEN_73 = _138_;
+  assign _GEN_74 = _139_;
+  assign _GEN_75 = _140_;
+  assign _GEN_76 = _141_;
+  assign _GEN_77 = _142_;
+  assign _GEN_78 = _143_;
+  assign _GEN_79 = _144_;
+  assign _GEN_80 = _145_;
+  assign _GEN_81 = _146_;
+  assign _GEN_82 = _147_;
+  assign _GEN_83 = _148_;
+  assign _GEN_84 = _149_;
+  assign _GEN_85 = _150_;
+  assign _GEN_86 = _151_;
+  assign _GEN_87 = _152_;
+  assign _GEN_88 = _153_;
+  assign _GEN_89 = _154_;
+  assign _GEN_90 = _155_;
+  assign _GEN_91 = _156_;
+  assign _GEN_92 = _157_;
+  assign _GEN_93 = _158_;
+  assign _GEN_94 = _159_;
+  assign _GEN_95 = _160_;
+  assign _GEN_97 = _161_;
+  assign _GEN_98 = _162_;
+  assign _GEN_99 = _163_;
+  assign _GEN_100 = _164_;
+  assign _GEN_101 = _165_;
+  assign _GEN_102 = _166_;
+  assign _GEN_103 = _167_;
+  assign _GEN_104 = _168_;
+  assign _GEN_105 = _169_;
+  assign _GEN_106 = _170_;
+  assign _GEN_107 = _171_;
+  assign _GEN_108 = _172_;
+  assign _GEN_109 = _173_;
+  assign _GEN_110 = _174_;
+  assign _GEN_111 = _175_;
+  assign _GEN_112 = _176_;
+  assign _GEN_113 = _177_;
+  assign _GEN_114 = _178_;
+  assign _GEN_115 = _179_;
+  assign _GEN_116 = _180_;
+  assign _GEN_117 = _181_;
+  assign _GEN_118 = _182_;
+  assign _GEN_119 = _183_;
+  assign _GEN_120 = _184_;
+  assign _GEN_121 = _185_;
+  assign _GEN_122 = _186_;
+  assign _GEN_123 = _187_;
+  assign _GEN_124 = _188_;
+  assign _GEN_125 = _189_;
+  assign _GEN_126 = _190_;
+  assign _GEN_127 = _191_;
+  assign _T = _096_;
+  assign potato3 = _032_;
+  assign _T_1 = _097_;
+  assign _T_2 = _033_;
+  assign io_readdata1 = _192_;
+  assign io_readdata2 = _193_;
+  endmodule

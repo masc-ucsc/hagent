@@ -1,0 +1,62 @@
+# Example YAML configuration for RTL optimization baseline run
+# This file defines the benchmark configuration and is passed through the pipeline
+
+# Benchmark identification
+benchmark:
+  name: "PipelineDino"
+  top_module: "PipelinedCPU"
+  design_type: "CPU"
+
+# Docker configuration
+docker:
+  image: "mascucsc/hagent-simplechisel:2025.08"
+  rtl_path: "/code/workspace/build/build_pipelined_d"
+  chisel_path: "/repo/src/main/scala"
+
+# Tool paths and configuration
+tools:
+  liberty_file: "/home/sgarg3/livehd/sky130_fd_sc_hd__ff_100C_1v95.lib"
+  livehd_path: "~/livehd/"
+  opensta_path: "~/opensta/OpenSTA/app/sta"
+  yosys_cmd: "yosys"
+
+# Local storage configuration
+local_storage:
+  debug_base_dir: "/tmp/rtl_optimization_debug"
+  results_dir: "/home/sgarg3/hagent/generated_yamls"
+  input_yamls_dir: "/home/sgarg3/hagent/hagent/step/replicate_code/tests/input_yamls"
+
+# Optimization configuration
+optimization:
+  model: "openai/o3-mini-2025-01-31"
+  run_with_synalign: false  # For baseline run
+  threshold: 40
+
+# Metrics collection (will be populated by pipeline)
+metrics:
+  start_time: null
+  end_time: null
+  total_execution_time: null
+  original_slack: null
+  original_frequency: null
+  modules_optimized: []
+
+# Step results (populated by each step)
+step_results:
+  step_01_extract_rtl: {}
+  step_02_create_top: {}
+  step_03_split_modules: {}
+  step_04_synthesize: {}
+  step_05_timing_analysis: {}
+  step_06_generate_yamls: {}
+  step_07_optimize_modules: {}
+  step_08_compare_timing: {}
+
+# File paths (populated during execution)
+file_paths:
+  rtl_files: []
+  chisel_files: []
+  rtl_single_dir: null
+  rtl_modules_dir: null
+  synth_dir: null
+  optimized_dir: null

@@ -1,0 +1,247 @@
+"replicate_code_prompt1":
+- "role": |-
+    system
+  "content": |-
+    You are a super smart Verilog and timing expert.You have been tasked with improving the frequency of a verilog code.You provide a higher frequency code which passes LEC.Make sure that you only return the code that passes LEC.Take care that:The semantics are  preserved exactly as in the original netlist (including word instantiation and sign‐extension)while breaking a long combinational critical path.The resultant code is functionally equivalent to the original and passes LEC.
+- "role": |-
+    user
+  "content": |-
+    This is the current Verilog:
+    ```
+    {code_content}
+    ```
+    Please do not change semantics, just split the always blocks in separate always blocks and try to improve the performance when possible.
+"top_name": |-
+  ImmediateGenerator
+"llm":
+  "model": |-
+    openai/o3-mini-2025-01-31
+"threshold": 40
+"code_content": |2-
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  module ImmediateGenerator(io_instruction, io_sextImm);
+
+  wire _00_;
+
+  wire _01_;
+
+  wire _02_;
+
+  wire _03_;
+
+  wire _04_;
+
+  wire _05_;
+
+  wire _06_;
+
+  wire _07_;
+
+  wire _08_;
+
+  wire _09_;
+
+  wire [31:0] _10_;
+
+  wire [42:0] _11_;
+
+  wire [51:0] _12_;
+
+  wire [50:0] _13_;
+
+  wire [51:0] _14_;
+
+  wire [63:0] _15_;
+
+  wire [63:0] _16_;
+
+  wire [63:0] _17_;
+
+  wire [63:0] _18_;
+
+  wire [63:0] _19_;
+
+  wire [63:0] _20_;
+
+  wire [63:0] _21_;
+
+  wire [63:0] _22_;
+
+  wire [63:0] _23_;
+
+  wire [63:0] _24_;
+
+  wire [63:0] _GEN_0;
+
+  wire [63:0] _GEN_1;
+
+  wire [63:0] _GEN_2;
+
+  wire [63:0] _GEN_3;
+
+  wire [63:0] _GEN_4;
+
+  wire [63:0] _GEN_5;
+
+  wire [63:0] _GEN_6;
+
+  wire [63:0] _GEN_7;
+
+  wire [63:0] _GEN_8;
+
+  wire _T;
+
+  wire _T_16;
+
+  wire [19:0] _T_23;
+
+  wire [42:0] _T_26;
+
+  wire [63:0] _T_28;
+
+  wire _T_29;
+
+  wire [51:0] _T_33;
+
+  wire [63:0] _T_34;
+
+  wire _T_35;
+
+  wire [31:0] _T_4;
+
+  wire [11:0] _T_42;
+
+  wire [50:0] _T_45;
+
+  wire [63:0] _T_47;
+
+  wire _T_48;
+
+  wire _T_54;
+
+  wire [11:0] _T_57;
+
+  wire [51:0] _T_60;
+
+  wire [63:0] _T_61;
+
+  wire _T_62;
+
+  wire _T_68;
+
+  wire [63:0] _T_7;
+
+  wire _T_74;
+
+  wire [63:0] _T_77;
+
+  wire _T_8;
+
+  input [63:0] io_instruction;
+  wire [63:0] io_instruction;
+
+  output [63:0] io_sextImm;
+  wire [63:0] io_sextImm;
+
+  wire [6:0] opcode;
+  assign _00_ = 7'h37 ==
+   opcode;
+  assign _01_ = 7'h17 ==
+   opcode;
+  assign _02_ = 7'h6f ==
+   opcode;
+  assign _03_ = 7'h67 ==
+   opcode;
+  assign _04_ = 7'h63 ==
+   opcode;
+  assign _05_ = 7'h03 ==
+   opcode;
+  assign _06_ = 7'h23 ==
+   opcode;
+  assign _07_ = 7'h13 ==
+   opcode;
+  assign _08_ = 7'h1b ==
+   opcode;
+  assign _09_ = 7'h73 ==
+   opcode;
+  assign _10_ = io_instruction[31] ?
+   32'd4294967295 : 32'd0;
+  assign _11_ = _T_23[19] ?
+   43'h7ffffffffff : 43'h00000000000;
+  assign _12_ = io_instruction[31] ?
+   52'hfffffffffffff : 52'h0000000000000;
+  assign _13_ = _T_42[11] ?
+   51'h7ffffffffffff : 51'h0000000000000;
+  assign _14_ = _T_57[11] ?
+   52'hfffffffffffff : 52'h0000000000000;
+  assign _15_ = _T_74 ?
+   _T_77 : 64'h0000000000000000;
+  assign _16_ = _T_68 ?
+   _T_34 : _GEN_0;
+  assign _17_ = _T_62 ?
+   _T_34 : _GEN_1;
+  assign _18_ = _T_54 ?
+   _T_61 : _GEN_2;
+  assign _19_ = _T_48 ?
+   _T_34 : _GEN_3;
+  assign _20_ = _T_35 ?
+   _T_47 : _GEN_4;
+  assign _21_ = _T_29 ?
+   _T_34 : _GEN_5;
+  assign _22_ = _T_16 ?
+   _T_28 : _GEN_6;
+  assign _23_ = _T_8 ?
+   _T_7 : _GEN_7;
+  assign _24_ = _T ?
+   _T_7 : _GEN_8;
+  assign opcode = io_instruction[6:0];
+  assign _T = _00_;
+  assign _T_4 = _10_;
+  assign _T_7 = { _T_4, io_instruction[31:12], 12'h000 };
+  assign _T_8 = _01_;
+  assign _T_16 = _02_;
+  assign _T_23 = { io_instruction[31], io_instruction[19:12], io_instruction[20], io_instruction[30:21] };
+  assign _T_26 = _11_;
+  assign _T_28 = { _T_26, io_instruction[31], io_instruction[19:12], io_instruction[20], io_instruction[30:21], 1'h0 };
+  assign _T_29 = _03_;
+  assign _T_33 = _12_;
+  assign _T_34 = { _T_33, io_instruction[31:20] };
+  assign _T_35 = _04_;
+  assign _T_42 = { io_instruction[31], io_instruction[7], io_instruction[30:25], io_instruction[11:8] };
+  assign _T_45 = _13_;
+  assign _T_47 = { _T_45, io_instruction[31], io_instruction[7], io_instruction[30:25], io_instruction[11:8], 1'h0 };
+  assign _T_48 = _05_;
+  assign _T_54 = _06_;
+  assign _T_57 = { io_instruction[31:25], io_instruction[11:7] };
+  assign _T_60 = _14_;
+  assign _T_61 = { _T_60, io_instruction[31:25], io_instruction[11:7] };
+  assign _T_62 = _07_;
+  assign _T_68 = _08_;
+  assign _T_74 = _09_;
+  assign _T_77 = { 59'h000000000000000, io_instruction[19:15] };
+  assign _GEN_0 = _15_;
+  assign _GEN_1 = _16_;
+  assign _GEN_2 = _17_;
+  assign _GEN_3 = _18_;
+  assign _GEN_4 = _19_;
+  assign _GEN_5 = _20_;
+  assign _GEN_6 = _21_;
+  assign _GEN_7 = _22_;
+  assign _GEN_8 = _23_;
+  assign io_sextImm = _24_;
+  endmodule

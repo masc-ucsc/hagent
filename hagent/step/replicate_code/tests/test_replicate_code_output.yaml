@@ -1,0 +1,73 @@
+description: |
+  test1
+  2nd line
+code_content: |
+  module and_gate_behavioral(output reg Y, input A, input B);
+      always @(A or B) begin
+          Y = A & B;
+      end
+  endmodule
+top_name: and_gate_behavioral
+threshold: 50
+llm:
+  model: openai/o3-mini-2025-01-31
+cost: 10.0347424
+optimized:
+- |
+  module and_gate_behavioral(output reg Y, input A, input B);
+      reg intermediate;
+
+      // First stage: compute the AND – CRITICAL part split for improved timing.
+      always @(A or B) begin
+          intermediate = A & B;
+      end
+
+      // Second stage: drive output using the intermediate result.
+      always @(intermediate) begin
+          Y = intermediate;
+      end
+  endmodule
+- |
+  module and_gate_behavioral(output reg Y, input A, input B);
+      reg intermediate;
+      
+      // First always block computes the critical combinational operation.
+      always @(*) begin
+          intermediate = A & B;
+      end
+
+      // Second always block transfers the intermediate result to the output.
+      always @(*) begin
+          Y = intermediate;
+      end
+  endmodule
+optimized_equivalent:
+- |
+  module and_gate_behavioral(output reg Y, input A, input B);
+      reg intermediate;
+
+      // First stage: compute the AND – CRITICAL part split for improved timing.
+      always @(A or B) begin
+          intermediate = A & B;
+      end
+
+      // Second stage: drive output using the intermediate result.
+      always @(intermediate) begin
+          Y = intermediate;
+      end
+  endmodule
+- |
+  module and_gate_behavioral(output reg Y, input A, input B);
+      reg intermediate;
+      
+      // First always block computes the critical combinational operation.
+      always @(*) begin
+          intermediate = A & B;
+      end
+
+      // Second always block transfers the intermediate result to the output.
+      always @(*) begin
+          Y = intermediate;
+      end
+  endmodule
+tokens: 8064
