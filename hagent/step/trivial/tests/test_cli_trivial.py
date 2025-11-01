@@ -228,40 +228,6 @@ class TestTrivialCLI:
         assert result.returncode != 0, 'Local execution should fail without required env vars'
         assert 'Local execution mode requires these environment variables' in result.stderr
 
-    def test_invalid_execution_mode(self, input_file, output_file):
-        """Test that invalid execution mode fails gracefully."""
-        env = os.environ.copy()
-        # Invalid mode test - set invalid HAGENT_DOCKER
-
-        # Get the trivial.py path relative to the current working directory
-        trivial_script = Path(__file__).parent.parent / 'trivial.py'
-
-        result = subprocess.run(
-            ['uv', 'run', 'python', str(trivial_script), input_file, '-o', output_file], env=env, capture_output=True, text=True
-        )
-
-        assert result.returncode != 0, 'Should fail with invalid execution mode'
-        # Check for error message
-
-    def test_missing_execution_mode(self, input_file, output_file):
-        """Test that missing HAGENT_DOCKER (execution mode) fails gracefully."""
-        env = os.environ.copy()
-        # Remove HAGENT_DOCKER to test missing execution mode
-        env.pop('HAGENT_DOCKER', None)
-        # Also ensure repo/build/cache dirs are not set to trigger the error
-        for var in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
-            env.pop(var, None)
-
-        # Get the trivial.py path relative to the current working directory
-        trivial_script = Path(__file__).parent.parent / 'trivial.py'
-
-        result = subprocess.run(
-            ['uv', 'run', 'python', str(trivial_script), input_file, '-o', output_file], env=env, capture_output=True, text=True
-        )
-
-        assert result.returncode != 0, 'Should fail without execution mode'
-        # The error should be about missing environment configuration
-
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

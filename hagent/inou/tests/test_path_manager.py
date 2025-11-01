@@ -53,7 +53,8 @@ class TestPathManager:
             with patch.dict(os.environ, env_vars, clear=True):
                 pm = PathManager()
 
-                assert pm.execution_mode == 'local'
+                assert pm.is_local_mode()
+                assert not pm.is_docker_mode()
                 assert pm.repo_dir == repo_dir.resolve()
                 assert pm.build_dir == build_dir.resolve()
                 assert pm.cache_dir == cache_dir.resolve()
@@ -68,7 +69,8 @@ class TestPathManager:
     def test_docker_mode_minimal_environment(self):
         """Test Docker mode (HAGENT_DOCKER set) with minimal environment."""
         pm = PathManager()
-        assert pm.execution_mode == 'docker'
+        assert pm.is_docker_mode()
+        assert not pm.is_local_mode()
         # In Docker mode without host-mounted variables, use default container paths
         assert pm._repo_dir == Path('/code/workspace/repo')
         assert pm._build_dir == Path('/code/workspace/build')
@@ -95,7 +97,8 @@ class TestPathManager:
             with patch.dict(os.environ, env_vars, clear=True):
                 pm = PathManager()
 
-                assert pm.execution_mode == 'docker'
+                assert pm.is_docker_mode()
+                assert not pm.is_local_mode()
                 assert pm.repo_dir == repo_dir.resolve()
                 assert pm.build_dir == build_dir.resolve()
                 assert pm.cache_dir == cache_dir.resolve()
