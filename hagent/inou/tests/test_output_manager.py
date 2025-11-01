@@ -16,6 +16,9 @@ class TestOutputManager:
     def setup_method(self):
         self.original_output_dir = os.environ.get('HAGENT_OUTPUT_DIR')
         self.original_docker = os.environ.get('HAGENT_DOCKER')
+        self.original_cache_dir = os.environ.get('HAGENT_CACHE_DIR')
+        self.original_repo_dir = os.environ.get('HAGENT_REPO_DIR')
+        self.original_build_dir = os.environ.get('HAGENT_BUILD_DIR')
         # Preserve existing PathManager singleton state so we can restore it later
         self._path_manager_instance = PathManager._instance
         self._path_manager_initialized = PathManager._initialized
@@ -33,6 +36,24 @@ class TestOutputManager:
             os.environ['HAGENT_DOCKER'] = self.original_docker
         elif 'HAGENT_DOCKER' in os.environ:
             del os.environ['HAGENT_DOCKER']
+
+        # Restore HAGENT_CACHE_DIR
+        if self.original_cache_dir is not None:
+            os.environ['HAGENT_CACHE_DIR'] = self.original_cache_dir
+        elif 'HAGENT_CACHE_DIR' in os.environ:
+            del os.environ['HAGENT_CACHE_DIR']
+
+        # Restore HAGENT_REPO_DIR
+        if self.original_repo_dir is not None:
+            os.environ['HAGENT_REPO_DIR'] = self.original_repo_dir
+        elif 'HAGENT_REPO_DIR' in os.environ:
+            del os.environ['HAGENT_REPO_DIR']
+
+        # Restore HAGENT_BUILD_DIR
+        if self.original_build_dir is not None:
+            os.environ['HAGENT_BUILD_DIR'] = self.original_build_dir
+        elif 'HAGENT_BUILD_DIR' in os.environ:
+            del os.environ['HAGENT_BUILD_DIR']
 
         # Reset PathManager to clean state, then restore previous singleton if it existed
         PathManager.reset()
@@ -56,8 +77,8 @@ class TestOutputManager:
 
     def test_get_output_dir_default(self):
         """Test default fallback to 'output' directory."""
-        # Clear all relevant environment variables
-        for var in ['HAGENT_OUTPUT_DIR']:
+        # Clear all relevant environment variables to trigger fallback behavior
+        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
@@ -85,7 +106,7 @@ class TestOutputManager:
     def test_get_output_path_valid_filename(self):
         """Test get_output_path with simple filename."""
         # Clear all relevant environment variables to test default behavior
-        for var in ['HAGENT_OUTPUT_DIR']:
+        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
@@ -96,7 +117,7 @@ class TestOutputManager:
     def test_get_output_path_valid_relative_path(self):
         """Test get_output_path with relative path."""
         # Clear all relevant environment variables to test default behavior
-        for var in ['HAGENT_OUTPUT_DIR']:
+        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
@@ -146,7 +167,7 @@ class TestOutputManager:
 
     def test_get_output_path_current_directory_reference(self):
         # Clear environment variables
-        for var in ['HAGENT_OUTPUT_DIR']:
+        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
