@@ -117,7 +117,8 @@ def cmd_status(args):
         path_manager = PathManager()
 
         # Show path manager info
-        print(f'Execution mode: {path_manager.execution_mode}')
+        docker_mode = 'Yes' if path_manager.is_docker_mode() else 'No'
+        print(f'Docker mode: {docker_mode}')
         print(f'Repo directory: {path_manager.repo_dir}')
         print(f'Build directory: {path_manager.build_dir}')
         print(f'Cache directory: {path_manager.cache_dir}')

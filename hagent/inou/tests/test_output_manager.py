@@ -9,12 +9,17 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 from hagent.inou.output_manager import get_output_dir, get_output_path
+from hagent.inou.path_manager import PathManager
 
 
 class TestOutputManager:
     def setup_method(self):
         self.original_output_dir = os.environ.get('HAGENT_OUTPUT_DIR')
         self.original_docker = os.environ.get('HAGENT_DOCKER')
+        # Preserve existing PathManager singleton state so we can restore it later
+        self._path_manager_instance = PathManager._instance
+        self._path_manager_initialized = PathManager._initialized
+        PathManager.reset()
 
     def teardown_method(self):
         # Restore HAGENT_OUTPUT_DIR
@@ -28,6 +33,11 @@ class TestOutputManager:
             os.environ['HAGENT_DOCKER'] = self.original_docker
         elif 'HAGENT_DOCKER' in os.environ:
             del os.environ['HAGENT_DOCKER']
+
+        # Reset PathManager to clean state, then restore previous singleton if it existed
+        PathManager.reset()
+        PathManager._instance = self._path_manager_instance
+        PathManager._initialized = self._path_manager_initialized
 
     def test_get_output_dir_with_hagent_output_dir(self):
         """Test that HAGENT_OUTPUT_DIR takes priority."""

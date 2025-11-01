@@ -77,16 +77,11 @@ class ExecutorFactory:
 
         Returns:
             ExecutionStrategy instance (LocalExecutor or DockerExecutor)
-
-        Raises:
-            ValueError: If execution mode is invalid
         """
-        if PathManager().is_local_mode():
-            return LocalExecutor()
-        elif PathManager().is_docker_mode():
+        path_manager = PathManager()
+        if path_manager.is_docker_mode():
             return DockerExecutor(container_manager)
-        else:
-            raise ValueError(f"Invalid execution mode: '{PathManager().execution_mode}'. Must be 'local' or 'docker'.")
+        return LocalExecutor()
 
 
 # Convenience functions for backward compatibility and ease of use

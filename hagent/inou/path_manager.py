@@ -56,7 +56,7 @@ class PathManager:
         self._build_dir: Optional[Path] = None
         self._cache_dir: Optional[Path] = None
         self._tech_dir: Optional[Path] = None
-        self._execution_mode: Optional[str] = None
+        self._is_docker: Optional[bool] = None
 
         self._validate_and_setup_environment()
 
@@ -72,11 +72,10 @@ class PathManager:
         - If HAGENT_DOCKER is not set → local mode
         """
         # Determine execution mode based on HAGENT_DOCKER
-        if os.environ.get('HAGENT_DOCKER'):
-            self._execution_mode = 'docker'
+        self._is_docker = bool(os.environ.get('HAGENT_DOCKER'))
+        if self._is_docker:
             self._validate_docker_mode()
         else:
-            self._execution_mode = 'local'
             self._validate_local_mode()
 
         # Create cache directory structure
@@ -232,10 +231,10 @@ class PathManager:
             FileNotFoundError: If no configuration file is found
         """
         # Determine execution mode based on HAGENT_DOCKER
-        execution_mode = 'docker' if os.environ.get('HAGENT_DOCKER') else 'local'
         possible_paths = PathManager.possible_config_paths()
+        docker_mode = bool(os.environ.get('HAGENT_DOCKER'))
         for candidate in possible_paths:
-            resolved = PathManager._resolve_readable_config_path(candidate, execution_mode)
+            resolved = PathManager._resolve_readable_config_path(candidate, docker_mode)
             if resolved:
                 return resolved
 
@@ -243,13 +242,13 @@ class PathManager:
         raise FileNotFoundError('No hagent.yaml found, try to set HAGENT_REPO_DIR')
 
     @staticmethod
-    def _resolve_readable_config_path(path: Optional[str], execution_mode: str) -> Optional[str]:
+    def _resolve_readable_config_path(path: Optional[str], docker_mode: bool) -> Optional[str]:
         """
         Resolve a candidate configuration path if it exists and is readable.
 
         Args:
             path: Candidate path string to validate.
-            execution_mode: Current execution mode (local or docker).
+            docker_mode: Whether Docker mode is enabled (via HAGENT_DOCKER).
 
         Returns:
             Resolved host path string if readable, otherwise None.
@@ -297,7 +296,7 @@ class PathManager:
                 return str(resolved_host_candidate)
 
         # For Docker mode, allow returning container paths when host translation is unavailable
-        if execution_mode == 'docker' and candidate.as_posix().startswith('/code/workspace/'):
+        if docker_mode and candidate.as_posix().startswith('/code/workspace/'):
             return str(candidate)
 
         return None
@@ -328,20 +327,15 @@ class PathManager:
         """Get the tech directory path."""
         return self._tech_dir
 
-    @property
-    def execution_mode(self) -> str:
-        """Get the execution mode (docker if HAGENT_DOCKER is set, otherwise local)."""
-        if not self._execution_mode:
-            self._fail_fast('Execution mode not available. Internal error - should be set during initialization.')
-        return self._execution_mode
-
     def is_docker_mode(self) -> bool:
         """Check if running in Docker execution mode."""
-        return self.execution_mode == 'docker'
+        if self._is_docker is None:
+            self._fail_fast('Execution mode not available. Internal error - should be set during initialization.')
+        return self._is_docker
 
     def is_local_mode(self) -> bool:
         """Check if running in local execution mode."""
-        return self.execution_mode == 'local'
+        return not self.is_docker_mode()
 
     def get_cache_dir(self) -> str:
         """

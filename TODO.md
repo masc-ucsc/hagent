@@ -173,7 +173,7 @@ It should only create the cache/inou, it should not create files in the repo for
 Maybe create a shared "hagent" setup section that it is shared across all the passes when set in the input yaml.
 
 hagent:
-  execution_mode: "docker" # (or local)
+  HAGENT_DOCKER: "docker"  # define to enable docker mode
   mount_build_dir: ./xxx
   mount_cache_dir: ./xxx
   mount_repo_dir: ./xxx
@@ -216,4 +216,3 @@ git checkout 1.13.0
 # May require sudo dependent on your setup/permissions
 docker pull ucbbar/chipyard-image
 ```
-

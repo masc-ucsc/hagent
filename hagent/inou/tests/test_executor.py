@@ -7,7 +7,6 @@ including command execution, environment handling, and path translation.
 
 import os
 import tempfile
-import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -349,7 +348,6 @@ class TestExecutorFactory:
     def test_create_executor_local_mode(self):
         """Test factory creates LocalExecutor for local mode."""
         mock_pm = MagicMock()
-        mock_pm.execution_mode = 'local'
         mock_pm.is_local_mode.return_value = True
         mock_pm.is_docker_mode.return_value = False
 
@@ -366,7 +364,6 @@ class TestExecutorFactory:
     def test_create_executor_docker_mode_with_file_manager(self):
         """Test factory creates DockerExecutor for Docker mode with container_manager."""
         mock_pm = MagicMock()
-        mock_pm.execution_mode = 'docker'
         mock_pm.is_local_mode.return_value = False
         mock_pm.is_docker_mode.return_value = True
         mock_cm = MagicMock()
@@ -384,7 +381,6 @@ class TestExecutorFactory:
     def test_create_executor_docker_mode_with_container_manager(self):
         """Test factory creates DockerExecutor for Docker mode with container_manager."""
         mock_pm = MagicMock()
-        mock_pm.execution_mode = 'docker'
         mock_pm.is_local_mode.return_value = False
         mock_pm.is_docker_mode.return_value = True
         mock_cm = MagicMock()
@@ -402,7 +398,6 @@ class TestExecutorFactory:
     def test_create_executor_docker_mode_no_managers(self):
         """Test factory creates DockerExecutor for Docker mode without managers (auto-creates container_manager)."""
         mock_pm = MagicMock()
-        mock_pm.execution_mode = 'docker'
         mock_pm.is_local_mode.return_value = False
         mock_pm.is_docker_mode.return_value = True
 
@@ -416,23 +411,27 @@ class TestExecutorFactory:
             assert result == mock_executor
             mock_docker.assert_called_once_with(None)
 
-    def test_create_executor_invalid_mode(self):
-        """Test factory raises error for invalid execution mode."""
+    def test_create_executor_defaults_to_local_when_not_docker(self):
+        """Test factory defaults to LocalExecutor when Docker mode is False."""
         mock_pm = MagicMock()
-        mock_pm.execution_mode = 'invalid'
         mock_pm.is_local_mode.return_value = False
         mock_pm.is_docker_mode.return_value = False
 
-        with pytest.raises(ValueError, match='Invalid execution mode'):
+        with patch('hagent.inou.executor.LocalExecutor') as mock_local:
+            mock_executor = MagicMock()
+            mock_local.return_value = mock_executor
+
             with patch('hagent.inou.executor.PathManager', return_value=mock_pm):
-                ExecutorFactory.create_executor()
+                result = ExecutorFactory.create_executor()
+
+        assert result == mock_executor
+        mock_local.assert_called_once_with()
 
     def test_create_executor_default_path_manager(self):
         """Test factory creates default PathManager when none provided."""
         with patch('hagent.inou.executor.PathManager') as mock_pm_class:
             with patch('hagent.inou.executor_local.PathManager') as mock_pm_local:
                 mock_pm = MagicMock()
-                mock_pm.execution_mode = 'local'
                 mock_pm.is_local_mode.return_value = True
                 mock_pm.is_docker_mode.return_value = False
                 mock_pm_class.return_value = mock_pm

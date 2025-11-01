@@ -60,14 +60,13 @@ class TestPathManagerIntegration:
                 tracker = FileTracker(path_manager)
 
                 assert tracker.path_manager is path_manager
-                assert tracker.path_manager.execution_mode == 'local'
+                assert tracker.path_manager.is_local_mode()
                 assert str(tracker.path_manager.repo_dir) == '/test/repo'
 
     def test_file_tracker_docker_mode_integration(self):
         """Test FileTracker integration with Docker mode PathManager."""
         # Mock PathManager for docker mode
         mock_pm = MagicMock()
-        mock_pm.execution_mode = 'docker'
         mock_pm.is_docker_mode.return_value = True
         mock_pm.is_local_mode.return_value = False
         mock_pm.repo_dir = Path('/code/workspace/repo')
@@ -81,7 +80,7 @@ class TestPathManagerIntegration:
         ):
             tracker = FileTracker(mock_pm)
 
-            assert tracker.path_manager.execution_mode == 'docker'
+            assert tracker.path_manager.is_docker_mode()
 
     def test_file_tracker_with_path_manager_validation_error(self):
         """Test FileTracker behavior when PathManager validation fails."""
