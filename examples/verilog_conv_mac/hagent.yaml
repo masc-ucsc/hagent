@@ -1,0 +1,33 @@
+profiles:
+  - name: conv_mac
+    title: "Convolution MAC (2-stage pipeline) — Sim and Synthesis"
+    description: "Clocked, windowed MAC with 2-stage pipeline. Simulate with Icarus; synthesize with Yosys."
+
+    configuration:
+      environment:
+        PATH: "$PATH:/usr/local/bin"
+
+      # Track the example directory under the repo
+      source: "track_repo_dir('examples/verilog_conv_mac', ext='.v')"
+      output: "track_build_dir('conv_mac', ext='*')"
+
+    apis:
+      - name: compile_with_testbench
+        description: "Compile conv_mac and testbench with Icarus Verilog"
+        command: "mkdir -p $HAGENT_BUILD_DIR/conv_mac && iverilog -g2012 -o $HAGENT_BUILD_DIR/conv_mac/conv_mac_tb conv_mac.v conv_mac_tb.v"
+        cwd: "$HAGENT_REPO_DIR/examples/verilog_conv_mac"
+
+      - name: run_testbench
+        description: "Run the conv_mac testbench"
+        command: "vvp ./conv_mac_tb"
+        cwd: "$HAGENT_BUILD_DIR/conv_mac"
+
+      - name: synthesize_yosys
+        description: "Synthesize conv_mac with Yosys and generate basic stats"
+        command: >-
+          bash -lc "\
+          mkdir -p $HAGENT_OUTPUT_DIR/conv_mac && \
+          yosys -q -l $HAGENT_OUTPUT_DIR/conv_mac/yosys.log -p \"read_verilog -sv conv_mac.v; synth -top conv_mac; stat; write_json $HAGENT_OUTPUT_DIR/conv_mac/conv_mac.json; write_verilog $HAGENT_OUTPUT_DIR/conv_mac/conv_mac_synth.v\""
+        cwd: "$HAGENT_REPO_DIR/examples/verilog_conv_mac"
+
+
