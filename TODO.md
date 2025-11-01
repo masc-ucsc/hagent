@@ -1,5 +1,9 @@
 -------
 
+Several places in hagent.yaml says (/code/workspace/....), we should use HAGENT_... as needed to do auto replace
+
+-------
+
 Add to hagent.yaml in cva6 how to synthesize a submodule
 
 /code/hagent/scripts/synth.py --sta --tech-dir /code/workspace/tech --netlist  ../build/netlist_id_stage.v --top cva6  --top-synthesis id_stage    --ignore-unknown-modules --allow-use-before-declare    core/include/cv64a6_imafdc_sv39_wb_config_pkg.sv -f ./core/Flist.cva6
@@ -103,7 +107,7 @@ If HAGENT_LLM_MODEL is set, it uses this LLM for all the queries.
 Usuful when users do not have  the keys used for regression testing.
 
 -------
-Input/output schema and parameters field in the fastmcp 
+Input/output schema and parameters field in the fastmcp
 
 The compile errors/messages could be structured as an output schema.
 
