@@ -13,89 +13,66 @@ from hagent.inou.path_manager import PathManager
 
 
 class TestOutputManager:
-    def setup_method(self):
-        self.original_output_dir = os.environ.get('HAGENT_OUTPUT_DIR')
-        self.original_docker = os.environ.get('HAGENT_DOCKER')
-        self.original_cache_dir = os.environ.get('HAGENT_CACHE_DIR')
-        self.original_repo_dir = os.environ.get('HAGENT_REPO_DIR')
-        self.original_build_dir = os.environ.get('HAGENT_BUILD_DIR')
+    @pytest.fixture(autouse=True)
+    def setup_test_isolation(self):
+        """
+        Auto-use fixture that isolates PathManager state for each test.
+        This ensures tests don't interfere with each other.
+        """
         # Preserve existing PathManager singleton state so we can restore it later
         self._path_manager_instance = PathManager._instance
         self._path_manager_initialized = PathManager._initialized
         PathManager.reset()
 
-    def teardown_method(self):
-        # Restore HAGENT_OUTPUT_DIR
-        if self.original_output_dir is not None:
-            os.environ['HAGENT_OUTPUT_DIR'] = self.original_output_dir
-        elif 'HAGENT_OUTPUT_DIR' in os.environ:
-            del os.environ['HAGENT_OUTPUT_DIR']
-
-        # Restore HAGENT_DOCKER
-        if self.original_docker is not None:
-            os.environ['HAGENT_DOCKER'] = self.original_docker
-        elif 'HAGENT_DOCKER' in os.environ:
-            del os.environ['HAGENT_DOCKER']
-
-        # Restore HAGENT_CACHE_DIR
-        if self.original_cache_dir is not None:
-            os.environ['HAGENT_CACHE_DIR'] = self.original_cache_dir
-        elif 'HAGENT_CACHE_DIR' in os.environ:
-            del os.environ['HAGENT_CACHE_DIR']
-
-        # Restore HAGENT_REPO_DIR
-        if self.original_repo_dir is not None:
-            os.environ['HAGENT_REPO_DIR'] = self.original_repo_dir
-        elif 'HAGENT_REPO_DIR' in os.environ:
-            del os.environ['HAGENT_REPO_DIR']
-
-        # Restore HAGENT_BUILD_DIR
-        if self.original_build_dir is not None:
-            os.environ['HAGENT_BUILD_DIR'] = self.original_build_dir
-        elif 'HAGENT_BUILD_DIR' in os.environ:
-            del os.environ['HAGENT_BUILD_DIR']
+        yield
 
         # Reset PathManager to clean state, then restore previous singleton if it existed
         PathManager.reset()
         PathManager._instance = self._path_manager_instance
         PathManager._initialized = self._path_manager_initialized
 
-    def test_get_output_dir_with_hagent_output_dir(self):
+    def test_get_output_dir_with_hagent_output_dir(self, monkeypatch):
         """Test that HAGENT_OUTPUT_DIR takes priority."""
         # Clear other environment variables
-        for var in ['HAGENT_OUTPUT_DIR']:
-            if var in os.environ:
-                del os.environ[var]
+        monkeypatch.delenv('HAGENT_OUTPUT_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_CACHE_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_REPO_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_BUILD_DIR', raising=False)
 
         with tempfile.TemporaryDirectory() as temp_base:
             test_dir = os.path.join(temp_base, 'custom_output_dir_test')
-            os.environ['HAGENT_OUTPUT_DIR'] = test_dir
+            monkeypatch.setenv('HAGENT_OUTPUT_DIR', test_dir)
+            PathManager.reset()  # Reset after setting env var
 
             result = get_output_dir()
             assert result == str(Path(test_dir).resolve())
             assert Path(test_dir).exists()
 
-    def test_get_output_dir_default(self):
+    def test_get_output_dir_default(self, monkeypatch):
         """Test default fallback to 'output' directory."""
         # Clear all relevant environment variables to trigger fallback behavior
-        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR']:
-            if var in os.environ:
-                del os.environ[var]
+        monkeypatch.delenv('HAGENT_OUTPUT_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_CACHE_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_REPO_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_BUILD_DIR', raising=False)
+        PathManager.reset()  # Reset after clearing env vars
 
         result = get_output_dir()
         expected = str(Path.cwd() / 'output')
         assert result == expected
 
-    def test_get_output_dir_creates_directory(self):
+    def test_get_output_dir_creates_directory(self, monkeypatch):
         """Test that output directory is created automatically."""
         # Clear all environment variables
-        for var in ['HAGENT_OUTPUT_DIR']:
-            if var in os.environ:
-                del os.environ[var]
+        monkeypatch.delenv('HAGENT_OUTPUT_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_CACHE_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_REPO_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_BUILD_DIR', raising=False)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             test_output = os.path.join(temp_dir, 'new_output_dir')
-            os.environ['HAGENT_OUTPUT_DIR'] = test_output
+            monkeypatch.setenv('HAGENT_OUTPUT_DIR', test_output)
+            PathManager.reset()  # Reset after setting env var
 
             assert not Path(test_output).exists()
 
@@ -103,38 +80,45 @@ class TestOutputManager:
             assert result == str(Path(test_output).resolve())
             assert Path(test_output).exists()
 
-    def test_get_output_path_valid_filename(self):
+    def test_get_output_path_valid_filename(self, monkeypatch):
         """Test get_output_path with simple filename."""
         # Clear all relevant environment variables to test default behavior
-        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR']:
-            if var in os.environ:
-                del os.environ[var]
+        monkeypatch.delenv('HAGENT_OUTPUT_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_CACHE_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_REPO_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_BUILD_DIR', raising=False)
+        PathManager.reset()  # Reset after clearing env vars
 
         result = get_output_path('test.txt')
         expected = str(Path.cwd() / 'output' / 'test.txt')
         assert result == expected
 
-    def test_get_output_path_valid_relative_path(self):
+    def test_get_output_path_valid_relative_path(self, monkeypatch):
         """Test get_output_path with relative path."""
         # Clear all relevant environment variables to test default behavior
-        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR']:
-            if var in os.environ:
-                del os.environ[var]
+        monkeypatch.delenv('HAGENT_OUTPUT_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_CACHE_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_REPO_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_BUILD_DIR', raising=False)
+        PathManager.reset()  # Reset after clearing env vars
 
         result = get_output_path('subdir/test.txt')
         expected = str(Path.cwd() / 'output' / 'subdir' / 'test.txt')
         assert result == expected
 
-    def test_get_output_path_with_hagent_output_dir(self):
+    def test_get_output_path_with_hagent_output_dir(self, monkeypatch):
         """Test get_output_path with HAGENT_OUTPUT_DIR."""
         # Clear other environment variables
-        for var in ['HAGENT_DOCKER']:
-            if var in os.environ:
-                del os.environ[var]
+        monkeypatch.delenv('HAGENT_OUTPUT_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_CACHE_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_REPO_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_BUILD_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_DOCKER', raising=False)
 
         with tempfile.TemporaryDirectory() as temp_base:
             test_dir = os.path.join(temp_base, 'custom_output_dir')
-            os.environ['HAGENT_OUTPUT_DIR'] = test_dir
+            monkeypatch.setenv('HAGENT_OUTPUT_DIR', test_dir)
+            PathManager.reset()  # Reset after setting env var
 
             result = get_output_path('test.txt')
             expected = str(Path(test_dir, 'test.txt').resolve())
@@ -165,11 +149,13 @@ class TestOutputManager:
             get_output_path('..')
         assert excinfo.value.code == 1
 
-    def test_get_output_path_current_directory_reference(self):
+    def test_get_output_path_current_directory_reference(self, monkeypatch):
         # Clear environment variables
-        for var in ['HAGENT_OUTPUT_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR']:
-            if var in os.environ:
-                del os.environ[var]
+        monkeypatch.delenv('HAGENT_OUTPUT_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_CACHE_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_REPO_DIR', raising=False)
+        monkeypatch.delenv('HAGENT_BUILD_DIR', raising=False)
+        PathManager.reset()  # Reset after clearing env vars
 
         result = get_output_path('./test.txt')
         expected = str((Path.cwd() / 'output' / '.' / 'test.txt').resolve())
