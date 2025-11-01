@@ -1229,13 +1229,19 @@ class V2chisel_batch(Step):
         except Exception as e:
             print(f'⚠️  [CLEANUP] Failed to remove backup: {e}')
 
-    def _apply_chisel_diff(self, chisel_diff: str, docker_container: str) -> dict:
-        """Apply generated Chisel diff to Docker container with backup support"""
+    def _apply_chisel_diff(self, chisel_diff: str, docker_container: str, target_file_path: str = None) -> dict:
+        """Apply generated Chisel diff to Docker container with backup support
+
+        Args:
+            chisel_diff: The diff to apply
+            docker_container: Container name
+            target_file_path: Optional - the exact file path to apply diff to (from hints)
+        """
         # print('🔧 [APPLIER] Starting diff application...')
 
         try:
             applier = DockerDiffApplier(self.builder)
-            success = applier.apply_diff_to_container(chisel_diff, dry_run=False)
+            success = applier.apply_diff_to_container(chisel_diff, target_file_path=target_file_path, dry_run=False)
 
             if success:
                 # print('✅ [APPLIER] Successfully applied Chisel diff to container')
@@ -2368,6 +2374,19 @@ class V2chisel_batch(Step):
         hints_source = hints_result['source']
         hits = hints_result.get('hits', [])
 
+        # Extract the target file path from hints (for applier to use)
+        target_chisel_file = None
+        if hits and len(hits) > 0:
+            # Use the top hit (highest confidence)
+            top_hit = hits[0]
+            if hasattr(top_hit, 'file_name') and top_hit.file_name:
+                if top_hit.file_name.startswith('docker:'):
+                    # Extract actual path from docker:container:/path format
+                    target_chisel_file = top_hit.file_name.split(':', 2)[2]
+                else:
+                    target_chisel_file = top_hit.file_name
+                print(f'🎯 [HINTS] Top hint file (will be used by applier): {target_chisel_file}')
+
         # Print hint files and paths (matches original output format)
         if hints_source == 'module_finder' and hits:
             print('Hint files:')
@@ -2447,7 +2466,7 @@ class V2chisel_batch(Step):
 
                 # STEP 1: Apply the diff directly (we have master backup as safety net)
                 print('✅ Step 6: Diff Application - START')
-                applier_result = self._apply_chisel_diff(generated_chisel_diff, docker_container)
+                applier_result = self._apply_chisel_diff(generated_chisel_diff, docker_container, target_chisel_file)
 
                 if applier_result['success']:
                     print('✅ APPLIER: Successfully applied diff')
@@ -2677,7 +2696,7 @@ class V2chisel_batch(Step):
                             self._restore_to_original(docker_container, master_backup_info, 'lec_retry')
 
                             # Apply new diff
-                            applier_result = self._apply_chisel_diff(generated_chisel_diff, docker_container)
+                            applier_result = self._apply_chisel_diff(generated_chisel_diff, docker_container, target_chisel_file)
                             if not applier_result['success']:
                                 print(f'❌ [LEC_RETRY] Failed to apply LLM-generated diff: {applier_result.get("error")}')
                                 bug_report.set_error('applier', applier_result.get('error'))
@@ -3048,6 +3067,12 @@ class V2chisel_batch(Step):
         lec_successes = sum(1 for r in results if r.get('lec_success', False))
         lec_attempts = sum(1 for r in results if r.get('lec_method') != 'none')
 
+        # Additional detailed statistics
+        applier_successes = sum(1 for r in results if r.get('applier_success', False))
+        compile_successes = sum(1 for r in results if r.get('compile_success', False))
+        verilog_gen_successes = sum(1 for r in results if r.get('verilog_generation_success', False))
+        lec_pass_count = sum(1 for r in results if r.get('lec_equivalent', False) == True)
+
         print('\n📊 V2CHISEL_BATCH COMPLETE SUMMARY:')
         # Summary stats commented out for cleaner output
         # print(f'   📋 Total bugs processed: {total_bugs}')
@@ -3069,6 +3094,22 @@ class V2chisel_batch(Step):
                 f'LEC Results: {lec_successes}/{lec_attempts} successful ({lec_successes / lec_attempts * 100:.1f}%), Golden Design: {golden_design_successes}/{total_bugs} successful'
             )
 
+        # Print detailed one-line summary
+        print('\n' + '=' * 80)
+        print('📊 DETAILED SUMMARY (Stage-by-Stage Success Rates):')
+        print('=' * 80)
+        print(f'  Total Bugs:        {total_bugs}')
+        print(f'  Hints Generated:   {bugs_with_hints}/{total_bugs} ({bugs_with_hints / total_bugs * 100:.1f}%)')
+        print(f'  LLM Success:       {llm_successes}/{total_bugs} ({llm_successes / total_bugs * 100:.1f}%)')
+        print(f'  Applier Success:   {applier_successes}/{total_bugs} ({applier_successes / total_bugs * 100:.1f}%)')
+        print(f'  Compile Success:   {compile_successes}/{total_bugs} ({compile_successes / total_bugs * 100:.1f}%)')
+        print(f'  Verilog Generated: {verilog_gen_successes}/{total_bugs} ({verilog_gen_successes / total_bugs * 100:.1f}%)')
+        print(f'  🎯 LEC PASS:       {lec_pass_count}/{total_bugs} ({lec_pass_count / total_bugs * 100:.1f}%)')
+        print(f'  Pipeline Complete: {pipeline_successes}/{total_bugs} ({pipeline_successes / total_bugs * 100:.1f}%)')
+        print('=' * 80)
+        print(f'ONE-LINE SUMMARY: Hints={bugs_with_hints}/{total_bugs} | LLM={llm_successes}/{total_bugs} | Applier={applier_successes}/{total_bugs} | Compile={compile_successes}/{total_bugs} | Verilog={verilog_gen_successes}/{total_bugs} | LEC_PASS={lec_pass_count}/{total_bugs} | Pipeline={pipeline_successes}/{total_bugs}')
+        print('=' * 80)
+
         # Return results
         final_result = data.copy()
         final_result['v2chisel_batch_with_llm'] = {
@@ -3082,10 +3123,19 @@ class V2chisel_batch(Step):
             'llm_attempts': llm_attempts,
             'llm_successes': llm_successes,
             'llm_success_rate': llm_successes / llm_attempts * 100 if llm_attempts > 0 else 0.0,
+            'applier_successes': applier_successes,
+            'applier_success_rate': applier_successes / total_bugs * 100 if total_bugs > 0 else 0.0,
+            'compile_successes': compile_successes,
+            'compile_success_rate': compile_successes / total_bugs * 100 if total_bugs > 0 else 0.0,
+            'verilog_gen_successes': verilog_gen_successes,
+            'verilog_gen_success_rate': verilog_gen_successes / total_bugs * 100 if total_bugs > 0 else 0.0,
+            'lec_pass_count': lec_pass_count,
+            'lec_pass_rate': lec_pass_count / total_bugs * 100 if total_bugs > 0 else 0.0,
             'golden_design_successes': golden_design_successes,
             'lec_attempts': lec_attempts,
             'lec_successes': lec_successes,
             'lec_success_rate': lec_successes / lec_attempts * 100 if lec_attempts > 0 else 0.0,
+            'summary_one_line': f'Hints={bugs_with_hints}/{total_bugs} | LLM={llm_successes}/{total_bugs} | Applier={applier_successes}/{total_bugs} | Compile={compile_successes}/{total_bugs} | Verilog={verilog_gen_successes}/{total_bugs} | LEC_PASS={lec_pass_count}/{total_bugs} | Pipeline={pipeline_successes}/{total_bugs}',
             'bug_results': results,
             'local_files_found': len(local_files),
             'chisel_patterns_used': chisel_patterns,
