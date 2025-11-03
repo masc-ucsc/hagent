@@ -170,7 +170,9 @@ class DockerDiffApplier:
 
         return sections
 
-    def _apply_single_file_diff(self, file_path: str, section_diff: str, hint_file_path: str = None, dry_run: bool = False) -> bool:
+    def _apply_single_file_diff(
+        self, file_path: str, section_diff: str, hint_file_path: str = None, dry_run: bool = False
+    ) -> bool:
         """Apply a single-file diff section
 
         Args:
@@ -261,8 +263,8 @@ class DockerDiffApplier:
         # Priority prefixes (prefer /code/workspace/repo/ over other paths)
         priority_prefixes = [
             '/code/workspace/repo/',  # Primary codebase
-            '/code/workspace/',       # Workspace files
-            '/code/',                 # Any code directory
+            '/code/workspace/',  # Workspace files
+            '/code/',  # Any code directory
         ]
 
         # First, try exact path match WITH priority

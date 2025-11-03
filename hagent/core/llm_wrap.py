@@ -358,7 +358,7 @@ class LLM_wrap:
                 log_data['response_dict'] = str(response)[:500] if hasattr(response, '__dict__') else 'N/A'
 
                 # DEBUG: Print detailed response structure
-                print(f'\n❌ [LLM DEBUG] Failed to extract text from response!')
+                print('\n❌ [LLM DEBUG] Failed to extract text from response!')
                 print(f'   Response type: {type(response)}')
                 print(f'   Has output: {hasattr(response, "output")}')
                 if hasattr(response, 'output'):
@@ -374,7 +374,7 @@ class LLM_wrap:
                                 print(f'   Output[0].content type: {type(content)}')
                                 print(f'   Output[0].content value: {str(content)[:200]}')
                     elif hasattr(output, 'content'):
-                        print(f'   Output has content: True')
+                        print('   Output has content: True')
                         print(f'   Output.content type: {type(output.content)}')
                         print(f'   Output.content value: {str(output.content)[:200]}')
 

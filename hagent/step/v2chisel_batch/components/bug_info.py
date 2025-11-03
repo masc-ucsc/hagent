@@ -36,8 +36,7 @@ class BugInfo:
         self.unified_diff = bug_entry.get('unified_diff', '')
 
         # Extract module name - prefer explicit module_name, fall back to deriving from file name
-        self.module_name = bug_entry.get('module_name',
-                                         os.path.splitext(self.file_name)[0] if self.file_name else None)
+        self.module_name = bug_entry.get('module_name', os.path.splitext(self.file_name)[0] if self.file_name else None)
 
     def get_display_name(self) -> str:
         """Get a display-friendly name for this bug."""
