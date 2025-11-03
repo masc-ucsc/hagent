@@ -2758,18 +2758,20 @@ class V2chisel_batch(Step):
             f'📊 [PIPELINE_CHECK] LLM: {llm_result.get("success", False)}, Applier: {applier_result.get("success", False)}, Compile: {compile_result.get("success", False)}, Verilog: {verilog_success}, LEC_passed: {lec_passed}'
         )
 
-        if not pipeline_fully_successful and master_backup_info.get('success', False):
-            print(
-                '🔄 [FINAL_RESTORE] Pipeline not fully successful OR LEC did not confirm equivalence - restoring to original state'
-            )
-            print(f'     Reason: Full pipeline success (including LEC pass) = {pipeline_fully_successful}')
+        # ALWAYS restore to original state after each bug to prevent contamination
+        # This ensures the next bug gets clean hints from original files
+        if master_backup_info.get('success', False):
+            if pipeline_fully_successful:
+                print('✅ [FINAL_RESTORE] Bug succeeded - restoring to original state for next bug')
+                print('     (Changes recorded in results, but container reset to prevent contamination)')
+            else:
+                print('🔄 [FINAL_RESTORE] Bug failed - restoring to original state')
             final_restore_result = self._restore_to_original(
-                docker_container, master_backup_info, 'pipeline_incomplete_or_failed'
+                docker_container, master_backup_info, 'end_of_bug_processing'
             )
-            # Keep master backup for potential future runs - don't clean up yet
         else:
-            print('✅ [FINAL_CHECK] Pipeline fully successful AND LEC confirmed equivalence - keeping changes permanent')
-            final_restore_result = {'success': True, 'message': 'No restore needed'}
+            print('⚠️  [FINAL_RESTORE] No master backup available - cannot restore')
+            final_restore_result = {'success': False, 'message': 'No master backup to restore from'}
 
         # Finalize DAC metrics before building result dict
         bug_report.finalize_dac_metrics(
