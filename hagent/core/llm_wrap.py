@@ -298,16 +298,43 @@ class LLM_wrap:
                     response_text = output
                     extraction_method = 'output (string)'
                 elif hasattr(output, 'content'):
-                    response_text = output.content
-                    extraction_method = 'output.content'
+                    # Check if content is a list (Responses API case)
+                    content = output.content
+                    if isinstance(content, list) and len(content) > 0:
+                        if hasattr(content[0], 'text'):
+                            response_text = content[0].text
+                            extraction_method = 'output.content[0].text'
+                        else:
+                            response_text = str(content[0])
+                            extraction_method = 'output.content[0] (str)'
+                    elif isinstance(content, str):
+                        response_text = content
+                        extraction_method = 'output.content (string)'
+                    else:
+                        response_text = str(content)
+                        extraction_method = 'output.content (fallback)'
                 elif hasattr(output, 'text'):
                     response_text = output.text
                     extraction_method = 'output.text'
                 elif isinstance(output, list) and len(output) > 0:
                     # Sometimes output is a list of message objects
                     if hasattr(output[0], 'content'):
-                        response_text = output[0].content
-                        extraction_method = 'output[0].content'
+                        # For Responses API: output[0].content is also a list
+                        content = output[0].content
+                        if isinstance(content, list) and len(content) > 0:
+                            # Extract text from the first content item
+                            if hasattr(content[0], 'text'):
+                                response_text = content[0].text
+                                extraction_method = 'output[0].content[0].text'
+                            else:
+                                response_text = str(content[0])
+                                extraction_method = 'output[0].content[0] (str)'
+                        elif isinstance(content, str):
+                            response_text = content
+                            extraction_method = 'output[0].content (string)'
+                        else:
+                            response_text = str(content)
+                            extraction_method = 'output[0].content (fallback)'
             elif hasattr(response, 'choices') and response.choices:
                 # Fallback to choices structure
                 for choice in response.choices:
@@ -329,6 +356,28 @@ class LLM_wrap:
                 log_data['error'] = 'Could not extract text from response'
                 log_data['response_type'] = str(type(response))
                 log_data['response_dict'] = str(response)[:500] if hasattr(response, '__dict__') else 'N/A'
+
+                # DEBUG: Print detailed response structure
+                print(f'\n❌ [LLM DEBUG] Failed to extract text from response!')
+                print(f'   Response type: {type(response)}')
+                print(f'   Has output: {hasattr(response, "output")}')
+                if hasattr(response, 'output'):
+                    output = response.output
+                    print(f'   Output type: {type(output)}')
+                    if isinstance(output, list):
+                        print(f'   Output length: {len(output)}')
+                        if len(output) > 0:
+                            print(f'   Output[0] type: {type(output[0])}')
+                            print(f'   Output[0] has content: {hasattr(output[0], "content")}')
+                            if hasattr(output[0], 'content'):
+                                content = output[0].content
+                                print(f'   Output[0].content type: {type(content)}')
+                                print(f'   Output[0].content value: {str(content)[:200]}')
+                    elif hasattr(output, 'content'):
+                        print(f'   Output has content: True')
+                        print(f'   Output.content type: {type(output.content)}')
+                        print(f'   Output.content value: {str(output.content)[:200]}')
+
                 self._set_error(f'Responses API returned data but could not extract text. Type: {type(response)}')
 
             # Calculate cost (GPT-5-Codex pricing: $1.25/M input, $10/M output)

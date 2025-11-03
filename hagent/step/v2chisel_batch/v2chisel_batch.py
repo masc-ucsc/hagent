@@ -33,6 +33,7 @@ from hagent.tool.module_finder import Module_finder
 from hagent.tool.docker_diff_applier import DockerDiffApplier
 from hagent.tool.equiv_check import Equiv_check
 from hagent.inou.builder import Builder
+from hagent.step.v2chisel_batch.bug_selector import BugSelector
 
 # Import components
 try:
@@ -3002,7 +3003,12 @@ class V2chisel_batch(Step):
         # Determine output directory from output file
         output_file = self.output_file if hasattr(self, 'output_file') and self.output_file else 'output.yaml'
         output_dir = os.path.dirname(output_file) if os.path.dirname(output_file) else '.'
-        individual_output_dir = os.path.join(output_dir, 'individual_results')
+
+        # Create unique directory for this run with timestamp
+        import datetime
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        individual_output_dir = os.path.join(output_dir, f'individual_results_{timestamp}')
+        print(f'📁 [V2chisel_batch] Individual results will be saved to: {individual_output_dir}')
 
         # Extract input basename for individual file naming
         input_basename = None
@@ -3071,7 +3077,7 @@ class V2chisel_batch(Step):
         applier_successes = sum(1 for r in results if r.get('applier_success', False))
         compile_successes = sum(1 for r in results if r.get('compile_success', False))
         verilog_gen_successes = sum(1 for r in results if r.get('verilog_generation_success', False))
-        lec_pass_count = sum(1 for r in results if r.get('lec_equivalent', False) == True)
+        lec_pass_count = sum(1 for r in results if r.get('lec_equivalent', False))
 
         print('\n📊 V2CHISEL_BATCH COMPLETE SUMMARY:')
         # Summary stats commented out for cleaner output
@@ -3107,7 +3113,9 @@ class V2chisel_batch(Step):
         print(f'  🎯 LEC PASS:       {lec_pass_count}/{total_bugs} ({lec_pass_count / total_bugs * 100:.1f}%)')
         print(f'  Pipeline Complete: {pipeline_successes}/{total_bugs} ({pipeline_successes / total_bugs * 100:.1f}%)')
         print('=' * 80)
-        print(f'ONE-LINE SUMMARY: Hints={bugs_with_hints}/{total_bugs} | LLM={llm_successes}/{total_bugs} | Applier={applier_successes}/{total_bugs} | Compile={compile_successes}/{total_bugs} | Verilog={verilog_gen_successes}/{total_bugs} | LEC_PASS={lec_pass_count}/{total_bugs} | Pipeline={pipeline_successes}/{total_bugs}')
+        print(
+            f'ONE-LINE SUMMARY: Hints={bugs_with_hints}/{total_bugs} | LLM={llm_successes}/{total_bugs} | Applier={applier_successes}/{total_bugs} | Compile={compile_successes}/{total_bugs} | Verilog={verilog_gen_successes}/{total_bugs} | LEC_PASS={lec_pass_count}/{total_bugs} | Pipeline={pipeline_successes}/{total_bugs}'
+        )
         print('=' * 80)
 
         # Return results
@@ -3175,11 +3183,39 @@ def main():
     # Parse command line arguments exactly like real v2chisel_batch
     parser = argparse.ArgumentParser(
         description='V2chisel_batch with real LLM calls',
-        epilog='Usage: uv run python3 v2chisel_batch.py -o output.yaml input.yaml',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run all bugs
+  %(prog)s input.yaml -o output.yaml
+
+  # Run only bugs 1-10
+  %(prog)s input.yaml -o output.yaml --bugs 1-10
+
+  # Run bugs 1-5 and 15-20
+  %(prog)s input.yaml -o output.yaml --bugs 1-5,15-20
+
+  # Skip bugs that already passed LEC (resume from failures)
+  %(prog)s input.yaml -o output.yaml --skip-successful
+
+  # Combine: skip successful, then run only bugs 5-15
+  %(prog)s input.yaml -o output.yaml --skip-successful --bugs 5-15
+        """,
     )
     parser.add_argument('input_file', help='Input YAML file (e.g., single_adder_test.yaml)')
     parser.add_argument('-o', '--output', required=True, help='Output YAML file')
     parser.add_argument('--debug', action='store_true', help='Enable debug output')
+    parser.add_argument(
+        '--bugs',
+        type=str,
+        metavar='RANGE',
+        help='Select specific bugs by range (e.g., "1-10", "1,3,5", "1-5,8-10")',
+    )
+    parser.add_argument(
+        '--skip-successful',
+        action='store_true',
+        help='Skip bugs that already passed LEC in the output file (resume from failures)',
+    )
 
     args = parser.parse_args()
 
@@ -3210,6 +3246,54 @@ def main():
     except Exception as e:
         print(f'❌ [V2chisel_batch] Error loading input file {args.input_file}: {e}')
         return 1
+
+    # ========== BUG SELECTION ==========
+    # Apply bug selection filters if specified
+    bugs = input_data.get('bugs', [])
+    if not bugs:
+        print('❌ [V2chisel_batch] No bugs found in input file')
+        return 1
+
+    original_bug_count = len(bugs)
+    print(f'📋 [V2chisel_batch] Loaded {original_bug_count} bugs from input file')
+
+    # Create bug selector
+    selector = BugSelector(bugs)
+
+    # Apply filters (order matters!)
+    if args.skip_successful:
+        print(f'🔄 [V2chisel_batch] Checking for successful bugs in: {args.output}')
+        selector.skip_successful(args.output)
+
+    if args.bugs:
+        print(f'🎯 [V2chisel_batch] Selecting bugs by range: {args.bugs}')
+        try:
+            selector.select_by_range(args.bugs)
+        except ValueError as e:
+            print(f'❌ [V2chisel_batch] Invalid bug range specification: {e}')
+            return 1
+
+    # Get filtered bugs
+    filtered_bugs = selector.get_bugs()
+
+    # Show selection summary
+    if args.skip_successful or args.bugs:
+        print('=' * 80)
+        print(f'📊 BUG SELECTION: {selector.get_selection_summary()}')
+        if len(filtered_bugs) < original_bug_count:
+            selected_indices = selector.get_selected_indices()
+            print(f'   Selected bug indices: {selected_indices}')
+        print('=' * 80)
+        print()
+
+    if len(filtered_bugs) == 0:
+        print('⚠️  [V2chisel_batch] No bugs selected - nothing to process!')
+        print('✅ Done (no bugs to process)')
+        return 0
+
+    # Replace bugs in input_data with filtered list
+    input_data['bugs'] = filtered_bugs
+    # ========== END BUG SELECTION ==========
 
     processor = None
     try:
