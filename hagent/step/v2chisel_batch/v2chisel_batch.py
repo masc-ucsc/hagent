@@ -2766,9 +2766,7 @@ class V2chisel_batch(Step):
                 print('     (Changes recorded in results, but container reset to prevent contamination)')
             else:
                 print('🔄 [FINAL_RESTORE] Bug failed - restoring to original state')
-            final_restore_result = self._restore_to_original(
-                docker_container, master_backup_info, 'end_of_bug_processing'
-            )
+            final_restore_result = self._restore_to_original(docker_container, master_backup_info, 'end_of_bug_processing')
         else:
             print('⚠️  [FINAL_RESTORE] No master backup available - cannot restore')
             final_restore_result = {'success': False, 'message': 'No master backup to restore from'}
@@ -3008,6 +3006,7 @@ class V2chisel_batch(Step):
 
         # Create unique directory for this run with timestamp
         import datetime
+
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         individual_output_dir = os.path.join(output_dir, f'individual_results_{timestamp}')
         print(f'📁 [V2chisel_batch] Individual results will be saved to: {individual_output_dir}')
