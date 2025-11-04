@@ -4,9 +4,9 @@ int main(int argc,char**argv){
     vector<Str> passFiles, failFiles;
     Str outPath;
     WindowPolicy wpol;
-    wpol.eventsN=50000;
+    wpol.eventsN=2000;
     bool groupByFlop=true, ignoreCombOnly=false;
-    int  topk=100;
+    int  topk=200;
     int  topkPairs=16;
     uint64_t maxPairsPerWin=128;
     double scoreCutoff=0.1;
@@ -62,11 +62,11 @@ int main(int argc,char**argv){
                 <<"  --pass_vcd <file> (repeatable)\n"
                 <<"  --fail_vcd <file> (repeatable)\n"
                 <<"  --out <file>\n"
-                <<"  --window_events N     (default 50000)\n"
+                <<"  --window_events N     (default 2000)\n"
                 <<"  --window_time   N     (VCD ticks)\n"
                 <<"  --checkpoint_retire_signal SIG\n"
                 <<"  --group_by_flop / --ignore_comb_only\n"
-                <<"  --topk K              final report lines (default 100)\n"
+                <<"  --topk K              final report lines (default 200)\n"
                 <<"  --topk_pairs N        MI top-K (default 16)\n"
                 <<"  --max_pairs_per_window N (default 128)\n"
                 <<"  --score_cutoff D      (default 0.1)\n"
