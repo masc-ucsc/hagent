@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, Set, List, Dict, Any
 
 from .path_manager import PathManager
-from .container_manager import is_docker_mode, is_docker_workspace_ready
+from .container_manager import is_docker_workspace_ready
 
 
 class FileTrackerLocal:
