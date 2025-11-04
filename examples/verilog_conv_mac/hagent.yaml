@@ -1,0 +1,32 @@
+profiles:
+  - name: conv_mac
+    title: "Convolution MAC (2-stage pipeline) — Sim and Synthesis"
+    description: "Clocked, windowed MAC with 2-stage pipeline. Simulate with Icarus; synthesize with Yosys."
+
+    configuration:
+      environment:
+        PATH: "$PATH:/usr/local/bin"
+
+      # Source files to track
+      source: "track_repo_dir('src', ext='.v')"
+      
+      # Output files to track  
+      output: "track_build_dir('build', ext='.v')"
+
+    apis:
+      - name: compile_with_testbench
+        description: "Compile conv_mac and testbench with Icarus Verilog"
+        command: "mkdir -p $HAGENT_BUILD_DIR/conv_mac && iverilog -g2012 -o $HAGENT_BUILD_DIR/conv_mac/conv_mac_tb conv_mac.v conv_mac_tb.v"
+        cwd: "$HAGENT_REPO_DIR"
+
+      - name: run_testbench
+        description: "Run the conv_mac testbench"
+        command: "vvp ./conv_mac_tb"
+        cwd: "$HAGENT_BUILD_DIR/conv_mac"
+
+      - name: synthesize_with_sta
+        description: "Synthesize conv_mac with synth.py and run STA timing analysis"
+        command: "mkdir -p $HAGENT_BUILD_DIR/conv_mac && $HAGENT_ROOT/scripts/synth.py --sta --netlist $HAGENT_BUILD_DIR/conv_mac/netlist.v --top conv_mac conv_mac.v"
+        cwd: "$HAGENT_REPO_DIR"
+
+
