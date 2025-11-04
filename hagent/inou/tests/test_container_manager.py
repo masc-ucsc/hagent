@@ -5,6 +5,7 @@ Tests Docker container lifecycle management, mount point configuration,
 environment variable injection, and workspace validation.
 """
 
+import os
 import subprocess
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -242,20 +243,20 @@ class TestContainerManager:
         """Test Docker workspace validation success using new centralized approach."""
         mock_container = MagicMock()
         # Mock successful exec_run calls for all workspace directories
-        mock_container.exec_run.side_effect = [
-            MagicMock(exit_code=0),  # /code/workspace
-            MagicMock(exit_code=0),  # /code/workspace/repo
-            MagicMock(exit_code=0),  # /code/workspace/build
-            MagicMock(exit_code=0),  # /code/workspace/cache
-            MagicMock(exit_code=0),  # /code/workspace/tech
-        ]
+        # Note: The number of calls depends on whether HAGENT_PRIVATE_DIR is set
+        # We'll return success for any directory check
+        mock_container.exec_run.return_value = MagicMock(exit_code=0)
         mock_container.reload.return_value = None
         mock_container.status = 'running'
         mock_container.attrs = {'State': {'Status': 'running', 'Health': None}}
 
         from hagent.inou.container_manager import _validate_docker_workspace
 
-        with patch.dict('os.environ', {'HAGENT_DOCKER': 'test-image:latest'}):
+        # Ensure HAGENT_PRIVATE_DIR is not set for this test to have consistent behavior
+        env_vars = {'HAGENT_DOCKER': 'test-image:latest'}
+        with patch.dict('os.environ', env_vars, clear=False):
+            if 'HAGENT_PRIVATE_DIR' in os.environ:
+                del os.environ['HAGENT_PRIVATE_DIR']
             result = _validate_docker_workspace(mock_container)
             assert result is True
 
@@ -282,38 +283,45 @@ class TestContainerManager:
         local_dirs = setup_local_directory
 
         # Create a real PathManager with test environment
-        with patch.dict(
-            'os.environ',
-            {
-                'HAGENT_REPO_DIR': str(local_dirs['repo_dir']),
-                'HAGENT_BUILD_DIR': str(local_dirs['build_dir']),
-                'HAGENT_CACHE_DIR': str(local_dirs['cache_dir']),
-            },
-        ):
+        # Explicitly don't set HAGENT_PRIVATE_DIR to ensure consistent test behavior
+        env_vars = {
+            'HAGENT_REPO_DIR': str(local_dirs['repo_dir']),
+            'HAGENT_BUILD_DIR': str(local_dirs['build_dir']),
+            'HAGENT_CACHE_DIR': str(local_dirs['cache_dir']),
+        }
+        # Remove HAGENT_PRIVATE_DIR if it exists in the environment
+        env_to_remove = ['HAGENT_PRIVATE_DIR'] if 'HAGENT_PRIVATE_DIR' in os.environ else []
+        with patch.dict('os.environ', env_vars, clear=False):
+            for key in env_to_remove:
+                if key in os.environ:
+                    del os.environ[key]
+            # Reset PathManager singleton to pick up new environment
+            PathManager.reset()
             mock_pm = PathManager()
 
-        with patch.object(ContainerManager, '_initialize_docker_client'):
-            with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+            with patch.object(ContainerManager, '_initialize_docker_client'):
+                with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
 
-            with patch('docker.types.Mount') as mock_mount:
-                mock_mount_obj = MagicMock()
-                mock_mount.return_value = mock_mount_obj
+                with patch('docker.types.Mount') as mock_mount:
+                    mock_mount_obj = MagicMock()
+                    mock_mount.return_value = mock_mount_obj
 
-                mounts = manager._setup_mount_points()
+                    mounts = manager._setup_mount_points()
 
-                # Should have 5 mounts (hagent, cache, repo, build, tech)
-                assert len(mounts) == 5
-                assert mock_mount.call_count == 5
+                    # Should have 5 mounts (hagent, cache, repo, build, tech)
+                    # private mount is optional and not set in this test
+                    assert len(mounts) == 5
+                    assert mock_mount.call_count == 5
 
-                # Verify mount calls
-                calls = mock_mount.call_args_list
-                mount_targets = [call[1]['target'] for call in calls]
-                assert '/code/hagent' in mount_targets
-                assert '/code/workspace/cache' in mount_targets
-                assert '/code/workspace/repo' in mount_targets
-                assert '/code/workspace/build' in mount_targets
-                assert '/code/workspace/tech' in mount_targets
+                    # Verify mount calls
+                    calls = mock_mount.call_args_list
+                    mount_targets = [call[1]['target'] for call in calls]
+                    assert '/code/hagent' in mount_targets
+                    assert '/code/workspace/cache' in mount_targets
+                    assert '/code/workspace/repo' in mount_targets
+                    assert '/code/workspace/build' in mount_targets
+                    assert '/code/workspace/tech' in mount_targets
 
     @patch('docker.types.Mount')
     def test_setup_success(self, mock_mount, setup_local_directory):
@@ -568,74 +576,86 @@ class TestContainerManager:
     def test_setup_mount_points_relative_paths(self, setup_local_directory):
         """Test setup of mount points with relative paths."""
         # Create a real PathManager with test environment using relative paths
-        with patch.dict(
-            'os.environ',
-            {
-                'HAGENT_REPO_DIR': 'output/local/repo',
-                'HAGENT_BUILD_DIR': 'output/local/build',
-                'HAGENT_CACHE_DIR': 'output/local/cache',
-            },
-        ):
+        # Explicitly don't set HAGENT_PRIVATE_DIR to ensure consistent test behavior
+        env_vars = {
+            'HAGENT_REPO_DIR': 'output/local/repo',
+            'HAGENT_BUILD_DIR': 'output/local/build',
+            'HAGENT_CACHE_DIR': 'output/local/cache',
+        }
+        env_to_remove = ['HAGENT_PRIVATE_DIR'] if 'HAGENT_PRIVATE_DIR' in os.environ else []
+        with patch.dict('os.environ', env_vars, clear=False):
+            for key in env_to_remove:
+                if key in os.environ:
+                    del os.environ[key]
+            # Reset PathManager singleton to pick up new environment
+            PathManager.reset()
             mock_pm = PathManager()
 
-        with patch.object(ContainerManager, '_initialize_docker_client'):
-            with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+            with patch.object(ContainerManager, '_initialize_docker_client'):
+                with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
 
-            with patch('docker.types.Mount') as mock_mount:
-                mock_mount_obj = MagicMock()
-                mock_mount.return_value = mock_mount_obj
+                with patch('docker.types.Mount') as mock_mount:
+                    mock_mount_obj = MagicMock()
+                    mock_mount.return_value = mock_mount_obj
 
-                mounts = manager._setup_mount_points()
+                    mounts = manager._setup_mount_points()
 
-                # Should have 5 mounts (hagent, cache, repo, build, tech)
-                assert len(mounts) == 5
-                assert mock_mount.call_count == 5
+                    # Should have 5 mounts (hagent, cache, repo, build, tech)
+                    # private mount is optional and not set in this test
+                    assert len(mounts) == 5
+                    assert mock_mount.call_count == 5
 
-                # Verify mount calls
-                calls = mock_mount.call_args_list
-                mount_targets = [call[1]['target'] for call in calls]
-                assert '/code/hagent' in mount_targets
-                assert '/code/workspace/cache' in mount_targets
-                assert '/code/workspace/repo' in mount_targets
-                assert '/code/workspace/build' in mount_targets
+                    # Verify mount calls
+                    calls = mock_mount.call_args_list
+                    mount_targets = [call[1]['target'] for call in calls]
+                    assert '/code/hagent' in mount_targets
+                    assert '/code/workspace/cache' in mount_targets
+                    assert '/code/workspace/repo' in mount_targets
+                    assert '/code/workspace/build' in mount_targets
 
     def test_setup_mount_points_absolute_paths(self, setup_local_directory):
         """Test setup of mount points with absolute paths."""
         local_dirs = setup_local_directory
 
         # Create a real PathManager with test environment
-        with patch.dict(
-            'os.environ',
-            {
-                'HAGENT_REPO_DIR': str(local_dirs['repo_dir'].resolve()),
-                'HAGENT_BUILD_DIR': str(local_dirs['build_dir'].resolve()),
-                'HAGENT_CACHE_DIR': str(local_dirs['cache_dir'].resolve()),
-            },
-        ):
+        # Explicitly don't set HAGENT_PRIVATE_DIR to ensure consistent test behavior
+        env_vars = {
+            'HAGENT_REPO_DIR': str(local_dirs['repo_dir'].resolve()),
+            'HAGENT_BUILD_DIR': str(local_dirs['build_dir'].resolve()),
+            'HAGENT_CACHE_DIR': str(local_dirs['cache_dir'].resolve()),
+        }
+        env_to_remove = ['HAGENT_PRIVATE_DIR'] if 'HAGENT_PRIVATE_DIR' in os.environ else []
+        with patch.dict('os.environ', env_vars, clear=False):
+            for key in env_to_remove:
+                if key in os.environ:
+                    del os.environ[key]
+            # Reset PathManager singleton to pick up new environment
+            PathManager.reset()
             mock_pm = PathManager()
 
-        with patch.object(ContainerManager, '_initialize_docker_client'):
-            with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+            with patch.object(ContainerManager, '_initialize_docker_client'):
+                with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
 
-            with patch('docker.types.Mount') as mock_mount:
-                mock_mount_obj = MagicMock()
-                mock_mount.return_value = mock_mount_obj
+                with patch('docker.types.Mount') as mock_mount:
+                    mock_mount_obj = MagicMock()
+                    mock_mount.return_value = mock_mount_obj
 
-                mounts = manager._setup_mount_points()
+                    mounts = manager._setup_mount_points()
 
-                # Should have 5 mounts (hagent, cache, repo, build, tech)
-                assert len(mounts) == 5
-                assert mock_mount.call_count == 5
+                    # Should have 5 mounts (hagent, cache, repo, build, tech)
+                    # private mount is optional and not set in this test
+                    assert len(mounts) == 5
+                    assert mock_mount.call_count == 5
 
-                # Verify mount calls
-                calls = mock_mount.call_args_list
-                mount_targets = [call[1]['target'] for call in calls]
-                assert '/code/hagent' in mount_targets
-                assert '/code/workspace/cache' in mount_targets
-                assert '/code/workspace/repo' in mount_targets
-                assert '/code/workspace/build' in mount_targets
+                    # Verify mount calls
+                    calls = mock_mount.call_args_list
+                    mount_targets = [call[1]['target'] for call in calls]
+                    assert '/code/hagent' in mount_targets
+                    assert '/code/workspace/cache' in mount_targets
+                    assert '/code/workspace/repo' in mount_targets
+                    assert '/code/workspace/build' in mount_targets
 
     @pytest.mark.skip(reason='Docker container setup fails with temporary directory mount issues')
     def test_mcp_build_script_execution(self, container_manager_with_cleanup, setup_local_directory):

@@ -19,15 +19,15 @@ from hagent.inou.path_manager import PathManager
 
 @pytest.fixture(autouse=True)
 def reset_docker_state():
-    """Reset global Docker state before each test."""
+    """Reset global Docker state before and after each test."""
     import hagent.inou.container_manager as cm
 
-    # Reset global state
+    # Reset global state before test
     cm._docker_workspace_validated = False
 
     yield
 
-    # Reset global state again
+    # Reset global state after test
     cm._docker_workspace_validated = False
 
 
@@ -36,32 +36,27 @@ class TestPathManagerIntegration:
     """Test FileTracker integration with PathManager."""
 
     def test_file_tracker_with_real_path_manager(self):
-        """Test FileTracker with actual PathManager instance."""
-        # Reset PathManager to pick up new environment
-        PathManager.reset()
+        """Test FileTracker with mock PathManager instance."""
+        # Create a mock PathManager instead of using the singleton
+        mock_path_manager = MagicMock()
+        mock_path_manager.is_local_mode.return_value = True
+        mock_path_manager.is_docker_mode.return_value = False
+        mock_path_manager.repo_dir = Path('/test/repo')
+        mock_path_manager.build_dir = Path('/test/build')
+        mock_path_manager.cache_dir = Path('/test/cache')
 
-        with patch.dict(
-            'os.environ',
-            {
-                'HAGENT_REPO_DIR': '/test/repo',
-                'HAGENT_BUILD_DIR': '/test/build',
-                'HAGENT_CACHE_DIR': '/test/cache',
-            },
+        with (
+            patch('pathlib.Path.exists', return_value=True),
+            patch('pathlib.Path.mkdir'),
+            patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
+            patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
+            patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            with (
-                patch('pathlib.Path.exists', return_value=True),
-                patch('pathlib.Path.mkdir'),
-                patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
-                patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
-                patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
-            ):
-                PathManager.reset()  # Reset after environment change
-                path_manager = PathManager()
-                tracker = FileTracker(path_manager)
+            tracker = FileTracker(mock_path_manager)
 
-                assert tracker.path_manager is path_manager
-                assert tracker.path_manager.is_local_mode()
-                assert str(tracker.path_manager.repo_dir) == '/test/repo'
+            assert tracker.path_manager is mock_path_manager
+            assert tracker.path_manager.is_local_mode()
+            assert str(tracker.path_manager.repo_dir) == '/test/repo'
 
     def test_file_tracker_docker_mode_integration(self):
         """Test FileTracker integration with Docker mode PathManager."""

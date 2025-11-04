@@ -51,6 +51,9 @@ class DockerExecutor:
             'HAGENT_CACHE_DIR': '/code/workspace/cache',
             'HAGENT_TECH_DIR': '/code/workspace/tech',
         }
+        # Add HAGENT_PRIVATE_DIR if it's configured
+        if PathManager().has_private_dir():
+            env_vars['HAGENT_PRIVATE_DIR'] = '/code/workspace/private'
         return env_vars
 
     def setup(self) -> bool:
@@ -168,6 +171,13 @@ class DockerExecutor:
                 if host_path_obj == PathManager().tech_dir or PathManager().tech_dir in host_path_obj.parents:
                     relative = host_path_obj.relative_to(PathManager().tech_dir)
                     return str(Path('/code/workspace/tech') / relative)
+
+                # Try to translate private_dir path (if configured)
+                if PathManager().has_private_dir():
+                    private_dir = PathManager().private_dir
+                    if host_path_obj == private_dir or private_dir in host_path_obj.parents:
+                        relative = host_path_obj.relative_to(private_dir)
+                        return str(Path('/code/workspace/private') / relative)
             except (ValueError, AttributeError):
                 # If path translation fails, use the original path
                 pass

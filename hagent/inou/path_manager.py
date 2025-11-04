@@ -56,6 +56,7 @@ class PathManager:
         self._build_dir: Optional[Path] = None
         self._cache_dir: Optional[Path] = None
         self._tech_dir: Optional[Path] = None
+        self._private_dir: Optional[Path] = None
         self._is_docker: Optional[bool] = None
 
         self._validate_and_setup_environment()
@@ -117,6 +118,14 @@ class PathManager:
             # Will be set to a default after validation completes
             self._tech_dir = Path('/tmp/tech')
 
+        # Private dir - optional, not required
+        private_dir = os.environ.get('HAGENT_PRIVATE_DIR')
+        if private_dir:
+            self._private_dir = Path(private_dir).resolve()
+            if not self._private_dir.exists():
+                self._fail_fast(f'HAGENT_PRIVATE_DIR path does not exist: {self._private_dir}')
+                return
+
         if missing_vars:
             self._fail_fast(
                 f'Local execution mode requires these environment variables: {", ".join(missing_vars)}\n'
@@ -157,6 +166,14 @@ class PathManager:
         else:
             # Use default container path
             self._tech_dir = Path('/code/workspace/tech')
+
+        # Private dir - optional, only set if explicitly provided
+        if os.environ.get('HAGENT_PRIVATE_DIR'):
+            self._private_dir = Path(os.environ['HAGENT_PRIVATE_DIR']).resolve()
+            if not self._private_dir.exists():
+                self._fail_fast(f'HAGENT_PRIVATE_DIR path does not exist: {self._private_dir}')
+                return
+        # Note: Do not set a default value - private_dir remains None if not provided
 
     def _create_cache_structure(self) -> None:
         """Create the HAGENT_CACHE_DIR directory structure."""
@@ -326,6 +343,15 @@ class PathManager:
     def tech_dir(self) -> Path:
         """Get the tech directory path."""
         return self._tech_dir
+
+    @property
+    def private_dir(self) -> Optional[Path]:
+        """Get the private directory path (optional, may be None)."""
+        return self._private_dir
+
+    def has_private_dir(self) -> bool:
+        """Check if a private directory is configured and available."""
+        return self._private_dir is not None
 
     def is_docker_mode(self) -> bool:
         """Check if running in Docker execution mode."""

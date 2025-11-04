@@ -42,15 +42,17 @@ class SourceLocation:
 class Locator:
     """Map variables and code between HDL representations with caching."""
 
-    def __init__(self, config_path: Optional[str] = None, profile_name: Optional[str] = None):
+    def __init__(self, config_path: Optional[str] = None, profile_name: Optional[str] = None, debug: bool = False):
         """Initialize Locator.
 
         Args:
             config_path: Path to hagent.yaml (auto-discovered if None)
             profile_name: Specific profile to use (required for operations needing config)
+            debug: If True, show verbose output from run_cmd calls
         """
         self.config_path = config_path
         self.profile_name = profile_name
+        self.debug = debug
         self.builder: Optional[Builder] = None
         self._error: str = ''
         self._cache_dir: Optional[Path] = None
@@ -340,7 +342,7 @@ class Locator:
             dry_run_cmd = f'{command} --dry-run'
 
             # Execute the dry-run command
-            exit_code, stdout, stderr = self.builder.runner.run_cmd(dry_run_cmd, cwd=cwd, quiet=True)
+            exit_code, stdout, stderr = self.builder.runner.run_cmd(dry_run_cmd, cwd=cwd, quiet=(not self.debug))
 
             if exit_code != 0:
                 return None
@@ -488,8 +490,8 @@ class Locator:
                 cwd = str(self.builder.runner.path_manager.repo_dir)
 
             # run_cmd returns (exit_code, stdout, stderr)
-            # Use quiet=True to suppress slang-hier output (we only need to parse it)
-            exit_code, stdout, stderr = self.builder.runner.run_cmd(slang_hier_cmd, cwd=cwd, quiet=True)
+            # Use quiet based on debug flag
+            exit_code, stdout, stderr = self.builder.runner.run_cmd(slang_hier_cmd, cwd=cwd, quiet=(not self.debug))
 
             if exit_code != 0:
                 self._error = f'slang-hier failed (exit {exit_code}): {stderr}'
