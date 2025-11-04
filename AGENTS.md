@@ -3,7 +3,7 @@
 Follow these concise rules when working in this repo.
 
 ### Test and Run
-- Always use `uv run` wrappers: `uv run pytest ...` and `uv run python ...` (never `python -m pytest`).
+- Always use `uv run` wrappers: `uv run pytest  -n auto --forked ...` and `uv run python ...` (never `python -m pytest`).
 - Fast pytest or debug iteration: `uv run pytest --testmon --maxfail=1`.
 
 ### Code Quality (required before finishing)

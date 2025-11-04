@@ -17,15 +17,20 @@ import pytest
 from hagent.inou.runner import Runner
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope='function', autouse=True)
 def setup_hagent_environment():
     """Setup HAGENT environment variables for Docker mode tests."""
+    import hagent.inou.container_manager as cm
+
     original_env = {}
 
     # Save original environment
     hagent_vars = ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_DOCKER']
     for var in hagent_vars:
         original_env[var] = os.environ.get(var)
+
+    # Reset container state before setting new environment
+    cm._docker_workspace_validated = False
 
     # Set Docker mode environment with host-accessible paths for testing
     # Docker mode enabled via HAGENT_DOCKER
@@ -53,6 +58,9 @@ def setup_hagent_environment():
             os.environ.pop(var, None)
         else:
             os.environ[var] = value
+
+    # Reset container state after restoring environment
+    cm._docker_workspace_validated = False
 
 
 @pytest.mark.slow

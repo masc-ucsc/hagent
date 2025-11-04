@@ -339,6 +339,12 @@ Examples:
     parser.add_argument('-v', '--verbose', action='store_true', help='Show detailed output including confidence scores')
 
     parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Show debug output from underlying commands (slang-hier, synth.py, etc.)',
+    )
+
+    parser.add_argument(
         '--invalidate-cache',
         action='store_true',
         help='Invalidate cache before running (forces rebuild)',
@@ -378,7 +384,7 @@ Examples:
     if args.verbose:
         print(f"Initializing Locator with top-level profile '{args.top_name}'...", file=sys.stderr)
 
-    locator = Locator(config_path=args.config_path, profile_name=args.top_name)
+    locator = Locator(config_path=args.config_path, profile_name=args.top_name, debug=args.debug)
 
     if not locator.setup():
         print(f'Error: Locator setup failed: {locator.get_error()}', file=sys.stderr)

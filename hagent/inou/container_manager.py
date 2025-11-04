@@ -100,6 +100,11 @@ def _validate_docker_workspace(container: 'docker.models.containers.Container') 
         '/code/workspace/tech',
     ]
 
+    # Add private directory ONLY if it's explicitly configured via HAGENT_PRIVATE_DIR
+    # (don't check for it if the env var is not set)
+    if PathManager().has_private_dir():
+        required_dirs.append('/code/workspace/private')
+
     for dir_path in required_dirs:
         try:
             result = container.exec_run(f'test -d {dir_path}')
@@ -581,11 +586,19 @@ class ContainerManager:
             ('/code/workspace/repo', 'repo_dir', False),
             ('/code/workspace/build', 'build_dir', False),
             ('/code/workspace/tech', 'tech_dir', False),
+            ('/code/workspace/private', 'private_dir', False),
         ]
 
         for target, attr_name, required in mounts_config:
             try:
-                host_path = str(getattr(self.path_manager, attr_name))
+                host_path_obj = getattr(self.path_manager, attr_name)
+                # Skip if the attribute is None (optional mount not configured)
+                if host_path_obj is None:
+                    if required:
+                        self.set_error(f'{attr_name} is required but not set')
+                        return []
+                    continue  # Optional mount not available
+                host_path = str(host_path_obj)
             except (AttributeError, TypeError) as e:
                 if required:
                     self.set_error(f'{attr_name} not available: {e}')
@@ -620,6 +633,10 @@ class ContainerManager:
         try:
             # List of mounted directories that need permission fixes
             mount_points = ['/code/workspace/repo', '/code/workspace/build', '/code/workspace/cache', '/code/workspace/tech']
+
+            # Add private directory if it's configured
+            if PathManager().has_private_dir():
+                mount_points.append('/code/workspace/private')
 
             for mount_point in mount_points:
                 # Check if the mount point exists
