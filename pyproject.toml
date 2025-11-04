@@ -34,6 +34,8 @@ dependencies = [
     "fastapi>=0.116.1",
     "apscheduler>=3.11.0",
     "mcp>=1.13.0",
+    "pytest-xdist>=3.8.0",
+    "pytest-forked>=1.6.0",
 ]
 
 [project.optional-dependencies]
