@@ -22,7 +22,7 @@ After installation, run a simple test to verify everything works:
 
 ```bash
 # Run basic tests
-uv run pytest hagent/step/trivial/tests/
+uv run pytest -n auto --forked hagent/step/trivial/tests/
 
 # Run a simple trivial step (Docker mode - recommended)
 export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.10
