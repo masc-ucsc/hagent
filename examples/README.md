@@ -21,6 +21,30 @@ gemini mcp add hagent ./hagent_server.sh
 Now, in gemini-cli, you could say:
 "Can you recompile and run tests for verilog_adder?"
 
+## ESP32 LED
+
+A simple toggle led example, you need to setup board.
+
+To setup:
+```
+mkdir -p ~/tmp/esp32_test
+cd ~/tmp/esp32_test
+XXX_PATH_TOHAGENT/scripts/setup_mcp.sh XXX_PATH_TOHAGENT/examples/esp32_led
+```
+
+Update the repo/AGENTS.md with the board name. Then, setup the MCP:
+```
+gemini mcp add hagent ./hagent_server.sh
+```
+
+Now, in gemini-cli, you could say:
+"Can you recompile and flash the board?"
+
+The esp32 IDF should be installed in cache:
+```
+ls ~/tmp/esp32_test/cache
+```
+
 ## How to run a docker example
 
 ```
