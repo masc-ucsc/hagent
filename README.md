@@ -4,13 +4,22 @@
 [![codecov](https://codecov.io/gh/masc-ucsc/hagent/graph/badge.svg?token=Hyj2VifE7j)](https://codecov.io/gh/masc-ucsc/hagent)
 [![CI Status](https://github.com/masc-ucsc/hagent/actions/workflows/ubuntu.yml/badge.svg)](https://github.com/masc-ucsc/hagent/actions/workflows/ubuntu.yml)
 
-An AI hardware agent engine that supports multiple components in chip design, including code generation, verification, debugging, and tapeout.
+**HAgent** is an open-source AI hardware agent framework that integrates **Large Language Models (LLMs)** with hardware design tools for **code generation, verification, debugging, and synthesis**.  
+By combining LLM reasoning with compiler-style workflows, HAgent enables flexible and reproducible **EDA pipelines** for chip design research and automation.
 
-HAgent is an open-source infrastructure that brings the power of Large Language Models (LLMs) to hardware design. By integrating LLMs with chip design tools in a compiler-inspired pipeline, HAgent enables the creation of custom EDA flows. Its architecture leverages hermetic Docker-based steps and YAML interfaces to simplify development, debugging, and testing, making it accessible and extensible for researchers and practitioners.
+Its modular architecture uses **Docker-based builds** and **YAML-driven APIs** to simplify setup, ensure reproducibility, and streamline collaboration between engineers and researchers.
+
 
 ## Installation and Setup
 
-For complete installation and setup instructions, including prerequisites, API keys, and synthesis tools, please see [docs/install.md](docs/install.md).
+Before using HAgent, ensure that you have **Docker** installed on your system.
+
+For complete installation and setup — including Python dependencies, API keys, and synthesis tools — please see:  
+👉 [docs/install.md](docs/install.md)
+
+If you encounter any issues with Docker, see:  
+👉 [docs/docker_issues.md](docs/docker_issues.md)
+
 
 ## MCP Quick Start
 
