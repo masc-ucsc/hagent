@@ -3,7 +3,7 @@ import time
 import datetime
 import litellm
 import sys
-from typing import List, Dict
+from typing import List, Dict, Set
 
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
@@ -191,7 +191,7 @@ class LLM_wrap:
             self._set_error(f'conf_file:{conf_file} or overwrite_conf must specify llm section')
             return
 
-        self.llm_args = self.config['llm']
+        self.llm_args: Dict = self.config['llm']
 
         if 'model' not in self.llm_args:
             self._set_error(f'conf_file:{conf_file} must specify llm "model" in section {name}')
@@ -213,6 +213,10 @@ class LLM_wrap:
         except Exception as e:
             self._set_error(f'creating/opening log file: {e}')
 
+    def _get_responses_api_keywords(self) -> Set:
+        # These models use OpenAI's newer Responses API endpoint
+        return {'gpt-5-codex', 'gpt-5', 'o3-mini', 'o3', 'o1-mini', 'o1-preview', 'o1'}
+
     def _set_error(self, msg: str):
         self.last_error = msg
         print(msg, file=sys.stderr)
@@ -225,10 +229,8 @@ class LLM_wrap:
         try:
             from openai import OpenAI
         except ImportError:
-            self._set_error('openai package required for gpt-5-codex (Responses API)')
+            self._set_error(f'openai package required for {self._get_responses_api_keywords()} (Responses API)')
             return []
-
-        import time
 
         # Extract model name without provider prefix
         model_name = model.replace('openai/', '')
@@ -503,9 +505,7 @@ class LLM_wrap:
             return []
 
         # Detect if model requires Responses API instead of Chat Completions API
-        # These models use OpenAI's newer Responses API endpoint
-        responses_api_keywords = ['gpt-5-codex', 'gpt-5', 'o3-mini', 'o3', 'o1-mini', 'o1-preview', 'o1']
-        use_responses_api = any(keyword in model.lower() for keyword in responses_api_keywords)
+        use_responses_api = any(keyword in model.lower() for keyword in self._get_responses_api_keywords())
 
         # Use OpenAI SDK directly for Responses API models since litellm doesn't support it yet
         if use_responses_api:
@@ -516,7 +516,7 @@ class LLM_wrap:
         try:
             start = time.time()
 
-            # For better diversity when n > 1, make separate calls with varied parameters
+            # As the native `n` parameter might produce similar/repetitive responses, we implement a custom diversity strategy to make separate calls with varied parameters.
             # This works for all models and ensures more diverse responses
             if n > 1:
                 # Remove 'n' parameter and make multiple calls with varied parameters for diversity
@@ -528,39 +528,42 @@ class LLM_wrap:
                 base_top_p = varied_args.get('top_p', 0.9)
                 last_response = None  # Track only the last response for variation
 
+                # Scale temperature from 0 to 1 based on n, with one sample having default temperature.
+                # For n=2: use default temp and either 0 or 1;
+                # for n>2: distribute from 0 to 1, ensuring one sample has default temperature.
+                temperature_variation = lambda i: (
+                    base_temperature
+                    if (n == 2 and i == 0) or (n > 2 and i == n // 2)
+                    else (0.0 if base_temperature > 0.5 else 1.0)
+                    if n == 2
+                    else i / (n - 1)
+                )
+
+                # Scale top_p intelligently: vary around default with more diversity
+                # For n>2: alternate between higher and lower values around default
+                top_p_variation = lambda i: (
+                    base_top_p
+                    if (n == 2 and i == 0) or (n > 2 and i == n // 2)
+                    else max(0.1, min(1.0, 1.0 - base_top_p + 0.1))
+                    if n == 2
+                    else (max(0.1, base_top_p - i * 0.15) if i % 2 == 0 else min(1.0, base_top_p + (i - 1) * 0.15))
+                )
+
                 for i in range(n):
                     call_args = varied_args.copy()
 
-                    # Scale temperature from 0 to 1 based on n, with one sample having default temperature
-                    if n == 2:
-                        # For n=2: use default temp and either 0 or 1
-                        call_args['temperature'] = base_temperature if i == 0 else (0.0 if base_temperature > 0.5 else 1.0)
-                    else:
-                        # For n>2: distribute from 0 to 1, ensuring one sample has default temperature
-                        mid_index = n // 2
-                        if i == mid_index:
-                            call_args['temperature'] = base_temperature  # Keep default for one sample
-                        else:
-                            # Scale others from 0 to 1
-                            call_args['temperature'] = i / (n - 1)
+                    call_args['temperature'] = temperature_variation(i)
+                    call_args['top_p'] = top_p_variation(i)
 
-                    # Scale top_p intelligently: vary around default with more diversity
-                    if n == 2:
-                        call_args['top_p'] = base_top_p if i == 0 else max(0.1, min(1.0, 1.0 - base_top_p + 0.1))
-                    else:
-                        # For n>2: alternate between higher and lower values around default
-                        if i == n // 2:
-                            call_args['top_p'] = base_top_p  # Keep default for one sample
-                        elif i % 2 == 0:
-                            call_args['top_p'] = max(0.1, base_top_p - (i * 0.15))
-                        else:
-                            call_args['top_p'] = min(1.0, base_top_p + ((i - 1) * 0.15))
-
-                    # Copy messages and add variation to avoid caching when seeking diversity
+                    # Copy messages and add variation to avoid caching when seeking diversity.
+                    # This ensures each iteration gets its own copy of the messages.
                     call_args['messages'] = [msg.copy() for msg in call_args['messages']]
 
+                    # Inform the LLM model about the previous completion's content to encourage diversity.
+                    # We don't want to overwhelm it with all previous attempts, so we only require each completion to differ from the immediately previous one.
                     if i > 0 and last_response and call_args['messages']:
                         last_msg = call_args['messages'][-1]
+                        # It's only safe to change user queries/prompts because we don't corrupt system context or assistant's response text.
                         if last_msg.get('role') == 'user':
                             # Truncate last response to 2KB if needed
                             prev_response = last_response
@@ -578,15 +581,11 @@ class LLM_wrap:
                     if r and 'choices' in r and r['choices']:
                         last_response = r['choices'][0]['message']['content']
 
-                # Combine responses
-                combined_choices = []
-                for resp in responses:
-                    combined_choices.extend(resp['choices'])
+                # Combine all responses into one result object
+                combined_choices = [c for resp in responses for c in resp['choices']]
 
                 # Use the first response as template and replace choices
-                r = responses[0]
-                # Convert to dict first since ModelResponse doesn't support item assignment
-                r_dict = r.to_dict()
+                r_dict = responses[0].to_dict()
                 r_dict['choices'] = combined_choices
                 # Convert back to ModelResponse-like object for consistency
                 r = litellm.ModelResponse(**r_dict)
