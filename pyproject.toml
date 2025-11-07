@@ -33,6 +33,7 @@ dependencies = [
     "ruff >=0.14.4",
     "pytest-testmon >=2.1.4",
     "tomlkit >=0.13.3",
+    "boto3>=1.40.69",
 ]
 
 [project.optional-dependencies]
