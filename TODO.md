@@ -1,5 +1,12 @@
 -------
 
+litellm also supports OpenAI codex, but there is code to switch to OpenAI API.
+
+Nice to keep a single consistent litellm API
+
+Main file: hagent/core/llm_wrap.py
+
+-------
 Several places in hagent.yaml says (/code/workspace/....), we should use HAGENT_... as needed to do auto replace
 
 -------
