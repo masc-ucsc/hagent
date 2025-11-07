@@ -531,23 +531,23 @@ class LLM_wrap:
                 # Scale temperature from 0 to 1 based on n, with one sample having default temperature.
                 # For n=2: use default temp and either 0 or 1;
                 # for n>2: distribute from 0 to 1, ensuring one sample has default temperature.
-                temperature_variation = lambda i: (
-                    base_temperature
-                    if (n == 2 and i == 0) or (n > 2 and i == n // 2)
-                    else (0.0 if base_temperature > 0.5 else 1.0)
-                    if n == 2
-                    else i / (n - 1)
-                )
+                def temperature_variation(i):
+                    if (n == 2 and i == 0) or (n > 2 and i == n // 2):
+                        return base_temperature
+                    elif n == 2:
+                        return 0.0 if base_temperature > 0.5 else 1.0
+                    else:
+                        return i / (n - 1)
 
                 # Scale top_p intelligently: vary around default with more diversity
                 # For n>2: alternate between higher and lower values around default
-                top_p_variation = lambda i: (
-                    base_top_p
-                    if (n == 2 and i == 0) or (n > 2 and i == n // 2)
-                    else max(0.1, min(1.0, 1.0 - base_top_p + 0.1))
-                    if n == 2
-                    else (max(0.1, base_top_p - i * 0.15) if i % 2 == 0 else min(1.0, base_top_p + (i - 1) * 0.15))
-                )
+                def top_p_variation(i):
+                    if (n == 2 and i == 0) or (n > 2 and i == n // 2):
+                        return base_top_p
+                    elif n == 2:
+                        return max(0.1, min(1.0, 1.0 - base_top_p + 0.1))
+                    else:
+                        return max(0.1, base_top_p - i * 0.15) if i % 2 == 0 else min(1.0, base_top_p + (i - 1) * 0.15)
 
                 for i in range(n):
                     call_args = varied_args.copy()
