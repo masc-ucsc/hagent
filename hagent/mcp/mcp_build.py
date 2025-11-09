@@ -562,7 +562,7 @@ def main():
         # Handle output
         print('STDOUT:')
         print(result['stdout'], end='')
-        print('STDERR:', file=sys.stderr)
+        print('\n\nSTDERR:', file=sys.stderr)
         print(result['stderr'], end='', file=sys.stderr)
 
         if 'error_message' in result:
