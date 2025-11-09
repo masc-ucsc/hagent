@@ -31,7 +31,7 @@ simplechisel)
   GIT_URL="https://github.com/masc-ucsc/simplechisel.git"
   ;;
 soomrv)
-  DOCKER_IMAGE="mascucsc/hagent-soomrv:2025.10"
+  DOCKER_IMAGE="mascucsc/hagent-soomrv:2025.11"
   GIT_URL="https://github.com/mathis-s/SoomRV.git"
   ;;
 verilog-adder)
@@ -50,7 +50,7 @@ xiangshan)
     DOCKER_IMAGE="mascucsc/hagent-builder:2025.10"
     GIT_URL=""
   elif [[ -d "$PROJECT_NAME" ]]; then
-    EXAMPLE_SOURCE_DIR="$(cd "$PROJECT_NAME" && pwd)"  # Get absolute path
+    EXAMPLE_SOURCE_DIR="$(cd "$PROJECT_NAME" && pwd)" # Get absolute path
     DOCKER_IMAGE="mascucsc/hagent-builder:2025.10"
     GIT_URL=""
   else
@@ -147,7 +147,6 @@ if [[ -n "${EXAMPLE_SOURCE_DIR:-}" ]]; then
 fi
 
 # Write server launcher
-MCP_SERVER_PATH="${HAGENT_ROOT}/hagent/mcp/hagent-mcp-server.py"
 cat >"${BASE_DIR}/hagent_server.sh" <<EOF
 #!/bin/bash
 export UV_PROJECT="${HAGENT_ROOT}"
@@ -157,7 +156,8 @@ export HAGENT_REPO_DIR="${BASE_DIR}/repo"
 export HAGENT_BUILD_DIR="${BASE_DIR}/build"
 export HAGENT_CACHE_DIR="${BASE_DIR}/cache"
 export HAGENT_OUTPUT_DIR="${BASE_DIR}/logs"
-uv run python ${MCP_SERVER_PATH} "\$@"
+uv run python \${HAGENT_ROOT}/hagent/mcp/hagent-mcp-server.py "\$@"
+#uv run python \${HAGENT_ROOT}/hagent/mcp/mcp_build.py --help
 EOF
 chmod +x "${BASE_DIR}/hagent_server.sh"
 
