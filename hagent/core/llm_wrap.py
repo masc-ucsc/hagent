@@ -3,7 +3,7 @@ import time
 import datetime
 import litellm
 import sys
-from typing import List, Dict, Set
+from typing import List, Dict
 
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
@@ -191,7 +191,7 @@ class LLM_wrap:
             self._set_error(f'conf_file:{conf_file} or overwrite_conf must specify llm section')
             return
 
-        self.llm_args: Dict = self.config['llm']
+        self.llm_args = self.config['llm']
 
         if 'model' not in self.llm_args:
             self._set_error(f'conf_file:{conf_file} must specify llm "model" in section {name}')
@@ -213,10 +213,6 @@ class LLM_wrap:
         except Exception as e:
             self._set_error(f'creating/opening log file: {e}')
 
-    def _get_responses_api_keywords(self) -> Set:
-        # These models use OpenAI's newer Responses API endpoint
-        return {'gpt-5-codex', 'gpt-5', 'o3-mini', 'o3', 'o1-mini', 'o1-preview', 'o1'}
-
     def _set_error(self, msg: str):
         self.last_error = msg
         print(msg, file=sys.stderr)
@@ -229,8 +225,10 @@ class LLM_wrap:
         try:
             from openai import OpenAI
         except ImportError:
-            self._set_error(f'openai package required for {self._get_responses_api_keywords()} (Responses API)')
+            self._set_error('openai package required for gpt-5-codex (Responses API)')
             return []
+
+        import time
 
         # Extract model name without provider prefix
         model_name = model.replace('openai/', '')
@@ -281,104 +279,77 @@ class LLM_wrap:
                 'input': input_text[:500] + '...' if len(input_text) > 500 else input_text,
             }
 
-            # Extract text from response - Try multiple fields
+            # Extract text from response using output_text property
+            # The output_text property automatically aggregates all output_text items from the output list
             response_text = None
+            extraction_method = None
 
-            # Try all possible response fields
             if hasattr(response, 'output_text'):
                 response_text = response.output_text
                 extraction_method = 'output_text'
-            elif hasattr(response, 'text'):
-                response_text = response.text
-                extraction_method = 'text'
-            elif hasattr(response, 'content'):
-                response_text = response.content
-                extraction_method = 'content'
-            elif hasattr(response, 'output'):
-                output = response.output
-                if isinstance(output, str):
-                    response_text = output
-                    extraction_method = 'output (string)'
-                elif hasattr(output, 'content'):
-                    # Check if content is a list (Responses API case)
-                    content = output.content
-                    if isinstance(content, list) and len(content) > 0:
-                        if hasattr(content[0], 'text'):
-                            response_text = content[0].text
-                            extraction_method = 'output.content[0].text'
-                        else:
-                            response_text = str(content[0])
-                            extraction_method = 'output.content[0] (str)'
-                    elif isinstance(content, str):
-                        response_text = content
-                        extraction_method = 'output.content (string)'
-                    else:
-                        response_text = str(content)
-                        extraction_method = 'output.content (fallback)'
-                elif hasattr(output, 'text'):
-                    response_text = output.text
-                    extraction_method = 'output.text'
-                elif isinstance(output, list) and len(output) > 0:
-                    # Sometimes output is a list of message objects
-                    if hasattr(output[0], 'content'):
-                        # For Responses API: output[0].content is also a list
-                        content = output[0].content
-                        if isinstance(content, list) and len(content) > 0:
-                            # Extract text from the first content item
-                            if hasattr(content[0], 'text'):
-                                response_text = content[0].text
-                                extraction_method = 'output[0].content[0].text'
-                            else:
-                                response_text = str(content[0])
-                                extraction_method = 'output[0].content[0] (str)'
-                        elif isinstance(content, str):
-                            response_text = content
-                            extraction_method = 'output[0].content (string)'
-                        else:
-                            response_text = str(content)
-                            extraction_method = 'output[0].content (fallback)'
+
+                # If output_text is empty but output exists, try extracting from output items directly
+                # This handles reasoning models where content might be in different item types
+                if not response_text and hasattr(response, 'output') and response.output:
+                    texts = []
+                    for item in response.output:
+                        # Try to get text from various possible locations
+                        if hasattr(item, 'text') and item.text:
+                            texts.append(item.text)
+                        elif hasattr(item, 'content'):
+                            content = item.content
+                            if isinstance(content, str):
+                                texts.append(content)
+                            elif isinstance(content, list):
+                                for content_item in content:
+                                    if hasattr(content_item, 'text') and content_item.text:
+                                        texts.append(content_item.text)
+                    if texts:
+                        response_text = '\n\n'.join(texts)
+                        extraction_method = 'output[].text (fallback)'
+
             elif hasattr(response, 'choices') and response.choices:
-                # Fallback to choices structure
+                # Fallback to choices structure (for compatibility with older API versions)
                 for choice in response.choices:
                     if hasattr(choice, 'message') and hasattr(choice.message, 'content'):
                         response_text = choice.message.content
                         extraction_method = 'choices[].message.content'
                         break
-                    elif hasattr(choice, 'text'):
-                        response_text = choice.text
-                        extraction_method = 'choices[].text'
-                        break
 
-            if response_text:
+            # Check if we extracted text (use 'is not None' to handle empty strings)
+            if response_text is not None and len(response_text) > 0:
                 answers.append(response_text)
                 log_data['extraction_method'] = extraction_method
                 log_data['response_length'] = len(response_text)
+            elif response_text is not None and len(response_text) == 0:
+                log_data['warning'] = 'Response text was empty string'
+                log_data['extraction_method'] = extraction_method
+                # Still report error if truly empty
+                self._set_error('Responses API returned empty text')
             else:
                 # Log the actual response structure for debugging
                 log_data['error'] = 'Could not extract text from response'
                 log_data['response_type'] = str(type(response))
-                log_data['response_dict'] = str(response)[:500] if hasattr(response, '__dict__') else 'N/A'
+                log_data['response_attrs'] = [attr for attr in dir(response) if not attr.startswith('_')][:20]
 
-                # DEBUG: Print detailed response structure
-                print('\n❌ [LLM DEBUG] Failed to extract text from response!')
+                # Print detailed debug info to help diagnose
+                print('\n⚠️  [LLM DEBUG] Response text extraction failed!')
                 print(f'   Response type: {type(response)}')
-                print(f'   Has output: {hasattr(response, "output")}')
+                print(f'   Has output_text: {hasattr(response, "output_text")}')
+                if hasattr(response, 'output_text'):
+                    print(f'   output_text value: {repr(response.output_text)}')
+                    print(f'   output_text type: {type(response.output_text)}')
                 if hasattr(response, 'output'):
-                    output = response.output
-                    print(f'   Output type: {type(output)}')
-                    if isinstance(output, list):
-                        print(f'   Output length: {len(output)}')
-                        if len(output) > 0:
-                            print(f'   Output[0] type: {type(output[0])}')
-                            print(f'   Output[0] has content: {hasattr(output[0], "content")}')
-                            if hasattr(output[0], 'content'):
-                                content = output[0].content
-                                print(f'   Output[0].content type: {type(content)}')
-                                print(f'   Output[0].content value: {str(content)[:200]}')
-                    elif hasattr(output, 'content'):
-                        print('   Output has content: True')
-                        print(f'   Output.content type: {type(output.content)}')
-                        print(f'   Output.content value: {str(output.content)[:200]}')
+                    print(f'   Has output: True, length: {len(response.output)}')
+                    if len(response.output) > 0:
+                        first_item = response.output[0]
+                        print(f'   output[0] type: {type(first_item)}')
+                        print(f'   output[0] attributes: {[a for a in dir(first_item) if not a.startswith("_")][:15]}')
+                        if hasattr(first_item, 'text'):
+                            print(f'   output[0].text: {repr(first_item.text[:200] if first_item.text else None)}')
+                        if hasattr(first_item, 'content'):
+                            print(f'   output[0].content type: {type(first_item.content)}')
+                print(f'   Available attributes: {[a for a in dir(response) if not a.startswith("_")][:20]}')
 
                 self._set_error(f'Responses API returned data but could not extract text. Type: {type(response)}')
 
@@ -505,7 +476,9 @@ class LLM_wrap:
             return []
 
         # Detect if model requires Responses API instead of Chat Completions API
-        use_responses_api = any(keyword in model.lower() for keyword in self._get_responses_api_keywords())
+        # These models use OpenAI's newer Responses API endpoint
+        responses_api_keywords = ['gpt-5-codex', 'gpt-5', 'o3-mini', 'o3', 'o1-mini', 'o1-preview', 'o1']
+        use_responses_api = any(keyword in model.lower() for keyword in responses_api_keywords)
 
         # Use OpenAI SDK directly for Responses API models since litellm doesn't support it yet
         if use_responses_api:
@@ -516,7 +489,7 @@ class LLM_wrap:
         try:
             start = time.time()
 
-            # As the native `n` parameter might produce similar/repetitive responses, we implement a custom diversity strategy to make separate calls with varied parameters.
+            # For better diversity when n > 1, make separate calls with varied parameters
             # This works for all models and ensures more diverse responses
             if n > 1:
                 # Remove 'n' parameter and make multiple calls with varied parameters for diversity
@@ -528,42 +501,39 @@ class LLM_wrap:
                 base_top_p = varied_args.get('top_p', 0.9)
                 last_response = None  # Track only the last response for variation
 
-                # Scale temperature from 0 to 1 based on n, with one sample having default temperature.
-                # For n=2: use default temp and either 0 or 1;
-                # for n>2: distribute from 0 to 1, ensuring one sample has default temperature.
-                def temperature_variation(i):
-                    if (n == 2 and i == 0) or (n > 2 and i == n // 2):
-                        return base_temperature
-                    elif n == 2:
-                        return 0.0 if base_temperature > 0.5 else 1.0
-                    else:
-                        return i / (n - 1)
-
-                # Scale top_p intelligently: vary around default with more diversity
-                # For n>2: alternate between higher and lower values around default
-                def top_p_variation(i):
-                    if (n == 2 and i == 0) or (n > 2 and i == n // 2):
-                        return base_top_p
-                    elif n == 2:
-                        return max(0.1, min(1.0, 1.0 - base_top_p + 0.1))
-                    else:
-                        return max(0.1, base_top_p - i * 0.15) if i % 2 == 0 else min(1.0, base_top_p + (i - 1) * 0.15)
-
                 for i in range(n):
                     call_args = varied_args.copy()
 
-                    call_args['temperature'] = temperature_variation(i)
-                    call_args['top_p'] = top_p_variation(i)
+                    # Scale temperature from 0 to 1 based on n, with one sample having default temperature
+                    if n == 2:
+                        # For n=2: use default temp and either 0 or 1
+                        call_args['temperature'] = base_temperature if i == 0 else (0.0 if base_temperature > 0.5 else 1.0)
+                    else:
+                        # For n>2: distribute from 0 to 1, ensuring one sample has default temperature
+                        mid_index = n // 2
+                        if i == mid_index:
+                            call_args['temperature'] = base_temperature  # Keep default for one sample
+                        else:
+                            # Scale others from 0 to 1
+                            call_args['temperature'] = i / (n - 1)
 
-                    # Copy messages and add variation to avoid caching when seeking diversity.
-                    # This ensures each iteration gets its own copy of the messages.
+                    # Scale top_p intelligently: vary around default with more diversity
+                    if n == 2:
+                        call_args['top_p'] = base_top_p if i == 0 else max(0.1, min(1.0, 1.0 - base_top_p + 0.1))
+                    else:
+                        # For n>2: alternate between higher and lower values around default
+                        if i == n // 2:
+                            call_args['top_p'] = base_top_p  # Keep default for one sample
+                        elif i % 2 == 0:
+                            call_args['top_p'] = max(0.1, base_top_p - (i * 0.15))
+                        else:
+                            call_args['top_p'] = min(1.0, base_top_p + ((i - 1) * 0.15))
+
+                    # Copy messages and add variation to avoid caching when seeking diversity
                     call_args['messages'] = [msg.copy() for msg in call_args['messages']]
 
-                    # Inform the LLM model about the previous completion's content to encourage diversity.
-                    # We don't want to overwhelm it with all previous attempts, so we only require each completion to differ from the immediately previous one.
                     if i > 0 and last_response and call_args['messages']:
                         last_msg = call_args['messages'][-1]
-                        # It's only safe to change user queries/prompts because we don't corrupt system context or assistant's response text.
                         if last_msg.get('role') == 'user':
                             # Truncate last response to 2KB if needed
                             prev_response = last_response
@@ -581,11 +551,15 @@ class LLM_wrap:
                     if r and 'choices' in r and r['choices']:
                         last_response = r['choices'][0]['message']['content']
 
-                # Combine all responses into one result object
-                combined_choices = [c for resp in responses for c in resp['choices']]
+                # Combine responses
+                combined_choices = []
+                for resp in responses:
+                    combined_choices.extend(resp['choices'])
 
                 # Use the first response as template and replace choices
-                r_dict = responses[0].to_dict()
+                r = responses[0]
+                # Convert to dict first since ModelResponse doesn't support item assignment
+                r_dict = r.to_dict()
                 r_dict['choices'] = combined_choices
                 # Convert back to ModelResponse-like object for consistency
                 r = litellm.ModelResponse(**r_dict)

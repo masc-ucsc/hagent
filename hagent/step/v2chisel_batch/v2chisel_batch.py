@@ -2829,12 +2829,7 @@ class V2chisel_batch(Step):
             'restore_reason': locals().get('restore_result', {}).get('restore_reason', '')
             or locals().get('final_restore_result', {}).get('restore_reason', ''),
             'total_attempts': current_attempt,
-            'pipeline_success': (
-                llm_result.get('success', False)
-                and applier_result.get('success', False)
-                and compile_result.get('success', False)
-                and locals().get('verilog_gen_result', {}).get('success', False)
-            ),
+            'pipeline_success': pipeline_fully_successful,  # Use the correctly computed value that includes LEC check
             'golden_design_success': locals().get('golden_design_success', False),
             'lec_success': locals().get('lec_result', {}).get('success', False),
             'lec_method': locals().get('lec_result', {}).get('lec_method', 'none'),
@@ -2846,7 +2841,14 @@ class V2chisel_batch(Step):
         return result
 
     def _write_individual_bug_output(
-        self, bug_result: dict, bug_index: int, output_dir: str, input_config: dict, input_basename: str = None
+        self,
+        bug_result: dict,
+        bug_index: int,
+        output_dir: str,
+        input_config: dict,
+        input_basename: str = None,
+        is_single_bug: bool = False,
+        original_bug_number: int = None,
     ):
         """Write individual bug result to separate YAML file with statistics"""
         import os
@@ -2855,8 +2857,14 @@ class V2chisel_batch(Step):
         # Create output directory if it doesn't exist
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-        # Generate filename: result_singlecycle_00.yaml or result_bug_00.yaml
-        if input_basename:
+        # For single bug runs: use format {bugNum:02d}_{moduleName}.yaml
+        # For multiple bugs: use existing format
+        if is_single_bug and original_bug_number is not None:
+            # Extract module name from bug_result
+            module_name = bug_result.get('module_name', 'unknown')
+            output_filename = f'{original_bug_number:02d}_{module_name}.yaml'
+            print(f'📝 [Single Bug Output] Using filename: {output_filename}')
+        elif input_basename:
             # Use input file base name (e.g., "all_verilog_diffs_A_singlecycle" -> "result_singlecycle_00.yaml")
             # Extract meaningful part from input name
             # Remove prefix and version markers
@@ -3004,12 +3012,21 @@ class V2chisel_batch(Step):
         output_file = self.output_file if hasattr(self, 'output_file') and self.output_file else 'output.yaml'
         output_dir = os.path.dirname(output_file) if os.path.dirname(output_file) else '.'
 
-        # Create unique directory for this run with timestamp
-        import datetime
+        # Detect single bug run
+        is_single_bug = len(bugs) == 1
 
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        individual_output_dir = os.path.join(output_dir, f'individual_results_{timestamp}')
-        print(f'📁 [V2chisel_batch] Individual results will be saved to: {individual_output_dir}')
+        # For single bug: output directly to specified path without timestamped folder
+        # For multiple bugs: use timestamped individual_results folder
+        if is_single_bug:
+            individual_output_dir = output_dir
+            print(f'📁 [V2chisel_batch] Single bug mode: Output will be saved directly to: {output_dir}')
+        else:
+            # Create unique directory for this run with timestamp
+            import datetime
+
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            individual_output_dir = os.path.join(output_dir, f'individual_results_{timestamp}')
+            print(f'📁 [V2chisel_batch] Multiple bugs mode: Individual results will be saved to: {individual_output_dir}')
 
         # Extract input basename for individual file naming
         input_basename = None
@@ -3018,17 +3035,24 @@ class V2chisel_batch(Step):
             print(f'📝 [V2chisel_batch] Individual files will use basename: {input_basename}')
 
         for i, bug_entry in enumerate(bugs):
+            # Get original bug number (1-based) if available
+            original_bug_number = bug_entry.get('_original_bug_number', i + 1)
+
             try:
-                bug_result = self._process_single_bug(i, bug_entry, local_files, docker_container, docker_patterns)
+                bug_result = self._process_single_bug(
+                    original_bug_number - 1, bug_entry, local_files, docker_container, docker_patterns
+                )
                 results.append(bug_result)
 
                 # Write individual bug output immediately
                 self._write_individual_bug_output(
                     bug_result=bug_result,
-                    bug_index=i,
+                    bug_index=original_bug_number - 1,  # Pass 0-based index
                     output_dir=individual_output_dir,
                     input_config=self.input_data,
                     input_basename=input_basename,
+                    is_single_bug=is_single_bug,
+                    original_bug_number=original_bug_number,
                 )
 
                 # Show progress based on actual pipeline success
@@ -3274,15 +3298,19 @@ Examples:
             print(f'❌ [V2chisel_batch] Invalid bug range specification: {e}')
             return 1
 
-    # Get filtered bugs
+    # Get filtered bugs and their original indices
     filtered_bugs = selector.get_bugs()
+    selected_indices = selector.get_selected_indices()
+
+    # Attach original bug indices to each bug (1-based)
+    for bug, original_idx in zip(filtered_bugs, sorted(selected_indices)):
+        bug['_original_bug_number'] = original_idx
 
     # Show selection summary
     if args.skip_successful or args.bugs:
         print('=' * 80)
         print(f'📊 BUG SELECTION: {selector.get_selection_summary()}')
         if len(filtered_bugs) < original_bug_count:
-            selected_indices = selector.get_selected_indices()
             print(f'   Selected bug indices: {selected_indices}')
         print('=' * 80)
         print()
