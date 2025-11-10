@@ -2784,6 +2784,14 @@ class V2chisel_batch(Step):
         # Get DAC metrics dict
         dac_metrics_dict = bug_report.get_dac_report_dict()
 
+        # Use 'any()' logic to check if ANY iteration succeeded at each stage
+        # This prevents showing inconsistent results when retries happen
+        llm_success_any = any(iter_result.llm_success for iter_result in bug_report.iterations)
+        applier_success_any = any(iter_result.applier_success for iter_result in bug_report.iterations)
+        compile_success_any = any(iter_result.compilation_success for iter_result in bug_report.iterations)
+        verilog_gen_success_any = any(iter_result.verilog_gen_success for iter_result in bug_report.iterations)
+        lec_success_any = any(iter_result.lec_success for iter_result in bug_report.iterations)
+
         # Return results for this bug
         result = {
             'bug_index': bug_idx,
@@ -2806,17 +2814,17 @@ class V2chisel_batch(Step):
             'hints_source': hints_source,
             'final_hints': final_hints,
             'has_hints': bool(final_hints.strip()),
-            'llm_success': llm_result.get('success', False),
+            'llm_success': llm_success_any,  # Use any() logic for consistency
             'generated_chisel_diff': generated_chisel_diff,
             'llm_prompt_used': llm_result.get('prompt_used', ''),
-            'llm_error': llm_result.get('error', '') if not llm_result.get('success', False) else '',
-            'applier_success': applier_result.get('success', False),
-            'applier_error': applier_result.get('error', '') if not applier_result.get('success', False) else '',
-            'compile_success': compile_result.get('success', False),
-            'compile_error': compile_result.get('error', '') if not compile_result.get('success', False) else '',
+            'llm_error': llm_result.get('error', '') if not llm_success_any else '',
+            'applier_success': applier_success_any,  # Use any() logic for consistency
+            'applier_error': applier_result.get('error', '') if not applier_success_any else '',
+            'compile_success': compile_success_any,  # Use any() logic for consistency
+            'compile_error': compile_result.get('error', '') if not compile_success_any else '',
             'compile_method': compile_result.get('compilation_method', ''),
             'verilog_generation_attempted': 'verilog_gen_result' in locals() and current_attempt <= max_retries,
-            'verilog_generation_success': locals().get('verilog_gen_result', {}).get('success', False),
+            'verilog_generation_success': verilog_gen_success_any,  # Use any() logic for consistency
             'verilog_generation_error': locals().get('verilog_gen_result', {}).get('error', ''),
             'lec_attempted': lec_result.get('success', False) or 'error' in lec_result,
             'lec_equivalent': lec_result.get('lec_passed', None),
@@ -2831,7 +2839,7 @@ class V2chisel_batch(Step):
             'total_attempts': current_attempt,
             'pipeline_success': pipeline_fully_successful,  # Use the correctly computed value that includes LEC check
             'golden_design_success': locals().get('golden_design_success', False),
-            'lec_success': locals().get('lec_result', {}).get('success', False),
+            'lec_success': lec_success_any,  # Use any() logic for consistency
             'lec_method': locals().get('lec_result', {}).get('lec_method', 'none'),
         }
 

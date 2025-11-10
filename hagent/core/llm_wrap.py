@@ -259,12 +259,90 @@ class LLM_wrap:
             # - Uses 'input' instead of 'messages'
             # - Uses 'max_output_tokens' instead of 'max_tokens'
             # - Does NOT support temperature, top_p, presence_penalty, frequency_penalty for reasoning models
+
+            # DEBUG: Print llm_args to see what we received
+            print(f'[LLM_wrap DEBUG] llm_args received: {llm_args}')
+            print(f'[LLM_wrap DEBUG] model_name: {model_name}')
+
+            # Reasoning models need more tokens for internal reasoning + output
+            # These models often timeout with default 2048 tokens
+            # Use moderate values - too many tokens can cause "overthinking"
+            if 'o3-mini' in model_name.lower():
+                default_tokens = 16384  # 16k for o3-mini (moderate, prevents overthinking)
+            elif 'o3' in model_name.lower():
+                default_tokens = 32768  # 32k for o3 (full version)
+            elif 'gpt-5-codex' in model_name.lower() or 'codex' in model_name.lower():
+                default_tokens = 16384  # 16k for gpt-5-codex (moderate, was causing issues at 64k)
+            else:
+                default_tokens = 16384  # 16k default for other reasoning models
+
+            print(f'[LLM_wrap DEBUG] default_tokens calculated: {default_tokens}')
+            print(f'[LLM_wrap DEBUG] llm_args.get("max_tokens"): {llm_args.get("max_tokens", "NOT SET")}')
+
+            max_tokens = llm_args.get('max_tokens', default_tokens)
+            print(f'[LLM_wrap DEBUG] final max_tokens: {max_tokens}')
+
+            # Log the token limit being used for debugging
+            print(f'[LLM_wrap] Using max_output_tokens: {max_tokens} for model: {model_name}')
+            print(f'[LLM_wrap] Input length: {len(input_text)} characters')
+            print(f'[LLM_wrap] Input preview (first 500 chars): {input_text[:500]}...')
+
+            # Make the API call
             response = client.responses.create(
                 model=model_name,
                 input=input_text,
-                max_output_tokens=llm_args.get('max_tokens', 2048),
+                max_output_tokens=max_tokens,
             )
             end = time.time()
+
+            # DEBUG: Print complete response structure
+            print('\n' + '=' * 80)
+            print('📋 [LLM_wrap DEBUG] FULL RESPONSE STRUCTURE')
+            print('=' * 80)
+            print(f'Response type: {type(response)}')
+            print(f'Response class: {response.__class__.__name__}')
+
+            # Print all non-private attributes
+            print('\n🔍 All response attributes:')
+            for attr in dir(response):
+                if not attr.startswith('_'):
+                    try:
+                        value = getattr(response, attr)
+                        if not callable(value):
+                            print(f'  {attr}: {repr(value)[:200]}')
+                    except Exception as e:
+                        print(f'  {attr}: <error accessing: {e}>')
+
+            # Special focus on output and output_text
+            print('\n📤 Output details:')
+            if hasattr(response, 'output'):
+                print(f'  output type: {type(response.output)}')
+                print(f'  output length: {len(response.output) if hasattr(response.output, "__len__") else "N/A"}')
+                if isinstance(response.output, list):
+                    for i, item in enumerate(response.output):
+                        print(f'\n  output[{i}]:')
+                        print(f'    type: {type(item).__name__}')
+                        for item_attr in ['type', 'text', 'reasoning', 'content']:
+                            if hasattr(item, item_attr):
+                                val = getattr(item, item_attr)
+                                if item_attr == 'content' and isinstance(val, list):
+                                    print(f'    {item_attr}: list with {len(val)} items')
+                                    for j, c in enumerate(val[:3]):
+                                        print(f'      [{j}]: {type(c).__name__}')
+                                        if hasattr(c, 'type'):
+                                            print(f'        type: {c.type}')
+                                        if hasattr(c, 'text'):
+                                            print(f'        text: {repr(c.text[:200])}...')
+                                elif val:
+                                    print(f'    {item_attr}: {repr(val)[:200]}...')
+                                else:
+                                    print(f'    {item_attr}: {repr(val)}')
+
+            if hasattr(response, 'output_text'):
+                print(f'\n  output_text property: {repr(response.output_text[:500])}...')
+                print(f'  output_text length: {len(response.output_text)}')
+
+            print('=' * 80 + '\n')
 
             # Convert OpenAI Responses API response to format compatible with our code
             # The Responses API uses 'output_text' field instead of 'choices'
@@ -324,6 +402,30 @@ class LLM_wrap:
             elif response_text is not None and len(response_text) == 0:
                 log_data['warning'] = 'Response text was empty string'
                 log_data['extraction_method'] = extraction_method
+
+                # DEBUG: Print detailed response structure to understand why output_text is empty
+                print('\n⚠️  [LLM DEBUG] output_text returned empty string!')
+                print(f'   Response type: {type(response)}')
+                print(f'   Response status: {response.status if hasattr(response, "status") else "N/A"}')
+                if hasattr(response, 'output'):
+                    print(f'   Output items: {len(response.output)}')
+                    for i, item in enumerate(response.output[:3]):  # Show first 3 items
+                        print(f'   output[{i}].type: {item.type if hasattr(item, "type") else "N/A"}')
+                        if hasattr(item, 'reasoning'):
+                            print(f'   output[{i}].reasoning: {item.reasoning[:100] if item.reasoning else None}...')
+                        if hasattr(item, 'text'):
+                            print(f'   output[{i}].text: {repr(item.text[:100] if item.text else None)}...')
+                        if hasattr(item, 'content'):
+                            content = item.content
+                            print(
+                                f'   output[{i}].content: {type(content)} with {len(content) if isinstance(content, list) else "N/A"} items'
+                            )
+                            if isinstance(content, list) and len(content) > 0:
+                                for j, c in enumerate(content[:2]):
+                                    print(f'      content[{j}].type: {c.type if hasattr(c, "type") else type(c)}')
+                                    if hasattr(c, 'text'):
+                                        print(f'      content[{j}].text: {repr(c.text[:100] if c.text else None)}...')
+
                 # Still report error if truly empty
                 self._set_error('Responses API returned empty text')
             else:
