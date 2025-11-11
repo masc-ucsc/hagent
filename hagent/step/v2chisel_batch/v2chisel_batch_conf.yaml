@@ -12,7 +12,7 @@ v2chisel_batch:
     aws_region_name: "us-east-1"
     # max_tokens: removed - let llm_wrap.py choose optimal defaults per model
     # Reasoning models (gpt-5-codex, o3-mini) need 32k-64k tokens to complete responses
-    temperature: 1
+    temperature: 0  # Restored to 1 - applier now handles whitespace variations
   
   # Initial prompt for first iteration
   prompt_initial:
@@ -39,7 +39,7 @@ v2chisel_batch:
         ```
         
         Please generate a unified diff for the Chisel code that will produce the desired Verilog changes.
-        
+
         CRITICAL REQUIREMENTS - FOLLOW EXACTLY:
         - Output ONLY the unified diff in standard format
         - Use minimal hunks containing only the necessary changes
@@ -48,6 +48,14 @@ v2chisel_batch:
         - Do NOT include phrases like "should be", "to", "Here is the answer"
         - Ensure the diff can be applied to existing Chisel source files
         - Your response must start with "---" and end with a complete unified diff
+
+        CRITICAL - REMOVAL LINES MUST BE EXACT COPIES FROM HINTS:
+        - For lines to REMOVE (marked with '-' in your diff): You MUST copy them EXACTLY from the hints above
+        - Do NOT recreate, rephrase, or reformat removal lines - copy them character-for-character
+        - Copy the EXACT indentation (spaces/tabs), spacing around operators, and comments from the hints
+        - Only ADDITION lines (marked with '+') should be your newly generated code
+        - Think: CUT exact lines from hints → PASTE as removal lines → ADD your new code
+        - If a line needs modification, show the EXACT original as removal, then your modified version as addition
 
         Generate ONLY the Chisel unified diff now:
 
@@ -85,7 +93,13 @@ v2chisel_batch:
         - Fixes the compilation error
         - Still achieves the target Verilog changes
         - Uses proper Chisel syntax
-        
+
+        CRITICAL - REMOVAL LINES MUST BE EXACT COPIES FROM HINTS:
+        - For lines to REMOVE (marked with '-'): Copy them EXACTLY from the hints above
+        - Do NOT recreate or reformat removal lines - copy character-for-character
+        - Copy EXACT indentation, spacing, and comments from hints
+        - Only ADDITION lines ('+') should be your new code
+
         Output ONLY the corrected unified diff:
 
   # Prompt for retry when LEC fails
@@ -119,7 +133,13 @@ v2chisel_batch:
         ```
         
         Please generate a refined unified diff that will pass LEC by ensuring logical equivalence with the target Verilog.
-        
+
+        CRITICAL - REMOVAL LINES MUST BE EXACT COPIES FROM HINTS:
+        - For lines to REMOVE (marked with '-'): Copy them EXACTLY from the hints above
+        - Do NOT recreate or reformat removal lines - copy character-for-character
+        - Copy EXACT indentation, spacing, and comments from hints
+        - Only ADDITION lines ('+') should be your new code
+
         Output ONLY the refined unified diff:
 
   # Prompt for final attempt with broader context
@@ -151,5 +171,11 @@ v2chisel_batch:
         - Alternative Chisel constructs that achieve the same Verilog
         - Broader context changes if needed
         - Different interpretation of the Verilog requirements
-        
+
+        CRITICAL - REMOVAL LINES MUST BE EXACT COPIES FROM HINTS:
+        - For lines to REMOVE (marked with '-'): Copy them EXACTLY from the hints above
+        - Do NOT recreate or reformat removal lines - copy character-for-character
+        - Copy EXACT indentation, spacing, and comments from hints
+        - Only ADDITION lines ('+') should be your new code
+
         Output ONLY the unified diff for this final attempt:
