@@ -18,7 +18,7 @@ For complete installation and setup — including Python dependencies, API keys,
 👉 [docs/install.md](docs/install.md)
 
 If you encounter any issues with Docker, see:  
-👉 [docs/docker_issues.md](docs/docker_issues.md)
+👉 [docs/docker_issues.md](docs/docker.md)
 
 
 ## MCP Quick Start
