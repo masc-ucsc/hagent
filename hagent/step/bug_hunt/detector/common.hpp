@@ -1,3 +1,6 @@
+// common.hpp
+// Shared declarations for invariance detector modules.
+
 #pragma once
 
 #include <bits/stdc++.h>
@@ -8,30 +11,13 @@ using namespace std;
 using Str   = string;
 using TimeT = uint64_t;
 
-static inline int popc(uint64_t x){ return __builtin_popcountll(x); }
-static inline uint64_t rotl(uint64_t v, int s){ return (v<<s)|(v>>(64-s)); }
-static inline uint64_t hash64(uint64_t x){
-    x ^= rotl(x, 25) ^ rotl(x, 47);  x *= 0x9e6c63d0676a9a99ULL;
-    x ^= rotl(x, 23) ^ rotl(x, 51);  x *= 0x9e6d62d06f6a9a95ULL;
-    return x ^ (x>>28);
-}
-
-Str joinStr(const vector<string>& items, const string& sep=", ");
-Str fmtDouble(double v, int precision=4);
-Str maskToList(uint64_t mask, int limit=8);
-
-struct SignalMeta{
-    int      width = 1;
-    uint64_t mask  = ~0ULL;
-};
-
-extern unordered_map<Str,SignalMeta> gSignalMeta;
-struct ScorerCfg;
-void applyWeightSpec(const Str& spec, ScorerCfg& cfg);
+int popc(uint64_t x);
+uint64_t rotl(uint64_t v, int s);
+uint64_t hash64(uint64_t x);
 
 struct PairKey{
     Str a,b;
-    bool operator==(const PairKey& o)const { return a==o.a && b==o.b; }
+    bool operator==(const PairKey& o) const { return a==o.a && b==o.b; }
 };
 struct PairKeyHash{
     size_t operator()(const PairKey& p) const{
@@ -118,7 +104,6 @@ struct SigAgg{
     uint64_t stable0_mask=~0ULL;
     uint64_t stable1_mask=~0ULL;
     uint64_t toggleWins=0;
-    uint64_t changeMask=0;
 
     inline void update(const SigWindowFeat& f, uint64_t mask){
         winCnt++;
@@ -127,10 +112,9 @@ struct SigAgg{
         stable0_mask &= (~f.seen1) & mask;
         stable1_mask &= (~f.seen0) & mask;
         if(f.toggles) toggleWins++;
-        changeMask |= (f.changed & mask);
     }
-    double meanEntropy()  const { return winCnt? entSum/double(winCnt) : 0.0; }
-    double meanDiversity()const { return winCnt? divSum/double(winCnt) : 0.0; }
+    double meanEntropy() const { return winCnt? entSum/double(winCnt) : 0.0; }
+    double meanDiversity() const { return winCnt? divSum/double(winCnt) : 0.0; }
 };
 
 enum class WindowMode{EVENTS,TIME,RETIRE};
@@ -146,13 +130,11 @@ class WindowManager{
     uint64_t evCnt_=0;
     TimeT    nextT_=0;
 public:
-    WindowManager(const WindowPolicy& p):pol_(p){
-        if(pol_.mode==WindowMode::TIME) nextT_=pol_.timeN;
-    }
+    explicit WindowManager(const WindowPolicy& p);
     bool shouldRotateEvent();
     bool shouldRotateTime(TimeT t);
     bool shouldRotateRetire(const Str& sig);
-    void resetEvent(){ evCnt_=0; }
+    void resetEvent();
 };
 
 struct VarInfo{ Str name; int width; };
@@ -182,30 +164,12 @@ private:
 
 struct ScoreEntry{
     Str name;
-    double score=0.0;
-    double dH=0.0,dDiv=0.0,mi=0.0;
-    double bitNovel=0.0, bitNovelNorm=0.0;
-    double pat=0.0;
-    double sf=0.0, sfNorm=0.0;
-    double newToggle=0.0, newToggleNorm=0.0;
-    double missToggle=0.0, missToggleNorm=0.0;
-    double width=1.0;
-    uint64_t novelMask=0;
-    uint64_t newMask=0;
-    uint64_t missMask=0;
+    double score;
+    double dH,dDiv,mi,bitNovel,pat;
 };
 struct ScorerCfg{
     bool mi=true,entropy=true,div=true,bloom=true;
     int  topKpairs=16;
-    double wEntropy=2.0;
-    double wDiversity=1.5;
-    double wMI=10.0;
-    double wBitNovel=60.0;
-    double wStableFlip=60.0;
-    double wNewToggle=55.0;
-    double wMissingToggle=55.0;
-    double wPattern=8.0;
-    double widthReference=32.0;
 };
 class Scorer{
     const unordered_map<Str,SigAgg>& pass;

@@ -4,9 +4,9 @@ int main(int argc,char**argv){
     vector<Str> passFiles, failFiles;
     Str outPath;
     WindowPolicy wpol;
-    wpol.eventsN=2000;
+    wpol.eventsN=50000;
     bool groupByFlop=true, ignoreCombOnly=false;
-    int  topk=200;
+    int  topk=100;
     int  topkPairs=16;
     uint64_t maxPairsPerWin=128;
     double scoreCutoff=0.1;
@@ -24,7 +24,6 @@ int main(int argc,char**argv){
         {"topk_pairs", required_argument,0,'K'},
         {"max_pairs_per_window",required_argument,0,'M'},
         {"score_cutoff", required_argument,0,'c'},
-        {"weight", required_argument,0,5},
         {"no_mi", no_argument,0,1},
         {"no_entropy", no_argument,0,2},
         {"no_diversity",no_argument,0,3},
@@ -46,31 +45,24 @@ int main(int argc,char**argv){
         case 'K': topkPairs=stoi(optarg); break;
         case 'M': maxPairsPerWin=stoull(optarg); break;
         case 'c': scoreCutoff=stod(optarg); break;
-        case 5:
-            try{ applyWeightSpec(optarg, scorerCfg); }
-            catch(const exception& e){
-                cerr<<"weight: "<<e.what()<<"\n"; return 1;
-            }
-            break;
         case 1: scorerCfg.mi=false; break;
         case 2: scorerCfg.entropy=false; break;
         case 3: scorerCfg.div=false; break;
         case 4: scorerCfg.bloom=false; break;
         case 'h':
         default:
-            cout<<"invariance_detect\n"
+            cerr<<"Usage: invariance_detect [options]\n"
                 <<"  --pass_vcd <file> (repeatable)\n"
                 <<"  --fail_vcd <file> (repeatable)\n"
                 <<"  --out <file>\n"
-                <<"  --window_events N     (default 2000)\n"
+                <<"  --window_events N     (default 50000)\n"
                 <<"  --window_time   N     (VCD ticks)\n"
                 <<"  --checkpoint_retire_signal SIG\n"
                 <<"  --group_by_flop / --ignore_comb_only\n"
-                <<"  --topk K              final report lines (default 200)\n"
+                <<"  --topk K              final report lines (default 100)\n"
                 <<"  --topk_pairs N        MI top-K (default 16)\n"
                 <<"  --max_pairs_per_window N (default 128)\n"
                 <<"  --score_cutoff D      (default 0.1)\n"
-                <<"  --weight key=value    adjust scoring weights (entropy,div,mi,bit,stable,new,missing,pattern,width_ref)\n"
                 <<"  --no_mi / --no_entropy / --no_diversity / --no_bloom\n";
             return 0;
         }
@@ -130,27 +122,9 @@ int main(int argc,char**argv){
 
     *out<<"=== Per-Net Anomalies ===\n";
     for(auto &e:ranked){
-        int widthInt = int(e.width+0.5);
-        if(widthInt<=0) widthInt=1;
-        *out<<e.name<<" "<<fmtDouble(e.score,3)
-            <<" (dH="<<fmtDouble(e.dH,3)
-            <<",dDiv="<<fmtDouble(e.dDiv,3)
-            <<",MI="<<fmtDouble(e.mi,3)
-            <<",BitNovel="<<int(std::round(e.bitNovel))<<"/"<<widthInt<<"("<<fmtDouble(e.bitNovelNorm,3)<<")"
-            <<",New="<<int(std::round(e.newToggle))<<"/"<<widthInt<<"("<<fmtDouble(e.newToggleNorm,3)<<")"
-            <<",Gone="<<int(std::round(e.missToggle))<<"/"<<widthInt<<"("<<fmtDouble(e.missToggleNorm,3)<<")"
-            <<",SF="<<int(std::round(e.sf))<<"/"<<widthInt<<"("<<fmtDouble(e.sfNorm,3)<<")"
-            <<",Pat="<<fmtDouble(e.pat,3)<<")\n";
-        vector<string> bitNotes;
-        auto sNovel = maskToList(e.novelMask);
-        if(!sNovel.empty()) bitNotes.push_back("novel="+sNovel);
-        auto sNew = maskToList(e.newMask);
-        if(!sNew.empty()) bitNotes.push_back("new="+sNew);
-        auto sMiss = maskToList(e.missMask);
-        if(!sMiss.empty()) bitNotes.push_back("gone="+sMiss);
-        if(!bitNotes.empty()){
-            *out<<"    bits "<<joinStr(bitNotes, " ")<<"\n";
-        }
+        *out<<e.name<<" "<<e.score
+            <<" (dH="<<e.dH<<",dDiv="<<e.dDiv<<",MI="<<e.mi
+            <<",BitNovel="<<e.bitNovel<<",Pat="<<e.pat<<")\n";
     }
     if(groupByFlop){
         *out<<"\n=== Group (Seq-Boundary) Anomalies ===\n";
