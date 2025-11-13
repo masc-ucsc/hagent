@@ -2,7 +2,7 @@ v2chisel_batch:
   # Retry configuration
   retry_config:
     max_compile_retries: 3  # Max attempts for compilation errors
-    max_lec_retries: 2      # Max attempts for LEC failures
+    max_lec_retries: 3      # Max attempts for LEC failures
 
   llm:
     # model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
@@ -179,3 +179,42 @@ v2chisel_batch:
         - Only ADDITION lines ('+') should be your new code
 
         Output ONLY the unified diff for this final attempt:
+
+  # Prompt when removal lines are ambiguous (multiple identical lines in hints)
+  prompt_ambiguous_removal:
+    - role: system
+      content: |
+        Your previous diff had ambiguous removal lines - multiple identical lines exist in the hints.
+        You must include MORE CONTEXT (surrounding lines) to make the removal location unique and specific.
+
+    - role: user
+      content: |
+        Your previous diff could not be applied because some removal lines are AMBIGUOUS.
+
+        The following removal lines appear MULTIPLE TIMES in the code:
+        ```
+        {ambiguous_lines_info}
+        ```
+
+        PROBLEM: When a line appears multiple times, we don't know WHICH occurrence you want to remove.
+
+        SOLUTION: Include 2-3 CONTEXT LINES before and after the lines you want to remove.
+        This makes the location unique and unambiguous.
+
+        Original Verilog diff target:
+        ```
+        {verilog_diff}
+        ```
+
+        Chisel hints (note: some lines appear multiple times):
+        ```
+        {chisel_hints}
+        ```
+
+        CRITICAL REQUIREMENTS:
+        - Include at least 2-3 context lines BEFORE the lines you want to remove
+        - Include at least 2-3 context lines AFTER the lines you want to remove
+        - This creates a unique "fingerprint" that identifies the exact location
+        - Copy the EXACT removal lines from hints (character-for-character)
+
+        Output ONLY the corrected unified diff with MORE CONTEXT:

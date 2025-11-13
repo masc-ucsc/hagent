@@ -32,6 +32,7 @@ from hagent.core.llm_wrap import LLM_wrap
 from hagent.tool.module_finder import Module_finder
 from hagent.tool.docker_diff_applier import DockerDiffApplier
 from hagent.tool.equiv_check import Equiv_check
+from hagent.tool.chisel_diff_corrector import ChiselDiffCorrector
 from hagent.inou.builder import Builder
 from hagent.step.v2chisel_batch.bug_selector import BugSelector
 
@@ -69,6 +70,10 @@ class V2chisel_batch(Step):
 
         # Initialize Builder for automated Docker management
         self.builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.10')
+
+        # Initialize ChiselDiffCorrector for auto-correcting LLM-generated diffs
+        # Confidence threshold: 0.90 = moderate (0.85 aggressive, 0.95 conservative)
+        self.diff_corrector = ChiselDiffCorrector(confidence_threshold=0.90)
 
         # Initialize pipeline reporter for DAC metrics
         self.pipeline_reporter = PipelineReporter()
@@ -521,7 +526,6 @@ class V2chisel_batch(Step):
         """Find Chisel files inside Docker container with smart filtering"""
         # Use Builder API instead of subprocess for container access
 
-        print(f'[DEBUG] Searching for Chisel files for module: {module_name}')
         docker_files = []
 
         for pattern in docker_patterns:
@@ -694,7 +698,6 @@ class V2chisel_batch(Step):
             # Use builder.run_cmd instead of subprocess
             exit_code, stdout, stderr = self.builder.run_cmd(f'cat {file_path}')
             if exit_code == 0:
-                print(f'[DEBUG] Successfully read Docker file: {file_path}')
                 return stdout
             else:
                 raise Exception(f'Failed to read {file_path}: {stderr}')
@@ -872,10 +875,6 @@ class V2chisel_batch(Step):
         attempt_history: str = '',
     ) -> dict:
         """Call LLM to generate Chisel diff based on Verilog diff and hints"""
-        print(f'🚀 [LLM_CALL] ENTERING _call_llm_for_chisel_diff (attempt {attempt})')
-        print(f'🔧 [DEBUG] Verilog diff length: {len(verilog_diff)} characters')
-        print(f'🔧 [DEBUG] Chisel hints length: {len(chisel_hints)} characters')
-
         # Choose prompt based on attempt and error type
         if attempt == 1:
             prompt_key = 'prompt_initial'
@@ -921,23 +920,21 @@ class V2chisel_batch(Step):
             print(f'     📝 Template data keys: {list(template_data.keys())}')
 
             # Call LLM
-            print(f"🔍 DEBUG: About to call LLM inference with prompt_key='{prompt_key}', n=1")
-            print(f'🔍 DEBUG: Template data has keys: {list(template_data.keys())}')
             response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
-            print(
-                f'🔍 DEBUG: LLM inference returned: {type(response_list)}, len={len(response_list) if response_list else "None"}'
-            )
 
             # Check for LLM errors first
             if self.lw.last_error:
-                print(f'🔍 DEBUG: LLM error detected: {self.lw.last_error}')
                 return {'success': False, 'error': f'LLM error: {self.lw.last_error}'}
 
-            if not response_list or not response_list[0].strip():
-                print(f'🔍 DEBUG: Empty LLM response - response_list: {response_list}')
+            if not response_list or not response_list[0]:
                 return {'success': False, 'error': 'LLM returned empty response'}
 
-            generated_diff = response_list[0].strip()
+            # Handle None values (both Python None and string "None")
+            response_text = response_list[0]
+            if response_text is None or str(response_text).strip() in ['None', 'none', '']:
+                return {'success': False, 'error': 'LLM returned None or empty response'}
+
+            generated_diff = response_text.strip()
 
             # Clean up markdown fences if present
             if '```' in generated_diff:
@@ -1883,7 +1880,6 @@ class V2chisel_batch(Step):
                 print(f'❌ [LEC] FAILED: {target_file} files are NOT equivalent')
 
                 # Show debug info for non-equivalent files (like original)
-                print(f'🔍 [DEBUG] Checking content differences in {target_file}:')
                 golden_lines = golden_content.split('\n')
                 gate_lines = gate_content.split('\n')
                 for i, (g_line, t_line) in enumerate(zip(golden_lines, gate_lines)):
@@ -2235,10 +2231,15 @@ class V2chisel_batch(Step):
             if self.lw.last_error:
                 return {'success': False, 'error': f'LLM error: {self.lw.last_error}'}
 
-            if not response_list or not response_list[0].strip():
+            if not response_list or not response_list[0]:
                 return {'success': False, 'error': 'LLM returned empty response'}
 
-            generated_diff = response_list[0].strip()
+            # Handle None values (both Python None and string "None")
+            response_text = response_list[0]
+            if response_text is None or str(response_text).strip() in ['None', 'none', '']:
+                return {'success': False, 'error': 'LLM returned None or empty response'}
+
+            generated_diff = response_text.strip()
 
             if generated_diff is None:
                 return {'success': False, 'error': 'LLM returned None'}
@@ -2299,10 +2300,15 @@ class V2chisel_batch(Step):
             if self.lw.last_error:
                 return {'success': False, 'error': f'LLM error: {self.lw.last_error}'}
 
-            if not response_list or not response_list[0].strip():
+            if not response_list or not response_list[0]:
                 return {'success': False, 'error': 'LLM returned empty response'}
 
-            generated_diff = response_list[0].strip()
+            # Handle None values (both Python None and string "None")
+            response_text = response_list[0]
+            if response_text is None or str(response_text).strip() in ['None', 'none', '']:
+                return {'success': False, 'error': 'LLM returned None or empty response'}
+
+            generated_diff = response_text.strip()
 
             if generated_diff is None:
                 return {'success': False, 'error': 'LLM returned None'}
@@ -2419,34 +2425,12 @@ class V2chisel_batch(Step):
         current_attempt = 1
         previous_attempts = []  # Track previous failed attempts for LLM context
 
-        print(f'🔧 [DEBUG] Final hints length: {len(final_hints)} characters')
-        print(f'🔧 [DEBUG] Final hints (first 200 chars): {final_hints[:200]}...')
-
         if final_hints.strip():
             print('🤖 [LLM] Starting LLM call for Chisel diff generation...')
-
-            # DEBUG: Print the exact query being sent to LLM
-            # print('🔍 [DEBUG] VERILOG_DIFF being sent to LLM:')
-            # print('-' * 40)
-            # print(unified_diff)
-            # print('-' * 40)
-            #
-            # print('🔍 [DEBUG] CHISEL_HINTS being sent to LLM:')
-            # print('=' * 80)
-            # print(final_hints)  # Comment out hints printing
-            # print('=' * 80)
-            # print(f'🔍 [DEBUG] CHISEL_HINTS length: {len(final_hints)} characters')
-
-            print('🔧 [DEBUG] About to call _call_llm_for_chisel_diff with:')
-            print(f'     verilog_diff length: {len(unified_diff)}')
-            print(f'     chisel_hints length: {len(final_hints)}')
-            print(f'     attempt: {current_attempt}')
 
             llm_result = self._call_llm_for_chisel_diff(
                 verilog_diff=unified_diff, chisel_hints=final_hints, attempt=current_attempt
             )
-
-            print(f'🔧 [DEBUG] _call_llm_for_chisel_diff returned: {llm_result}')
 
             # Retry loop for LLM + Applier + Compiler
             while current_attempt <= max_retries:
@@ -2460,6 +2444,25 @@ class V2chisel_batch(Step):
 
                 generated_chisel_diff = llm_result['chisel_diff']
                 bug_report.mark_llm_success(generated_diff=generated_chisel_diff)
+
+                # STEP 5.5: Auto-correct diff removal lines to match hints exactly
+                correction_result = self.diff_corrector.correct_diff(
+                    generated_diff=generated_chisel_diff, hints=final_hints, verilog_diff=unified_diff
+                )
+
+                if correction_result['corrections_made'] > 0:
+                    print(f'✅ Auto-corrected {correction_result["corrections_made"]} removal line(s)')
+                    corrected = correction_result['corrected_diff']
+                    # Ensure corrected diff is not None or empty
+                    if corrected and corrected.strip():
+                        generated_chisel_diff = corrected
+                    else:
+                        print('⚠️  Corrector returned None/empty, using original diff')
+
+                if correction_result['is_ambiguous']:
+                    print(f'⚠️  Found {len(correction_result["ambiguous_lines"])} ambiguous line(s)')
+                    print('   Skipping clarification for now, proceeding with best guess...')
+
                 print(f'LLM Generated Chisel Diff (attempt {current_attempt}):')
                 print('=' * 50)
                 print(generated_chisel_diff)
@@ -2548,11 +2551,6 @@ class V2chisel_batch(Step):
                         bug_report.set_error('compilation', compile_error_msg)
 
                         # DEBUG: Print detailed compilation error
-                        print('🔍 [DEBUG] Full compilation error details:')
-                        print('=' * 60)
-                        print(compile_error_msg)
-                        print('=' * 60)
-
                         # RESTORE: Compilation failed, restore to ORIGINAL state before retry
                         restore_result = self._restore_to_original(docker_container, master_backup_info, 'compilation_failure')
 
@@ -2692,6 +2690,24 @@ class V2chisel_batch(Step):
 
                             generated_chisel_diff = llm_retry_result['chisel_diff']
                             bug_report.mark_llm_success(generated_diff=generated_chisel_diff)
+
+                            # STEP 5.5: Auto-correct diff removal lines to match hints exactly
+                            correction_result = self.diff_corrector.correct_diff(
+                                generated_diff=generated_chisel_diff, hints=final_hints, verilog_diff=unified_diff
+                            )
+
+                            if correction_result['corrections_made'] > 0:
+                                print(f'✅ Auto-corrected {correction_result["corrections_made"]} removal line(s)')
+                                corrected = correction_result['corrected_diff']
+                                # Ensure corrected diff is not None or empty
+                                if corrected and corrected.strip():
+                                    generated_chisel_diff = corrected
+                                else:
+                                    print('⚠️  Corrector returned None/empty, using original diff')
+
+                            if correction_result['is_ambiguous']:
+                                print(f'⚠️  Found {len(correction_result["ambiguous_lines"])} ambiguous line(s)')
+                                print('   Skipping clarification for now, proceeding with best guess...')
 
                             # Restore to original before applying new diff
                             self._restore_to_original(docker_container, master_backup_info, 'lec_retry')

@@ -274,14 +274,58 @@ class LLM_wrap:
 
             max_tokens = llm_args.get('max_tokens', default_tokens)
             print(f'[LLM_wrap] Detected Responses API model: {model}')
+            print(f'[LLM_wrap DEBUG] max_output_tokens: {max_tokens}')
+            print(f'[LLM_wrap DEBUG] input_text length: {len(input_text)} chars')
+            print(f'[LLM_wrap DEBUG] First 300 chars of input: {input_text[:300]}')
 
             # Make the API call
+            print(f'[LLM_wrap DEBUG] Calling API with model: {model_name}')
             response = client.responses.create(
                 model=model_name,
                 input=input_text,
                 max_output_tokens=max_tokens,
             )
+
+            # For reasoning models, we need to POLL until completion
+            # The initial response has status='incomplete' and we need to wait
+            response_id = response.id
+            print(f'[LLM_wrap] Response ID: {response_id}')
+            print(f'[LLM_wrap] Initial status: {response.status if hasattr(response, "status") else "unknown"}')
+
+            # Poll until reasoning is complete
+            max_poll_time = 600  # 10 minutes max
+            poll_interval = 5  # Check every 5 seconds
+            elapsed = 0
+
+            while hasattr(response, 'status') and response.status == 'incomplete':
+                if elapsed >= max_poll_time:
+                    self._set_error(f'Responses API timeout after {max_poll_time}s - response still incomplete')
+                    return []
+
+                print(f'[LLM_wrap] Reasoning in progress... (elapsed: {elapsed}s)')
+                time.sleep(poll_interval)
+                elapsed += poll_interval
+
+                # Retrieve the updated response
+                response = client.responses.retrieve(response_id)
+
             end = time.time()
+            print(f'[LLM_wrap] Response completed in {end - start:.1f}s')
+            print(f'[LLM_wrap] Final status: {response.status if hasattr(response, "status") else "unknown"}')
+
+            # DEBUG: Print raw response structure
+            print(f'[LLM_wrap DEBUG] Response type: {type(response)}')
+            if hasattr(response, 'error') and response.error:
+                print(f'[LLM_wrap DEBUG] response.error: {response.error}')
+            if hasattr(response, 'output_text'):
+                print(f'[LLM_wrap DEBUG] response.output_text length: {len(response.output_text)} chars')
+                print(f'[LLM_wrap DEBUG] response.output_text preview: {repr(response.output_text)[:300]}')
+
+            if hasattr(response, 'output'):
+                print(f'[LLM_wrap DEBUG] response.output type: {type(response.output)}')
+                print(f'[LLM_wrap DEBUG] response.output length: {len(response.output)} items')
+            else:
+                print('[LLM_wrap DEBUG] response has NO output attribute!')
 
             # Convert OpenAI Responses API response to format compatible with our code
             # The Responses API uses 'output_text' field instead of 'choices'
@@ -364,6 +408,11 @@ class LLM_wrap:
                         extraction_method = 'choices[].message.content'
                         break
 
+            # DEBUG: Print what we extracted
+            print(f'[LLM_wrap DEBUG] response_text type: {type(response_text)}')
+            print(f'[LLM_wrap DEBUG] response_text value: {repr(response_text)[:200]}')
+            print(f'[LLM_wrap DEBUG] extraction_method: {extraction_method}')
+
             # Check if we extracted text (use 'is not None' to handle empty strings)
             if response_text is not None and len(response_text) > 0:
                 answers.append(response_text)
@@ -375,6 +424,11 @@ class LLM_wrap:
                 self._set_error('Responses API returned empty text')
             else:
                 # Log the actual response structure for debugging
+                print('[LLM_wrap DEBUG] Failed to extract text!')
+                print(f'[LLM_wrap DEBUG] response type: {type(response)}')
+                print(f'[LLM_wrap DEBUG] response attrs: {[attr for attr in dir(response) if not attr.startswith("_")][:20]}')
+                if hasattr(response, 'output'):
+                    print(f'[LLM_wrap DEBUG] response.output: {response.output}')
                 log_data['error'] = 'Could not extract text from response'
                 log_data['response_type'] = str(type(response))
                 log_data['response_attrs'] = [attr for attr in dir(response) if not attr.startswith('_')][:20]

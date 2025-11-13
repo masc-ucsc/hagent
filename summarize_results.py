@@ -14,7 +14,6 @@ Analyzes YAML result files and provides detailed statistics on:
 """
 
 import argparse
-import os
 from pathlib import Path
 from collections import defaultdict
 from ruamel.yaml import YAML
@@ -64,17 +63,36 @@ def analyze_single_bug(bug_result, source_file='unknown', file_timestamp=None):
         and lec_equivalent  # Must pass LEC equivalence check!
     )
 
+    # Extract the actual bug number from the filename
+    # Patterns: "01_Control.yaml", "debug_bug_17.yaml", "03_ImmediateGenerator.yaml"
+    import re
+
+    bug_number = None
+    if source_file:
+        # Try pattern: 01_Module.yaml or 03_Module.yaml
+        match = re.match(r'^(\d+)_', source_file)
+        if match:
+            bug_number = int(match.group(1))
+        else:
+            # Try pattern: debug_bug_17.yaml or test_bug_03.yaml
+            match = re.search(r'bug[_-]?(\d+)', source_file)
+            if match:
+                bug_number = int(match.group(1))
+
+    # If we couldn't extract from filename, fall back to bug_index from YAML
+    if bug_number is None:
+        bug_number = bug_result.get('bug_index', -1)
+
     analysis = {
         'source_file': source_file,  # Track which YAML file this bug came from
         'file_timestamp': file_timestamp,  # Track when the file was last modified
-        'bug_index': bug_result.get('bug_index', -1),
+        'bug_index': bug_result.get('bug_index', -1),  # Keep original for reference
+        'bug_number': bug_number,  # Actual bug number extracted from filename
         'verilog_file': bug_result.get('verilog_file', 'unknown'),
         'module_name': bug_result.get('module_name', 'unknown'),
-
         # Hint generation
         'has_hints': bug_result.get('has_hints', False),
         'hints_source': bug_result.get('hints_source', 'none'),
-
         # Pipeline stages
         'llm_success': llm_success,
         'applier_success': applier_success,
@@ -83,14 +101,12 @@ def analyze_single_bug(bug_result, source_file='unknown', file_timestamp=None):
         'lec_success': lec_success,
         'lec_equivalent': lec_equivalent,
         'pipeline_success': pipeline_success,  # Use recomputed value
-
         # Error information
         'llm_error': bug_result.get('llm_error', ''),
         'applier_error': bug_result.get('applier_error', ''),
         'compile_error': bug_result.get('compile_error', ''),
         'lec_error': bug_result.get('lec_error', ''),
         'failure_stage': bug_result.get('failure_stage', 'unknown'),
-
         # Iteration information
         'total_attempts': bug_result.get('total_attempts', 0),
         'success_at_iteration': bug_result.get('success_at_iteration', None),
@@ -139,8 +155,30 @@ def find_individual_results_dirs(output_dir):
     return sorted([d for d in output_path.glob('individual_results_*') if d.is_dir()])
 
 
-def print_summary(all_analyses, show_timestamps=False):
+def print_summary(all_analyses, show_timestamps=False, latest_only=False):
     """Print comprehensive summary of all bug analyses"""
+
+    # If latest_only is True, filter to only show the most recent result per test case
+    if latest_only and all_analyses:
+        # Group by (bug_number, verilog_file, module_name) to identify unique test cases
+        test_case_groups = defaultdict(list)
+
+        for analysis in all_analyses:
+            # Create a unique key for each test case using bug_number extracted from filename
+            key = (analysis['bug_number'], analysis['verilog_file'], analysis['module_name'])
+            test_case_groups[key].append(analysis)
+
+        # Keep only the most recent result for each test case
+        filtered_analyses = []
+        for key, analyses_list in test_case_groups.items():
+            # Sort by timestamp (newest first) and take the first one
+            latest = sorted(analyses_list, key=lambda x: x.get('file_timestamp', 0), reverse=True)[0]
+            filtered_analyses.append(latest)
+
+        print(f'📊 Showing LATEST results only ({len(test_case_groups)} unique test cases, {len(all_analyses)} total runs)')
+        print('   Use without --latest-only to see all historical runs\n')
+        all_analyses = filtered_analyses
+
     total_bugs = len(all_analyses)
 
     if total_bugs == 0:
@@ -171,14 +209,14 @@ def print_summary(all_analyses, show_timestamps=False):
     print()
 
     print('📈 STAGE-BY-STAGE SUCCESS RATES:')
-    print(f'  Hints Generated:       {hints_generated}/{total_bugs} ({hints_generated/total_bugs*100:.1f}%)')
-    print(f'  LLM Success:           {llm_successes}/{total_bugs} ({llm_successes/total_bugs*100:.1f}%)')
-    print(f'  Applier Success:       {applier_successes}/{total_bugs} ({applier_successes/total_bugs*100:.1f}%)')
-    print(f'  Compile Success:       {compile_successes}/{total_bugs} ({compile_successes/total_bugs*100:.1f}%)')
-    print(f'  Verilog Gen Success:   {verilog_successes}/{total_bugs} ({verilog_successes/total_bugs*100:.1f}%)')
-    print(f'  LEC Run Success:       {lec_successes}/{total_bugs} ({lec_successes/total_bugs*100:.1f}%)')
-    print(f'  🎯 LEC PASS (Equiv):   {lec_passes}/{total_bugs} ({lec_passes/total_bugs*100:.1f}%)')
-    print(f'  ✅ Pipeline Complete:  {pipeline_successes}/{total_bugs} ({pipeline_successes/total_bugs*100:.1f}%)')
+    print(f'  Hints Generated:       {hints_generated}/{total_bugs} ({hints_generated / total_bugs * 100:.1f}%)')
+    print(f'  LLM Success:           {llm_successes}/{total_bugs} ({llm_successes / total_bugs * 100:.1f}%)')
+    print(f'  Applier Success:       {applier_successes}/{total_bugs} ({applier_successes / total_bugs * 100:.1f}%)')
+    print(f'  Compile Success:       {compile_successes}/{total_bugs} ({compile_successes / total_bugs * 100:.1f}%)')
+    print(f'  Verilog Gen Success:   {verilog_successes}/{total_bugs} ({verilog_successes / total_bugs * 100:.1f}%)')
+    print(f'  LEC Run Success:       {lec_successes}/{total_bugs} ({lec_successes / total_bugs * 100:.1f}%)')
+    print(f'  🎯 LEC PASS (Equiv):   {lec_passes}/{total_bugs} ({lec_passes / total_bugs * 100:.1f}%)')
+    print(f'  ✅ Pipeline Complete:  {pipeline_successes}/{total_bugs} ({pipeline_successes / total_bugs * 100:.1f}%)')
     print()
 
     print('❌ FAILURE BREAKDOWN:')
@@ -195,7 +233,7 @@ def print_summary(all_analyses, show_timestamps=False):
     for reason, label in failure_labels.items():
         count = failure_counts.get(reason, 0)
         if count > 0:
-            print(f'  {label:30s}: {count}/{total_bugs} ({count/total_bugs*100:.1f}%)')
+            print(f'  {label:30s}: {count}/{total_bugs} ({count / total_bugs * 100:.1f}%)')
     print()
 
     # Iteration statistics for successes
@@ -215,10 +253,10 @@ def print_summary(all_analyses, show_timestamps=False):
         avg_attempts = total_attempts_sum / len(successful_bugs) if successful_bugs else 0
 
         print(f'  Average attempts per successful bug: {avg_attempts:.2f}')
-        print(f'  Success by iteration:')
+        print('  Success by iteration:')
         for iter_num in sorted(iteration_counts.keys()):
             count = iteration_counts[iter_num]
-            print(f'    Iteration {iter_num}: {count} bugs ({count/len(successful_bugs)*100:.1f}%)')
+            print(f'    Iteration {iter_num}: {count} bugs ({count / len(successful_bugs) * 100:.1f}%)')
         print()
 
     # Module-based failure analysis
@@ -247,46 +285,91 @@ def print_summary(all_analyses, show_timestamps=False):
         print('-' * 60)
         for module in sorted(module_failures.keys(), key=lambda m: module_failures[m]['total'], reverse=True):
             stats = module_failures[module]
-            print(f'{module:20s} {stats["total"]:6d} {stats["llm"]:5d} {stats["applier"]:5d} {stats["compiler"]:5d} {stats["lec_mismatch"]:5d}')
+            print(
+                f'{module:20s} {stats["total"]:6d} {stats["llm"]:5d} {stats["applier"]:5d} {stats["compiler"]:5d} {stats["lec_mismatch"]:5d}'
+            )
         print()
 
     # Detailed bug-by-bug breakdown
     print('=' * 80)
-    print('📋 DETAILED BUG-BY-BUG BREAKDOWN:')
+    if not latest_only:
+        print('📋 DETAILED BUG-BY-BUG BREAKDOWN (All Runs, Grouped by Test Case):')
+    else:
+        print('📋 DETAILED BUG-BY-BUG BREAKDOWN:')
     print('=' * 80)
+
+    # Group by test case to show multiple runs together
+    test_case_groups = defaultdict(list)
+
+    for analysis in all_analyses:
+        # Create a unique key for each test case (bug) using bug_number from filename
+        key = (analysis['bug_number'], analysis['verilog_file'], analysis['module_name'])
+        test_case_groups[key].append(analysis)
+
+    # Sort groups by bug number
+    sorted_groups = sorted(test_case_groups.items(), key=lambda x: x[0][0])
 
     if show_timestamps:
         from datetime import datetime
-        print(f'{"Bug":4s} {"Module":20s} {"File":25s} {"Timestamp":19s} {"LLM":5s} {"Apply":6s} {"Comp":5s} {"LEC":5s} {"Status":15s}')
+
+        print(
+            f'{"Bug":4s} {"Module":20s} {"File":25s} {"Timestamp":19s} {"LLM":5s} {"Apply":6s} {"Comp":5s} {"LEC":5s} {"Status":15s}'
+        )
         print('-' * 120)
     else:
         print(f'{"Bug":4s} {"Module":20s} {"File":30s} {"LLM":5s} {"Apply":6s} {"Comp":5s} {"LEC":5s} {"Status":15s}')
         print('-' * 100)
 
-    for a in sorted(all_analyses, key=lambda x: (x['file_timestamp'] if x.get('file_timestamp') else 0, x['source_file'], x['bug_index'])):
-        bug_id = f"#{a['bug_index']+1:02d}"
-        module = a['module_name'][:20]
+    for (bug_number, verilog_file, module_name), analyses_list in sorted_groups:
+        # Sort runs by timestamp (newest first)
+        sorted_runs = sorted(analyses_list, key=lambda x: x.get('file_timestamp', 0), reverse=True)
 
-        if show_timestamps:
-            from datetime import datetime
-            source = a['source_file'][:25]
-            timestamp_str = datetime.fromtimestamp(a['file_timestamp']).strftime('%Y-%m-%d %H:%M:%S') if a.get('file_timestamp') else 'N/A'
-            llm = '✅' if a['llm_success'] else '❌'
-            applier = '✅' if a['applier_success'] else '❌'
-            compiler = '✅' if a['compile_success'] else '❌'
-            lec = '✅' if a['lec_equivalent'] else ('🔄' if a['lec_success'] else '❌')
-            status = 'SUCCESS' if a['pipeline_success'] else (a['failure_reason'] or 'FAILED')
-            print(f'{bug_id:4s} {module:20s} {source:25s} {timestamp_str:19s} {llm:5s} {applier:6s} {compiler:5s} {lec:5s} {status:15s}')
-        else:
-            source = a['source_file'][:30]
-            llm = '✅' if a['llm_success'] else '❌'
-            applier = '✅' if a['applier_success'] else '❌'
-            compiler = '✅' if a['compile_success'] else '❌'
-            lec = '✅' if a['lec_equivalent'] else ('🔄' if a['lec_success'] else '❌')
-            status = 'SUCCESS' if a['pipeline_success'] else (a['failure_reason'] or 'FAILED')
-            print(f'{bug_id:4s} {module:20s} {source:30s} {llm:5s} {applier:6s} {compiler:5s} {lec:5s} {status:15s}')
+        for i, a in enumerate(sorted_runs):
+            # Use bug_number extracted from filename instead of bug_index
+            bug_id = f'#{a["bug_number"]:02d}' if a['bug_number'] >= 0 else f'#{a["bug_index"] + 1:02d}'
+            module = a['module_name'][:20]
+
+            # Add indicator for multiple runs
+            if len(sorted_runs) > 1 and not latest_only:
+                if i == 0:
+                    bug_id = f'{bug_id}🆕'  # Newest run
+                else:
+                    bug_id = f'{bug_id}📅'  # Older run
+
+            if show_timestamps:
+                from datetime import datetime
+
+                source = a['source_file'][:25]
+                timestamp_str = (
+                    datetime.fromtimestamp(a['file_timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                    if a.get('file_timestamp')
+                    else 'N/A'
+                )
+                llm = '✅' if a['llm_success'] else '❌'
+                applier = '✅' if a['applier_success'] else '❌'
+                compiler = '✅' if a['compile_success'] else '❌'
+                lec = '✅' if a['lec_equivalent'] else ('🔄' if a['lec_success'] else '❌')
+                status = 'SUCCESS' if a['pipeline_success'] else (a['failure_reason'] or 'FAILED')
+                print(
+                    f'{bug_id:6s} {module:20s} {source:25s} {timestamp_str:19s} {llm:5s} {applier:6s} {compiler:5s} {lec:5s} {status:15s}'
+                )
+            else:
+                source = a['source_file'][:30]
+                llm = '✅' if a['llm_success'] else '❌'
+                applier = '✅' if a['applier_success'] else '❌'
+                compiler = '✅' if a['compile_success'] else '❌'
+                lec = '✅' if a['lec_equivalent'] else ('🔄' if a['lec_success'] else '❌')
+                status = 'SUCCESS' if a['pipeline_success'] else (a['failure_reason'] or 'FAILED')
+                print(f'{bug_id:6s} {module:20s} {source:30s} {llm:5s} {applier:6s} {compiler:5s} {lec:5s} {status:15s}')
 
     print('=' * 80)
+
+    # Show legend if there are multiple runs
+    if not latest_only and any(len(runs) > 1 for _, runs in test_case_groups.items()):
+        print('\n📅 Multiple runs detected:')
+        print('   🆕 = Most recent run')
+        print('   📅 = Previous run(s)')
+        print()
 
     # Files that failed at each stage
     print()
@@ -364,8 +447,9 @@ def print_summary(all_analyses, show_timestamps=False):
         print(f'⚠️  LEC MISMATCH DETAILS ({len(lec_mismatches)} bugs):')
         print('-' * 80)
         for a in lec_mismatches:
-            print(f'  Bug #{a["bug_index"]+1:02d} ({a["module_name"]}) - File: {a["source_file"]}')
-            print(f'    LEC ran successfully but designs are NOT equivalent')
+            bug_id = f'#{a["bug_number"]:02d}' if a['bug_number'] >= 0 else f'#{a["bug_index"] + 1:02d}'
+            print(f'  Bug {bug_id} ({a["module_name"]}) - File: {a["source_file"]}')
+            print('    LEC ran successfully but designs are NOT equivalent')
             print(f'    Total iterations: {a["total_attempts"]}')
             if a['lec_error']:
                 print(f'    LEC message: {a["lec_error"][:100]}...')
@@ -377,7 +461,8 @@ def print_summary(all_analyses, show_timestamps=False):
         print(f'⚠️  COMPILER FAILURE DETAILS ({len(compiler_failures)} bugs):')
         print('-' * 80)
         for a in compiler_failures:
-            print(f'  Bug #{a["bug_index"]+1:02d} ({a["module_name"]}) - File: {a["source_file"]}')
+            bug_id = f'#{a["bug_number"]:02d}' if a['bug_number'] >= 0 else f'#{a["bug_index"] + 1:02d}'
+            print(f'  Bug {bug_id} ({a["module_name"]}) - File: {a["source_file"]}')
             print(f'    Total iterations: {a["total_attempts"]}')
             if a['compile_error']:
                 error_preview = a['compile_error'][:150].replace('\n', ' ')
@@ -389,19 +474,24 @@ def main():
     parser = argparse.ArgumentParser(
         description='Summarize v2chisel_batch results from output directory',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''
+        epilog="""
 Examples:
   # Analyze results in a directory
   uv run python summarize_results.py -o /home/farzaneh/hagent/dino/gpt-5-codex-singlecycle-A
 
   # Analyze with verbose output
   uv run python summarize_results.py -o ./output_dir --verbose
-        '''
+        """,
     )
     parser.add_argument('-o', '--output-dir', required=True, help='Output directory containing YAML result files')
     parser.add_argument('--verbose', action='store_true', help='Show verbose output')
     parser.add_argument('--show-timestamps', action='store_true', help='Show file modification timestamps in output')
-    parser.add_argument('--since', type=str, help='Only include files modified after this date (format: YYYY-MM-DD or "today" or "2 days ago")')
+    parser.add_argument(
+        '--latest-only', action='store_true', help='Show only the most recent run for each test case (hide historical runs)'
+    )
+    parser.add_argument(
+        '--since', type=str, help='Only include files modified after this date (format: YYYY-MM-DD or "today" or "2 days ago")'
+    )
 
     args = parser.parse_args()
 
@@ -452,6 +542,7 @@ Examples:
     # Filter by timestamp if --since specified
     if since_timestamp:
         from datetime import datetime
+
         filtered_files = [f for f in yaml_files if f.stat().st_mtime >= since_timestamp]
         print(f'🕒 Filtering files since {datetime.fromtimestamp(since_timestamp).strftime("%Y-%m-%d %H:%M:%S")}')
         print(f'   Before filter: {len(yaml_files)} files')
@@ -475,6 +566,7 @@ Examples:
     print(f'📄 Found {len(yaml_files)} YAML files')
     if args.verbose:
         from datetime import datetime
+
         for f in yaml_files:
             timestamp_str = datetime.fromtimestamp(f.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
             print(f'   - {f.name} (modified: {timestamp_str})')
@@ -507,7 +599,7 @@ Examples:
     print(f'✅ Analyzed {len(all_analyses)} bug results\n')
 
     # Print comprehensive summary
-    print_summary(all_analyses, show_timestamps=args.show_timestamps)
+    print_summary(all_analyses, show_timestamps=args.show_timestamps, latest_only=args.latest_only)
 
     return 0
 
