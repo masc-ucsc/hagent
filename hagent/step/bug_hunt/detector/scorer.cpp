@@ -14,19 +14,16 @@ vector<ScoreEntry> Scorer::run(double cutoff,int topk){
         const Str& s=kv.first;
         const SigAgg& ff=kv.second;
         const SigAgg* pp = pass.count(s)? &pass.at(s): nullptr;
-
-        ScoreEntry entry;
-        entry.name = s;
-
+        double dH=0,dDiv=0,mi=0,bitNovel=0,pat=0;
         if(cfg.entropy){
             double fH=ff.meanEntropy();
             double pH=pp?pp->meanEntropy():0;
-            entry.dH = max(0.0, fH-pH);
+            dH = max(0.0, fH-pH);
         }
         if(cfg.div){
             double fD=ff.meanDiversity();
             double pD=pp?pp->meanDiversity():0;
-            entry.dDiv=max(0.0,fD-pD);
+            dDiv=max(0.0,fD-pD);
         }
         if(cfg.mi){
             vector<double> deltas;
@@ -48,9 +45,8 @@ vector<ScoreEntry> Scorer::run(double cutoff,int topk){
                 deltas.push_back(max(0.0,fMI-pMI));
             }
             sort(deltas.begin(),deltas.end(),greater<double>());
-            for(int i=0;i<cfg.topKpairs && i<(int)deltas.size();i++) entry.mi+=deltas[i];
+            for(int i=0;i<cfg.topKpairs && i<(int)deltas.size();i++) mi+=deltas[i];
         }
-
         uint64_t p_st0 = pp? pp->stable0_mask : 0ULL;
         uint64_t p_st1 = pp? pp->stable1_mask : 0ULL;
         uint64_t f_st0 = ff.stable0_mask;
@@ -58,54 +54,15 @@ vector<ScoreEntry> Scorer::run(double cutoff,int topk){
         uint64_t was_stable = p_st0 | p_st1;
         uint64_t now_unstable = ~(f_st0 | f_st1);
         uint64_t novel = was_stable & now_unstable;
-        entry.novelMask = novel;
-        entry.bitNovel  = double(popc(novel));
-
-        uint64_t pass_zero = p_st0 & ~p_st1;
-        uint64_t pass_one  = p_st1 & ~p_st0;
-        uint64_t fail_zero = f_st0 & ~f_st1;
-        uint64_t fail_one  = f_st1 & ~f_st0;
-        uint64_t stableFlipMask = (pass_zero & fail_one) | (pass_one & fail_zero);
-        entry.sf        = double(popc(stableFlipMask));
-        entry.sfNorm    = 0.0;
-
-        uint64_t passChange = pp? pp->changeMask : 0ULL;
-        uint64_t failChange = ff.changeMask;
-        entry.newMask  = failChange  & ~passChange;
-        entry.missMask = passChange  & ~failChange;
-        entry.newToggle  = double(popc(entry.newMask));
-        entry.missToggle = double(popc(entry.missMask));
+        bitNovel = double(popc(novel));
 
         uint64_t pHash = pp? simhash(pp->meanEntropy(),pp->meanDiversity()):0;
         uint64_t fHash = simhash(ff.meanEntropy(),ff.meanDiversity());
-        entry.pat = double(popc(pHash^fHash))/64.0;
+        pat = double(popc(pHash^fHash))/64.0;
 
-        auto metaIt = gSignalMeta.find(s);
-        double width = (metaIt!=gSignalMeta.end() && metaIt->second.width>0) ? double(metaIt->second.width) : 64.0;
-        entry.width = width;
-        if(width<=0.0) width = 1.0;
-
-        entry.bitNovelNorm    = entry.bitNovel    / width;
-        entry.sfNorm          = entry.sf          / width;
-        entry.newToggleNorm   = entry.newToggle   / width;
-        entry.missToggleNorm  = entry.missToggle  / width;
-
-        double widthScale = min(1.0, cfg.widthReference / width);
-        double score = 0.0;
-        if(cfg.entropy) score += cfg.wEntropy * entry.dH;
-        if(cfg.div)     score += cfg.wDiversity * entry.dDiv;
-        if(cfg.mi)      score += cfg.wMI * entry.mi;
-        score += cfg.wPattern * entry.pat;
-        double bitScore =
-            cfg.wBitNovel * entry.bitNovelNorm +
-            cfg.wStableFlip * entry.sfNorm +
-            cfg.wNewToggle * entry.newToggleNorm +
-            cfg.wMissingToggle * entry.missToggleNorm;
-        score += widthScale * bitScore;
-
-        entry.score = score;
-        if(entry.score<cutoff) continue;
-        out.push_back(entry);
+        double S = 2.0*dH + 1.5*dDiv + 2.5*mi + 3.0*bitNovel + 1.0*pat;
+        if(S<cutoff) continue;
+        out.push_back({s,S,dH,dDiv,mi,bitNovel,pat});
     }
     stable_sort(out.begin(),out.end(),[](auto&a,auto&b){
         if(a.score!=b.score) return a.score>b.score;

@@ -1,5 +1,22 @@
 #include "common.hpp"
 
+WindowManager::WindowManager(const WindowPolicy& p):pol_(p){
+    if(pol_.mode==WindowMode::TIME) nextT_=pol_.timeN;
+}
+bool WindowManager::shouldRotateEvent() {
+    if(pol_.mode!=WindowMode::EVENTS) return false;
+    return (++evCnt_ >= pol_.eventsN);
+}
+bool WindowManager::shouldRotateTime(TimeT t){
+    if(pol_.mode!=WindowMode::TIME) return false;
+    if(t>=nextT_){ nextT_+=pol_.timeN; return true; }
+    return false;
+}
+bool WindowManager::shouldRotateRetire(const Str& sig){
+    return (pol_.mode==WindowMode::RETIRE && !pol_.retireSig.empty() && sig==pol_.retireSig);
+}
+void WindowManager::resetEvent(){ evCnt_=0; }
+
 VcdStream::VcdStream(const Str& path, WindowManager& w,
                      unordered_map<Str,SigAgg>& a,
                      unordered_map<PairKey,uint32_t,PairKeyHash>& p,
@@ -63,9 +80,6 @@ void VcdStream::parseHeader(){
             id2var[id]={name,width};
             uint64_t mask = (width>=64) ? ~0ULL : ((width<=0)?0ULL:((1ULL<<width)-1ULL));
             nameMask[name]=mask;
-            auto &meta = gSignalMeta[name];
-            meta.width = width>0 ? width : 1;
-            meta.mask  = mask;
         }
     }
 }
