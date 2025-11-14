@@ -125,7 +125,6 @@ EOF
 chmod +x "${HAGENT_SERVER_SCRIPT_PATH}"
 echo "Done."
 
-# --- Final Instructions ---
 echo
 echo "--- Setup Complete! ---"
 echo
