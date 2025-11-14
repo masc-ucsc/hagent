@@ -3,7 +3,7 @@
 #include "driver/gpio.h"
 
 #define LED_GPIO 7
-#define BLNK_FREQ_MS 1000 
+#define BLNK_FREQ_MS 500 
 
 void blink_task(void *pvParameter)
 {
