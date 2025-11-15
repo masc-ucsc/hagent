@@ -26,28 +26,14 @@ class TestPathManager:
         PathManager.reset()
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_missing_execution_mode_fails_fast(self):
-        """Test that missing HAGENT_EXECUTION_MODE causes fail-fast exit."""
-        with patch('sys.exit') as mock_exit:
-            PathManager()
-            mock_exit.assert_called_once_with(1)
-
-    @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'invalid'}, clear=True)
-    def test_invalid_execution_mode_fails_fast(self):
-        """Test that invalid HAGENT_EXECUTION_MODE causes fail-fast exit."""
-        with patch('sys.exit') as mock_exit:
-            PathManager()
-            mock_exit.assert_called_once_with(1)
-
-    @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'local'}, clear=True)
     def test_local_mode_missing_variables_fails_fast(self):
-        """Test that local mode with missing variables causes fail-fast exit."""
+        """Test that local mode (no HAGENT_DOCKER) with missing variables causes fail-fast exit."""
         with patch('sys.exit') as mock_exit:
             PathManager()
             mock_exit.assert_called_once_with(1)
 
     def test_local_mode_valid_environment(self):
-        """Test local mode with valid environment variables."""
+        """Test local mode (no HAGENT_DOCKER) with valid environment variables."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             repo_dir = temp_path / 'repo'
@@ -58,7 +44,7 @@ class TestPathManager:
             repo_dir.mkdir()
 
             env_vars = {
-                'HAGENT_EXECUTION_MODE': 'local',
+                # No HAGENT_DOCKER → local mode
                 'HAGENT_REPO_DIR': str(repo_dir),
                 'HAGENT_BUILD_DIR': str(build_dir),
                 'HAGENT_CACHE_DIR': str(cache_dir),
@@ -67,7 +53,8 @@ class TestPathManager:
             with patch.dict(os.environ, env_vars, clear=True):
                 pm = PathManager()
 
-                assert pm.execution_mode == 'local'
+                assert pm.is_local_mode()
+                assert not pm.is_docker_mode()
                 assert pm.repo_dir == repo_dir.resolve()
                 assert pm.build_dir == build_dir.resolve()
                 assert pm.cache_dir == cache_dir.resolve()
@@ -78,18 +65,19 @@ class TestPathManager:
                 assert (cache_dir / 'build').exists()
                 assert (cache_dir / 'venv').exists()
 
-    @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'docker'}, clear=True)
+    @patch.dict(os.environ, {'HAGENT_DOCKER': 'test-image:latest'}, clear=True)
     def test_docker_mode_minimal_environment(self):
-        """Test Docker mode with minimal environment (only HAGENT_EXECUTION_MODE)."""
+        """Test Docker mode (HAGENT_DOCKER set) with minimal environment."""
         pm = PathManager()
-        assert pm.execution_mode == 'docker'
+        assert pm.is_docker_mode()
+        assert not pm.is_local_mode()
         # In Docker mode without host-mounted variables, use default container paths
         assert pm._repo_dir == Path('/code/workspace/repo')
         assert pm._build_dir == Path('/code/workspace/build')
         assert pm._cache_dir == Path('/code/workspace/cache')
 
     def test_docker_mode_with_container_variables(self):
-        """Test Docker mode with host-mounted environment variables."""
+        """Test Docker mode (HAGENT_DOCKER set) with host-mounted environment variables."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             repo_dir = temp_path / 'repo'
@@ -100,7 +88,7 @@ class TestPathManager:
             repo_dir.mkdir()
 
             env_vars = {
-                'HAGENT_EXECUTION_MODE': 'docker',
+                'HAGENT_DOCKER': 'test-image:latest',  # Docker mode activated
                 'HAGENT_REPO_DIR': str(repo_dir),
                 'HAGENT_BUILD_DIR': str(build_dir),
                 'HAGENT_CACHE_DIR': str(cache_dir),
@@ -109,7 +97,8 @@ class TestPathManager:
             with patch.dict(os.environ, env_vars, clear=True):
                 pm = PathManager()
 
-                assert pm.execution_mode == 'docker'
+                assert pm.is_docker_mode()
+                assert not pm.is_local_mode()
                 assert pm.repo_dir == repo_dir.resolve()
                 assert pm.build_dir == build_dir.resolve()
                 assert pm.cache_dir == cache_dir.resolve()
@@ -151,12 +140,52 @@ class TestPathManager:
                 found_path = PathManager.find_config()
                 assert found_path == str(config_file.resolve())
 
-    @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'local'}, clear=True)
+    @patch.dict(os.environ, {}, clear=True)
     def test_find_config_no_file(self):
         """Test find_config when no config file exists."""
         with patch('hagent.inou.path_manager.PathManager.possible_config_paths', return_value=['/nonexistent/path']):
             with pytest.raises(FileNotFoundError, match='No hagent.yaml found'):
                 PathManager.find_config()
+
+    def test_find_config_requires_read_permission(self, tmp_path):
+        """Ensure unreadable config files are ignored."""
+        config_file = tmp_path / 'hagent.yaml'
+        config_file.write_text('data: test')
+        config_file.chmod(0o000)
+
+        try:
+            with patch('hagent.inou.path_manager.PathManager.possible_config_paths', return_value=[str(config_file)]):
+                with pytest.raises(FileNotFoundError):
+                    PathManager.find_config()
+        finally:
+            config_file.chmod(0o644)
+
+    def test_find_config_translates_docker_path(self, tmp_path):
+        """Docker-style paths should be translated to host paths when possible."""
+        config_file = tmp_path / 'hagent.yaml'
+        config_file.write_text('test: docker')
+
+        env_vars = {'HAGENT_REPO_DIR': str(tmp_path)}
+
+        with patch.dict(os.environ, env_vars, clear=False):
+            with patch(
+                'hagent.inou.path_manager.PathManager.possible_config_paths',
+                return_value=['/code/workspace/repo/hagent.yaml'],
+            ):
+                found_path = PathManager.find_config()
+
+        assert found_path == str(config_file.resolve())
+
+    @patch.dict(os.environ, {'HAGENT_DOCKER': 'test-image:latest'}, clear=True)
+    def test_find_config_allows_container_path_fallback(self):
+        """In Docker mode (HAGENT_DOCKER set), container paths should be returned when host paths aren't available."""
+        with patch(
+            'hagent.inou.path_manager.PathManager.possible_config_paths',
+            return_value=['/code/workspace/repo/hagent.yaml'],
+        ):
+            found_path = PathManager.find_config()
+
+        assert found_path == '/code/workspace/repo/hagent.yaml'
 
     def test_get_cache_dir(self):
         """Test get_cache_dir method."""
@@ -277,7 +306,6 @@ class TestPathManager:
             cache_path.write_text('blocking file')
 
             env_vars = {
-                'HAGENT_EXECUTION_MODE': 'local',
                 'HAGENT_REPO_DIR': temp_dir,
                 'HAGENT_BUILD_DIR': temp_dir,
                 'HAGENT_CACHE_DIR': str(cache_path),
@@ -288,7 +316,7 @@ class TestPathManager:
                     PathManager()
                     mock_exit.assert_called_once_with(1)
 
-    @patch.dict(os.environ, {'HAGENT_EXECUTION_MODE': 'local', 'HAGENT_REPO_DIR': '/nonexistent'}, clear=True)
+    @patch.dict(os.environ, {'HAGENT_REPO_DIR': '/nonexistent'}, clear=True)
     def test_nonexistent_repo_dir_fails_fast(self):
         """Test that non-existent repo directory causes fail-fast exit."""
         with patch('sys.exit') as mock_exit:

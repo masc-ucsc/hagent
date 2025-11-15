@@ -26,7 +26,6 @@ def test_replicate_code():
     # Set up environment for Docker mode (needed for yosys in equiv_check)
     original_env = os.environ.copy()
     test_env = {
-        'HAGENT_EXECUTION_MODE': 'docker',
         'HAGENT_REPO_DIR': os.path.abspath('./output/test_replicate_code/repo'),
         'HAGENT_BUILD_DIR': os.path.abspath('./output/test_replicate_code/build'),
         'HAGENT_CACHE_DIR': os.path.abspath('./output/test_replicate_code/cache'),

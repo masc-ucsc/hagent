@@ -2,7 +2,7 @@
 Runner for HAgent - Simplified wrapper for Executor, ContainerManager, PathManager, and FileTracker
 
 Provides a unified interface that hides the complexity of the 4 underlying classes.
-Handles HAGENT_EXECUTION_MODE checking and provides lazy FileTracker initialization.
+Handles execution mode checking (docker if HAGENT_DOCKER is set) and provides lazy FileTracker initialization.
 """
 
 from typing import Optional, Tuple, Dict, Set, Any
@@ -19,13 +19,13 @@ class Runner:
     Simplified wrapper for Executor, ContainerManager, PathManager, and FileTracker.
 
     Provides a unified interface that handles:
-    - HAGENT_EXECUTION_MODE mode checking
+    - Execution mode checking (docker if HAGENT_DOCKER is set, otherwise local)
     - Automatic executor and container setup
     - Lazy FileTracker initialization (only when tracking is needed)
     - Common error handling and cleanup
 
     Example usage:
-        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.10')
         if not runner.setup():
             print(f"Setup failed: {runner.get_error()}")
             return
@@ -49,7 +49,7 @@ class Runner:
         Initialize Runner with optional Docker image.
 
         Args:
-            docker_image: Docker image to use if HAGENT_EXECUTION_MODE is 'docker'
+            docker_image: Docker image to use if HAGENT_DOCKER is set (docker mode)
         """
         self.docker_image = docker_image
         self.path_manager = PathManager()
@@ -62,7 +62,7 @@ class Runner:
         # Create container manager for docker mode
         if self.path_manager.is_docker_mode():
             if not docker_image:
-                self.set_error('Docker image must be provided when HAGENT_EXECUTION_MODE is docker')
+                self.set_error('Docker image must be provided when HAGENT_DOCKER is set (docker mode)')
                 return
             self.container_manager = ContainerManager(docker_image)
 
@@ -117,16 +117,6 @@ class Runner:
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
-        # Issue warning if command contains hardcoded container paths
-        if '/code/workspace/' in command:
-            import sys
-
-            print(f'WARNING: Command contains hardcoded /code/workspace path: {command}', file=sys.stderr)
-            print(
-                '  Use cwd argument or set_cwd instead to hardcoding /code/workspace to support local/docker seamlessly',
-                file=sys.stderr,
-            )
-
         # Use new unified FileSystem approach if available
         if self.filesystem:
             # Translate cwd='.' to executor's current working directory

@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 
 # Set environment before importing
-os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+# Docker mode enabled via HAGENT_DOCKER
 
 from hagent.step.v2chisel_batch.v2chisel_batch import V2chisel_batch
 from hagent.step.v2chisel_batch.components.hints_generator import HintsGenerator

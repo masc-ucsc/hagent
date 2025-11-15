@@ -31,12 +31,12 @@ class BugInfo:
         self.bug_entry = bug_entry
         self.bug_index = bug_index
 
-        # Extract core information - exactly matching original logic
-        self.file_name = bug_entry.get('file', 'unknown')
+        # Extract core information - support both 'file' and 'verilog_file' keys
+        self.file_name = bug_entry.get('verilog_file', bug_entry.get('file', 'unknown'))
         self.unified_diff = bug_entry.get('unified_diff', '')
 
-        # Extract module name from file name (remove .sv extension) - matches line 2876
-        self.module_name = os.path.splitext(self.file_name)[0] if self.file_name else None
+        # Extract module name - prefer explicit module_name, fall back to deriving from file name
+        self.module_name = bug_entry.get('module_name', os.path.splitext(self.file_name)[0] if self.file_name else None)
 
     def get_display_name(self) -> str:
         """Get a display-friendly name for this bug."""

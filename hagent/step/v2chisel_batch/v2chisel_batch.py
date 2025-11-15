@@ -21,7 +21,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 # Set up environment for Runner (Docker execution mode)
-os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+# Docker mode enabled via HAGENT_DOCKER
 
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -32,7 +32,9 @@ from hagent.core.llm_wrap import LLM_wrap
 from hagent.tool.module_finder import Module_finder
 from hagent.tool.docker_diff_applier import DockerDiffApplier
 from hagent.tool.equiv_check import Equiv_check
+from hagent.tool.chisel_diff_corrector import ChiselDiffCorrector
 from hagent.inou.builder import Builder
+from hagent.step.v2chisel_batch.bug_selector import BugSelector
 
 # Import components
 try:
@@ -41,6 +43,7 @@ try:
     from .components.hints_generator_v2 import HintsGeneratorV2
     from .components.golden_design_builder import GoldenDesignBuilder
     from .components.baseline_verilog_generator import BaselineVerilogGenerator
+    from .components.pipeline_reporter import PipelineReporter
 except ImportError:
     # Fallback for direct execution or testing
     from components.bug_info import BugInfo
@@ -48,6 +51,7 @@ except ImportError:
     from components.hints_generator_v2 import HintsGeneratorV2
     from components.golden_design_builder import GoldenDesignBuilder
     from components.baseline_verilog_generator import BaselineVerilogGenerator
+    from components.pipeline_reporter import PipelineReporter
 
 
 class V2chisel_batch(Step):
@@ -65,7 +69,18 @@ class V2chisel_batch(Step):
         self.use_hints_v2 = True  # Default to V2 for testing
 
         # Initialize Builder for automated Docker management
-        self.builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        self.builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.10')
+
+        # Initialize ChiselDiffCorrector for auto-correcting LLM-generated diffs
+        # Confidence threshold: 0.90 = moderate (0.85 aggressive, 0.95 conservative)
+        self.diff_corrector = ChiselDiffCorrector(confidence_threshold=0.90)
+
+        # Initialize pipeline reporter for DAC metrics
+        self.pipeline_reporter = PipelineReporter()
+
+        # Retry configuration (will be set from config in setup())
+        self.max_compile_retries = 3  # Default
+        self.max_lec_retries = 2  # Default
 
     def setup(self):
         """Initialize the batch processing step"""
@@ -83,6 +98,12 @@ class V2chisel_batch(Step):
         # Configuration - set these early before LLM initialization
         self.chisel_source_pattern = './tmp/src/main/scala/*/*.scala'  # Default pattern
         self.debug = True  # Enable debug output
+
+        # Load retry configuration
+        retry_config = self.template_config.template_dict.get('v2chisel_batch', {}).get('retry_config', {})
+        self.max_compile_retries = retry_config.get('max_compile_retries', 3)
+        self.max_lec_retries = retry_config.get('max_lec_retries', 2)
+        print(f'🔧 [V2chisel_batch] Retry config: compile={self.max_compile_retries}, lec={self.max_lec_retries}')
 
         # Allow override of hints_v2 flag from input YAML
         if 'use_hints_v2' in self.input_data:
@@ -505,7 +526,6 @@ class V2chisel_batch(Step):
         """Find Chisel files inside Docker container with smart filtering"""
         # Use Builder API instead of subprocess for container access
 
-        print(f'[DEBUG] Searching for Chisel files for module: {module_name}')
         docker_files = []
 
         for pattern in docker_patterns:
@@ -678,7 +698,6 @@ class V2chisel_batch(Step):
             # Use builder.run_cmd instead of subprocess
             exit_code, stdout, stderr = self.builder.run_cmd(f'cat {file_path}')
             if exit_code == 0:
-                print(f'[DEBUG] Successfully read Docker file: {file_path}')
                 return stdout
             else:
                 raise Exception(f'Failed to read {file_path}: {stderr}')
@@ -856,10 +875,6 @@ class V2chisel_batch(Step):
         attempt_history: str = '',
     ) -> dict:
         """Call LLM to generate Chisel diff based on Verilog diff and hints"""
-        print(f'🚀 [LLM_CALL] ENTERING _call_llm_for_chisel_diff (attempt {attempt})')
-        print(f'🔧 [DEBUG] Verilog diff length: {len(verilog_diff)} characters')
-        print(f'🔧 [DEBUG] Chisel hints length: {len(chisel_hints)} characters')
-
         # Choose prompt based on attempt and error type
         if attempt == 1:
             prompt_key = 'prompt_initial'
@@ -905,23 +920,21 @@ class V2chisel_batch(Step):
             print(f'     📝 Template data keys: {list(template_data.keys())}')
 
             # Call LLM
-            print(f"🔍 DEBUG: About to call LLM inference with prompt_key='{prompt_key}', n=1")
-            print(f'🔍 DEBUG: Template data has keys: {list(template_data.keys())}')
             response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
-            print(
-                f'🔍 DEBUG: LLM inference returned: {type(response_list)}, len={len(response_list) if response_list else "None"}'
-            )
 
             # Check for LLM errors first
             if self.lw.last_error:
-                print(f'🔍 DEBUG: LLM error detected: {self.lw.last_error}')
                 return {'success': False, 'error': f'LLM error: {self.lw.last_error}'}
 
-            if not response_list or not response_list[0].strip():
-                print(f'🔍 DEBUG: Empty LLM response - response_list: {response_list}')
+            if not response_list or not response_list[0]:
                 return {'success': False, 'error': 'LLM returned empty response'}
 
-            generated_diff = response_list[0].strip()
+            # Handle None values (both Python None and string "None")
+            response_text = response_list[0]
+            if response_text is None or str(response_text).strip() in ['None', 'none', '']:
+                return {'success': False, 'error': 'LLM returned None or empty response'}
+
+            generated_diff = response_text.strip()
 
             # Clean up markdown fences if present
             if '```' in generated_diff:
@@ -1214,13 +1227,19 @@ class V2chisel_batch(Step):
         except Exception as e:
             print(f'⚠️  [CLEANUP] Failed to remove backup: {e}')
 
-    def _apply_chisel_diff(self, chisel_diff: str, docker_container: str) -> dict:
-        """Apply generated Chisel diff to Docker container with backup support"""
+    def _apply_chisel_diff(self, chisel_diff: str, docker_container: str, target_file_path: str = None) -> dict:
+        """Apply generated Chisel diff to Docker container with backup support
+
+        Args:
+            chisel_diff: The diff to apply
+            docker_container: Container name
+            target_file_path: Optional - the exact file path to apply diff to (from hints)
+        """
         # print('🔧 [APPLIER] Starting diff application...')
 
         try:
             applier = DockerDiffApplier(self.builder)
-            success = applier.apply_diff_to_container(chisel_diff, dry_run=False)
+            success = applier.apply_diff_to_container(chisel_diff, target_file_path=target_file_path, dry_run=False)
 
             if success:
                 # print('✅ [APPLIER] Successfully applied Chisel diff to container')
@@ -1239,7 +1258,7 @@ class V2chisel_batch(Step):
 
         try:
             # Check if Main.scala or similar already exists using Builder API
-            find_cmd_str = 'find /code/workspace/repo/src -name "*.scala" -exec grep -l "object Main" {} \;'
+            find_cmd_str = r'find /code/workspace/repo/src -name "*.scala" -exec grep -l "object Main" {} \;'
 
             exit_code, stdout, stderr = self.builder.run_cmd(find_cmd_str)
 
@@ -1861,7 +1880,6 @@ class V2chisel_batch(Step):
                 print(f'❌ [LEC] FAILED: {target_file} files are NOT equivalent')
 
                 # Show debug info for non-equivalent files (like original)
-                print(f'🔍 [DEBUG] Checking content differences in {target_file}:')
                 golden_lines = golden_content.split('\n')
                 gate_lines = gate_content.split('\n')
                 for i, (g_line, t_line) in enumerate(zip(golden_lines, gate_lines)):
@@ -2213,10 +2231,15 @@ class V2chisel_batch(Step):
             if self.lw.last_error:
                 return {'success': False, 'error': f'LLM error: {self.lw.last_error}'}
 
-            if not response_list or not response_list[0].strip():
+            if not response_list or not response_list[0]:
                 return {'success': False, 'error': 'LLM returned empty response'}
 
-            generated_diff = response_list[0].strip()
+            # Handle None values (both Python None and string "None")
+            response_text = response_list[0]
+            if response_text is None or str(response_text).strip() in ['None', 'none', '']:
+                return {'success': False, 'error': 'LLM returned None or empty response'}
+
+            generated_diff = response_text.strip()
 
             if generated_diff is None:
                 return {'success': False, 'error': 'LLM returned None'}
@@ -2243,10 +2266,83 @@ class V2chisel_batch(Step):
             print(f'     ❌ LLM retry failed: {e}')
             return {'success': False, 'error': str(e)}
 
+    def _retry_llm_with_lec_error(self, verilog_diff: str, chisel_hints: str, current_chisel_diff: str, lec_error: str) -> dict:
+        """Retry LLM call with LEC failure feedback"""
+        print('🔄 [LLM] Retrying with LEC error feedback...')
+
+        # Use the LEC error prompt template for retry
+        template_data = {
+            'verilog_diff': verilog_diff,
+            'chisel_hints': chisel_hints,
+            'current_chisel_diff': current_chisel_diff,
+            'lec_error': lec_error,
+        }
+
+        try:
+            prompt_key = 'prompt_lec_error'
+
+            # Get the prompt configuration
+            full_config = self.template_config.template_dict.get('v2chisel_batch', {})
+            if prompt_key not in full_config:
+                return {'success': False, 'error': f'Prompt {prompt_key} not found in config'}
+
+            prompt_section = full_config[prompt_key]
+            prompt_template = LLM_template(prompt_section)
+
+            # Update LLM wrapper with new template
+            self.lw.chat_template = prompt_template
+            self.lw.name = 'v2chisel_batch_lec_retry'
+
+            # Call LLM
+            response_list = self.lw.inference(template_data, prompt_index=prompt_key, n=1)
+
+            # Check for LLM errors first
+            if self.lw.last_error:
+                return {'success': False, 'error': f'LLM error: {self.lw.last_error}'}
+
+            if not response_list or not response_list[0]:
+                return {'success': False, 'error': 'LLM returned empty response'}
+
+            # Handle None values (both Python None and string "None")
+            response_text = response_list[0]
+            if response_text is None or str(response_text).strip() in ['None', 'none', '']:
+                return {'success': False, 'error': 'LLM returned None or empty response'}
+
+            generated_diff = response_text.strip()
+
+            if generated_diff is None:
+                return {'success': False, 'error': 'LLM returned None'}
+
+            # Clean up the generated diff
+            if '```' in generated_diff:
+                lines = generated_diff.split('\n')
+                cleaned_lines = []
+                in_code_block = False
+
+                for line in lines:
+                    if line.strip().startswith('```'):
+                        in_code_block = not in_code_block
+                        continue
+                    if in_code_block or not line.strip().startswith('```'):
+                        cleaned_lines.append(line)
+
+                generated_diff = '\n'.join(cleaned_lines).strip()
+
+            print(f'     ✅ LLM LEC retry generated diff: {len(generated_diff)} characters')
+            return {'success': True, 'chisel_diff': generated_diff, 'prompt_used': prompt_key}
+
+        except Exception as e:
+            print(f'     ❌ LLM LEC retry failed: {e}')
+            return {'success': False, 'error': str(e)}
+
     def _process_single_bug(
         self, bug_idx: int, bug_entry: dict, local_files: list, docker_container: str, docker_patterns: list
     ) -> dict:
         """Process a single bug entry with module_finder"""
+
+        # Create pipeline report for DAC metrics tracking
+        file_name = bug_entry.get('file', 'unknown')
+        bug_report = self.pipeline_reporter.create_report(f'bug_{bug_idx}_{file_name}')
 
         # Initialize golden design success to False
         golden_design_success = False
@@ -2285,6 +2381,19 @@ class V2chisel_batch(Step):
         hints_source = hints_result['source']
         hits = hints_result.get('hits', [])
 
+        # Extract the target file path from hints (for applier to use)
+        target_chisel_file = None
+        if hits and len(hits) > 0:
+            # Use the top hit (highest confidence)
+            top_hit = hits[0]
+            if hasattr(top_hit, 'file_name') and top_hit.file_name:
+                if top_hit.file_name.startswith('docker:'):
+                    # Extract actual path from docker:container:/path format
+                    target_chisel_file = top_hit.file_name.split(':', 2)[2]
+                else:
+                    target_chisel_file = top_hit.file_name
+                print(f'🎯 [HINTS] Top hint file (will be used by applier): {target_chisel_file}')
+
         # Print hint files and paths (matches original output format)
         if hints_source == 'module_finder' and hits:
             print('Hint files:')
@@ -2312,46 +2421,48 @@ class V2chisel_batch(Step):
         applier_result = {}
         compile_result = {}
         generated_chisel_diff = ''
-        max_retries = 3
+        max_retries = self.max_compile_retries  # Use configured retry count
         current_attempt = 1
         previous_attempts = []  # Track previous failed attempts for LLM context
 
-        print(f'🔧 [DEBUG] Final hints length: {len(final_hints)} characters')
-        print(f'🔧 [DEBUG] Final hints (first 200 chars): {final_hints[:200]}...')
-
         if final_hints.strip():
             print('🤖 [LLM] Starting LLM call for Chisel diff generation...')
-
-            # DEBUG: Print the exact query being sent to LLM
-            # print('🔍 [DEBUG] VERILOG_DIFF being sent to LLM:')
-            # print('-' * 40)
-            # print(unified_diff)
-            # print('-' * 40)
-            #
-            # print('🔍 [DEBUG] CHISEL_HINTS being sent to LLM:')
-            # print('=' * 80)
-            # print(final_hints)  # Comment out hints printing
-            # print('=' * 80)
-            # print(f'🔍 [DEBUG] CHISEL_HINTS length: {len(final_hints)} characters')
-
-            print('🔧 [DEBUG] About to call _call_llm_for_chisel_diff with:')
-            print(f'     verilog_diff length: {len(unified_diff)}')
-            print(f'     chisel_hints length: {len(final_hints)}')
-            print(f'     attempt: {current_attempt}')
 
             llm_result = self._call_llm_for_chisel_diff(
                 verilog_diff=unified_diff, chisel_hints=final_hints, attempt=current_attempt
             )
 
-            print(f'🔧 [DEBUG] _call_llm_for_chisel_diff returned: {llm_result}')
-
             # Retry loop for LLM + Applier + Compiler
             while current_attempt <= max_retries:
+                # Track this iteration in reporter
+                bug_report.add_iteration(current_attempt)
+
                 if not llm_result['success']:
                     print(f'❌ [LLM] Failed to generate Chisel diff: {llm_result.get("error", "Unknown error")}')
+                    bug_report.set_error('llm', llm_result.get('error', 'Unknown error'))
                     break
 
                 generated_chisel_diff = llm_result['chisel_diff']
+                bug_report.mark_llm_success(generated_diff=generated_chisel_diff)
+
+                # STEP 5.5: Auto-correct diff removal lines to match hints exactly
+                correction_result = self.diff_corrector.correct_diff(
+                    generated_diff=generated_chisel_diff, hints=final_hints, verilog_diff=unified_diff
+                )
+
+                if correction_result['corrections_made'] > 0:
+                    print(f'✅ Auto-corrected {correction_result["corrections_made"]} removal line(s)')
+                    corrected = correction_result['corrected_diff']
+                    # Ensure corrected diff is not None or empty
+                    if corrected and corrected.strip():
+                        generated_chisel_diff = corrected
+                    else:
+                        print('⚠️  Corrector returned None/empty, using original diff')
+
+                if correction_result['is_ambiguous']:
+                    print(f'⚠️  Found {len(correction_result["ambiguous_lines"])} ambiguous line(s)')
+                    print('   Skipping clarification for now, proceeding with best guess...')
+
                 print(f'LLM Generated Chisel Diff (attempt {current_attempt}):')
                 print('=' * 50)
                 print(generated_chisel_diff)
@@ -2359,10 +2470,11 @@ class V2chisel_batch(Step):
 
                 # STEP 1: Apply the diff directly (we have master backup as safety net)
                 print('✅ Step 6: Diff Application - START')
-                applier_result = self._apply_chisel_diff(generated_chisel_diff, docker_container)
+                applier_result = self._apply_chisel_diff(generated_chisel_diff, docker_container, target_chisel_file)
 
                 if applier_result['success']:
                     print('✅ APPLIER: Successfully applied diff')
+                    bug_report.mark_applier_success()
 
                     # STEP 3: Try to compile
                     print('✅ Step 7: Compilation - START')
@@ -2370,6 +2482,7 @@ class V2chisel_batch(Step):
 
                     if compile_result['success']:
                         print('✅ COMPILATION: Success')
+                        bug_report.mark_compilation_success()
 
                         # STEP 4: Try to generate Verilog from compiled Chisel
                         print('✅ Step 8: Verilog Generation - START')
@@ -2377,6 +2490,7 @@ class V2chisel_batch(Step):
 
                         if verilog_gen_result['success']:
                             print('✅ VERILOG_GENERATION: Success')
+                            bug_report.mark_verilog_success()
 
                             # SUCCESS: Basic pipeline completed successfully (compilation + verilog generation)
                             # Clean up MASTER backup since core functionality worked
@@ -2388,6 +2502,7 @@ class V2chisel_batch(Step):
                             is_tooling_issue = verilog_gen_result.get('tooling_issue', False)
 
                             print(f'❌ VERILOG_GENERATION: Failed - {verilog_error}')
+                            bug_report.set_error('verilog_gen', verilog_error)
 
                             # RESTORE: Verilog generation failed, restore to ORIGINAL state
                             restore_result = self._restore_to_original(
@@ -2433,13 +2548,9 @@ class V2chisel_batch(Step):
                         # Compilation failed - restore backup and retry with compilation error feedback
                         compile_error_msg = compile_result.get('error', 'Unknown compilation error')
                         print(f'❌ COMPILATION: Failed - {compile_error_msg}')
+                        bug_report.set_error('compilation', compile_error_msg)
 
                         # DEBUG: Print detailed compilation error
-                        print('🔍 [DEBUG] Full compilation error details:')
-                        print('=' * 60)
-                        print(compile_error_msg)
-                        print('=' * 60)
-
                         # RESTORE: Compilation failed, restore to ORIGINAL state before retry
                         restore_result = self._restore_to_original(docker_container, master_backup_info, 'compilation_failure')
 
@@ -2464,6 +2575,7 @@ class V2chisel_batch(Step):
                     # Applier failed - MUST restore since diff might have been partially applied
                     error_msg = applier_result.get('error', 'Unknown error')
                     print(f'❌ APPLIER: Failed - {error_msg}')
+                    bug_report.set_error('applier', error_msg)
 
                     # RESTORE: Applier failed, restore to ORIGINAL state before retry
                     restore_result = self._restore_to_original(docker_container, master_backup_info, 'applier_failure')
@@ -2503,15 +2615,19 @@ class V2chisel_batch(Step):
         if 'verilog_gen_result' in locals():
             verilog_success = verilog_gen_result.get('success', False)
 
-        # RUN LEC ONCE at the end like test_v2chisel_batch3, only if basic pipeline succeeded
+        # RUN LEC WITH RETRY LOOP (max 2 attempts) - only if basic pipeline succeeded
         lec_result = {'success': False, 'lec_passed': False, 'error': 'LEC not attempted'}
+        lec_golden_file = None
+        lec_generated_file = None
+        lec_files_compared = []
+
         if (
             llm_result.get('success', False)
             and applier_result.get('success', False)
             and compile_result.get('success', False)
             and verilog_success
         ):
-            print('\n🎉 [LEC] Basic pipeline successful - now running final LEC check like test_v2chisel_batch3')
+            print('\n🎉 [LEC] Basic pipeline successful - now running LEC with retry logic')
 
             # Step 2: Create golden design by applying verilog_diff to baseline before LEC
             print('✅ Step 2: Golden Design Creation - START')
@@ -2530,16 +2646,115 @@ class V2chisel_batch(Step):
                 print(f'❌ [GOLDEN] Golden design creation failed: {golden_design_result.get("error", "Unknown error")}')
                 golden_design_success = False
 
-            print('🔍 [LEC] Step: Running final equivalence check between golden and gate designs...')
+            # LEC RETRY LOOP (max 2 attempts)
+            max_lec_retries = self.max_lec_retries
+            lec_attempt = 1
 
-            # Run LEC directly (compares golden design vs LLM-generated design)
-            lec_result = self._run_lec(docker_container, file_name)
+            while lec_attempt <= max_lec_retries:
+                print(f'\n🔍 [LEC] Attempt {lec_attempt}/{max_lec_retries}: Running equivalence check...')
 
-            if lec_result.get('lec_passed', False):
-                print('🎉 [LEC] SUCCESS: Designs are equivalent - changes are correct!')
-            else:
-                lec_error = lec_result.get('error', 'Designs are NOT equivalent')
-                print(f'❌ [LEC] FAILED: {lec_error}')
+                # Run LEC directly (compares golden design vs LLM-generated design)
+                lec_result = self._run_lec(docker_container, file_name)
+
+                # Extract LEC file details for DAC metrics
+                if lec_result.get('success', False):
+                    lec_golden_file = lec_result.get('golden_file')
+                    lec_generated_file = lec_result.get('generated_file')
+                    lec_files_compared = [file_name]
+
+                if lec_result.get('lec_passed', False):
+                    print(f'🎉 [LEC] SUCCESS at attempt {lec_attempt}: Designs are equivalent!')
+                    bug_report.mark_lec_success()
+                    break
+                else:
+                    lec_error = lec_result.get('error', 'Designs are NOT equivalent')
+                    print(f'❌ [LEC] FAILED at attempt {lec_attempt}: {lec_error}')
+                    bug_report.set_error('lec', lec_error)
+
+                    if lec_attempt < max_lec_retries:
+                        # Retry with LLM feedback on LEC failure
+                        print(f'🔄 [LEC_RETRY] Attempting LEC retry {lec_attempt + 1}/{max_lec_retries} with LLM feedback')
+
+                        # Call LLM with LEC error feedback
+                        llm_retry_result = self._retry_llm_with_lec_error(
+                            verilog_diff=unified_diff,
+                            chisel_hints=final_hints,
+                            current_chisel_diff=generated_chisel_diff,
+                            lec_error=lec_error,
+                        )
+
+                        if llm_retry_result['success']:
+                            # New iteration for LEC retry
+                            current_attempt += 1
+                            bug_report.add_iteration(current_attempt)
+
+                            generated_chisel_diff = llm_retry_result['chisel_diff']
+                            bug_report.mark_llm_success(generated_diff=generated_chisel_diff)
+
+                            # STEP 5.5: Auto-correct diff removal lines to match hints exactly
+                            correction_result = self.diff_corrector.correct_diff(
+                                generated_diff=generated_chisel_diff, hints=final_hints, verilog_diff=unified_diff
+                            )
+
+                            if correction_result['corrections_made'] > 0:
+                                print(f'✅ Auto-corrected {correction_result["corrections_made"]} removal line(s)')
+                                corrected = correction_result['corrected_diff']
+                                # Ensure corrected diff is not None or empty
+                                if corrected and corrected.strip():
+                                    generated_chisel_diff = corrected
+                                else:
+                                    print('⚠️  Corrector returned None/empty, using original diff')
+
+                            if correction_result['is_ambiguous']:
+                                print(f'⚠️  Found {len(correction_result["ambiguous_lines"])} ambiguous line(s)')
+                                print('   Skipping clarification for now, proceeding with best guess...')
+
+                            # Restore to original before applying new diff
+                            self._restore_to_original(docker_container, master_backup_info, 'lec_retry')
+
+                            # Apply new diff
+                            applier_result = self._apply_chisel_diff(generated_chisel_diff, docker_container, target_chisel_file)
+                            if not applier_result['success']:
+                                print(f'❌ [LEC_RETRY] Failed to apply LLM-generated diff: {applier_result.get("error")}')
+                                bug_report.set_error('applier', applier_result.get('error'))
+                                break
+
+                            bug_report.mark_applier_success()
+
+                            # Recompile
+                            compile_result = self._compile_xiangshan(docker_container)
+                            if not compile_result['success']:
+                                print(f'❌ [LEC_RETRY] Compilation failed: {compile_result.get("error")}')
+                                bug_report.set_error('compilation', compile_result.get('error'))
+                                break
+
+                            bug_report.mark_compilation_success()
+
+                            # Regenerate Verilog
+                            verilog_gen_result = self._generate_verilog_from_chisel(docker_container, module_name)
+                            if not verilog_gen_result['success']:
+                                print(f'❌ [LEC_RETRY] Verilog generation failed: {verilog_gen_result.get("error")}')
+                                bug_report.set_error('verilog_gen', verilog_gen_result.get('error'))
+                                break
+
+                            bug_report.mark_verilog_success()
+
+                            # Recreate golden design
+                            golden_design_result = golden_builder.create_golden_design(
+                                unified_diff, master_backup_info, docker_container
+                            )
+                            if not golden_design_result['success']:
+                                print('❌ [LEC_RETRY] Golden design creation failed')
+                                break
+
+                            # Continue to next LEC attempt
+                            lec_attempt += 1
+                        else:
+                            print(f'❌ [LEC_RETRY] LLM failed to generate retry diff: {llm_retry_result.get("error")}')
+                            break
+                    else:
+                        print(f'❌ [LEC] Maximum LEC retries ({max_lec_retries}) reached')
+                        break
         else:
             print('\n⚠️  [LEC] Skipping LEC - basic pipeline did not complete successfully')
             lec_result = {'success': False, 'lec_passed': False, 'error': 'Basic pipeline incomplete'}
@@ -2559,18 +2774,39 @@ class V2chisel_batch(Step):
             f'📊 [PIPELINE_CHECK] LLM: {llm_result.get("success", False)}, Applier: {applier_result.get("success", False)}, Compile: {compile_result.get("success", False)}, Verilog: {verilog_success}, LEC_passed: {lec_passed}'
         )
 
-        if not pipeline_fully_successful and master_backup_info.get('success', False):
-            print(
-                '🔄 [FINAL_RESTORE] Pipeline not fully successful OR LEC did not confirm equivalence - restoring to original state'
-            )
-            print(f'     Reason: Full pipeline success (including LEC pass) = {pipeline_fully_successful}')
-            final_restore_result = self._restore_to_original(
-                docker_container, master_backup_info, 'pipeline_incomplete_or_failed'
-            )
-            # Keep master backup for potential future runs - don't clean up yet
+        # ALWAYS restore to original state after each bug to prevent contamination
+        # This ensures the next bug gets clean hints from original files
+        if master_backup_info.get('success', False):
+            if pipeline_fully_successful:
+                print('✅ [FINAL_RESTORE] Bug succeeded - restoring to original state for next bug')
+                print('     (Changes recorded in results, but container reset to prevent contamination)')
+            else:
+                print('🔄 [FINAL_RESTORE] Bug failed - restoring to original state')
+            final_restore_result = self._restore_to_original(docker_container, master_backup_info, 'end_of_bug_processing')
         else:
-            print('✅ [FINAL_CHECK] Pipeline fully successful AND LEC confirmed equivalence - keeping changes permanent')
-            final_restore_result = {'success': True, 'message': 'No restore needed'}
+            print('⚠️  [FINAL_RESTORE] No master backup available - cannot restore')
+            final_restore_result = {'success': False, 'message': 'No master backup to restore from'}
+
+        # Finalize DAC metrics before building result dict
+        bug_report.finalize_dac_metrics(
+            verilog_diff=unified_diff,
+            has_hints=bool(final_hints.strip()),
+            golden_design_success=locals().get('golden_design_success', False),
+            lec_golden_file=lec_golden_file,
+            lec_generated_file=lec_generated_file,
+            lec_files_compared=lec_files_compared,
+        )
+
+        # Get DAC metrics dict
+        dac_metrics_dict = bug_report.get_dac_report_dict()
+
+        # Use 'any()' logic to check if ANY iteration succeeded at each stage
+        # This prevents showing inconsistent results when retries happen
+        llm_success_any = any(iter_result.llm_success for iter_result in bug_report.iterations)
+        applier_success_any = any(iter_result.applier_success for iter_result in bug_report.iterations)
+        compile_success_any = any(iter_result.compilation_success for iter_result in bug_report.iterations)
+        verilog_gen_success_any = any(iter_result.verilog_gen_success for iter_result in bug_report.iterations)
+        lec_success_any = any(iter_result.lec_success for iter_result in bug_report.iterations)
 
         # Return results for this bug
         result = {
@@ -2594,17 +2830,17 @@ class V2chisel_batch(Step):
             'hints_source': hints_source,
             'final_hints': final_hints,
             'has_hints': bool(final_hints.strip()),
-            'llm_success': llm_result.get('success', False),
+            'llm_success': llm_success_any,  # Use any() logic for consistency
             'generated_chisel_diff': generated_chisel_diff,
             'llm_prompt_used': llm_result.get('prompt_used', ''),
-            'llm_error': llm_result.get('error', '') if not llm_result.get('success', False) else '',
-            'applier_success': applier_result.get('success', False),
-            'applier_error': applier_result.get('error', '') if not applier_result.get('success', False) else '',
-            'compile_success': compile_result.get('success', False),
-            'compile_error': compile_result.get('error', '') if not compile_result.get('success', False) else '',
+            'llm_error': llm_result.get('error', '') if not llm_success_any else '',
+            'applier_success': applier_success_any,  # Use any() logic for consistency
+            'applier_error': applier_result.get('error', '') if not applier_success_any else '',
+            'compile_success': compile_success_any,  # Use any() logic for consistency
+            'compile_error': compile_result.get('error', '') if not compile_success_any else '',
             'compile_method': compile_result.get('compilation_method', ''),
             'verilog_generation_attempted': 'verilog_gen_result' in locals() and current_attempt <= max_retries,
-            'verilog_generation_success': locals().get('verilog_gen_result', {}).get('success', False),
+            'verilog_generation_success': verilog_gen_success_any,  # Use any() logic for consistency
             'verilog_generation_error': locals().get('verilog_gen_result', {}).get('error', ''),
             'lec_attempted': lec_result.get('success', False) or 'error' in lec_result,
             'lec_equivalent': lec_result.get('lec_passed', None),
@@ -2617,18 +2853,115 @@ class V2chisel_batch(Step):
             'restore_reason': locals().get('restore_result', {}).get('restore_reason', '')
             or locals().get('final_restore_result', {}).get('restore_reason', ''),
             'total_attempts': current_attempt,
-            'pipeline_success': (
-                llm_result.get('success', False)
-                and applier_result.get('success', False)
-                and compile_result.get('success', False)
-                and locals().get('verilog_gen_result', {}).get('success', False)
-            ),
+            'pipeline_success': pipeline_fully_successful,  # Use the correctly computed value that includes LEC check
             'golden_design_success': locals().get('golden_design_success', False),
-            'lec_success': locals().get('lec_result', {}).get('success', False),
+            'lec_success': lec_success_any,  # Use any() logic for consistency
             'lec_method': locals().get('lec_result', {}).get('lec_method', 'none'),
         }
 
+        # Merge DAC metrics into result
+        result.update(dac_metrics_dict)
+
         return result
+
+    def _write_individual_bug_output(
+        self,
+        bug_result: dict,
+        bug_index: int,
+        output_dir: str,
+        input_config: dict,
+        input_basename: str = None,
+        is_single_bug: bool = False,
+        original_bug_number: int = None,
+    ):
+        """Write individual bug result to separate YAML file with statistics"""
+        import os
+        from pathlib import Path
+
+        # Create output directory if it doesn't exist
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        # For single bug runs: use format {bugNum:02d}_{moduleName}.yaml
+        # For multiple bugs: use existing format
+        if is_single_bug and original_bug_number is not None:
+            # Extract module name from bug_result
+            module_name = bug_result.get('module_name', 'unknown')
+            output_filename = f'{original_bug_number:02d}_{module_name}.yaml'
+            print(f'📝 [Single Bug Output] Using filename: {output_filename}')
+        elif input_basename:
+            # Use input file base name (e.g., "all_verilog_diffs_A_singlecycle" -> "result_singlecycle_00.yaml")
+            # Extract meaningful part from input name
+            # Remove prefix and version markers
+            base_parts = input_basename.replace('all_verilog_diffs_', '')
+            # Remove version markers (_A, _B, _C) that appear before the actual name
+            import re
+
+            base_parts = re.sub(r'^[ABC]_', '', base_parts)  # Remove leading A_, B_, C_
+            output_filename = f'result_{base_parts}_{bug_index:02d}.yaml'
+        else:
+            # Fallback to old naming
+            verilog_file = bug_result.get('verilog_file', 'unknown')
+            verilog_name = verilog_file.replace('.sv', '').replace('.v', '')
+            output_filename = f'result_bug_{bug_index:02d}_{verilog_name}.yaml'
+
+        output_path = os.path.join(output_dir, output_filename)
+
+        # Get LLM statistics from wrapper
+        total_tokens = 0
+        total_cost = 0.0
+
+        if hasattr(self, 'lw') and self.lw:
+            # Get cumulative stats from LLM wrapper
+            if hasattr(self.lw, 'total_tokens'):
+                total_tokens = self.lw.total_tokens
+            if hasattr(self.lw, 'total_cost'):
+                total_cost = self.lw.total_cost
+
+        # Build output structure
+        output_data = {
+            # Echo input configuration
+            'docker_container': input_config.get('docker_container', 'hagent'),
+            'docker_patterns': input_config.get('docker_patterns', []),
+            'chisel_patterns': input_config.get('chisel_patterns', []),
+            'v2chisel_batch': input_config.get('v2chisel_batch', {}),
+            # Bug-specific results with statistics
+            'v2chisel_batch_with_llm': {
+                'total_bugs': 1,  # Single bug per file
+                'bug_results': [bug_result],
+                # Statistics for this bug
+                'module_finder_successes': 1 if bug_result.get('hints_source') == 'module_finder' else 0,
+                'metadata_fallbacks': 1 if bug_result.get('hints_source') == 'metadata_fallback' else 0,
+                'bugs_with_hints': 1 if bug_result.get('has_hints', False) else 0,
+                'hints_coverage_rate': 100.0 if bug_result.get('has_hints', False) else 0.0,
+                'llm_attempts': 1 if bug_result.get('has_hints', False) else 0,
+                'llm_successes': 1 if bug_result.get('llm_success', False) else 0,
+                'llm_success_rate': 100.0 if bug_result.get('llm_success', False) else 0.0,
+                'pipeline_successes': 1 if bug_result.get('pipeline_success', False) else 0,
+                'pipeline_success_rate': 100.0 if bug_result.get('pipeline_success', False) else 0.0,
+                'golden_design_successes': 1 if bug_result.get('golden_design_success', False) else 0,
+                'lec_attempts': 1 if bug_result.get('lec_method') != 'none' else 0,
+                'lec_successes': 1 if bug_result.get('lec_success', False) else 0,
+                'lec_success_rate': 100.0 if bug_result.get('lec_success', False) else 0.0,
+            },
+            # LLM cost and tokens
+            'cost': total_cost,
+            'tokens': total_tokens,
+            'step': 'V2chisel_batch',
+        }
+
+        # Write to YAML file
+        yaml = YAML()
+        yaml.default_flow_style = False
+        yaml.width = 4096
+
+        # Wrap multi-line strings
+        output_data = wrap_literals(output_data)
+
+        with open(output_path, 'w') as f:
+            yaml.dump(output_data, f)
+
+        print(f'📝 Wrote output: {output_path}')
+        return output_path
 
     def run(self, data):
         """Main processing function - Step 1: Read bugs and call module_finder"""
@@ -2699,10 +3032,52 @@ class V2chisel_batch(Step):
         else:
             print('✅ [BASELINE] Fresh baseline Verilog generation complete\n')
 
+        # Determine output directory from output file
+        output_file = self.output_file if hasattr(self, 'output_file') and self.output_file else 'output.yaml'
+        output_dir = os.path.dirname(output_file) if os.path.dirname(output_file) else '.'
+
+        # Detect single bug run
+        is_single_bug = len(bugs) == 1
+
+        # For single bug: output directly to specified path without timestamped folder
+        # For multiple bugs: use timestamped individual_results folder
+        if is_single_bug:
+            individual_output_dir = output_dir
+            print(f'📁 [V2chisel_batch] Single bug mode: Output will be saved directly to: {output_dir}')
+        else:
+            # Create unique directory for this run with timestamp
+            import datetime
+
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            individual_output_dir = os.path.join(output_dir, f'individual_results_{timestamp}')
+            print(f'📁 [V2chisel_batch] Multiple bugs mode: Individual results will be saved to: {individual_output_dir}')
+
+        # Extract input basename for individual file naming
+        input_basename = None
+        if hasattr(self, 'input_file') and self.input_file:
+            input_basename = os.path.basename(self.input_file).replace('.yaml', '')
+            print(f'📝 [V2chisel_batch] Individual files will use basename: {input_basename}')
+
         for i, bug_entry in enumerate(bugs):
+            # Get original bug number (1-based) if available
+            original_bug_number = bug_entry.get('_original_bug_number', i + 1)
+
             try:
-                bug_result = self._process_single_bug(i, bug_entry, local_files, docker_container, docker_patterns)
+                bug_result = self._process_single_bug(
+                    original_bug_number - 1, bug_entry, local_files, docker_container, docker_patterns
+                )
                 results.append(bug_result)
+
+                # Write individual bug output immediately
+                self._write_individual_bug_output(
+                    bug_result=bug_result,
+                    bug_index=original_bug_number - 1,  # Pass 0-based index
+                    output_dir=individual_output_dir,
+                    input_config=self.input_data,
+                    input_basename=input_basename,
+                    is_single_bug=is_single_bug,
+                    original_bug_number=original_bug_number,
+                )
 
                 # Show progress based on actual pipeline success
                 pipeline_success = bug_result.get('pipeline_success', False)
@@ -2747,6 +3122,12 @@ class V2chisel_batch(Step):
         lec_successes = sum(1 for r in results if r.get('lec_success', False))
         lec_attempts = sum(1 for r in results if r.get('lec_method') != 'none')
 
+        # Additional detailed statistics
+        applier_successes = sum(1 for r in results if r.get('applier_success', False))
+        compile_successes = sum(1 for r in results if r.get('compile_success', False))
+        verilog_gen_successes = sum(1 for r in results if r.get('verilog_generation_success', False))
+        lec_pass_count = sum(1 for r in results if r.get('lec_equivalent', False))
+
         print('\n📊 V2CHISEL_BATCH COMPLETE SUMMARY:')
         # Summary stats commented out for cleaner output
         # print(f'   📋 Total bugs processed: {total_bugs}')
@@ -2768,6 +3149,24 @@ class V2chisel_batch(Step):
                 f'LEC Results: {lec_successes}/{lec_attempts} successful ({lec_successes / lec_attempts * 100:.1f}%), Golden Design: {golden_design_successes}/{total_bugs} successful'
             )
 
+        # Print detailed one-line summary
+        print('\n' + '=' * 80)
+        print('📊 DETAILED SUMMARY (Stage-by-Stage Success Rates):')
+        print('=' * 80)
+        print(f'  Total Bugs:        {total_bugs}')
+        print(f'  Hints Generated:   {bugs_with_hints}/{total_bugs} ({bugs_with_hints / total_bugs * 100:.1f}%)')
+        print(f'  LLM Success:       {llm_successes}/{total_bugs} ({llm_successes / total_bugs * 100:.1f}%)')
+        print(f'  Applier Success:   {applier_successes}/{total_bugs} ({applier_successes / total_bugs * 100:.1f}%)')
+        print(f'  Compile Success:   {compile_successes}/{total_bugs} ({compile_successes / total_bugs * 100:.1f}%)')
+        print(f'  Verilog Generated: {verilog_gen_successes}/{total_bugs} ({verilog_gen_successes / total_bugs * 100:.1f}%)')
+        print(f'  🎯 LEC PASS:       {lec_pass_count}/{total_bugs} ({lec_pass_count / total_bugs * 100:.1f}%)')
+        print(f'  Pipeline Complete: {pipeline_successes}/{total_bugs} ({pipeline_successes / total_bugs * 100:.1f}%)')
+        print('=' * 80)
+        print(
+            f'ONE-LINE SUMMARY: Hints={bugs_with_hints}/{total_bugs} | LLM={llm_successes}/{total_bugs} | Applier={applier_successes}/{total_bugs} | Compile={compile_successes}/{total_bugs} | Verilog={verilog_gen_successes}/{total_bugs} | LEC_PASS={lec_pass_count}/{total_bugs} | Pipeline={pipeline_successes}/{total_bugs}'
+        )
+        print('=' * 80)
+
         # Return results
         final_result = data.copy()
         final_result['v2chisel_batch_with_llm'] = {
@@ -2781,10 +3180,19 @@ class V2chisel_batch(Step):
             'llm_attempts': llm_attempts,
             'llm_successes': llm_successes,
             'llm_success_rate': llm_successes / llm_attempts * 100 if llm_attempts > 0 else 0.0,
+            'applier_successes': applier_successes,
+            'applier_success_rate': applier_successes / total_bugs * 100 if total_bugs > 0 else 0.0,
+            'compile_successes': compile_successes,
+            'compile_success_rate': compile_successes / total_bugs * 100 if total_bugs > 0 else 0.0,
+            'verilog_gen_successes': verilog_gen_successes,
+            'verilog_gen_success_rate': verilog_gen_successes / total_bugs * 100 if total_bugs > 0 else 0.0,
+            'lec_pass_count': lec_pass_count,
+            'lec_pass_rate': lec_pass_count / total_bugs * 100 if total_bugs > 0 else 0.0,
             'golden_design_successes': golden_design_successes,
             'lec_attempts': lec_attempts,
             'lec_successes': lec_successes,
             'lec_success_rate': lec_successes / lec_attempts * 100 if lec_attempts > 0 else 0.0,
+            'summary_one_line': f'Hints={bugs_with_hints}/{total_bugs} | LLM={llm_successes}/{total_bugs} | Applier={applier_successes}/{total_bugs} | Compile={compile_successes}/{total_bugs} | Verilog={verilog_gen_successes}/{total_bugs} | LEC_PASS={lec_pass_count}/{total_bugs} | Pipeline={pipeline_successes}/{total_bugs}',
             'bug_results': results,
             'local_files_found': len(local_files),
             'chisel_patterns_used': chisel_patterns,
@@ -2824,11 +3232,39 @@ def main():
     # Parse command line arguments exactly like real v2chisel_batch
     parser = argparse.ArgumentParser(
         description='V2chisel_batch with real LLM calls',
-        epilog='Usage: uv run python3 v2chisel_batch.py -o output.yaml input.yaml',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run all bugs
+  %(prog)s input.yaml -o output.yaml
+
+  # Run only bugs 1-10
+  %(prog)s input.yaml -o output.yaml --bugs 1-10
+
+  # Run bugs 1-5 and 15-20
+  %(prog)s input.yaml -o output.yaml --bugs 1-5,15-20
+
+  # Skip bugs that already passed LEC (resume from failures)
+  %(prog)s input.yaml -o output.yaml --skip-successful
+
+  # Combine: skip successful, then run only bugs 5-15
+  %(prog)s input.yaml -o output.yaml --skip-successful --bugs 5-15
+        """,
     )
     parser.add_argument('input_file', help='Input YAML file (e.g., single_adder_test.yaml)')
     parser.add_argument('-o', '--output', required=True, help='Output YAML file')
     parser.add_argument('--debug', action='store_true', help='Enable debug output')
+    parser.add_argument(
+        '--bugs',
+        type=str,
+        metavar='RANGE',
+        help='Select specific bugs by range (e.g., "1-10", "1,3,5", "1-5,8-10")',
+    )
+    parser.add_argument(
+        '--skip-successful',
+        action='store_true',
+        help='Skip bugs that already passed LEC in the output file (resume from failures)',
+    )
 
     args = parser.parse_args()
 
@@ -2859,6 +3295,58 @@ def main():
     except Exception as e:
         print(f'❌ [V2chisel_batch] Error loading input file {args.input_file}: {e}')
         return 1
+
+    # ========== BUG SELECTION ==========
+    # Apply bug selection filters if specified
+    bugs = input_data.get('bugs', [])
+    if not bugs:
+        print('❌ [V2chisel_batch] No bugs found in input file')
+        return 1
+
+    original_bug_count = len(bugs)
+    print(f'📋 [V2chisel_batch] Loaded {original_bug_count} bugs from input file')
+
+    # Create bug selector
+    selector = BugSelector(bugs)
+
+    # Apply filters (order matters!)
+    if args.skip_successful:
+        print(f'🔄 [V2chisel_batch] Checking for successful bugs in: {args.output}')
+        selector.skip_successful(args.output)
+
+    if args.bugs:
+        print(f'🎯 [V2chisel_batch] Selecting bugs by range: {args.bugs}')
+        try:
+            selector.select_by_range(args.bugs)
+        except ValueError as e:
+            print(f'❌ [V2chisel_batch] Invalid bug range specification: {e}')
+            return 1
+
+    # Get filtered bugs and their original indices
+    filtered_bugs = selector.get_bugs()
+    selected_indices = selector.get_selected_indices()
+
+    # Attach original bug indices to each bug (1-based)
+    for bug, original_idx in zip(filtered_bugs, sorted(selected_indices)):
+        bug['_original_bug_number'] = original_idx
+
+    # Show selection summary
+    if args.skip_successful or args.bugs:
+        print('=' * 80)
+        print(f'📊 BUG SELECTION: {selector.get_selection_summary()}')
+        if len(filtered_bugs) < original_bug_count:
+            print(f'   Selected bug indices: {selected_indices}')
+        print('=' * 80)
+        print()
+
+    if len(filtered_bugs) == 0:
+        print('⚠️  [V2chisel_batch] No bugs selected - nothing to process!')
+        print('✅ Done (no bugs to process)')
+        return 0
+
+    # Replace bugs in input_data with filtered list
+    input_data['bugs'] = filtered_bugs
+    # ========== END BUG SELECTION ==========
 
     processor = None
     try:
@@ -3097,9 +3585,8 @@ def main():
         llm_successes = pipeline_results.get('llm_successes', 0)
         total_bugs = pipeline_results.get('total_bugs', 0)
 
-        if result and total_bugs > 0 and llm_successes > 0:
-            print('✅ [V2chisel_batch] PIPELINE SUCCESS: Complete pipeline passed!')
-
+        # Always write results, even if all bugs failed
+        if result and total_bugs > 0:
             print('📊 [V2chisel_batch] SUMMARY:')
             print(f'     Total bugs processed: {total_bugs}')
             print(f'     LLM successes: {llm_successes}')
@@ -3117,14 +3604,21 @@ def main():
                 yaml.dump(result, out_file)
 
             print()
-            print('🎉 [V2chisel_batch] COMPLETE PIPELINE: SUCCESS!')
-            print('The v2chisel_batch pipeline works with real LLM calls.')
-            print()
             print(f'📄 [V2chisel_batch] Detailed results saved to: {args.output}')
-            return 0
+            print()
+
+            # Check if pipeline was successful
+            if llm_successes > 0:
+                print('✅ [V2chisel_batch] PIPELINE SUCCESS: Complete pipeline passed!')
+                print('The v2chisel_batch pipeline works with real LLM calls.')
+                return 0
+            else:
+                print('❌ [V2chisel_batch] PIPELINE FAILURE: All bugs failed')
+                print(f'Total bugs: {total_bugs}, LLM successes: {llm_successes}')
+                print('💡 TIP: Check individual result files for detailed error messages')
+                return 1
         else:
-            print('❌ [V2chisel_batch] PIPELINE FAILURE')
-            print(f'Total bugs: {total_bugs}, LLM successes: {llm_successes}')
+            print('❌ [V2chisel_batch] PIPELINE FAILURE: No results generated')
             return 1
 
     except Exception as e:

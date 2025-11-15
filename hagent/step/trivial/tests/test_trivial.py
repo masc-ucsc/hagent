@@ -4,10 +4,12 @@ import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+import pytest
 from hagent.step.trivial.trivial import Trivial
 from hagent.inou.path_manager import PathManager
 
 
+@pytest.mark.skipif(os.getenv('HAGENT_DOCKER') is not None, reason='Only runs in local mode')
 def test_trivial():
     test_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -25,7 +27,6 @@ def test_trivial():
         repo_dir.mkdir()
 
         env_vars = {
-            'HAGENT_EXECUTION_MODE': 'local',
             'HAGENT_REPO_DIR': str(repo_dir),
             'HAGENT_BUILD_DIR': str(build_dir),
             'HAGENT_CACHE_DIR': str(cache_dir),

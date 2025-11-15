@@ -21,7 +21,6 @@ def setup_test_env():
     """Pytest fixture to ensure proper environment setup for every test in this module"""
     # Store original environment
     original_env = {
-        'HAGENT_EXECUTION_MODE': os.environ.get('HAGENT_EXECUTION_MODE'),
         'HAGENT_REPO_DIR': os.environ.get('HAGENT_REPO_DIR'),
         'HAGENT_BUILD_DIR': os.environ.get('HAGENT_BUILD_DIR'),
         'HAGENT_CACHE_DIR': os.environ.get('HAGENT_CACHE_DIR'),
@@ -43,7 +42,7 @@ def setup_test_env():
 def setup_test_environment():
     """Set up environment variables for testing - called before each test"""
     # Force set environment variables (don't use setdefault)
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode enabled via HAGENT_DOCKER
 
     # Use current directory for CI compatibility
     current_dir = os.path.dirname(os.path.abspath(__file__))

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, Set, List, Dict, Any
 
 from .path_manager import PathManager
-from .container_manager import is_docker_mode, is_docker_workspace_ready
+from .container_manager import is_docker_workspace_ready
 
 
 class FileTrackerLocal:
@@ -95,7 +95,7 @@ class FileTrackerLocal:
         print(f'🔍 DEBUG: FileTracker checking repo_dir: {repo_dir}')
 
         # In Docker mode with container paths, check if workspace is ready
-        if is_docker_mode() and str(repo_dir).startswith('/code/workspace/'):
+        if self.path_manager.is_docker_mode() and str(repo_dir).startswith('/code/workspace/'):
             print('🔍 DEBUG: Docker mode with container paths - checking workspace readiness')
             if not is_docker_workspace_ready():
                 self.logger.error('Docker workspace not ready - ensure ContainerManager.setup() was called first')
@@ -200,7 +200,7 @@ class FileTrackerLocal:
         # In Docker mode with container paths, skip baseline snapshot creation for now
         # Git operations in Docker require container-aware execution
         repo_dir = str(self.path_manager.repo_dir)
-        if is_docker_mode() and repo_dir.startswith('/code/workspace/'):
+        if self.path_manager.is_docker_mode() and repo_dir.startswith('/code/workspace/'):
             print('🔍 DEBUG: Docker mode with container paths - skipping baseline snapshot creation')
             self.logger.info('Skipping baseline snapshot creation in Docker mode with container paths')
             return None
@@ -705,7 +705,9 @@ class FileTrackerLocal:
 
     # ---------------- Docker helpers ----------------
     def _is_container_path(self, path: str) -> bool:
-        return is_docker_mode() and str(path).startswith('/code/workspace/') and self.container_manager is not None
+        return (
+            self.path_manager.is_docker_mode() and str(path).startswith('/code/workspace/') and self.container_manager is not None
+        )
 
     def _container_parent_exists(self, path: str) -> bool:
         import posixpath

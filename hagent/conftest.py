@@ -76,39 +76,57 @@ def setup_test_environment():
 
     This ensures that tests have the necessary environment variables set
     even when running the full test suite.
+
+    Note: Execution mode is determined by HAGENT_DOCKER:
+    - If HAGENT_DOCKER is set → docker mode
+    - If HAGENT_DOCKER is not set → local mode (default for tests)
     """
     # Store original values to restore later
-    original_execution_mode = os.environ.get('HAGENT_EXECUTION_MODE')
     original_tokenizers = os.environ.get('TOKENIZERS_PARALLELISM')
+    original_no_proxy = os.environ.get('no_proxy')
 
     # Set required environment variables if not already set
-    if 'HAGENT_EXECUTION_MODE' not in os.environ:
-        os.environ['HAGENT_EXECUTION_MODE'] = 'local'
     os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+
+    # Disable proxy detection to avoid Python 3.13 + macOS + fork segfault
+    # See: https://github.com/python/cpython/issues/124448
+    os.environ['no_proxy'] = '*'
 
     yield
 
     # Restore original values
-    if original_execution_mode is None:
-        os.environ.pop('HAGENT_EXECUTION_MODE', None)
-    else:
-        os.environ['HAGENT_EXECUTION_MODE'] = original_execution_mode
-
     if original_tokenizers is None:
         os.environ.pop('TOKENIZERS_PARALLELISM', None)
     else:
         os.environ['TOKENIZERS_PARALLELISM'] = original_tokenizers
 
+    if original_no_proxy is None:
+        os.environ.pop('no_proxy', None)
+    else:
+        os.environ['no_proxy'] = original_no_proxy
 
-@pytest.fixture(autouse=True)
-def ensure_container_cleanup():
+
+@pytest.fixture(autouse=True, scope='function')
+def ensure_container_cleanup(request):
     """
     Auto-use fixture that ensures containers are cleaned up even if tests fail.
 
     This fixture runs before and after each test to track container creation
     and ensure cleanup happens even when tests are interrupted.
+
+    Note: This fixture is disabled when running with pytest-xdist (-n auto)
+    to avoid parallel Docker client initialization issues. The session-level
+    cleanup (pytest_sessionfinish) handles cleanup in that case.
     """
+    # Skip this fixture if running in parallel mode (pytest-xdist worker)
+    # The session cleanup will handle container cleanup instead
+    if hasattr(request.config, 'workerinput'):
+        # Running in xdist worker, skip per-test cleanup
+        yield
+        return
+
     # Before test: record current containers
+    containers_before = set()
     try:
         client = docker.from_env()
         hagent_pattern = re.compile(r'^mascucsc/hagent-.*$')
@@ -118,7 +136,7 @@ def ensure_container_cleanup():
             if hagent_pattern.match(container.attrs['Config']['Image'])
         }
     except Exception:
-        containers_before = set()
+        pass  # Docker not available or other error
 
     yield
 

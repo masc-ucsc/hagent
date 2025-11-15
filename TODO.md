@@ -1,8 +1,37 @@
 -------
 
-`setup_xxx_mcp.sh`-related:
-1. Make existing `setup_simplechisel_mcp.sh` to copy from Docker containers instead of using `create_template` as the first option.
-2. Create a general `setup_xxx_mcp.sh` script so that we don't need one script per core.
+litellm also supports OpenAI codex, but there is code to switch to OpenAI API.
+
+Nice to keep a single consistent litellm API
+
+Main file: hagent/core/llm_wrap.py
+
+-------
+Several places in hagent.yaml says (/code/workspace/....), we should use HAGENT_... as needed to do auto replace
+
+-------
+
+Add to hagent.yaml in cva6 how to synthesize a submodule
+
+/code/hagent/scripts/synth.py --sta --tech-dir /code/workspace/tech --netlist  ../build/netlist_id_stage.v --top cva6  --top-synthesis id_stage    --ignore-unknown-modules --allow-use-before-declare    core/include/cv64a6_imafdc_sv39_wb_config_pkg.sv -f ./core/Flist.cva6
+
+
+time /code/hagent/scripts/synth.py --sta --tech-dir /code/workspace/tech --netlist  ../build/netlist.v --top cva6   --ignore-unknown-modules --allow-use-before-declare    core/include/cv64a6_imafdc_sv39_wb_config_pkg.sv -f ./core/Flist.cva6
+
+-------
+
+ciel ls-remote --pdk-family sky130 | head -1
+6971617b18b2f322d8f574af7e53f79ddd75dafe
+
+ciel enable --pdk-family sky130 6971617b18b2f322d8f574af7e53f79ddd75dafe
+
+ls ${HOME}/.ciel/ciel/sky130/versions/6971617b18b2f322d8f574af7e53f79ddd75dafe/sky130A/libs.ref/sky130_fd_sc_hd/lib/
+sky130_fd_sc_hd__ff_100C_1v65.lib           sky130_fd_sc_hd__ff_n40C_1v95.lib  sky130_fd_sc_hd__ss_n40C_1v44.lib
+sky130_fd_sc_hd__ff_100C_1v95.lib           sky130_fd_sc_hd__ss_100C_1v40.lib  sky130_fd_sc_hd__ss_n40C_1v60_ccsnoise.lib
+sky130_fd_sc_hd__ff_n40C_1v56.lib           sky130_fd_sc_hd__ss_100C_1v60.lib  sky130_fd_sc_hd__ss_n40C_1v60.lib
+sky130_fd_sc_hd__ff_n40C_1v65.lib           sky130_fd_sc_hd__ss_n40C_1v28.lib  sky130_fd_sc_hd__ss_n40C_1v76.lib
+sky130_fd_sc_hd__ff_n40C_1v76.lib           sky130_fd_sc_hd__ss_n40C_1v35.lib  sky130_fd_sc_hd__tt_025C_1v80.lib
+sky130_fd_sc_hd__ff_n40C_1v95_ccsnoise.lib  sky130_fd_sc_hd__ss_n40C_1v40.lib  sky130_fd_sc_hd__tt_100C_1v80.lib
 
 -------
 
@@ -45,7 +74,7 @@ Can we provide test_replicate_code and test_equiv_checker_docker to see which fu
 
 mada4:
 
- docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2025.09r
+ docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2025.10
 
  fix hagent.yaml so that it can run synth.rb
 
@@ -85,7 +114,7 @@ If HAGENT_LLM_MODEL is set, it uses this LLM for all the queries.
 Usuful when users do not have  the keys used for regression testing.
 
 -------
-Input/output schema and parameters field in the fastmcp 
+Input/output schema and parameters field in the fastmcp
 
 The compile errors/messages could be structured as an output schema.
 
@@ -155,21 +184,10 @@ It should only create the cache/inou, it should not create files in the repo for
 Maybe create a shared "hagent" setup section that it is shared across all the passes when set in the input yaml.
 
 hagent:
-  execution_mode: "docker" # (or local)
+  HAGENT_DOCKER: "docker"  # define to enable docker mode
   mount_build_dir: ./xxx
   mount_cache_dir: ./xxx
   mount_repo_dir: ./xxx
-
-
--------
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-cd /code/hagent &&
-  UV_PROJECT_ENVIRONMENT=/code/workspace/cache/venv uv sync &&
-  /tmp/venv/bin/python scripts/hagent-build.py --help
-
-  UV_PROJECT_ENVIRONMENT=/code/workspace/cache/venv VIRTUAL_ENV=/code/workspace/cache/venv uv run /code/hagent/scripts/hagent-build.py --config $HAGENT_REPO_DIR/hagent.yaml
-
 
 -------
 This document has a dump of "potential" TODOs, many are likely to be bad ideas.
@@ -188,3 +206,24 @@ print(template.substitute(context1))  # Hello, Bob!
 print(template.substitute(context2))  # Hello, Charlie!
 ```
 
+-------
+## Chipyard
+
+Chipyard deprecated their docker, so we need to create a new one. It is quite similar to the original, but the "chipyard" repository is NOT inside the docker. Just the build tools. This allows to track the edited files.
+
+1-Get Chipyard repo:
+```bash
+git clone https://github.com/ucb-bar/chipyard.git
+cd chipyard
+# Get a stable chipyard version (last tested 1.13.0)
+git checkout 1.13.0
+```
+
+
+2-Use the HAgent docker (allows chipyard and yosys)
+
+
+```bash
+# May require sudo dependent on your setup/permissions
+docker pull ucbbar/chipyard-image
+```

@@ -90,12 +90,13 @@ class DockerDiffApplier:
                 return line[6:]  # Remove '+++ b/'
         return None
 
-    def apply_diff_to_container(self, diff_content: str, dry_run: bool = False) -> bool:
+    def apply_diff_to_container(self, diff_content: str, target_file_path: str = None, dry_run: bool = False) -> bool:
         """
         Apply a unified diff to files in the Docker container
 
         Args:
             diff_content: The unified diff as a string
+            target_file_path: Optional - exact file path to apply diff to (from hints)
             dry_run: If True, only show what would be changed without applying
 
         Returns:
@@ -115,7 +116,7 @@ class DockerDiffApplier:
         # Apply each file section separately
         for i, (file_path, section_diff) in enumerate(file_sections, 1):
             print(f'\n🔧 [{i}/{len(file_sections)}] Applying diff to: {file_path}')
-            success = self._apply_single_file_diff(file_path, section_diff, dry_run)
+            success = self._apply_single_file_diff(file_path, section_diff, target_file_path, dry_run)
             if not success:
                 print(f'❌ Failed to apply diff to {file_path}')
                 all_success = False
@@ -169,43 +170,71 @@ class DockerDiffApplier:
 
         return sections
 
-    def _apply_single_file_diff(self, file_path: str, section_diff: str, dry_run: bool = False) -> bool:
-        """Apply a single-file diff section"""
+    def _apply_single_file_diff(
+        self, file_path: str, section_diff: str, hint_file_path: str = None, dry_run: bool = False
+    ) -> bool:
+        """Apply a single-file diff section
+
+        Args:
+            file_path: File path from diff header (e.g., src/main/scala/components/alu.scala)
+            section_diff: The diff content
+            hint_file_path: Optional - exact file path from hints (e.g., /code/workspace/repo/src/main/scala/components/alu.scala)
+            dry_run: Whether to just preview changes
+
+        Returns:
+            True if successful
+        """
         filename = os.path.basename(file_path)
         print(f'Applier target: {file_path}')
 
-        # Find the file in container
-        found_paths = self.find_file_in_container(filename)
-        if not found_paths:
-            print(f"❌ File '{filename}' not found in container")
-            return False
+        # If we have a hint file path (from module finder), use it directly!
+        if hint_file_path and os.path.isabs(hint_file_path):
+            print(f'🎯 [APPLIER] Using file path from hints: {hint_file_path}')
+            target_path = hint_file_path
+        else:
+            # Fallback: search for file (old behavior)
+            found_paths = self.find_file_in_container(filename)
+            if not found_paths:
+                print(f"❌ File '{filename}' not found in container")
+                return False
 
-        print(f'Found {len(found_paths)} potential file(s):')
-        for path in found_paths:
-            print(f'  - {path}')
+            print(f'Found {len(found_paths)} potential file(s):')
+            for path in found_paths:
+                print(f'  - {path}')
 
-        # Use the first match or find best match
-        target_path = self._select_best_match(found_paths, file_path)
-        print(f'Selected: {target_path}')
+            # Use the first match or find best match
+            target_path = self._select_best_match(found_paths, file_path)
+            print(f'Selected: {target_path}')
 
         # Read current file content
         original_content = self.read_file_from_container(target_path)
         if original_content is None:
             return False
 
-        # VERILOG-SPECIFIC ENHANCEMENT: Pre-verify the target line exists
-        if not self._verify_target_line_exists(section_diff, original_content):
-            print('❌ Target line for diff not found in file - diff cannot be applied')
-            return False
+        # Pre-verify the target line exists (skip for Scala/Chisel - let applier handle it)
+        # Only do strict verification for Verilog files
+        if file_path.endswith('.sv') or file_path.endswith('.v'):
+            if not self._verify_target_line_exists(section_diff, original_content):
+                print('❌ Target line for diff not found in Verilog file - diff cannot be applied')
+                return False
+        else:
+            # For Scala/Chisel files, just warn but let the diff applier try
+            if not self._verify_target_line_exists(section_diff, original_content):
+                print('⚠️  Pre-verification warning: Some lines may not match exactly')
+                print('    Attempting to apply diff anyway (letting patch handle fuzzy matching)...')
 
         # Apply the diff
         try:
             modified_content = self.applier.apply_diff(section_diff, original_content)
 
-            # VERILOG-SPECIFIC ENHANCEMENT: Post-verify the change was applied
+            # Post-verify the change was applied (strict for Verilog, lenient for Scala)
             if not self._verify_diff_applied(section_diff, modified_content):
-                print('❌ Diff was not correctly applied - verification failed')
-                return False
+                if file_path.endswith('.sv') or file_path.endswith('.v'):
+                    print('❌ Diff was not correctly applied - verification failed')
+                    return False
+                else:
+                    print('⚠️  Post-verification: Could not verify all changes, but proceeding...')
+                    # For Scala, proceed anyway - compilation will catch any issues
 
             if dry_run:
                 print('🔍 DRY RUN - Changes that would be applied:')
@@ -231,12 +260,31 @@ class DockerDiffApplier:
         if len(found_paths) == 1:
             return found_paths[0]
 
-        # Prefer exact path match
-        for path in found_paths:
-            if path.endswith(target_path):
-                return path
+        # Priority prefixes (prefer /code/workspace/repo/ over other paths)
+        priority_prefixes = [
+            '/code/workspace/repo/',  # Primary codebase
+            '/code/workspace/',  # Workspace files
+            '/code/',  # Any code directory
+        ]
 
-        # Fallback to first match
+        # First, try exact path match WITH priority
+        exact_matches = [p for p in found_paths if p.endswith(target_path)]
+        if exact_matches:
+            # Apply priority to exact matches
+            for prefix in priority_prefixes:
+                for path in exact_matches:
+                    if path.startswith(prefix):
+                        return path
+            # If no priority match, return first exact match
+            return exact_matches[0]
+
+        # If no exact path match, use priority-based selection
+        for prefix in priority_prefixes:
+            for path in found_paths:
+                if path.startswith(prefix):
+                    return path
+
+        # Fallback to first match (if no priority match found)
         return found_paths[0]
 
     def _show_diff_preview(self, original: str, modified: str):

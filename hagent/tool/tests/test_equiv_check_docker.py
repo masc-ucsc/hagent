@@ -23,7 +23,7 @@ def setup_hagent_environment():
     original_env = {}
 
     # Save original environment
-    hagent_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
+    hagent_vars = ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
     for var in hagent_vars:
         original_env[var] = os.environ.get(var)
 
@@ -31,7 +31,7 @@ def setup_hagent_environment():
     PathManager.reset()
 
     # Set Docker mode environment with host-accessible paths for testing
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode enabled via HAGENT_DOCKER
 
     # Use local directories that tests can actually create and access
     # Use home directory subfolders which Docker Desktop has access to by default
@@ -361,7 +361,7 @@ endmodule
         os.makedirs(cache_dir, exist_ok=True)
         os.environ['HAGENT_CACHE_DIR'] = cache_dir
 
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode enabled via HAGENT_DOCKER
 
     # Reset PathManager to pick up the new environment
     PathManager.reset()

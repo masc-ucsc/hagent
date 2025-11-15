@@ -3,7 +3,7 @@
 Follow these concise rules when working in this repo.
 
 ### Test and Run
-- Always use `uv run` wrappers: `uv run pytest ...` and `uv run python ...` (never `python -m pytest`).
+- Always use `uv run` wrappers: `uv run pytest  -n auto --forked ...` and `uv run python ...` (never `python -m pytest`).
 - Fast pytest or debug iteration: `uv run pytest --testmon --maxfail=1`.
 
 ### Code Quality (required before finishing)
@@ -11,10 +11,10 @@ Follow these concise rules when working in this repo.
 - Lint: `uv run ruff check hagent`.
 
 ### RTL/HDL Execution Environment
-- Set one execution mode (required):
-  - `export HAGENT_EXECUTION_MODE=docker`  (use docker build setup), or
-  - `export HAGENT_EXECUTION_MODE=local`   (use locally installed tools).
-- Both models can set paths BUT Local mode requires all paths set. Remember these path is NOT hagent code but RTL/Verilog/HDL code.
+- Execution mode is determined by HAGENT_DOCKER:
+  - **Docker mode (recommended)**: `export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.10`
+  - **Local mode (debug/dev)**: Don't set HAGENT_DOCKER
+- Both modes can set paths BUT Local mode requires all paths set. Remember these paths are NOT hagent code but RTL/Verilog/HDL code.
   - `export HAGENT_REPO_DIR=/path/to/git/root`
   - `export HAGENT_BUILD_DIR=/path/to/build`
   - `export HAGENT_CACHE_DIR=/path/to/cache`
