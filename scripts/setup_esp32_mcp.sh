@@ -18,19 +18,17 @@ echo "Project Location: ${BASE_DIR_ABS}"
 echo "HAGENT Root:      ${HAGENT_ROOT}"
 echo "-----------------------"
 
-# 1. Create project directories
+# 1. Create repo, build, cache and logs directories 
 echo
-echo "[1/5] Creating project directories..."
 mkdir -p "${BASE_DIR_ABS}/repo"
 mkdir -p "${BASE_DIR_ABS}/build"
 mkdir -p "${BASE_DIR_ABS}/cache"
 mkdir -p "${BASE_DIR_ABS}/logs"
 echo "Done."
 
-# 2. Install ESP-IDF
+# 2. Install esp-idf if not present already
 ESP_IDF_PATH="${BASE_DIR_ABS}/cache/esp-idf"
 echo
-echo "[2/5] Setting up ESP-IDF..."
 if [ ! -d "${ESP_IDF_PATH}" ]; then
   echo "Cloning ESP-IDF version ${ESP_IDF_VERSION}..."
   if command -v git >/dev/null 2>&1; then
@@ -52,13 +50,11 @@ else
 fi
 echo "Done."
 
-# 3. Create project
+# 3. Create project and copy the code file from the examples directory 
 REPO_PATH="${BASE_DIR_ABS}/repo"
-PROJECT_CREATED=false # Flag to track if we created the project
+PROJECT_CREATED=false 
 echo
-echo "[3/5] Creating ESP32 project..."
 
-# Check if the repo directory is NOT empty
 if [ -n "$(ls -A "${REPO_PATH}")" ]; then
     echo "Repo directory is not empty. Skipping project creation."
 else
@@ -75,9 +71,8 @@ else
 fi
 echo "Done."
 
-# 4. Copy custom C file
+# 4. Copy the blink.c file
 echo
-echo "[4/5] Copying custom main file..."
 if [ "$PROJECT_CREATED" = true ]; then
     if [ -f "${SOURCE_C_FILE}" ]; then
       cp "${SOURCE_C_FILE}" "${PROJECT_PATH}/main/blink_project.c"
