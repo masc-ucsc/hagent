@@ -16,7 +16,7 @@ import sys
 import argparse
 
 # Set up environment for Builder (Docker execution mode)
-os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+# Docker mode enabled via HAGENT_DOCKER
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -38,7 +38,7 @@ class TestV2chisel_batch(V2chisel_batch):
         self.baseline_generated = False  # Track if we generated fresh baseline
 
         # Initialize Builder for automated Docker management
-        self.runner = Builder(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        self.runner = Builder(docker_image='mascucsc/hagent-simplechisel:2025.10')
 
     def _run_docker_command(self, cmd_list, timeout=None):
         """Override parent method to use our Builder instead of subprocess"""

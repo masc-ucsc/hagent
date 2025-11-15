@@ -25,12 +25,13 @@ def setup_hagent_environment():
     original_env = {}
 
     # Save original environment
-    hagent_vars = ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
+    hagent_vars = ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_DOCKER']
     for var in hagent_vars:
         original_env[var] = os.environ.get(var)
 
     # Set Docker mode environment with host-accessible paths for testing
-    os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+    # Docker mode enabled via HAGENT_DOCKER
+    os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-simplechisel:2025.10'
 
     # Use local directories that Docker can easily mount
     # IMPORTANT: Don't mount the repository root directory - use output subdirectory instead
@@ -98,7 +99,7 @@ class TestExecutorContainerOperations:
             os.makedirs(cache_dir, exist_ok=True)
 
         PathManager()  # Initialize the singleton
-        container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.09r')
+        container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
         executor = ExecutorFactory.create_executor(container_manager)
 
         assert executor.setup(), f'Executor setup failed: {executor.get_error()}'
@@ -177,7 +178,14 @@ class TestExecutorContainerOperations:
         rc, out, err = executor.run_cmd('pwd')
         assert rc == 0, f'pwd command failed - RC: {rc}, ERR: {err}'
         # Should be in the repo workspace directory
-        assert '/code/workspace/repo' in out
+        # Check for expected path based on execution mode
+        path_manager = PathManager()
+        if path_manager.is_docker_mode():
+            # In Docker mode, the path is translated to /code/workspace/repo
+            expected_repo_dir = '/code/workspace/repo'
+        else:
+            expected_repo_dir = str(path_manager.repo_dir)
+        assert expected_repo_dir in out, f'Expected {expected_repo_dir} in {out}'
 
     def test_multiple_command_execution(self, executor_setup, temp_files):
         """Test executing multiple commands in sequence."""
@@ -236,9 +244,9 @@ class TestExecutorContainerOperations:
             with open(script_path, 'w') as f:
                 f.write(script_content)
 
-            # Note: In new API, we would need to implement file copying via container_manager
-            # For now, we'll create the script in build directory to avoid repo mount execution restrictions
-            custom_name = '/code/workspace/build/my_custom_tool'
+            # Use /tmp inside container for executables, as mounted volumes may have noexec flag
+            # This avoids permission issues with Docker volume mounts
+            custom_name = '/tmp/my_custom_tool'
 
             # Create script in container
             rc, out, err = executor.run_cmd(f"echo '{script_content}' > {custom_name}")

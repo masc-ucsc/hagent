@@ -1,0 +1,145 @@
+# hagent.yaml
+profiles:
+  - name: echo
+    description: "Just print HAGENT_ environment variables"
+    apis:
+      - name: build_dir
+        description: "Echo HAGENT_BUILD_DIR"
+        command: "echo $HAGENT_BUILD_DIR"
+        cwd: "$HAGENT_REPO_DIR"
+      - name: repo_dir
+        description: "Echo HAGENT_REPO_DIR"
+        command: "echo $HAGENT_REPO_DIR"
+        cwd: "$HAGENT_REPO_DIR"
+      - name: custom_echo
+        description: "Echo with optional prefix and suffix parameters"
+        command: "echo {{prefix}}HAGENT_TEST{{suffix}}"
+        cwd: "$HAGENT_REPO_DIR"
+        options:
+          - name: prefix
+            description: "Optional prefix to add before the message"
+            format: "{value}:"
+            default: "INFO:"
+          - name: suffix
+            description: "Optional suffix to add after the message"
+            format: "({value})"
+            default: ""
+  - name: gcd
+    description: "Profile for building GCD module from Chisel/Scala sources"
+    memory: 4  # in GB
+    configuration:
+      source: "track_repo_dir('src/main/scala', ext='.scala')"
+      output: "track_build_dir('build_gcd', ext='.sv')"
+      environment:
+        SCALA_HOME: "/usr/local/scala"
+        SBT_OPTS: "-Xmx2G -XX:+UseG1GC"
+        PATH: "$PATH:/usr/local/scala/bin"
+    apis:
+      - name: compile
+        description: "Compile GCD module and generate Verilog"
+        command: "sbt \"runMain gcd.GCD\""
+        cwd: "$HAGENT_REPO_DIR"
+      - name: lint
+        description: "Run scapegoat linting on Scala/Chisel code"
+        command: "sbt scapegoat"
+        cwd: "$HAGENT_REPO_DIR"
+      - name: synthesize
+        description: "Synthesize GCD for Lattice FPGA using Yosys"
+        command: "yosys -p 'read_verilog -sv build_gcd/*.sv; synth_lattice -family ecp5 -top GCD; write_json gcd_lattice.json'"
+        cwd: "$HAGENT_BUILD_DIR"
+
+  - name: singlecyclecpu_nd
+    description: "Profile for building Single Cycle CPU without debug from Chisel sources"
+    memory: 4  # in GB
+    configuration:
+      source: "track_repo_dir('src/main/scala', ext='.scala')"
+      output: "track_build_dir('build_singlecyclecpu_nd', ext='.sv')"
+      environment:
+        SCALA_HOME: "/usr/local/scala"
+        SBT_OPTS: "-Xmx2G -XX:+UseG1GC"
+        PATH: "$PATH:/usr/local/scala/bin"
+    apis:
+      - name: compile
+        description: "Compile Single Cycle CPU (No Debug) and generate Verilog"
+        command: "sbt \"runMain dinocpu.SingleCycleCPUNoDebug\""
+        cwd: "$HAGENT_REPO_DIR"
+      - name: lint
+        description: "Run scapegoat linting on Scala/Chisel code"
+        command: "sbt scapegoat"
+        cwd: "$HAGENT_REPO_DIR"
+      - name: synthesize
+        description: "Synthesize Single Cycle CPU for Lattice FPGA using Yosys"
+        command: "yosys -p 'read_verilog -sv build_singlecyclecpu_nd/*.sv; synth_lattice -family ecp5 -top SingleCycleCPU; write_json singlecpu_nd_lattice.json'"
+        cwd: "$HAGENT_BUILD_DIR"
+
+  - name: singlecyclecpu_d
+    description: "Profile for building Single Cycle CPU with debug from Chisel sources"
+    memory: 4  # in GB
+    configuration:
+      source: "track_repo_dir('src/main/scala', ext='.scala')"
+      output: "track_build_dir('build_singlecyclecpu_d', ext='.sv')"
+      environment:
+        SCALA_HOME: "/usr/local/scala"
+        SBT_OPTS: "-Xmx2G -XX:+UseG1GC"
+        PATH: "$PATH:/usr/local/scala/bin"
+    apis:
+      - name: compile
+        description: "Compile Single Cycle CPU (Debug) and generate Verilog"
+        command: "sbt \"runMain dinocpu.SingleCycleCPUDebug\""
+        cwd: "$HAGENT_REPO_DIR"
+      - name: lint
+        description: "Run scapegoat linting on Scala/Chisel code"
+        command: "sbt scapegoat"
+        cwd: "$HAGENT_REPO_DIR"
+      - name: synthesize
+        description: "Synthesize Single Cycle CPU Debug for Lattice FPGA using Yosys"
+        command: "yosys -p 'read_verilog -sv build_singlecyclecpu_d/*.sv; synth_lattice -family ecp5 -top SingleCycleCPU; write_json singlecpu_d_lattice.json'"
+        cwd: "$HAGENT_REPO_DIR"
+
+  - name: pipelined_d
+    description: "Profile for building Pipelined Dual Issue CPU with debug"
+    memory: 4  # in GB
+    configuration:
+      source: "track_repo_dir('src/main/scala', ext='.scala')"
+      output: "track_build_dir('build_pipelined_d', ext='.sv')"
+      environment:
+        SCALA_HOME: "/usr/local/scala"
+        SBT_OPTS: "-Xmx2G -XX:+UseG1GC"
+        PATH: "$PATH:/usr/local/scala/bin"
+    apis:
+      - name: compile
+        description: "Compile Pipelined Dual Issue CPU (Debug) and generate Verilog"
+        command: "sbt \"runMain dinocpu.pipelined.PipelinedDualIssueDebug\""
+        cwd: "$HAGENT_REPO_DIR"
+      - name: lint
+        description: "Run scapegoat linting on Scala/Chisel code"
+        command: "sbt scapegoat"
+        cwd: "$HAGENT_REPO_DIR"
+      - name: synthesize
+        description: "Synthesize Pipelined CPU Debug for Lattice FPGA using Yosys"
+        command: "yosys -p 'read_verilog -sv build_pipelined_d/*.sv; synth_lattice -family ecp5 -top PipelinedDualIssueCPU; write_json pipelined_d_lattice.json'"
+        cwd: "$HAGENT_REPO_DIR"
+
+  - name: pipelined_nd
+    description: "Profile for building Pipelined Dual Issue CPU without debug"
+    memory: 4  # in GB
+    configuration:
+      source: "track_repo_dir('src/main/scala', ext='.scala')"
+      output: "track_build_dir('build_pipelined_nd', ext='.sv')"
+      environment:
+        SCALA_HOME: "/usr/local/scala"
+        SBT_OPTS: "-Xmx2G -XX:+UseG1GC"
+        PATH: "$PATH:/usr/local/scala/bin"
+    apis:
+      - name: compile
+        description: "Compile Pipelined Dual Issue CPU (No Debug) and generate Verilog"
+        command: "sbt \"runMain dinocpu.pipelined.PipelinedDualIssueNoDebug\""
+        cwd: "$HAGENT_REPO_DIR"
+      - name: lint
+        description: "Run scapegoat linting on Scala/Chisel code"
+        command: "sbt scapegoat"
+        cwd: "$HAGENT_REPO_DIR"
+      - name: synthesize
+        description: "Synthesize Pipelined CPU for Lattice FPGA using Yosys"
+        command: "yosys -p 'read_verilog -sv build_pipelined_nd/*.sv; synth_lattice -family ecp5 -top PipelinedDualIssueCPU; write_json pipelined_nd_lattice.json'"
+        cwd: "$HAGENT_REPO_DIR"

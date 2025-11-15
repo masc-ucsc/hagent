@@ -38,11 +38,37 @@ class Builder:
 
         Args:
             config_path: Path to the YAML configuration file (auto-discovered if None)
-            docker_image: Docker image for container execution (if needed)
+            docker_image: Docker image for container execution. If provided, this forces
+                Docker mode and temporarily overrides the HAGENT_DOCKER environment value.
         """
-        # Always initialize Runner first
-        self.runner = Runner(docker_image)
         self.error_message = ''
+
+        # Track environment overrides so we can restore them on cleanup
+        self._original_docker_image: Optional[str] = None
+        self._docker_image_env_overridden = False
+
+        effective_docker_image = docker_image
+
+        # Ensure HAGENT_DOCKER matches the explicitly provided docker image
+        if docker_image is not None:
+            current_docker_image = os.environ.get('HAGENT_DOCKER')
+            if current_docker_image != docker_image:
+                self._original_docker_image = current_docker_image
+                os.environ['HAGENT_DOCKER'] = docker_image
+                self._docker_image_env_overridden = True
+                # Reset PathManager so it re-reads HAGENT_DOCKER
+                PathManager.reset()
+
+        # Determine docker image when running in docker mode without explicit override
+        # Docker mode is active when HAGENT_DOCKER is set
+        if os.environ.get('HAGENT_DOCKER'):
+            if effective_docker_image is None:
+                effective_docker_image = os.environ.get('HAGENT_DOCKER')
+        else:
+            effective_docker_image = None
+
+        # Always initialize Runner first with the effective docker image (if any)
+        self.runner = Runner(effective_docker_image)
 
         # Initialize FileSystem (will be set after Runner setup)
         self.filesystem: Optional[FileSystem] = None
@@ -266,7 +292,6 @@ class Builder:
         # Don't override user-controlled HAGENT_* environment variables
         # These should only be set by the user for Docker volume mounting
         # The execution environment will handle path translation as needed
-        env['HAGENT_EXECUTION_MODE'] = path_manager.execution_mode
         return env
 
     # ---------------------------- track directive parsing ----------------------------
@@ -496,6 +521,7 @@ class Builder:
         build_dir: Optional[Path] = None,
         dry_run: bool = False,
         quiet: bool = True,
+        options: Optional[Dict[str, str]] = None,
     ) -> Tuple[int, str, str]:
         """
         Execute a command from a profile.
@@ -507,6 +533,7 @@ class Builder:
             build_dir: Build directory
             dry_run: If True, validate but don't execute
             quiet: Whether to run in quiet mode
+            options: Optional dictionary of option name -> value mappings for command customization
 
         Returns:
             Tuple of (exit_code, stdout, stderr)
@@ -542,6 +569,37 @@ class Builder:
 
         # Compose command; replace simple placeholders
         command = command_info['command']
+
+        # Process options if defined in the command
+        if 'options' in command_info:
+            options_config = command_info['options']
+            options = options or {}  # Initialize if None
+
+            # Build replacement dictionary for option placeholders
+            option_replacements = {}
+            for opt_spec in options_config:
+                opt_name = opt_spec.get('name')
+                if not opt_name:
+                    continue
+
+                # Determine the argument string to use
+                if opt_name in options:
+                    # User provided a value - use format with replacement
+                    format_str = opt_spec.get('format', '{value}')
+                    arg_value = format_str.replace('{value}', options[opt_name])
+                else:
+                    # Use default value as-is (it's already a complete argument string)
+                    default_value = opt_spec.get('default', '')
+                    arg_value = default_value
+
+                # Store the replacement for this option's placeholder
+                placeholder = f'{{{{{opt_name}}}}}'
+                option_replacements[placeholder] = arg_value
+
+            # Replace all option placeholders in the command
+            for placeholder, value in option_replacements.items():
+                command = command.replace(placeholder, value)
+
         if extra_args:
             command = f'{command} {" ".join(extra_args)}'
 
@@ -585,6 +643,7 @@ class Builder:
         build_dir: Optional[Path] = None,
         dry_run: bool = False,
         quiet: bool = True,
+        options: Optional[Dict[str, str]] = None,
     ) -> Tuple[int, str, str]:
         """
         Convenience method to select profile and execute command in one call.
@@ -597,6 +656,7 @@ class Builder:
             build_dir: Build directory
             dry_run: If True, validate but don't execute
             quiet: Whether to run in quiet mode
+            options: Optional dictionary of option name -> value mappings for command customization
 
         Returns:
             Tuple of (exit_code, stdout, stderr)
@@ -607,7 +667,7 @@ class Builder:
             return -1, '', error_msg
 
         profile = self._select_profile(exact_name, title_query)
-        return self._run_api(profile, command_name, extra_args, build_dir, dry_run, quiet)
+        return self._run_api(profile, command_name, extra_args, build_dir, dry_run, quiet, options)
 
     # ---------------------------- listing methods ----------------------------
 
@@ -888,6 +948,17 @@ class Builder:
         """
         if self.runner:
             self.runner.cleanup()
+
+        # Restore environment overrides if we applied any
+        if self._docker_image_env_overridden:
+            if self._original_docker_image is None:
+                os.environ.pop('HAGENT_DOCKER', None)
+            else:
+                os.environ['HAGENT_DOCKER'] = self._original_docker_image
+            self._docker_image_env_overridden = False
+            # Reset PathManager to re-read HAGENT_DOCKER
+            PathManager.reset()
+
         self.error_message = ''
 
     def __enter__(self):

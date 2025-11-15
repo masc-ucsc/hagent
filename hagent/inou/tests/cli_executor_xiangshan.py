@@ -9,12 +9,11 @@ Can be run as:
 2. Slow test: uv run pytest -m slow hagent/inou/tests/cli_executor_xiangshan.py
 """
 
-import os
 import pytest
 
 # Set up environment for testing - only set execution mode
 # Let Runner handle all Docker paths internally
-os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+# Docker mode enabled via HAGENT_DOCKER
 
 from hagent.inou.runner import Runner
 

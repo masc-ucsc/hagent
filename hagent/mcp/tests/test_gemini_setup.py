@@ -39,7 +39,7 @@ class TestGeminiMCPIntegration(unittest.TestCase):
         """Set up test environment - run once for all tests."""
         # Get the HAgent root directory
         cls.hagent_root = Path(__file__).parent.parent.parent.parent
-        cls.setup_script = cls.hagent_root / 'scripts' / 'setup_simplechisel_mcp.sh'
+        cls.setup_script = cls.hagent_root / 'scripts' / 'setup_mcp.sh'
 
         # Check if Gemini is installed
         try:
@@ -88,7 +88,7 @@ class TestGeminiMCPIntegration(unittest.TestCase):
         print(f'Setting up test environment in {self.test_dir}')
         print(f'Using MCP server name: {self.mcp_server_name}')
         result = subprocess.run(
-            [str(self.setup_script)],
+            [str(self.setup_script), 'simplechisel', '.'],
             capture_output=True,
             text=True,
             timeout=120,
@@ -183,7 +183,7 @@ class TestGeminiMCPIntegration(unittest.TestCase):
             text=True,
             timeout=30,
             cwd=str(self.hagent_root),
-            env={**os.environ, 'HAGENT_ROOT': str(self.hagent_root), 'UV_PROJECT': str(self.hagent_root)},
+            env={**os.environ, 'HAGENT_ROOT': str(self.hagent_root)},
         )
 
         if result.returncode != 0:

@@ -9,12 +9,11 @@ Can be run as:
 2. Slow test: uv run pytest -m slow hagent/inou/tests/cli_executor_simplechisel.py
 """
 
-import os
 import pytest
 
 # Set up environment for testing - only set execution mode
 # Let Runner handle all Docker paths internally
-os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+# Docker mode enabled via HAGENT_DOCKER
 
 from hagent.inou.runner import Runner
 
@@ -23,7 +22,7 @@ def _run_simplechisel_test():
     """Core SimpleChisel test logic - shared between CLI and pytest."""
 
     # 1. Initialize Runner with Docker image
-    runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+    runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.10')
 
     # 2. Setup runner (creates and configures container)
     assert runner.setup(), f'Setup failed: {runner.get_error()}'
@@ -50,7 +49,7 @@ def _run_simplechisel_test():
         runner.run_cmd('find /code -name "build.sbt" -o -name "*.scala" | head -10', cwd='/code')
 
         print('⚠️  SimpleChisel project not found in expected locations')
-        print('This test requires the mascucsc/hagent-simplechisel:2025.09r image with SimpleChisel project')
+        print('This test requires the mascucsc/hagent-simplechisel:2025.10 image with SimpleChisel project')
         print('✅ Test completed - container setup verified (SimpleChisel project not available)')
         runner.cleanup()
         return

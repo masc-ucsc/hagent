@@ -175,7 +175,7 @@ class TestCLICommands:
     def test_cmd_status(self, mock_path_manager_class, mock_file_tracker_class):
         """Test status command."""
         mock_path_manager = MagicMock()
-        mock_path_manager.execution_mode = 'local'
+        mock_path_manager.is_docker_mode.return_value = False
         mock_path_manager.repo_dir = Path('/test/repo')
         mock_path_manager.build_dir = Path('/test/build')
         mock_path_manager.cache_dir = Path('/test/cache')
@@ -192,7 +192,7 @@ class TestCLICommands:
 
             assert result == 0
             mock_print.assert_any_call('FileTracker Status:')
-            mock_print.assert_any_call('Execution mode: local')
+            mock_print.assert_any_call('Docker mode: No')
             mock_print.assert_any_call('Baseline stash: Yes')
 
     @patch('hagent.inou.cli_file_tracker.FileTracker')

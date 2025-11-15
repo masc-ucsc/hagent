@@ -39,7 +39,8 @@ class TestRunner:
         self.cache_dir.mkdir(parents=True)
 
         # Set environment variables for local mode
-        os.environ['HAGENT_EXECUTION_MODE'] = 'local'
+        # Ensure HAGENT_DOCKER is not set (local mode)
+        os.environ.pop('HAGENT_DOCKER', None)
         os.environ['HAGENT_REPO_DIR'] = str(self.repo_dir)
         os.environ['HAGENT_BUILD_DIR'] = str(self.build_dir)
         os.environ['HAGENT_CACHE_DIR'] = str(self.cache_dir)
@@ -47,7 +48,7 @@ class TestRunner:
     def teardown_method(self):
         """Clean up test environment after each test."""
         # Clean up environment variables
-        for var in ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
+        for var in ['HAGENT_DOCKER', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
@@ -77,27 +78,28 @@ class TestRunner:
 
     def test_docker_mode_initialization(self):
         """Test Case 2: Docker mode with image specification."""
-        # Switch to docker mode
-        os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+        # Switch to docker mode by setting HAGENT_DOCKER
+        os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-simplechisel:2025.10'
         PathManager.reset()  # Reset singleton to pick up new environment
 
-        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.09r')
+        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.10')
 
         assert runner.is_docker_mode()
         assert not runner.is_local_mode()
-        assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.09r'
+        assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.10'
         assert runner.container_manager is not None
 
         runner.cleanup()
 
     def test_docker_mode_without_image_fails(self):
         """Test Case 3: Docker mode should fail without image specification."""
-        os.environ['HAGENT_EXECUTION_MODE'] = 'docker'
+        # Enable docker mode by setting HAGENT_DOCKER
+        os.environ['HAGENT_DOCKER'] = 'some-image:tag'
         PathManager.reset()  # Reset singleton to pick up new environment
 
         runner = Runner()  # No docker_image provided
 
-        assert runner.get_error() == 'Docker image must be provided when HAGENT_EXECUTION_MODE is docker'
+        assert runner.get_error() == 'Docker image must be provided when HAGENT_DOCKER is set (docker mode)'
 
         runner.cleanup()
 
@@ -312,14 +314,15 @@ class TestRunnerAdvancedUseCases:
         for dir_path in [self.repo_dir, self.build_dir, self.cache_dir]:
             dir_path.mkdir(parents=True)
 
-        os.environ['HAGENT_EXECUTION_MODE'] = 'local'
+        # Ensure HAGENT_DOCKER is not set (local mode)
+        os.environ.pop('HAGENT_DOCKER', None)
         os.environ['HAGENT_REPO_DIR'] = str(self.repo_dir)
         os.environ['HAGENT_BUILD_DIR'] = str(self.build_dir)
         os.environ['HAGENT_CACHE_DIR'] = str(self.cache_dir)
 
     def teardown_method(self):
         """Clean up test environment."""
-        for var in ['HAGENT_EXECUTION_MODE', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
+        for var in ['HAGENT_DOCKER', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
             if var in os.environ:
                 del os.environ[var]
 
