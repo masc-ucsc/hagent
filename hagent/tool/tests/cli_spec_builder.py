@@ -1,192 +1,209 @@
-## uv run python hagent/step/sva_gen/run_spec_builder.py \
-#  --mode single \
-#  --slang <path slang>/slang/build/bin/slang \
-#  --llm-conf hagent/step/sva_gen/spec_prompt.yaml \
-#  --include <rtl include dir path \
-#  --rtl <rtl path> \
-#  --top load_store_unit<top module>
-
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+cli_spec_builder.py
+-------------------
+Command-line wrapper around hagent.tool.spec_builder.SpecBuilder.
+
+Features:
+  - Uses Slang to extract AST.
+  - Generates Markdown + CSV specs via LLM (mandatory).
+  - Supports single or multi-top execution.
+  - Optional YAML config to preload arguments.
+"""
+
+from __future__ import annotations
 import os
 import glob
 import yaml
 import argparse
+from pathlib import Path
+from typing import Any, Dict, List
 
-#
-# Import from the separate builder module
-from hagent.tool.spec_builder import RtlSpecBuilder, refine_spec_markdown
+from hagent.tool.spec_builder import SpecBuilder
 
-
-def is_valid_rtl(file):
-    print(f'[DEBUG] Checking if file is valid RTL: {file}')
-    return file.endswith(('.sv', '.v')) and not file.endswith('_pkg.sv')
+SV_EXTS = (".sv", ".v", ".svh", ".vh")
 
 
-def merge_config(args, config_file):
-    print(f'[DEBUG] Merging config from: {config_file}')
-    if not os.path.exists(config_file):
-        print(f"[ERROR] Config file '{config_file}' not found.")
+# ──────────────────────────────────────────────────────────────────────────────
+# Utilities
+# ──────────────────────────────────────────────────────────────────────────────
+def is_valid_rtl(path: str) -> bool:
+    """Accept .sv/.v files except *_pkg.sv or *_tb.sv."""
+    return path.endswith(SV_EXTS) and not any(
+        path.endswith(s) for s in ["_pkg.sv", "_tb.sv"]
+    )
+
+
+def list_candidate_tops(rtl_root: str) -> List[str]:
+    """Return unique module-name candidates based on filenames."""
+    files = [
+        f
+        for f in glob.glob(os.path.join(rtl_root, "**"), recursive=True)
+        if is_valid_rtl(f)
+    ]
+    return sorted(set(Path(f).stem for f in files))
+
+
+def merge_config(args: argparse.Namespace, config_file: str | None) -> argparse.Namespace:
+    """Merge defaults from YAML config into CLI args (non-destructively)."""
+    if not config_file:
         return args
-    with open(config_file) as f:
-        file_args = yaml.safe_load(f) or {}
-    for key, value in file_args.items():
-        if hasattr(args, key) and getattr(args, key) in (None, [], ''):
-            print(f'[DEBUG] Overriding argument {key} with value {value}')
-            setattr(args, key, value)
+    path = Path(config_file).expanduser()
+    if not path.exists():
+        print(f"[WARN] Config file not found: {path}")
+        return args
+
+    with path.open() as fh:
+        cfg = yaml.safe_load(fh) or {}
+
+    for k, v in cfg.items():
+        if hasattr(args, k) and getattr(args, k) in (None, "", [], False):
+            setattr(args, k, v)
     return args
 
 
-def run_single(args):
+def _sanitize_incdirs(dirs: List[str]) -> List[str]:
+    """Expand and verify include directories."""
+    out: List[str] = []
+    for d in dirs or []:
+        dd = os.path.expanduser(d)
+        if os.path.isdir(dd):
+            out.append(dd)
+        else:
+            print(f"[WARN] Include directory does not exist: {d}")
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Core runner
+# ──────────────────────────────────────────────────────────────────────────────
+def _run_one_top(args: argparse.Namespace, top: str) -> Dict[str, Any]:
+    """Run SpecBuilder for a single top."""
+    out_dir = Path(args.out).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    builder = SpecBuilder(
+        slang_bin=Path(args.slang).resolve(),
+        rtl_dir=Path(args.rtl).resolve(),
+        top=top,
+        out_dir=out_dir,
+        llm_conf=Path(args.llm_conf).resolve(),
+        include_dirs=[Path(i).resolve() for i in (args.include or [])],
+        defines=args.defines or [],
+        disable_analysis=not args.no_disable_analysis,
+    )
+
+    print(f"\n[⚙️] Building spec for top module: {top}")
+    try:
+        builder.run()
+        return {"ok": True, "top": top}
+    except SystemExit as se:
+        return {"ok": False, "top": top, "error": str(se)}
+    except Exception as e:
+        return {"ok": False, "top": top, "error": str(e)}
+
+
+def run_single(args: argparse.Namespace) -> int:
+    """Run spec build for a single top module."""
     if not args.top:
-        print('[❌] Please provide --top for single mode.')
-        return
+        print("[❌] --top is required in single mode")
+        return 2
+    res = _run_one_top(args, args.top)
+    print(res)
+    return 0 if res.get("ok") else 2
 
-    os.makedirs(args.out, exist_ok=True)
-    json_path = os.path.join(args.out, f'{args.top}_ast.json')
-    spec_path = os.path.join(args.out, f'{args.top}_spec.md')
 
-    builder = RtlSpecBuilder(
-        slang_bin=args.slang,
-        rtl_dir=args.rtl,
-        top_module=args.top,
-        out_json=json_path,
-        output_md=spec_path,
-        include_dirs=args.include,
-        defines=args.defines,
-        llm_conf=args.llm_conf,
-        disable_analysis=not args.enable_analysis,  # default True unless flag on
+def run_multi(args: argparse.Namespace) -> int:
+    """Run spec build for all discovered top modules."""
+    tops = list_candidate_tops(args.rtl)
+    if not tops:
+        print(f"[❌] No RTL tops found in: {args.rtl}")
+        return 2
+
+    print(f"[INFO] Found {len(tops)} candidate tops.")
+    failures = 0
+    for top in tops:
+        res = _run_one_top(args, top)
+        print(res)
+        if not res.get("ok"):
+            failures += 1
+
+    if failures:
+        print(f"[❌] {failures} top(s) failed.")
+        return 2
+
+    print("[✅] All tops completed successfully.")
+    return 0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CLI Entrypoint
+# ──────────────────────────────────────────────────────────────────────────────
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="CLI wrapper around SpecBuilder (LLM-driven RTL spec generator)"
     )
-
-    print(f'[🔎] Processing single RTL from directory: {args.rtl}')
-    all_files = builder.collect_rtl_files()
-    req_files = builder.resolve_required_files(args.top, all_files)
-
-    if not builder.generate_ast_from_slang(req_files):
-        print(f'[❌] Slang failed for {args.rtl}. No spec generated.')
-        return
-
-    ast_data = builder.read_ast(json_path)
-    top_ast = builder.find_top_module(ast_data, args.top)
-    if not top_ast:
-        print('[❌] Top module not found in AST.')
-        return
-
-    blocks = builder.extract_fsm_blocks(top_ast)
-    if not blocks:
-        print('[⚠️] No FSM blocks found.')
-        return
-
-    builder.write_fsm_spec(blocks, spec_path, args.top, {})
-    print(f'[✅] Wrote spec: {spec_path}')
-
-    # Refinement step (clean names; optionally filter to only the top source)
-    if args.refine:
-        top_src_guess = f'{args.top}.sv' if args.only_top_source else None
-        refine_spec_markdown(
-            in_path=spec_path,
-            out_path=spec_path,  # overwrite in place
-            top_source_basename=top_src_guess,
-        )
-        print(f'[✅] Refined spec: {spec_path}')
-
-    if not args.llm_conf:
-        print('[ℹ️] Proceeding without --llm-conf: spec will be written with the fallback (non-LLM) formatter.')
-
-
-def run_multi(args):
-    os.makedirs(args.out, exist_ok=True)
-    rtl_files = [f for f in glob.glob(os.path.join(args.rtl, '**'), recursive=True) if is_valid_rtl(f)]
-    print(f'[📁] Found {len(rtl_files)} RTL files for processing.')
-
-    for rtl_file in rtl_files:
-        top = os.path.splitext(os.path.basename(rtl_file))[0]
-        json_path = os.path.join(args.out, f'{top}_ast.json')
-        spec_path = os.path.join(args.out, f'{top}_spec.md')
-
-        print(f'\n[⚙️] Processing {top} from {rtl_file}')
-
-        builder = RtlSpecBuilder(
-            slang_bin=args.slang,
-            rtl_dir=args.rtl,
-            top_module=top,
-            out_json=json_path,
-            output_md=spec_path,
-            include_dirs=args.include,
-            defines=args.defines,
-            llm_conf=args.llm_conf,
-            disable_analysis=not args.enable_analysis,
-        )
-
-        all_files = builder.collect_rtl_files()
-        req_files = builder.resolve_required_files(top, all_files)
-
-        if not builder.generate_ast_from_slang(req_files):
-            print(f'[❌] Failed to generate AST for {top}')
-            continue
-
-        ast_data = builder.read_ast(json_path)
-        top_ast = builder.find_top_module(ast_data, top)
-        if not top_ast:
-            print(f"[❌] Top module '{top}' not found in AST.")
-            continue
-
-        blocks = builder.extract_fsm_blocks(top_ast)
-        if not blocks:
-            print(f'[⚠️] No FSM blocks found for {top}.')
-            continue
-
-        builder.write_fsm_spec(blocks, spec_path, top, {})
-        print(f'[✅] Wrote spec: {spec_path}')
-
-        if args.refine:
-            top_src_guess = f'{top}.sv' if args.only_top_source else None
-            refine_spec_markdown(in_path=spec_path, out_path=spec_path, top_source_basename=top_src_guess)
-            print(f'[✅] Refined spec: {spec_path}')
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', choices=['single', 'multi'], default='single')
-    parser.add_argument('--slang', required=True)
-    parser.add_argument('--llm-conf', required=False)
-    parser.add_argument('--rtl', required=True)
-    parser.add_argument('--top', help='Top module (for single mode)')
-    parser.add_argument('--include', nargs='*', default=[])
-    parser.add_argument('--defines', nargs='*', default=[])
-    parser.add_argument('--out', default='out_rtl_spec')
-    parser.add_argument('-f', '--config-file', help='Optional config file containing all CLI inputs')
-
-    # Refinement options
-    parser.add_argument('--refine', action='store_true', help='Refine the written spec (clean names, optional top-only)')
     parser.add_argument(
-        '--only-top-source',
-        action='store_true',
-        help="When refining, keep only the top module's source file section (assumes <top>.sv)",
+        "--mode",
+        choices=["single", "multi"],
+        default="single",
+        help="Single top or multi-top mode",
     )
-    parser.add_argument('--enable-analysis', action='store_true', help='Run slang with analysis enabled (more complete AST).')
+    parser.add_argument("--slang", required=True, help="Path to slang binary")
+    parser.add_argument("--rtl", required=True, help="Path to RTL directory")
+    parser.add_argument("--top", help="Top module name (required for single mode)")
+    parser.add_argument(
+        "--include", "-I", nargs="*", default=[], help="Include directories"
+    )
+    parser.add_argument(
+        "--defines",
+        "-D",
+        nargs="*",
+        default=[],
+        help="Defines to pass to Slang (e.g., FOO=1)",
+    )
+    parser.add_argument(
+        "--out", default="out_spec", help="Output directory for spec artifacts"
+    )
+    parser.add_argument(
+        "--llm-conf",
+        required=True,
+        help="YAML config for LLM (spec_prompt.yaml)",
+    )
+    parser.add_argument(
+        "--no-disable-analysis",
+        action="store_true",
+        help="Enable full analysis in Slang",
+    )
+    parser.add_argument(
+        "-f",
+        "--config-file",
+        dest="config_file",
+        help="YAML config file with default arguments",
+    )
 
-    args, _ = parser.parse_known_args()
+    args = parser.parse_args()
+    args = merge_config(args, args.config_file)
 
-    print(f'[DEBUG] Arguments after parsing: {args}')
-
-    if args.config_file:
-        args = merge_config(args, args.config_file)
-
+    # Path sanity
     args.rtl = os.path.expanduser(args.rtl)
-    print(f'[DEBUG] Expanded RTL path: {args.rtl}')
-    os.makedirs(args.out, exist_ok=True)
+    args.include = _sanitize_incdirs(args.include)
+    args.llm_conf = os.path.expanduser(args.llm_conf)
 
-    if args.mode == 'single':
-        print("[DEBUG] Running in 'single' mode.")
-        if not args.top:
-            print('[❌] Please provide --top for single mode.')
-            return
-        run_single(args)
+    if not os.path.isfile(args.slang):
+        print(f"[❌] slang not found: {args.slang}")
+        return 2
+    if not os.path.isdir(args.rtl):
+        print(f"[❌] RTL directory not found: {args.rtl}")
+        return 2
+
+    if args.mode == "single":
+        return run_single(args)
     else:
-        print("[DEBUG] Running in 'multi' mode.")
-        run_multi(args)
+        return run_multi(args)
 
 
-if __name__ == '__main__':
-    print('[DEBUG] Starting the script.')
-    main()
+if __name__ == "__main__":
+    raise SystemExit(main())
+
