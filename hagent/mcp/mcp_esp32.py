@@ -670,7 +670,7 @@ if __name__ == '__main__':
     # sys.exit(api_install("rust board that uses esp32"))
     # sys.exit(api_setup("newproject"))
     # api_setup("newproject")
-    # api_install()
+    api_install("rust board that uses esp32")
     print("Executable is being built...")
     build_result = api_build()
     if build_result['success'] == True:
@@ -680,15 +680,15 @@ if __name__ == '__main__':
         print(f"Build output: {build_result}")
         sys.exit(1)
 
-    print("Flashing the firmware...")
-    flash_result = api_flash()
-    if flash_result['success'] == True:
-        print("Flash completed, exiting...")
-    else:
-        print("Flash failed")
-        print(f"Flash output: {flash_output}")
-    print("Starting serial monitor for 30 seconds...")
-    monitor_result = api_monitor()
-    print(monitor_result['stdout'])
+    # print("Flashing the firmware...")
+    # flash_result = api_flash()
+    # if flash_result['success'] == True:
+    #     print("Flash completed, exiting...")
+    # else:
+    #     print("Flash failed")
+    #     print(f"Flash output: {flash_output}")
+    # print("Starting serial monitor for 30 seconds...")
+    # monitor_result = api_monitor()
+    # print(monitor_result['stdout'])
     sys.exit(1)
     # sys.exit(main())
