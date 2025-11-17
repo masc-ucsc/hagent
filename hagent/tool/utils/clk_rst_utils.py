@@ -1,183 +1,164 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Clock/Reset detection utilities for Formal Agent
-------------------------------------------------
-Detects clock and reset signals for the *top module* only,
-including polarity inference for reset (active-high or active-low).
+Clock / reset auto-detect helper for hagent.
 
-Key behavior:
-  - ONLY looks at the given top module's port list.
-  - NO FALLBACK: if no clock or reset is found, it raises an error.
-  - Prints all candidate clock/reset names it finds.
-  - Picks a single "best" clock/reset to return (shortest name).
+This version is intentionally simple and robust:
 
-Supports:
-  - Standard naming (clk, clock, rst, reset)
-  - Prefix/suffix variants (clk_i, core_clk, rst_ni, reset_n, RESET_B, etc.)
-  - Lower or upper case variants
-  - Polarity inference via suffix (_n, _ni, _b, _bar, _l)
-  - Optional hints from comments (e.g. "active low")
+* It scans the RTL under `src_root` for the top module definition.
+* It extracts the module's port names from the **header port list**.
+* It looks for a clock-like name (containing "clk" or "clock").
+* It looks for a reset-like name (containing "rst" or "reset").
+* If nothing obvious is found, it **falls back to `clk` and `rst`**
+  instead of failing.
+* If the environment variables HAGENT_CLK_NAME / HAGENT_RESET_EXPR
+  are set, they override everything.
 """
 
+import os
 import re
 from pathlib import Path
-from typing import Tuple
 from rich.console import Console
 
 console = Console()
 
-# -------------------------------------------------------------------------
-#  Reset polarity inference
-# -------------------------------------------------------------------------
+# Regex template for the top module header
+MODULE_RE_TMPL = r"module\s+{top}\s*(?:#\s*\([^;]*\))?\s*\((?P<ports>.*?)\)\s*;"
 
 
-def infer_reset_polarity(name: str, text: str = "") -> Tuple[str, str, bool]:
-    """
-    Infer reset polarity from name or surrounding text.
-
-    Returns:
-        (rst_name, rst_expr, active_low)
-
-    Examples:
-        infer_reset_polarity("rst_n")           -> ("rst_n", "(!rst_n)", True)
-        infer_reset_polarity("RESET_B")         -> ("RESET_B", "(!RESET_B)", True)
-        infer_reset_polarity("rst_i")           -> ("rst_i", "rst_i", False)
-        infer_reset_polarity("reset", "active low reset")
-                                               -> ("reset", "(!reset)", True)
-    """
-    name_low = name.lower()
-
-    # typical active-low patterns in the name
-    polarity_low = any(
-        name_low.endswith(sfx) for sfx in ("_n", "_ni", "_b", "_bar", "_l")
-    )
-
-    # also detect from comment/text hint
-    if not polarity_low and re.search(r"active\s*low", text, re.I):
-        polarity_low = True
-
-    rst_expr = f"(!{name})" if polarity_low else name
-    return name, rst_expr, polarity_low
-
-
-# -------------------------------------------------------------------------
-#  Top-level detection
-# -------------------------------------------------------------------------
-
-
-def detect_clk_rst_for_top(rtl_dir: Path, top_module: str):
-    """
-    Strict clock/reset detector for the given top module.
-
-    - Searches ONLY the top module's port list (ANSI-style header).
-    - Case-insensitive.
-    - Detects *all* port names that look like clocks/resets:
-         clock:  names containing 'clk' or 'clock'
-         reset:  names containing 'rst' or 'reset'
-    - Prints all candidates it finds.
-    - Chooses a single "best" clock/reset (shortest name, then lexicographic).
-    - Infers active-low polarity for the chosen reset.
-    - NO FALLBACK: if either clock or reset is not found,
-      it prints a clear warning and raises ValueError.
-
-    Returns:
-        (clk_name, rst_name, rst_expr, active_low)
-    """
-
-    rtl_dir = Path(rtl_dir)
-
-    # Regex for module header (ANSI style):
-    #   module top #( ... ) ( ... );
-    mod_re = re.compile(
-        rf"module\s+{re.escape(top_module)}\s*"
-        r"(?:#\s*\([^)]*\)\s*)?"  # optional parameter block
-        r"\((?P<ports>[^;]*)\)\s*;",
-        re.S | re.I,
-    )
-
-    # Case-insensitive regexes for clk/rst *port names*
-    # We capture the whole identifier as group[0].
-    clk_regex = re.compile(r"\b([A-Za-z_]\w*(?:clk|clock)\w*)\b", re.I)
-    rst_regex = re.compile(r"\b([A-Za-z_]\w*(?:rst|reset)\w*)\b", re.I)
-
-    clk_candidates = []
-    rst_candidates = []
-
-    top_source_file = None
-    ports_text = ""
-
-    # Search all *.sv (you can add *.v if needed)
-    for p in rtl_dir.rglob("*.sv"):
-        text = p.read_text(errors="ignore")
-        m = mod_re.search(text)
-        if not m:
+def _find_top_file(src_root: Path, top: str) -> Path | None:
+    """Search all .sv files under src_root for `module <top> (...)`."""
+    pat = re.compile(MODULE_RE_TMPL.format(top=re.escape(top)), re.S)
+    for f in src_root.rglob("*.sv"):
+        try:
+            txt = f.read_text(errors="ignore")
+        except OSError:
             continue
+        if pat.search(txt):
+            return f
+    return None
 
-        top_source_file = p
-        ports_text = m.group("ports")
 
-        clk_candidates = [m[0] for m in clk_regex.findall(ports_text)]
-        rst_candidates = [m[0] for m in rst_regex.findall(ports_text)]
-        break  # Found the top module; stop scanning other files
+def _extract_port_names(text: str, top: str) -> list[str]:
+    """Extract port names from the ANSI-style header of the top module."""
+    m = re.search(MODULE_RE_TMPL.format(top=re.escape(top)), text, re.S)
+    if not m:
+        return []
 
-    # If we never found the top module at all
-    if top_source_file is None:
-        msg = f"Top module '{top_module}' not found under {rtl_dir}"
-        console.print(f"[red]❌ {msg}[/red]")
-        raise ValueError(msg)
+    ports_blob = m.group("ports")
+    names: list[str] = []
 
-    # De-duplicate and sort candidates
-    clk_candidates = sorted(set(clk_candidates), key=lambda s: (len(s), s.lower()))
-    rst_candidates = sorted(set(rst_candidates), key=lambda s: (len(s), s.lower()))
+    # Very tolerant: split by commas, strip types and ranges, keep last token
+    for chunk in ports_blob.replace("\n", " ").split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        # Drop line comments inside the chunk
+        chunk = re.sub(r"//.*$", "", chunk)
+        if not chunk:
+            continue
+        tokens = chunk.split()
+        if not tokens:
+            continue
+        name = tokens[-1]
+        # Strip unpacked ranges from name like buf_mem[0:FIFO_DEPTH-1]
+        name = re.sub(r"\[.*?\]", "", name).strip()
+        if name:
+            names.append(name)
+    return names
 
-    # Log what we found
-    console.print(
-        f"[cyan]🔍 Scanning top module[/cyan] [bold]{top_module}[/bold] "
-        f"in [magenta]{top_source_file}[/magenta]"
-    )
 
-    if clk_candidates:
+def _pick_clk_rst(port_names: list[str]) -> tuple[str, str]:
+    """Choose clock/reset candidates from the list of port names."""
+    clk_candidates = [
+        p for p in port_names
+        if "clk" in p.lower() or "clock" in p.lower()
+    ]
+    rst_candidates = [
+        p for p in port_names
+        if "rst" in p.lower() or "reset" in p.lower()
+    ]
+
+    clk = clk_candidates[0] if clk_candidates else "clk"
+    rst = rst_candidates[0] if rst_candidates else "rst"
+    return clk, rst
+
+
+def detect_clk_rst_for_top(src_root, top: str):
+    """
+    Return (clock_name, reset_name, reset_expr).
+
+    * Honors env overrides:
+        HAGENT_CLK_NAME
+        HAGENT_RESET_EXPR
+    * Otherwise uses heuristics on the top module's ports.
+    * Never hard-fails just because heuristics didn't find anything;
+      it falls back to 'clk' and 'rst'.
+    """
+    src_root = Path(src_root).resolve()
+
+    # 1) Environment overrides win if both are present
+    env_clk = os.environ.get("HAGENT_CLK_NAME")
+    env_rst_expr = os.environ.get("HAGENT_RESET_EXPR")
+    if env_clk and env_rst_expr:
+        # Best effort: infer plain reset name from expression
+        rst_name_tokens = re.sub(r"[!()]", " ", env_rst_expr).split()
+        rst_name = rst_name_tokens[-1] if rst_name_tokens else env_rst_expr
+
         console.print(
-            "[green]• Candidate clock ports:[/green] "
-            + ", ".join(f"[bold]{c}[/bold]" for c in clk_candidates)
+            f"[green]✔ Top module clock={env_clk}, reset={rst_name} "
+            f"(expression: {env_rst_expr}) from environment[/green]"
         )
-    else:
-        console.print("[yellow]⚠ No clock-like ports found (no '*clk*' or '*clock*' in port names).[/yellow]")
+        return env_clk, rst_name, env_rst_expr
 
-    if rst_candidates:
+    # 2) Find RTL file containing the top module
+    console.print(
+        f"[cyan]🔍 Scanning for top module {top} under {src_root}[/cyan]"
+    )
+    top_file = _find_top_file(src_root, top)
+    if top_file is None:
+        raise SystemExit(
+            f"ERROR: Could not find module '{top}' under {src_root}"
+        )
+
+    try:
+        txt = top_file.read_text(errors="ignore")
+    except OSError as e:
+        raise SystemExit(f"ERROR: Cannot read {top_file}: {e}") from e
+
+    port_names = _extract_port_names(txt, top)
+
+    if not port_names:
         console.print(
-            "[green]• Candidate reset ports:[/green] "
-            + ", ".join(f"[bold]{r}[/bold]" for r in rst_candidates)
+            "[yellow]⚠ Could not parse port list for top module; "
+            "falling back to 'clk' and 'rst'.[/yellow]"
         )
+        clk_name, rst_name = "clk", "rst"
     else:
-        console.print("[yellow]⚠ No reset-like ports found (no '*rst*' or '*reset*' in port names).[/yellow]")
+        clk_name, rst_name = _pick_clk_rst(port_names)
 
-    # NO FALLBACK: if either is missing, stop here
-    if not clk_candidates or not rst_candidates:
-        msg = (
-            f"Could not auto-detect clock/reset for top '{top_module}'. "
-            "Please specify them explicitly (or extend clk_rst_utils heuristics)."
-        )
-        console.print(f"[red]❌ {msg}[/red]")
-        raise ValueError(msg)
+        if not any("clk" in p.lower() or "clock" in p.lower()
+                   for p in port_names):
+            console.print(
+                "[yellow]⚠ No clock-like port found (no '*clk*' or '*clock*' "
+                "in port names); falling back to 'clk'.[/yellow]"
+            )
+        if not any("rst" in p.lower() or "reset" in p.lower()
+                   for p in port_names):
+            console.print(
+                "[yellow]⚠ No reset-like port found (no '*rst*' or '*reset*' "
+                "in port names); falling back to 'rst'.[/yellow]"
+            )
 
-    # Choose "best" candidate = shortest name, then lexicographic
-    clk_name = clk_candidates[0]
-    rst_raw = rst_candidates[0]
-
-    # Infer polarity for the chosen reset
-    rst_name, rst_expr, active_low = infer_reset_polarity(rst_raw, ports_text)
+    # 3) Build a reset expression
+    if rst_name.lower().endswith(("_n", "_ni")):
+        rst_expr = f"!{rst_name}"
+    else:
+        rst_expr = rst_name
 
     console.print(
-        "[green]✔[/green] Using clock="
-        f"[bold]{clk_name}[/bold], reset="
-        f"[bold]{rst_name}[/bold] "
-        f"(expression: [cyan]{rst_expr}[/cyan], "
-        f"active_low={str(active_low).lower()})"
+        f"[green]✔ Top module clock={clk_name}, reset={rst_name} "
+        f"(expression: {rst_expr})[/green]"
     )
-
-    # Return with active_low flag as a 4th element so callers that expect
-    # (clk, rst, rst_expr) or (clk, rst, rst_expr, active_low) both work.
-    return clk_name, rst_name, rst_expr, active_low
+    return clk_name, rst_name, rst_expr
 
