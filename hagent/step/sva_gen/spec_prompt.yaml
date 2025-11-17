@@ -4,11 +4,7 @@ default:
     max_tokens: 4096
     temperature: 0.2
 
-  # ========= Template: high-level narrative sections =========
-  # Input placeholders expected:
-  #   {context_json}  -> A compact JSON context (top name, sources, list of FSMs, counts, etc.)
-  #
-  # Output: Four sections in Markdown WITHOUT extra headings beyond those asked for.
+  # ========= 1. High-level block documentation =========
   doc_sections:
     - role: system
       content: |
@@ -21,12 +17,12 @@ default:
         1) Overview (2–4 sentences). Summarize the block's responsibility and high-level dataflow.
            Refer to relevant sub-blocks or files when helpful. Avoid micro-architecture claims
            that are not in the JSON.
-        2) Timing & Performance (bullet list, 3–6 bullets). Describe throughput/latency tendencies,
+        2) Timing & Performance (bullet list). Describe throughput/latency tendencies,
            pipeline interactions, and factors like cache/TLB or handshake backpressure if those are
            implied by the context. Keep each bullet short.
-        3) Error Handling (bullet list, 3–6 bullets). Mention classes of exceptions/faults and
+        3) Error Handling (bullet list). Mention classes of exceptions/faults and
            who consumes them, if implied by the context (e.g., LSU → core/WB, MMU exceptions).
-        4) Assumptions & Limitations (bullet list, 3–6 bullets). Note configuration assumptions,
+        4) Assumptions & Limitations (bullet list). Note configuration assumptions,
            parameterization, protocol expectations (ready/valid), and anything clearly suggested
            by the context.
 
@@ -42,13 +38,7 @@ default:
         {context_json}
         ```
 
-  # ========= Template: FSM state-by-state write-up =========
-  # Input placeholders expected:
-  #   {fsm_json}   -> JSON describing one FSM (states, transitions if available, signals seen)
-  #   {rtl_code}   -> The FSM's case/always block RTL snippet
-  #   {module_name}-> Module name owning this FSM
-  #
-  # Output: A set of state sections with strict structure. No extra commentary.
+  # ========= 2. FSM documentation =========
   fsm_specification:
     - role: system
       content: |
@@ -60,7 +50,7 @@ default:
 
         ### STATE_NAME – Specification
         **Purpose**  
-        <1–3 sentence summary of what this state does in context. If not clear, say "Not explicitly specified in RTL.">
+        Summary of what this state does in context. If not clear, say "Not explicitly specified in RTL.">
 
         **Entry Conditions**  
         - <condition that causes entry; if unknown, write "Not explicitly specified in RTL.">
@@ -96,10 +86,7 @@ default:
         {rtl_code}
         ```
 
-  # ========= (Optional) Template: Interface table from ports =========
-  # If you extend your extractor to include port info in JSON, this will render a Markdown table.
-  # Input placeholders:
-  #   {ports_json} -> [{"name":"...","dir":"In|Out|Inout","type":"...", "desc":"..."}]
+  # ========= 3. Interface table (optional) =========
   interface_table:
     - role: system
       content: |
@@ -112,10 +99,7 @@ default:
         {ports_json}
         ```
 
-  # ========= (Optional) Template: Parameter table =========
-  # If you extend your extractor to include parameters, this will render a table.
-  # Input placeholders:
-  #   {params_json} -> [{"name":"...","type":"...","default":"...","desc":"..."}]
+  # ========= 4. Parameter table (optional) =========
   parameter_table:
     - role: system
       content: |
@@ -127,3 +111,40 @@ default:
         ```json
         {params_json}
         ```
+
+  # ========= 5. CSV property generation =========
+  sva_row_list_csv:
+    - role: system
+      content: |
+        You are an expert in formal verification and hardware property specification.
+        You will be given a JSON description of the RTL (ports, parameters, FSMs, and RTL excerpts).
+
+        OUTPUT FORMAT RULES (MANDATORY):
+        - Output ONLY raw CSV text. DO NOT include markdown, code fences, prose, or explanations.
+        - The FIRST LINE MUST be EXACTLY:
+          sid,prop_type,module,name,scenario,pre,post,signals,param_ok,notes
+        - Use commas as separators. Each subsequent line is one CSV row.
+        - No extra spaces around commas, no quotes unless necessary.
+        - No blank lines before or after the CSV.
+
+        COLUMN DETAILS:
+        - sid: unique ID like SVA001, SVA002, ...
+        - prop_type: "assert" or "cover" or "assume"
+        - module: top module name
+        - name: short property name
+        - scenario: brief scenario description
+        - pre: pre-condition expression or explanation
+        - post: expected outcome or post-condition explanation
+        - signals: comma-separated list of relevant signal names
+        - param_ok: "yes" if property applies for all parameter values, else "no"
+        - notes: brief verification note
+
+        GUIDELINES:
+        - Base all rows strictly on the provided context.
+        - Use actual port and signal names; do not invent behavior.
+        - Provide meaningful CSV rows.
+
+    - role: user
+      content: |
+        Context JSON:
+        {context_json}
