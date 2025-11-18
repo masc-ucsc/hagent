@@ -146,9 +146,10 @@ If you use macOS and Colima, you may get a "docker-credential-desktop not instal
 
 If you run Colima, you need to use virtiofs as mount point, and 32GB for XiangShan. This may require reinstalling Colima:
 ```
-# brew install colima
+# brew install colima lima
+colima stop -f
 rm -rf ~/.colima
-colima start --mount-type virtiofs --vm-type=vz --vz-rosetta --memory 32
+colima start --mount-type virtiofs --vm-type=vz --memory 32
 # brew services start colima
 ```
 
