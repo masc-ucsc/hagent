@@ -10,11 +10,31 @@
 # Optimization: Uses cached template in .cache/setup_<project>_mcp for faster setup
 
 set -e
+
+EXECUTION_MODE="docker"
+TEMP_ARGS=()
+while (( "$#" )); do
+  case "$1" in
+    --local)
+      EXECUTION_MODE="local"
+      shift
+      ;;
+    -*)
+      echo "Error: Unsupported flag $1" >&2
+      exit 1
+      ;;
+    *)
+      TEMP_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+set -- "${TEMP_ARGS[@]}"
 PROJECT_NAME="${1:-}"
 BASE_DIR=${2:-$(pwd)}
 if [[ -z "$PROJECT_NAME" ]]; then
   echo "Usage: $0 <project> [target_dir]" >&2
-  echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan" >&2
+  echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan, esp32_led" >&2
   exit 1
 fi
 
@@ -43,6 +63,11 @@ xiangshan)
   DOCKER_IMAGE="mascucsc/hagent-xiangshan:2025.10"
   GIT_URL="https://github.com/OpenXiangShan/XiangShan.git"
   ;;
+esp32_led)
+  EXAMPLE_SOURCE_DIR="${HAGENT_ROOT}/examples/esp32_led"
+  DOCKER_IMAGE="mascucsc/hagent-builder:2025.10" # Fallback Image
+  GIT_URL=""
+  ;;
 *)
   # Check if it's a directory in examples or a direct path
   if [[ -d "${HAGENT_ROOT}/examples/${PROJECT_NAME}" ]]; then
@@ -55,7 +80,7 @@ xiangshan)
     GIT_URL=""
   else
     echo "Unknown project: '$PROJECT_NAME'" >&2
-    echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan" >&2
+    echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan, esp32_led" >&2
     echo "Or specify a directory in examples/ or a full path to a directory" >&2
     exit 1
   fi
@@ -147,11 +172,17 @@ if [[ -n "${EXAMPLE_SOURCE_DIR:-}" ]]; then
 fi
 
 # Write server launcher
+if [[ "$EXECUTION_MODE" == "local" ]]; then
+  MODE_EXPORT='export HAGENT_EXECUTION_MODE="local"'
+else
+  MODE_EXPORT="export HAGENT_DOCKER=\"${DOCKER_IMAGE}\""
+fi
+
 cat >"${BASE_DIR}/hagent_server.sh" <<EOF
 #!/bin/bash
 export UV_PROJECT="${HAGENT_ROOT}"
 export HAGENT_ROOT="${HAGENT_ROOT}"
-export HAGENT_DOCKER="${DOCKER_IMAGE}"
+${MODE_EXPORT}
 export HAGENT_REPO_DIR="${BASE_DIR}/repo"
 export HAGENT_BUILD_DIR="${BASE_DIR}/build"
 export HAGENT_CACHE_DIR="${BASE_DIR}/cache"
