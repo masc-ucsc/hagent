@@ -22,4 +22,7 @@ outputs
 .coverage.*
 .testmondata*
 setup_run
-.cache
+/cache/
+/repo/
+.DS_Store
+project_env.sh
