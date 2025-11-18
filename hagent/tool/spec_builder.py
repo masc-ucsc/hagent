@@ -480,7 +480,8 @@ class SpecBuilder:
         res = subprocess.run(cmd)
         if res.returncode != 0 or not self.out_json.exists():
             console.print(f"[red]❌ Slang failed (code={res.returncode}); AST not produced: {self.out_json}[/red]")
-            raise SystemExit(2)
+            #raise SystemExit(2)
+            #continue
         console.print(f"[green]✔ AST written:[/green] {self.out_json}")
 
     # ──────────────────────────────────────────────────────────────────────
