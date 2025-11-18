@@ -7,6 +7,12 @@ Nice to keep a single consistent litellm API
 Main file: hagent/core/llm_wrap.py
 
 -------
+
+Create a cli/mcp/prompt/? that given a repo, creates a hagent.yaml (there should be some scripts to check correctness)
+
+Similar to /init in tools but for hagent.yaml
+
+-------
 Several places in hagent.yaml says (/code/workspace/....), we should use HAGENT_... as needed to do auto replace
 
 -------
