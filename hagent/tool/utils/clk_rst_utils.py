@@ -35,17 +35,17 @@ console = Console()
 
 def _strip_comments(text: str) -> str:
     """Remove // and /* */ comments."""
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = re.sub(r"//.*?$", "", text, flags=re.M)
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
+    text = re.sub(r'//.*?$', '', text, flags=re.M)
     return text
 
 
 def _find_top_file(src_root: Path, top: str) -> Path | None:
     """Locate the file that defines module <top>."""
-    pat = re.compile(rf"\bmodule\s+{re.escape(top)}\b")
-    for f in Path(src_root).rglob("*.sv"):
+    pat = re.compile(rf'\bmodule\s+{re.escape(top)}\b')
+    for f in Path(src_root).rglob('*.sv'):
         try:
-            txt = f.read_text(errors="ignore")
+            txt = f.read_text(errors='ignore')
         except OSError:
             continue
         if pat.search(txt):
@@ -55,12 +55,12 @@ def _find_top_file(src_root: Path, top: str) -> Path | None:
 
 def _extract_module_text(full_text: str, top: str) -> str:
     """Slice out 'module <top> ... endmodule' from the file."""
-    m = re.search(rf"\bmodule\s+{re.escape(top)}\b", full_text)
+    m = re.search(rf'\bmodule\s+{re.escape(top)}\b', full_text)
     if not m:
-        return ""
+        return ''
     start = m.start()
     rest = full_text[start:]
-    end_match = re.search(r"\bendmodule\b", rest)
+    end_match = re.search(r'\bendmodule\b', rest)
     if end_match:
         return rest[: end_match.end()]
     return rest
@@ -73,12 +73,12 @@ def _extract_port_names(full_text: str, top: str) -> list[str]:
     This is only used to slightly prefer port signals over internal signals
     when ranking clk/rst candidates.
     """
-    m = re.search(rf"\bmodule\s+{re.escape(top)}\b", full_text)
+    m = re.search(rf'\bmodule\s+{re.escape(top)}\b', full_text)
     if not m:
         return []
 
     start = m.end()
-    end = full_text.find(");", start)
+    end = full_text.find(');', start)
     if end == -1:
         return []
 
@@ -87,15 +87,15 @@ def _extract_port_names(full_text: str, top: str) -> list[str]:
 
     # Very lightweight parse: look for "<dir> ... <name>"
     decl_pat = re.compile(
-        r"\b(input|output|inout)\b"   # direction
-        r"[^,);]*"                    # type / range
-        r"\b([A-Za-z_]\w*)\b",        # name
+        r'\b(input|output|inout)\b'  # direction
+        r'[^,);]*'  # type / range
+        r'\b([A-Za-z_]\w*)\b',  # name
         flags=re.S,
     )
 
     for dm in decl_pat.finditer(header):
         name = dm.group(2)
-        name = re.sub(r"\[.*?\]", "", name).strip()
+        name = re.sub(r'\[.*?\]', '', name).strip()
         if name and name not in names:
             names.append(name)
 
@@ -118,11 +118,11 @@ def _is_likely_reset_name(name: str) -> bool:
     """
     s = name.lower()
 
-    if s.startswith(("rst", "reset")):
+    if s.startswith(('rst', 'reset')):
         return True
-    if s.endswith(("rst", "rst_n", "rst_ni", "rst_b", "reset", "reset_n")):
+    if s.endswith(('rst', 'rst_n', 'rst_ni', 'rst_b', 'reset', 'reset_n')):
         return True
-    if "_rst" in s or "rst_" in s or "_reset" in s or "reset_" in s:
+    if '_rst' in s or 'rst_' in s or '_reset' in s or 'reset_' in s:
         return True
 
     return False
@@ -139,11 +139,11 @@ def _find_decl_clk_rst_candidates(module_text: str):
     parameters like NrStorePipeRegs are NOT treated as reset signals.
     """
     clk_pat = re.compile(
-        r"\b(?:input|wire|logic|reg)\b[^;]*?\b([A-Za-z_]\w*(?:clk|clock)\w*)",
+        r'\b(?:input|wire|logic|reg)\b[^;]*?\b([A-Za-z_]\w*(?:clk|clock)\w*)',
         flags=re.I | re.S,
     )
     rst_pat = re.compile(
-        r"\b(?:input|wire|logic|reg)\b[^;]*?\b([A-Za-z_]\w*(?:rst|reset)\w*)",
+        r'\b(?:input|wire|logic|reg)\b[^;]*?\b([A-Za-z_]\w*(?:rst|reset)\w*)',
         flags=re.I | re.S,
     )
 
@@ -163,12 +163,8 @@ def _find_sensitivity_clk_rst(module_text: str):
     clk_from_sens: list[str] = []
     rst_from_sens: list[str] = []
 
-    clk_pos_pat = re.compile(
-        r"\bposedge\s+([A-Za-z_]\w*(?:clk|clock)\w*)", flags=re.I
-    )
-    rst_edge_pat = re.compile(
-        r"\b(?:posedge|negedge)\s+([A-Za-z_]\w*(?:rst|reset)\w*)", flags=re.I
-    )
+    clk_pos_pat = re.compile(r'\bposedge\s+([A-Za-z_]\w*(?:clk|clock)\w*)', flags=re.I)
+    rst_edge_pat = re.compile(r'\b(?:posedge|negedge)\s+([A-Za-z_]\w*(?:rst|reset)\w*)', flags=re.I)
 
     for m in clk_pos_pat.finditer(module_text):
         clk_from_sens.append(m.group(1))
@@ -189,16 +185,16 @@ def _find_clk_rst_always_pair(module_text: str):
     """
     # posedge clk or negedge rst
     pat1 = re.compile(
-        r"always(?:_[a-zA-Z0-9]+)?\s*@\(\s*"
-        r"posedge\s+([A-Za-z_]\w*)\s+or\s+negedge\s+([A-Za-z_]\w*)"
-        r"\s*\)",
+        r'always(?:_[a-zA-Z0-9]+)?\s*@\(\s*'
+        r'posedge\s+([A-Za-z_]\w*)\s+or\s+negedge\s+([A-Za-z_]\w*)'
+        r'\s*\)',
         flags=re.S,
     )
     # negedge rst or posedge clk
     pat2 = re.compile(
-        r"always(?:_[a-zA-Z0-9]+)?\s*@\(\s*"
-        r"negedge\s+([A-Za-z_]\w*)\s+or\s+posedge\s+([A-Za-z_]\w*)"
-        r"\s*\)",
+        r'always(?:_[a-zA-Z0-9]+)?\s*@\(\s*'
+        r'negedge\s+([A-Za-z_]\w*)\s+or\s+posedge\s+([A-Za-z_]\w*)'
+        r'\s*\)',
         flags=re.S,
     )
 
@@ -225,7 +221,7 @@ def _find_clk_rst_always_pair(module_text: str):
 def _rank_clk(cands: list[str], port_names: set[str]) -> str:
     """Pick the most likely clock signal from candidates."""
     if not cands:
-        return "clk"
+        return 'clk'
 
     def score(name: str):
         s = name.lower()
@@ -234,16 +230,16 @@ def _rank_clk(cands: list[str], port_names: set[str]) -> str:
         if name in port_names:
             sc += 10
         # "clk"/"clock" presence
-        if "clk" in s or "clock" in s:
+        if 'clk' in s or 'clock' in s:
             sc += 5
         # Prefer names that start with clk*/clock*
-        if s.startswith(("clk", "clock")):
+        if s.startswith(('clk', 'clock')):
             sc += 3
         # *_i style convention (e.g. clk_i)
-        if s.endswith("_i"):
+        if s.endswith('_i'):
             sc += 2
         # Tiny bump for exactly 'clk', but not dominant
-        if s == "clk":
+        if s == 'clk':
             sc += 1
 
         # Sort: higher score first, then shorter name, then ports first
@@ -255,7 +251,7 @@ def _rank_clk(cands: list[str], port_names: set[str]) -> str:
 def _rank_rst(cands: list[str], port_names: set[str]) -> str:
     """Pick the most likely reset signal from candidates."""
     if not cands:
-        return "rst"
+        return 'rst'
 
     # Preserve occurrence order but unique
     cands_set = list(dict.fromkeys(cands))
@@ -267,16 +263,16 @@ def _rank_rst(cands: list[str], port_names: set[str]) -> str:
         if name in port_names:
             sc += 10
         # Prefer names that start with rst/reset
-        if s.startswith(("rst", "reset")):
+        if s.startswith(('rst', 'reset')):
             sc += 8
         # Active-low suffixes
-        if s.endswith(("_n", "_ni", "_b")):
+        if s.endswith(('_n', '_ni', '_b')):
             sc += 5
         # *_rst or rst_ in the middle gets a bit
-        if "_rst" in s or "rst_" in s:
+        if '_rst' in s or 'rst_' in s:
             sc += 2
         # *_i small bump
-        if s.endswith("_i"):
+        if s.endswith('_i'):
             sc += 1
 
         return (-sc, len(s), 0 if name in port_names else 1)
@@ -287,8 +283,8 @@ def _rank_rst(cands: list[str], port_names: set[str]) -> str:
 def _build_rst_expr(rst_name: str) -> str:
     """Build Jasper reset expression from name (handle active-low)."""
     s = rst_name.lower()
-    if s.endswith(("_n", "_ni", "_b")):
-        return f"!{rst_name}"
+    if s.endswith(('_n', '_ni', '_b')):
+        return f'!{rst_name}'
     return rst_name
 
 
@@ -308,38 +304,36 @@ def detect_clk_rst_for_top(src_root, top: str):
     src_root = Path(src_root).resolve()
 
     # 0) Environment override (for tricky cases)
-    env_clk = os.environ.get("HAGENT_CLK_NAME")
-    env_rst_expr = os.environ.get("HAGENT_RESET_EXPR")
+    env_clk = os.environ.get('HAGENT_CLK_NAME')
+    env_rst_expr = os.environ.get('HAGENT_RESET_EXPR')
     if env_clk and env_rst_expr:
         # Try to recover a "bare" reset signal name from the expression
-        rst_tokens = re.sub(r"[!()]", " ", env_rst_expr).split()
+        rst_tokens = re.sub(r'[!()]', ' ', env_rst_expr).split()
         rst_name = rst_tokens[-1] if rst_tokens else env_rst_expr
         console.print(
-            f"[green]✔ Top module clock={env_clk}, reset={rst_name} "
-            f"(expression: {env_rst_expr}) from environment[/green]"
+            f'[green]✔ Top module clock={env_clk}, reset={rst_name} (expression: {env_rst_expr}) from environment[/green]'
         )
         return env_clk, rst_name, env_rst_expr
 
     # 1) Locate and read the top file
-    console.print(f"[cyan]🔍 Scanning for top module {top} under {src_root}[/cyan]")
+    console.print(f'[cyan]🔍 Scanning for top module {top} under {src_root}[/cyan]')
     top_file = _find_top_file(src_root, top)
     if top_file is None:
         raise SystemExit(f"ERROR: Could not find module '{top}' under {src_root}")
 
     try:
-        full_text = top_file.read_text(errors="ignore")
+        full_text = top_file.read_text(errors='ignore')
     except OSError as e:
-        raise SystemExit(f"ERROR: Cannot read {top_file}: {e}") from e
+        raise SystemExit(f'ERROR: Cannot read {top_file}: {e}') from e
 
     no_cmt = _strip_comments(full_text)
     module_text = _extract_module_text(no_cmt, top)
 
     if not module_text:
-        clk_name, rst_name = "clk", "rst"
+        clk_name, rst_name = 'clk', 'rst'
         rst_expr = _build_rst_expr(rst_name)
         console.print(
-            f"[yellow]⚠ Could not extract module body; "
-            f"using defaults clk={clk_name}, rst={rst_name} (expr={rst_expr}).[/yellow]"
+            f'[yellow]⚠ Could not extract module body; using defaults clk={clk_name}, rst={rst_name} (expr={rst_expr}).[/yellow]'
         )
         return clk_name, rst_name, rst_expr
 
@@ -353,8 +347,7 @@ def detect_clk_rst_for_top(src_root, top: str):
         rst_name = rst_pair
         rst_expr = _build_rst_expr(rst_name)
         console.print(
-            f"[green]✔ Top module clock={clk_name}, reset={rst_name} "
-            f"(expression: {rst_expr}) from always-block pair[/green]"
+            f'[green]✔ Top module clock={clk_name}, reset={rst_name} (expression: {rst_expr}) from always-block pair[/green]'
         )
         return clk_name, rst_name, rst_expr
 
@@ -372,13 +365,10 @@ def detect_clk_rst_for_top(src_root, top: str):
     rst_name = _rank_rst(rst_cands, port_names)
     rst_expr = _build_rst_expr(rst_name)
 
-    console.print(
-        f"[green]✔ Top module clock={clk_name}, reset={rst_name} (expression: {rst_expr})[/green]"
-    )
+    console.print(f'[green]✔ Top module clock={clk_name}, reset={rst_name} (expression: {rst_expr})[/green]')
     return clk_name, rst_name, rst_expr
 
 
 # Legacy alias in case older code imports detect_clk_rst
 def detect_clk_rst(src_root, top: str):
     return detect_clk_rst_for_top(src_root, top)
-

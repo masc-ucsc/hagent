@@ -44,17 +44,17 @@ def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
     """
     rtl_dir_path = Path(rtl_dir)
     mod_re = re.compile(
-        rf"\bmodule\s+{re.escape(top)}\s*\((?P<ports>.*?)\)\s*;",
+        rf'\bmodule\s+{re.escape(top)}\s*\((?P<ports>.*?)\)\s*;',
         re.DOTALL | re.MULTILINE,
     )
 
     port_names: List[str] = []
 
-    for sv in rtl_dir_path.rglob("*"):
-        if sv.suffix not in {".sv", ".v"}:
+    for sv in rtl_dir_path.rglob('*'):
+        if sv.suffix not in {'.sv', '.v'}:
             continue
         try:
-            txt = sv.read_text(encoding="utf-8", errors="ignore")
+            txt = sv.read_text(encoding='utf-8', errors='ignore')
         except Exception:
             continue
 
@@ -62,19 +62,19 @@ def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
         if not m:
             continue
 
-        port_block = m.group("ports") or ""
+        port_block = m.group('ports') or ''
         # Strip comments
-        port_block = re.sub(r"//.*?$", "", port_block, flags=re.M)
-        port_block = re.sub(r"/\*.*?\*/", "", port_block, flags=re.S)
+        port_block = re.sub(r'//.*?$', '', port_block, flags=re.M)
+        port_block = re.sub(r'/\*.*?\*/', '', port_block, flags=re.S)
 
         # Split by comma and extract last identifier from each chunk
-        for chunk in port_block.split(","):
+        for chunk in port_block.split(','):
             chunk = chunk.strip()
             if not chunk:
                 continue
             # Drop ranges like [7:0]
-            chunk = re.sub(r"\[[^\]]+\]", " ", chunk)
-            toks = re.findall(r"\b[A-Za-z_]\w*\b", chunk)
+            chunk = re.sub(r'\[[^\]]+\]', ' ', chunk)
+            toks = re.findall(r'\b[A-Za-z_]\w*\b', chunk)
             if not toks:
                 continue
             name = toks[-1]
@@ -108,14 +108,14 @@ class PropertyBuilder:
         self.llm_conf = os.path.abspath(llm_conf) if llm_conf else None
 
         if not LLM_wrap or not self.llm_conf:
-            print("[❌] LLM_wrap not available or llm_conf missing.")
+            print('[❌] LLM_wrap not available or llm_conf missing.')
             self.llm = None
         else:
-            print(f"[LLM] Using config: {self.llm_conf}")
+            print(f'[LLM] Using config: {self.llm_conf}')
             self.llm = LLM_wrap(
-                name="default",
+                name='default',
                 conf_file=self.llm_conf,
-                log_file="property_llm.log",
+                log_file='property_llm.log',
             )
 
     # ------------------------------------------------------------------
@@ -123,37 +123,33 @@ class PropertyBuilder:
     def _fmt(s: Optional[str]) -> str:
         """Escape braces so YAML templates don't get confused."""
         if s is None:
-            return ""
-        return str(s).replace("{", "{{").replace("}", "}}")
+            return ''
+        return str(s).replace('{', '{{').replace('}', '}}')
 
     # ------------------------------------------------------------------
     def _read_csv_rows(self) -> List[Dict[str, str]]:
         rows: List[Dict[str, str]] = []
-        with open(self.csv_path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(self.csv_path, 'r', encoding='utf-8', errors='ignore') as f:
             reader = csv.DictReader(f)
             for r in reader:
-                clean = {
-                    (k or "").strip(): self._fmt((v or "").strip())
-                    for k, v in r.items()
-                    if k is not None
-                }
+                clean = {(k or '').strip(): self._fmt((v or '').strip()) for k, v in r.items() if k is not None}
                 rows.append(clean)
-        print(f"[DEBUG] Loaded {len(rows)} CSV rows.")
+        print(f'[DEBUG] Loaded {len(rows)} CSV rows.')
         return rows
 
     # ------------------------------------------------------------------
     def _read_markdown(self) -> str:
         try:
-            txt = Path(self.spec_md).read_text(encoding="utf-8", errors="ignore")
+            txt = Path(self.spec_md).read_text(encoding='utf-8', errors='ignore')
         except Exception:
-            txt = ""
+            txt = ''
         return self._fmt(txt)
 
     # ------------------------------------------------------------------
     def _find_clk_rst(self):
-        top_module = Path(self.spec_md).stem.split("_spec")[0]
+        top_module = Path(self.spec_md).stem.split('_spec')[0]
         clk, rst, _ = detect_clk_rst_for_top(Path(self.rtl_dir), top_module)
-        print(f"[INFO] Clock={clk}, Reset={rst}")
+        print(f'[INFO] Clock={clk}, Reset={rst}')
         return clk, rst, top_module
 
     # ------------------------------------------------------------------
@@ -164,8 +160,8 @@ class PropertyBuilder:
         Otherwise just return trimmed text.
         """
         if not text:
-            return ""
-        m = re.search(r"```(?:systemverilog|sv|verilog)?\s*([\s\S]*?)```", text, re.I)
+            return ''
+        m = re.search(r'```(?:systemverilog|sv|verilog)?\s*([\s\S]*?)```', text, re.I)
         if m:
             return m.group(1).strip()
         return text.strip()
@@ -179,18 +175,25 @@ class PropertyBuilder:
         """
         if not expr.strip():
             return False
-        tokens = re.findall(r"\b[A-Za-z_]\w*\b", expr)
+        tokens = re.findall(r'\b[A-Za-z_]\w*\b', expr)
         allowed_ids = set(ports) | {
             # SV keywords we might see as identifiers
-            "if", "else", "and", "or", "not",
+            'if',
+            'else',
+            'and',
+            'or',
+            'not',
             # builtins/system functions (keywords, not identifiers, but safe)
-            "posedge", "negedge", "disable", "iff",
+            'posedge',
+            'negedge',
+            'disable',
+            'iff',
         }
         for t in tokens:
             if t in allowed_ids:
                 continue
             # allow simple numeric/token-like symbols (e.g. BUF_SIZE)
-            if re.match(r"^[A-Z0-9_]+$", t):
+            if re.match(r'^[A-Z0-9_]+$', t):
                 continue
             # allow 'd, 'h width spec etc (but those are not identifiers)
             # any other unknown identifier is suspicious
@@ -219,13 +222,13 @@ class PropertyBuilder:
         if pre_expr and PropertyBuilder._expr_uses_only_ports(pre_expr, ports):
             lhs_pattern = r"1'b1\s*\|\-\>"
             if re.search(lhs_pattern, txt):
-                txt = re.sub(lhs_pattern, f"({pre_expr}) |->", txt, count=1)
+                txt = re.sub(lhs_pattern, f'({pre_expr}) |->', txt, count=1)
 
         # Fix RHS ... |-> 1'b1  or ... |-> ##N 1'b1  -->  ... |-> (post_expr)
         if post_expr and PropertyBuilder._expr_uses_only_ports(post_expr, ports):
             rhs_pattern = r"\|\-\>\s*(?:##\s*\d+\s*)?1'b1\b"
             if re.search(rhs_pattern, txt):
-                txt = re.sub(rhs_pattern, f"|-> ({post_expr})", txt, count=1)
+                txt = re.sub(rhs_pattern, f'|-> ({post_expr})', txt, count=1)
 
         return txt
 
@@ -237,7 +240,7 @@ class PropertyBuilder:
         return bool(
             re.search(
                 r"1'b1\s*\|\-\>\s*(?:##\s*\d+\s*)?1'b1\b",
-                sv_text.replace(" ", ""),
+                sv_text.replace(' ', ''),
             )
         )
 
@@ -254,46 +257,46 @@ class PropertyBuilder:
         Call the LLM for a single CSV row and return raw SV text (unfiltered).
         """
         if not self.llm:
-            return ""
+            return ''
 
-        sid   = row.get("sid", "")
-        name  = row.get("name", "")
-        ptype = row.get("prop_type", "assert")
-        pre   = row.get("pre", "")
-        post  = row.get("post", "")
+        sid = row.get('sid', '')
+        name = row.get('name', '')
+        ptype = row.get('prop_type', 'assert')
+        pre = row.get('pre', '')
+        post = row.get('post', '')
 
         payload = {
-            "clock": clk,
-            "reset": rst,
-            "sid": sid,
-            "name": name,
-            "ptype": ptype,
-            "pre": pre,
-            "post": post,
-            "spec_markdown": md,
+            'clock': clk,
+            'reset': rst,
+            'sid': sid,
+            'name': name,
+            'ptype': ptype,
+            'pre': pre,
+            'post': post,
+            'spec_markdown': md,
             # Give the LLM explicit list of allowed top-level signals
-            "allowed_signals": ", ".join(sorted(set(ports))),
+            'allowed_signals': ', '.join(sorted(set(ports))),
         }
 
         try:
-            res = self.llm.inference(payload, prompt_index="sva_property_block", n=1)
+            res = self.llm.inference(payload, prompt_index='sva_property_block', n=1)
         except Exception as e:
-            print(f"[LLM ERROR] row {sid} ({name}): {e}")
-            return ""
+            print(f'[LLM ERROR] row {sid} ({name}): {e}')
+            return ''
 
         if isinstance(res, str):
             text = res
         elif isinstance(res, list) and res:
             text = res[0]
-        elif isinstance(res, dict) and "choices" in res:
+        elif isinstance(res, dict) and 'choices' in res:
             try:
-                text = res["choices"][0]["message"]["content"]
+                text = res['choices'][0]['message']['content']
             except Exception:
-                text = ""
+                text = ''
         else:
-            text = ""
+            text = ''
 
-        return self._extract_sv_code(text or "")
+        return self._extract_sv_code(text or '')
 
     # ------------------------------------------------------------------
     def generate_properties(self) -> str:
@@ -303,16 +306,16 @@ class PropertyBuilder:
         """
 
         if not self.llm:
-            print("[❌] LLM is not initialized; cannot generate properties.")
-            return ""
+            print('[❌] LLM is not initialized; cannot generate properties.')
+            return ''
 
         clk, rst, top_module = self._find_clk_rst()
         rows = self._read_csv_rows()
-        md   = self._read_markdown()
+        md = self._read_markdown()
 
         # Detect top-level ports directly from RTL
         ports = detect_top_ports_from_rtl(self.rtl_dir, top_module)
-        print(f"[INFO] Top ports detected from RTL: {ports}")
+        print(f'[INFO] Top ports detected from RTL: {ports}')
 
         # Fallback: if RTL detection fails, at least add clk/rst so prompt isn't empty
         if not ports:
@@ -325,16 +328,16 @@ class PropertyBuilder:
         all_props: List[str] = []
 
         for row in rows:
-            sid = row.get("sid", "")
-            name = row.get("name", "")
-            pre = row.get("pre", "")
-            post = row.get("post", "")
+            sid = row.get('sid', '')
+            name = row.get('name', '')
+            pre = row.get('pre', '')
+            post = row.get('post', '')
 
-            print(f"[INFO] Generating property for row {sid} ({name})")
+            print(f'[INFO] Generating property for row {sid} ({name})')
 
             sv_text = self._call_llm_for_row(clk, rst, ports, md, row)
             if not sv_text.strip():
-                print(f"[WARN] Empty property text for row {sid} ({name}); skipping.")
+                print(f'[WARN] Empty property text for row {sid} ({name}); skipping.')
                 continue
 
             # Try to fix trivial 1'b1 uses using CSV pre/post
@@ -342,37 +345,37 @@ class PropertyBuilder:
 
             # Drop completely trivial properties 1'b1 |-> 1'b1
             if self._is_totally_trivial(sv_text):
-                print(f"[WARN] Dropping totally trivial property for row {sid} ({name}).")
+                print(f'[WARN] Dropping totally trivial property for row {sid} ({name}).')
                 continue
 
             all_props.append(sv_text.strip())
 
-        out_path = os.path.join(self.out_dir, "properties.sv")
+        out_path = os.path.join(self.out_dir, 'properties.sv')
 
         if all_props:
-            final_text = "\n\n".join(all_props)
+            final_text = '\n\n'.join(all_props)
         else:
-            final_text = "// No valid properties generated"
+            final_text = '// No valid properties generated'
 
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(final_text + "\n")
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(final_text + '\n')
 
-        print(f"[✅] Properties written to {out_path}")
+        print(f'[✅] Properties written to {out_path}')
         return out_path
 
 
 # -----------------------------------------------------------------------------
 # CLI wrapper
 # -----------------------------------------------------------------------------
-if __name__ == "__main__":
+if __name__ == '__main__':
     import argparse
 
     p = argparse.ArgumentParser()
-    p.add_argument("--spec-md", required=True)
-    p.add_argument("--csv", required=True)
-    p.add_argument("--rtl", required=True)
-    p.add_argument("--out", required=True)
-    p.add_argument("--llm-conf", required=True)
+    p.add_argument('--spec-md', required=True)
+    p.add_argument('--csv', required=True)
+    p.add_argument('--rtl', required=True)
+    p.add_argument('--out', required=True)
+    p.add_argument('--llm-conf', required=True)
     args = p.parse_args()
 
     pb = PropertyBuilder(
@@ -383,4 +386,3 @@ if __name__ == "__main__":
         llm_conf=args.llm_conf,
     )
     pb.generate_properties()
-

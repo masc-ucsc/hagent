@@ -31,17 +31,21 @@ import json
 import argparse
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Optional rich console for nice logs (safe if missing)
 # ──────────────────────────────────────────────────────────────────────────────
 try:
     from rich.console import Console
+
     console = Console()
 except Exception:
+
     class _Dummy:
-        def print(self, *a, **k): print(*a)
+        def print(self, *a, **k):
+            print(*a)
+
     console = _Dummy()
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -56,7 +60,6 @@ from hagent.core.llm_template import LLM_template
 from hagent.tool.utils.clk_rst_utils import detect_clk_rst_for_top
 
 try:
-    from hagent.tool.utils import hdl_utils
     _HAS_HDL_UTILS = True
 except Exception:
     _HAS_HDL_UTILS = False
@@ -65,15 +68,12 @@ except Exception:
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
-CSV_HEADER = [
-    "sid", "prop_type", "module", "name", "scenario",
-    "pre", "post", "signals", "param_ok", "notes"
-]
+CSV_HEADER = ['sid', 'prop_type', 'module', 'name', 'scenario', 'pre', 'post', 'signals', 'param_ok', 'notes']
 
-ALWAYS_KINDS = {"always", "alwayscomb", "alwaysff", "always_latch", "proceduralblock"}
-ASSIGN_KINDS = {"continuousassign"}
-IF_KINDS     = {"if"}
-CASE_KINDS   = {"case"}
+ALWAYS_KINDS = {'always', 'alwayscomb', 'alwaysff', 'always_latch', 'proceduralblock'}
+ASSIGN_KINDS = {'continuousassign'}
+IF_KINDS = {'if'}
+CASE_KINDS = {'case'}
 
 
 def _ensure_dir(p: Path) -> None:
@@ -81,40 +81,40 @@ def _ensure_dir(p: Path) -> None:
 
 
 def _write_text(path: Path, text: str) -> None:
-    path.write_text(text if text.endswith("\n") else (text + "\n"), encoding="utf-8")
+    path.write_text(text if text.endswith('\n') else (text + '\n'), encoding='utf-8')
 
 
 def _write_json(path: Path, obj: Any) -> None:
-    path.write_text(json.dumps(obj, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(obj, indent=2), encoding='utf-8')
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # AST Parsers
 # ──────────────────────────────────────────────────────────────────────────────
 def _packed_range_from_node(n: Dict[str, Any]) -> Optional[str]:
-    rng = n.get("packed_range") or n.get("range") or n.get("dimensions")
+    rng = n.get('packed_range') or n.get('range') or n.get('dimensions')
     if isinstance(rng, str):
         return rng
     if isinstance(rng, dict):
-        l = rng.get("left")
-        r = rng.get("right")
-        if l is not None and r is not None:
-            return f"[{l}:{r}]"
+        left = rng.get('left')
+        r = rng.get('right')
+        if left is not None and r is not None:
+            return f'[{left}:{r}]'
     return None
 
 
 def _data_type_from_decl(n: Dict[str, Any]) -> Optional[str]:
-    base = n.get("data_type") or n.get("type") or n.get("decl_type")
+    base = n.get('data_type') or n.get('type') or n.get('decl_type')
     if isinstance(base, dict):
-        bt  = base.get("name") or base.get("type") or base.get("kind")
-        rng = _packed_range_from_node(base) or _packed_range_from_node(n) or ""
+        bt = base.get('name') or base.get('type') or base.get('kind')
+        rng = _packed_range_from_node(base) or _packed_range_from_node(n) or ''
         return f'{rng + " " if rng else ""}{bt or "logic"}'.strip()
     if isinstance(base, str):
-        rng = _packed_range_from_node(n) or ""
+        rng = _packed_range_from_node(n) or ''
         return f'{rng + " " if rng else ""}{base}'.strip()
-    rng = _packed_range_from_node(n) or ""
+    rng = _packed_range_from_node(n) or ''
     if rng:
-        return f"{rng} logic"
+        return f'{rng} logic'
     return None
 
 
@@ -126,36 +126,34 @@ def extract_ports_from_ast(module_ast: Dict[str, Any]) -> List[Dict[str, str]]:
 
     def norm_dir(d):
         if not d:
-            return "-"
+            return '-'
         d = str(d).lower()
-        if "inout" in d: return "Inout"
-        if "input" in d or d == "in": return "In"
-        if "output" in d or d == "out": return "Out"
-        return "-"
+        if 'inout' in d:
+            return 'Inout'
+        if 'input' in d or d == 'in':
+            return 'In'
+        if 'output' in d or d == 'out':
+            return 'Out'
+        return '-'
 
     def add_port(name, direction, dtype):
         if not name:
             return
-        ports.append({
-            "name": name,
-            "dir": norm_dir(direction),
-            "type": dtype or "-",
-            "desc": "-"
-        })
+        ports.append({'name': name, 'dir': norm_dir(direction), 'type': dtype or '-', 'desc': '-'})
 
     def walk(n):
         if isinstance(n, dict):
-            k = n.get("kind", "")
-            if k.lower().startswith("port"):
-                name = n.get("name") or n.get("symbol")
-                direction = n.get("direction") or n.get("dir")
+            k = n.get('kind', '')
+            if k.lower().startswith('port'):
+                name = n.get('name') or n.get('symbol')
+                direction = n.get('direction') or n.get('dir')
                 dtype = _data_type_from_decl(n)
 
-                decl = n.get("decl") or n.get("declared") or n.get("declaration") or {}
+                decl = n.get('decl') or n.get('declared') or n.get('declaration') or {}
                 if (not name) and isinstance(decl, dict):
-                    name = decl.get("name") or decl.get("symbol")
+                    name = decl.get('name') or decl.get('symbol')
                     dtype = dtype or _data_type_from_decl(decl)
-                    direction = direction or decl.get("direction")
+                    direction = direction or decl.get('direction')
 
                 if name:
                     add_port(name, direction, dtype)
@@ -171,9 +169,9 @@ def extract_ports_from_ast(module_ast: Dict[str, Any]) -> List[Dict[str, str]]:
     uniq: List[Dict[str, str]] = []
     seen = set()
     for p in ports:
-        if p["name"] not in seen:
+        if p['name'] not in seen:
             uniq.append(p)
-            seen.add(p["name"])
+            seen.add(p['name'])
     return uniq
 
 
@@ -182,27 +180,22 @@ def extract_parameters_from_ast(module_ast: Dict[str, Any]) -> List[Dict[str, st
 
     def render_expr(e):
         if isinstance(e, dict):
-            return e.get("text") or e.get("value") or e.get("literal") or e.get("name")
+            return e.get('text') or e.get('value') or e.get('literal') or e.get('name')
         return str(e) if e is not None else None
 
     def add_param(name, ptype, default):
         if not name:
             return
-        params.append({
-            "name": name,
-            "type": ptype or "-",
-            "default": default if default not in (None, "") else "-",
-            "desc": "-"
-        })
+        params.append({'name': name, 'type': ptype or '-', 'default': default if default not in (None, '') else '-', 'desc': '-'})
 
     def walk(n):
         if isinstance(n, dict):
-            k = n.get("kind", "").lower()
-            if "parameter" in k:
-                name    = n.get("name") or n.get("symbol")
-                dt      = n.get("data_type") or n.get("type")
-                ptype   = dt.get("name") if isinstance(dt, dict) else (dt if isinstance(dt, str) else None)
-                default = render_expr(n.get("initializer") or n.get("value") or n.get("init"))
+            k = n.get('kind', '').lower()
+            if 'parameter' in k:
+                name = n.get('name') or n.get('symbol')
+                dt = n.get('data_type') or n.get('type')
+                ptype = dt.get('name') if isinstance(dt, dict) else (dt if isinstance(dt, str) else None)
+                default = render_expr(n.get('initializer') or n.get('value') or n.get('init'))
                 if name:
                     add_param(name, ptype, default)
             for v in n.values():
@@ -216,17 +209,17 @@ def extract_parameters_from_ast(module_ast: Dict[str, Any]) -> List[Dict[str, st
     uniq: List[Dict[str, str]] = []
     seen = set()
     for p in params:
-        if p["name"] not in seen:
+        if p['name'] not in seen:
             uniq.append(p)
-            seen.add(p["name"])
+            seen.add(p['name'])
     return uniq
 
 
 def _src_info(n: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "file": n.get("source_file_start") or n.get("source_file"),
-        "ls": n.get("source_line_start") or n.get("source_line"),
-        "le": n.get("source_line_end") or n.get("source_line"),
+        'file': n.get('source_file_start') or n.get('source_file'),
+        'ls': n.get('source_line_start') or n.get('source_line'),
+        'le': n.get('source_line_end') or n.get('source_line'),
     }
 
 
@@ -238,27 +231,29 @@ def extract_logic_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dic
 
     def add_block(kind: str, n: dict):
         info = _src_info(n)
-        if info["file"] and info["ls"] and info["le"]:
-            code = extract_rtl_fn(info["file"], int(info["ls"]), int(info["le"]))
+        if info['file'] and info['ls'] and info['le']:
+            code = extract_rtl_fn(info['file'], int(info['ls']), int(info['le']))
         else:
-            code = ""
-        blocks.append({
-            "kind": kind,
-            "where": info,
-            "code": code[:8000],
-        })
+            code = ''
+        blocks.append(
+            {
+                'kind': kind,
+                'where': info,
+                'code': code[:8000],
+            }
+        )
 
     def walk(n):
         if isinstance(n, dict):
-            k = (n.get("kind") or "").lower()
+            k = (n.get('kind') or '').lower()
             if k in ALWAYS_KINDS:
-                add_block("always", n)
+                add_block('always', n)
             elif k in IF_KINDS:
-                add_block("if", n)
+                add_block('if', n)
             elif k in ASSIGN_KINDS:
-                add_block("assign", n)
+                add_block('assign', n)
             elif k in CASE_KINDS:
-                add_block("case", n)
+                add_block('case', n)
 
             for v in n.values():
                 walk(v)
@@ -284,9 +279,9 @@ def parse_case_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dict[s
         def _visit(n):
             nonlocal src_file, min_ln, max_ln
             if isinstance(n, dict):
-                sf = n.get("source_file_start") or n.get("source_file")
-                ls = n.get("source_line_start") or n.get("source_line")
-                le = n.get("source_line_end") or n.get("source_line")
+                sf = n.get('source_file_start') or n.get('source_file')
+                ls = n.get('source_line_start') or n.get('source_line')
+                le = n.get('source_line_end') or n.get('source_line')
                 if sf and ls and le:
                     if src_file is None:
                         src_file = sf
@@ -305,44 +300,44 @@ def parse_case_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dict[s
     def _find_expr_name(expr) -> Optional[str]:
         def _walk(n):
             if isinstance(n, dict):
-                if n.get("kind") in ("NamedValue", "ArbitrarySymbol"):
-                    return n.get("symbol") or n.get("name")
+                if n.get('kind') in ('NamedValue', 'ArbitrarySymbol'):
+                    return n.get('symbol') or n.get('name')
                 for v in n.values():
                     r = _walk(v)
-                    if r: return r
+                    if r:
+                        return r
             elif isinstance(n, list):
                 for it in n:
                     r = _walk(it)
-                    if r: return r
+                    if r:
+                        return r
             return None
 
-        sym = expr.get("symbol")
-        return sym or _walk(expr) or expr.get("kind") or "state"
+        sym = expr.get('symbol')
+        return sym or _walk(expr) or expr.get('kind') or 'state'
 
     def walk(n):
         if isinstance(n, dict):
-            if n.get("kind") == "Case":
-                expr = n.get("expr", {})
+            if n.get('kind') == 'Case':
+                expr = n.get('expr', {})
                 expr_sym = _find_expr_name(expr)
 
                 src = _src_info(n)
-                if not (src["file"] and src["ls"] and src["le"]):
+                if not (src['file'] and src['ls'] and src['le']):
                     sf, ls, le = _collect_span(n)
-                    src = {"file": sf, "ls": ls, "le": le}
+                    src = {'file': sf, 'ls': ls, 'le': le}
 
                 block = {
-                    "expr_symbol": expr_sym,
-                    "source_file": src["file"],
-                    "line_start": src["ls"],
-                    "line_end": src["le"],
+                    'expr_symbol': expr_sym,
+                    'source_file': src['file'],
+                    'line_start': src['ls'],
+                    'line_end': src['le'],
                 }
 
-                if block["source_file"] and block["line_start"] and block["line_end"]:
-                    block["rtl_code"] = extract_rtl_fn(
-                        block["source_file"], int(block["line_start"]), int(block["line_end"])
-                    )
+                if block['source_file'] and block['line_start'] and block['line_end']:
+                    block['rtl_code'] = extract_rtl_fn(block['source_file'], int(block['line_start']), int(block['line_end']))
                 else:
-                    block["rtl_code"] = ""
+                    block['rtl_code'] = ''
 
                 case_blocks.append(block)
 
@@ -358,9 +353,9 @@ def parse_case_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dict[s
     uniq: List[Dict[str, Any]] = []
     for b in case_blocks:
         uid = (
-            os.path.basename(b.get("source_file") or "n/a"),
-            int(b.get("line_start") or 0),
-            int(b.get("line_end") or 0),
+            os.path.basename(b.get('source_file') or 'n/a'),
+            int(b.get('line_start') or 0),
+            int(b.get('line_end') or 0),
         )
         if uid in seen:
             continue
@@ -369,8 +364,8 @@ def parse_case_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dict[s
 
     uniq.sort(
         key=lambda x: (
-            os.path.basename(x.get("source_file") or ""),
-            int(x.get("line_start") or 0),
+            os.path.basename(x.get('source_file') or ''),
+            int(x.get('line_start') or 0),
         )
     )
     return uniq
@@ -392,35 +387,35 @@ class SpecBuilder:
         disable_analysis: bool = True,
     ):
         self.slang_bin = slang_bin
-        self.rtl_dir   = rtl_dir
-        self.top       = top
-        self.out_dir   = out_dir
-        self.llm_conf  = llm_conf
+        self.rtl_dir = rtl_dir
+        self.top = top
+        self.out_dir = out_dir
+        self.llm_conf = llm_conf
         self.include_dirs = include_dirs or []
-        self.defines   = defines or []
+        self.defines = defines or []
         self.disable_analysis = disable_analysis
 
         _ensure_dir(self.out_dir)
 
         # Outputs
-        self.out_json   = self.out_dir   / f"{self.top}_ast.json"
-        self.out_md     = self.out_dir   / f"{self.top}_spec.md"
-        self.out_csv    = self.out_dir   / f"{self.top}_spec.csv"
-        self.logic_snap = self.out_dir   / f"{self.top}_logic_blocks.json"
+        self.out_json = self.out_dir / f'{self.top}_ast.json'
+        self.out_md = self.out_dir / f'{self.top}_spec.md'
+        self.out_csv = self.out_dir / f'{self.top}_spec.csv'
+        self.logic_snap = self.out_dir / f'{self.top}_logic_blocks.json'
 
         # LLM is mandatory
         if not self.llm_conf.exists():
-            console.print(f"[red]❌ LLM config not found: {self.llm_conf}[/red]")
+            console.print(f'[red]❌ LLM config not found: {self.llm_conf}[/red]')
             raise SystemExit(2)
 
-        console.print(f"[cyan][LLM] Using config:[/cyan] {self.llm_conf}")
-        self.llm = LLM_wrap(name="default", conf_file=str(self.llm_conf), log_file="spec_llm.log")
+        console.print(f'[cyan][LLM] Using config:[/cyan] {self.llm_conf}')
+        self.llm = LLM_wrap(name='default', conf_file=str(self.llm_conf), log_file='spec_llm.log')
         self.tmpl = LLM_template(str(self.llm_conf))
-        self.template_dict = getattr(self.tmpl, "template_dict", {}) or {}
+        self.template_dict = getattr(self.tmpl, 'template_dict', {}) or {}
 
         # Minimal template guard
-        for req in ("doc_sections", "fsm_specification", "sva_row_list_csv"):
-            if not (self.template_dict.get("default", {}).get(req)):
+        for req in ('doc_sections', 'fsm_specification', 'sva_row_list_csv'):
+            if not (self.template_dict.get('default', {}).get(req)):
                 console.print(f"[red]❌ Required prompt '{req}' missing in: {self.llm_conf}[/red]")
                 raise SystemExit(2)
 
@@ -433,11 +428,12 @@ class SpecBuilder:
     def _collect_rtl_files(self) -> List[Path]:
         try:
             from hagent.tool.utils.hdl_utils import find_sv_files
+
             files = find_sv_files(self.rtl_dir, skip_dirs=set())
             return sorted([Path(f) for f in files])
         except Exception as e:
-            console.print(f"[yellow]⚠ find_sv_files failed; falling back. ({e})[/yellow]")
-            return [p for p in self.rtl_dir.rglob("*") if p.suffix in {".sv", ".svh", ".v", ".vh"}]
+            console.print(f'[yellow]⚠ find_sv_files failed; falling back. ({e})[/yellow]')
+            return [p for p in self.rtl_dir.rglob('*') if p.suffix in {'.sv', '.svh', '.v', '.vh'}]
 
     def _resolve_required(self, all_rtl: List[Path]) -> List[Path]:
         try:
@@ -454,59 +450,63 @@ class SpecBuilder:
             self._incdirs_resolved = incdirs
             return files_out
         except Exception as e:
-            console.print(f"[yellow]⚠ compute_transitive_closure failed; falling back. ({e})[/yellow]")
+            console.print(f'[yellow]⚠ compute_transitive_closure failed; falling back. ({e})[/yellow]')
             return all_rtl
 
     def _run_slang(self, req_files: List[Path]) -> None:
         cmd = [
             str(self.slang_bin),
-            "--top", self.top,
-            "--ast-json", str(self.out_json),
-            "--ast-json-source-info",
-            "--ignore-unknown-modules",
-            "--allow-use-before-declare",
-            "--diag-abs-paths",
+            '--top',
+            self.top,
+            '--ast-json',
+            str(self.out_json),
+            '--ast-json-source-info',
+            '--ignore-unknown-modules',
+            '--allow-use-before-declare',
+            '--diag-abs-paths',
         ]
         if self.disable_analysis:
-            cmd.append("--disable-analysis")
+            cmd.append('--disable-analysis')
         for inc in self.include_dirs:
-            cmd += ["-I", str(inc)]
+            cmd += ['-I', str(inc)]
         for d in self.defines:
-            cmd.append(f"--define={d}")
+            cmd.append(f'--define={d}')
         cmd += [str(f) for f in req_files]
 
-        console.print("[cyan]• Running Slang to emit AST JSON[/cyan]")
-        console.print("  " + " ".join(cmd))
+        console.print('[cyan]• Running Slang to emit AST JSON[/cyan]')
+        console.print('  ' + ' '.join(cmd))
         res = subprocess.run(cmd)
         if res.returncode != 0 or not self.out_json.exists():
-            console.print(f"[red]❌ Slang failed (code={res.returncode}); AST not produced: {self.out_json}[/red]")
-            #raise SystemExit(2)
-            #continue
-        console.print(f"[green]✔ AST written:[/green] {self.out_json}")
+            console.print(f'[red]❌ Slang failed (code={res.returncode}); AST not produced: {self.out_json}[/red]')
+            # raise SystemExit(2)
+            # continue
+        console.print(f'[green]✔ AST written:[/green] {self.out_json}')
 
     # ──────────────────────────────────────────────────────────────────────
     # AST reading and top node search
     # ──────────────────────────────────────────────────────────────────────
     def _read_ast(self) -> Dict[str, Any]:
-        return json.loads(self.out_json.read_text(encoding="utf-8"))
+        return json.loads(self.out_json.read_text(encoding='utf-8'))
 
     def _find_top_module(self, ast: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         def rec(node):
             if isinstance(node, dict):
-                if node.get("kind") == "Module" and node.get("name") == self.top:
+                if node.get('kind') == 'Module' and node.get('name') == self.top:
                     return node
-                if node.get("kind") == "Instance" and node.get("name") == self.top:
-                    return node.get("body")
+                if node.get('kind') == 'Instance' and node.get('name') == self.top:
+                    return node.get('body')
                 for v in node.values():
                     r = rec(v)
-                    if r: return r
+                    if r:
+                        return r
             elif isinstance(node, list):
                 for it in node:
                     r = rec(it)
-                    if r: return r
+                    if r:
+                        return r
             return None
 
-        return rec(ast.get("design", {}).get("members", []))
+        return rec(ast.get('design', {}).get('members', []))
 
     # ──────────────────────────────────────────────────────────────────────
     # File code extraction
@@ -514,10 +514,10 @@ class SpecBuilder:
     @staticmethod
     def _extract_rtl(path: str, ls: int, le: int) -> str:
         try:
-            lines = Path(path).read_text(encoding="utf-8", errors="ignore").splitlines()
-            return "\n".join(lines[max(0, ls - 1): max(0, le)])
+            lines = Path(path).read_text(encoding='utf-8', errors='ignore').splitlines()
+            return '\n'.join(lines[max(0, ls - 1) : max(0, le)])
         except Exception as e:
-            return f"// Error extracting RTL: {e}"
+            return f'// Error extracting RTL: {e}'
 
     # ──────────────────────────────────────────────────────────────────────
     # LLM call (guarded)
@@ -526,31 +526,31 @@ class SpecBuilder:
         try:
             out = self.llm.inference(payload, prompt_index=prompt_index, n=1)
             if isinstance(out, list) and out:
-                return out[0] or ""
+                return out[0] or ''
             if isinstance(out, str):
                 return out
-            if isinstance(out, dict) and "choices" in out:
+            if isinstance(out, dict) and 'choices' in out:
                 try:
-                    return out["choices"][0]["message"]["content"] or ""
+                    return out['choices'][0]['message']['content'] or ''
                 except Exception:
-                    return ""
-            return ""
+                    return ''
+            return ''
         except Exception as e:
             console.print(f"[red]❌ LLM '{prompt_index}' failed: {e}[/red]")
-            return ""
+            return ''
 
     # ──────────────────────────────────────────────────────────────────────
     # Build context and generate artifacts
     # ──────────────────────────────────────────────────────────────────────
     def run(self) -> None:
         # 1) Collect and resolve RTL
-        console.print("[cyan]• Collecting RTL files[/cyan]")
+        console.print('[cyan]• Collecting RTL files[/cyan]')
         all_rtl = self._collect_rtl_files()
         if not all_rtl:
-            console.print(f"[red]❌ No RTL files found under: {self.rtl_dir}[/red]")
+            console.print(f'[red]❌ No RTL files found under: {self.rtl_dir}[/red]')
             raise SystemExit(2)
         req_files = self._resolve_required(all_rtl)
-        console.print(f"[green]✔ Required files:[/green] {len(req_files)}")
+        console.print(f'[green]✔ Required files:[/green] {len(req_files)}')
 
         # 2) Slang → AST
         self._run_slang(req_files)
@@ -562,123 +562,125 @@ class SpecBuilder:
             console.print(f"[red]❌ Top module '{self.top}' not found in AST.[/red]")
             raise SystemExit(2)
 
-        ports  = extract_ports_from_ast(top_ast)
+        ports = extract_ports_from_ast(top_ast)
         params = extract_parameters_from_ast(top_ast)
-        fsms   = parse_case_blocks(top_ast, self._extract_rtl)
-        logic  = extract_logic_blocks(top_ast, self._extract_rtl)
+        fsms = parse_case_blocks(top_ast, self._extract_rtl)
+        logic = extract_logic_blocks(top_ast, self._extract_rtl)
 
         _write_json(self.logic_snap, logic)
-        console.print(f"[green]✔ Logic snapshot:[/green] {self.logic_snap}")
+        console.print(f'[green]✔ Logic snapshot:[/green] {self.logic_snap}')
 
         # 4) High-level context for LLM
         def fsm_summary(b):
             return {
-                "expr_symbol": b.get("expr_symbol") or "state",
-                "source": os.path.basename(b.get("source_file") or ""),
-                "line_start": b.get("line_start"),
-                "line_end": b.get("line_end"),
-                "rtl_excerpt": (b.get("rtl_code") or "")[:4000],
+                'expr_symbol': b.get('expr_symbol') or 'state',
+                'source': os.path.basename(b.get('source_file') or ''),
+                'line_start': b.get('line_start'),
+                'line_end': b.get('line_end'),
+                'rtl_excerpt': (b.get('rtl_code') or '')[:4000],
             }
 
         ctx = {
-            "top_module": self.top,
-            "clock": self.clk,
-            "reset": self.rst,
-            "reset_expr": self.rst_expr,
-            "ports": ports,
-            "params": params,
-            "fsms": [fsm_summary(b) for b in fsms],
+            'top_module': self.top,
+            'clock': self.clk,
+            'reset': self.rst,
+            'reset_expr': self.rst_expr,
+            'ports': ports,
+            'params': params,
+            'fsms': [fsm_summary(b) for b in fsms],
             # IMPORTANT: give some logic to LLM so spec/CSV reflect RTL behavior
-            "logic_blocks": logic[:200],
-            "csv_head": CSV_HEADER,
-            "notes": [
+            'logic_blocks': logic[:200],
+            'csv_head': CSV_HEADER,
+            'notes': [
                 "CSV must use only top-level input/output signals from 'ports'.",
-                "Avoid internal regs/wires.",
-                "Expressions must be valid SystemVerilog.",
+                'Avoid internal regs/wires.',
+                'Expressions must be valid SystemVerilog.',
             ],
         }
 
         # 5) Generate Markdown
         md_parts: List[str] = []
 
-        console.print("[cyan]• LLM: doc_sections[/cyan]")
-        md_doc = self._llm("doc_sections", {"context_json": json.dumps(ctx, ensure_ascii=False)})
+        console.print('[cyan]• LLM: doc_sections[/cyan]')
+        md_doc = self._llm('doc_sections', {'context_json': json.dumps(ctx, ensure_ascii=False)})
         if md_doc.strip():
             md_parts.append(md_doc.strip())
 
-        if self.template_dict.get("default", {}).get("interface_table"):
-            console.print("[cyan]• LLM: interface_table[/cyan]")
-            md_if = self._llm("interface_table", {"ports_json": json.dumps(ports, ensure_ascii=False)})
+        if self.template_dict.get('default', {}).get('interface_table'):
+            console.print('[cyan]• LLM: interface_table[/cyan]')
+            md_if = self._llm('interface_table', {'ports_json': json.dumps(ports, ensure_ascii=False)})
             if md_if.strip():
-                md_parts.append("### Interface\n\n" + md_if.strip())
+                md_parts.append('### Interface\n\n' + md_if.strip())
 
-        if params and self.template_dict.get("default", {}).get("parameter_table"):
-            console.print("[cyan]• LLM: parameter_table[/cyan]")
-            md_pa = self._llm("parameter_table", {"params_json": json.dumps(params, ensure_ascii=False)})
+        if params and self.template_dict.get('default', {}).get('parameter_table'):
+            console.print('[cyan]• LLM: parameter_table[/cyan]')
+            md_pa = self._llm('parameter_table', {'params_json': json.dumps(params, ensure_ascii=False)})
             if md_pa.strip():
-                md_parts.append("### Parameters\n\n" + md_pa.strip())
+                md_parts.append('### Parameters\n\n' + md_pa.strip())
 
         if fsms:
-            md_parts.append(f"## FSM Specification for Top Module: {self.top}\n")
+            md_parts.append(f'## FSM Specification for Top Module: {self.top}\n')
             for blk in fsms:
-                console.print(f"[cyan]• LLM: fsm_specification ({blk.get('expr_symbol')})[/cyan]")
+                console.print(f'[cyan]• LLM: fsm_specification ({blk.get("expr_symbol")})[/cyan]')
                 fsm_json = {
-                    "module": self.top,
-                    "expr_symbol": blk.get("expr_symbol") or "state",
-                    "source_file": os.path.basename(blk.get("source_file") or ""),
-                    "line_start": blk.get("line_start"),
-                    "line_end": blk.get("line_end"),
-                    "states": [],
-                    "signals_seen": [],
+                    'module': self.top,
+                    'expr_symbol': blk.get('expr_symbol') or 'state',
+                    'source_file': os.path.basename(blk.get('source_file') or ''),
+                    'line_start': blk.get('line_start'),
+                    'line_end': blk.get('line_end'),
+                    'states': [],
+                    'signals_seen': [],
                 }
-                md_fsm = self._llm("fsm_specification", {
-                    "module_name": self.top,
-                    "fsm_json": json.dumps(fsm_json, ensure_ascii=False),
-                    "rtl_code": blk.get("rtl_code") or "",
-                })
+                md_fsm = self._llm(
+                    'fsm_specification',
+                    {
+                        'module_name': self.top,
+                        'fsm_json': json.dumps(fsm_json, ensure_ascii=False),
+                        'rtl_code': blk.get('rtl_code') or '',
+                    },
+                )
                 if md_fsm.strip():
                     md_parts.append(md_fsm.strip())
 
-        md_text = "\n\n".join([p for p in md_parts if p.strip()]) or \
-                  f"## FSM Specification for Top Module: {self.top}\n"
+        md_text = '\n\n'.join([p for p in md_parts if p.strip()]) or f'## FSM Specification for Top Module: {self.top}\n'
         _write_text(self.out_md, md_text)
-        console.print(f"[green]✔ Spec Markdown:[/green] {self.out_md}")
+        console.print(f'[green]✔ Spec Markdown:[/green] {self.out_md}')
 
         # 7) Generate CSV (I/O only) via LLM
-        console.print("[cyan]• LLM: sva_row_list_csv[/cyan]")
-        csv_raw = self._llm("sva_row_list_csv", {"context_json": json.dumps(ctx, ensure_ascii=False)}).strip()
+        console.print('[cyan]• LLM: sva_row_list_csv[/cyan]')
+        csv_raw = self._llm('sva_row_list_csv', {'context_json': json.dumps(ctx, ensure_ascii=False)}).strip()
 
         if not csv_raw:
-            console.print("[red]❌ LLM produced empty CSV text.[/red]")
+            console.print('[red]❌ LLM produced empty CSV text.[/red]')
             raise SystemExit(2)
 
-        m = re.search(r"```(?:csv)?\s*([\s\S]*?)```", csv_raw, re.I)
+        m = re.search(r'```(?:csv)?\s*([\s\S]*?)```', csv_raw, re.I)
         if m:
             csv_raw = m.group(1).strip()
 
-        first_line = (csv_raw.splitlines() or [""])[0].strip().lower().replace(" ", "")
-        expected   = ",".join(CSV_HEADER).lower().replace(" ", "")
+        first_line = (csv_raw.splitlines() or [''])[0].strip().lower().replace(' ', '')
+        expected = ','.join(CSV_HEADER).lower().replace(' ', '')
         if first_line != expected:
-            csv_raw = ",".join(CSV_HEADER) + "\n" + csv_raw
+            csv_raw = ','.join(CSV_HEADER) + '\n' + csv_raw
 
         _write_text(self.out_csv, csv_raw)
-        console.print(f"[green]✔ CSV spec:[/green] {self.out_csv}")
-        console.print("[bold green]✅ SPEC BUILDER COMPLETED[/bold green]")
+        console.print(f'[green]✔ CSV spec:[/green] {self.out_csv}')
+        console.print('[bold green]✅ SPEC BUILDER COMPLETED[/bold green]')
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────────────────────
 def _parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="LLM-driven RTL Spec Builder (Markdown + CSV)")
-    p.add_argument("--slang",     required=True, help="Path to slang binary")
-    p.add_argument("--rtl",       required=True, help="RTL directory")
-    p.add_argument("--top",       required=True, help="Top module name")
-    p.add_argument("--out",       required=True, help="Output directory")
-    p.add_argument("--llm-conf",  required=True, help="YAML prompt config (spec_prompt.yaml)")
-    p.add_argument("--include", action="append", default=[], help="Additional include dirs (-I)")
-    p.add_argument("--define",  action="append", default=[], help="Slang defines (e.g., FOO=1)")
-    p.add_argument("--no-disable-analysis", action="store_true", help="Enable Slang analysis (default: disabled)")
+    p = argparse.ArgumentParser(description='LLM-driven RTL Spec Builder (Markdown + CSV)')
+    p.add_argument('--slang', required=True, help='Path to slang binary')
+    p.add_argument('--rtl', required=True, help='RTL directory')
+    p.add_argument('--top', required=True, help='Top module name')
+    p.add_argument('--out', required=True, help='Output directory')
+    p.add_argument('--llm-conf', required=True, help='YAML prompt config (spec_prompt.yaml)')
+    p.add_argument('--include', action='append', default=[], help='Additional include dirs (-I)')
+    p.add_argument('--define', action='append', default=[], help='Slang defines (e.g., FOO=1)')
+    p.add_argument('--no-disable-analysis', action='store_true', help='Enable Slang analysis (default: disabled)')
     return p.parse_args()
 
 
@@ -693,17 +695,16 @@ def main() -> int:
             llm_conf=Path(args.llm_conf).resolve(),
             include_dirs=[Path(d).resolve() for d in (args.include or [])],
             defines=args.define or [],
-            disable_analysis=not args.no-disable_analysis,
+            disable_analysis=not args.no_disable_analysis,
         )
         builder.run()
         return 0
     except SystemExit as se:
         return int(se.code) if isinstance(se.code, int) else 2
     except Exception as e:
-        console.print(f"[red]❌ Unhandled error: {e}[/red]")
+        console.print(f'[red]❌ Unhandled error: {e}[/red]')
         return 2
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     raise SystemExit(main())
-

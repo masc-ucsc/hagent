@@ -14,12 +14,12 @@ import shutil
 from typing import Dict, Any, Optional
 import difflib
 import platform
-import re
 import json
 
+
 def initialize_idf_env():
-    print("Adding idf.py to PATH")
-    export_sh_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf", "export.sh")
+    print('Adding idf.py to PATH')
+    export_sh_path = os.path.join(os.environ['HAGENT_CACHE_DIR'], 'esp-idf', 'export.sh')
     export_script_cmd = f"bash -c 'source {export_sh_path} >/dev/null 2>&1 && python3 - <<PY\nimport os, json\nprint(json.dumps(dict(os.environ)))\nPY'"
     export_proc = subprocess.run(export_script_cmd, shell=True, capture_output=True, text=True)
 
@@ -27,6 +27,7 @@ def initialize_idf_env():
     os.environ.update(json.loads(export_proc.stdout))
 
     # CalledProcessError is caught and handled by the calling function
+
 
 def get_mcp_schema() -> Dict[str, Any]:
     """Return MCP tool schema for ESP32 development command."""
@@ -87,7 +88,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     # 5. Run ./install.sh <esp32_model>
     # 6. Copy board config to HAGENT_REPO_DIR/AGENTS.md or CLAUDE.md
 
-    configs_path = os.path.join(os.environ["HAGENT_ROOT"], 'hagent', 'mcp', 'configs')
+    configs_path = os.path.join(os.environ['HAGENT_ROOT'], 'hagent', 'mcp', 'configs')
     if os.path.isdir(configs_path):
         board_desc_files = [file[:-3] for file in os.listdir(configs_path)]
         boards, board_details = [], []
@@ -96,32 +97,38 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
             if args:
                 boards = difflib.get_close_matches(args, board_desc_files, 3, 0.3)
 
-            boards = board_desc_files if args == None or len(boards) == 0 else boards
+            boards = board_desc_files if args is None or len(boards) == 0 else boards
         # Process the filtered the boards
         for b in boards:
-            file_name = os.path.join(configs_path, f"{b}.md")
+            file_name = os.path.join(configs_path, f'{b}.md')
             with open(file_name, 'r') as f:
                 lines = f.read().split('\n')
-                board_details.append({
-                    "name": lines[0].split(':')[1].strip(),
-                    "model": lines[3].split(':')[1].strip(),
-                    "file_name": file_name
-                })
+                board_details.append(
+                    {'name': lines[0].split(':')[1].strip(), 'model': lines[3].split(':')[1].strip(), 'file_name': file_name}
+                )
         # Prompt user for: board name + models
         for idx, b in enumerate(board_details):
-            print(f"[{idx}] {b['name']} ({b['model']})")
+            print(f'[{idx}] {b["name"]} ({b["model"]})')
 
         c = int(input())
 
         # Check if ESP-IDF exists in HAGENT_CACHE_DIR/esp-idf/; Install if missing
-        idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
+        idf_path = os.path.join(os.environ['HAGENT_CACHE_DIR'], 'esp-idf')
         stdout = ''
         try:
             if not os.path.isdir(idf_path):
-                clone_result = subprocess.run(["git", "clone", "--recursive", "https://github.com/espressif/esp-idf.git"], cwd=os.environ["HAGENT_CACHE_DIR"], check=True, capture_output=True, text=True)
+                clone_result = subprocess.run(
+                    ['git', 'clone', '--recursive', 'https://github.com/espressif/esp-idf.git'],
+                    cwd=os.environ['HAGENT_CACHE_DIR'],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
                 stdout = stdout + clone_result.stdout
-            install_script = ".\\install.bat" if platform.system() == "Windows" else "./install.sh"
-            install_result = subprocess.run([install_script, board_details[c]['model']], cwd=idf_path, shell=True, check=True, capture_output=True, text=True)
+            install_script = '.\\install.bat' if platform.system() == 'Windows' else './install.sh'
+            install_result = subprocess.run(
+                [install_script, board_details[c]['model']], cwd=idf_path, shell=True, check=True, capture_output=True, text=True
+            )
             stdout = stdout + install_result.stdout
         except subprocess.CalledProcessError as e:
             return {
@@ -129,21 +136,21 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                 'exit_code': 1,
                 'stdout': e.stdout,
                 'stderr': e.stderr,
-                }
-        
+            }
+
         # Append configuration details markdown to $HAGENT_REPO_DIR/AGENTS.md
-        source_file = board_details[c]["file_name"]
-        dest_file = os.path.join(os.environ["HAGENT_REPO_DIR"], "AGENTS.md")
+        source_file = board_details[c]['file_name']
+        dest_file = os.path.join(os.environ['HAGENT_REPO_DIR'], 'AGENTS.md')
 
         shutil.copyfile(source_file, dest_file)
-        
+
     return {
         'success': True,
         'exit_code': 0,
         'stdout': stdout,
         'stderr': '',
         'installation_path': idf_path,
-        'board_config': board_details[c] 
+        'board_config': board_details[c],
     }
 
 
@@ -190,12 +197,9 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     # 6. Run: idf.py set-target <esp32_model>
     # 7. Create esp_env.sh helper script
 
-    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
-    md_path = os.path.join(os.environ["HAGENT_REPO_DIR"], "AGENTS.md")
-    export_script_cmd = f"call {os.path.join(idf_path, 'export.bat')}" if platform.system() == "Windows" else f"source {os.path.join(idf_path, 'export.sh')}"
+    idf_path = os.path.join(os.environ['HAGENT_CACHE_DIR'], 'esp-idf')
 
     if os.path.isdir(idf_path):
-
         # with open(md_path, "r") as agent_f:
         #     content = agent_f.read()
         #     match = re.search(r"^\s*-\s*ESP32 Model\s*:\s*(.*)$", content, re.MULTILINE | re.IGNORECASE)
@@ -213,14 +217,15 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
         crt_prj_cmd = (
             # f"{export_script_cmd} && "
             # f"cd /d {os.environ['HAGENT_REPO_DIR']} && "
-            f"idf.py create-project -p . {args} && "
-            f"idf.py set-target {target_config}"
+            f'idf.py create-project -p . {args} && idf.py set-target {target_config}'
         )
         try:
             # Check if idf.py is in PATH, if not persent, source export.sh
             if not shutil.which('idf.py'):
                 initialize_idf_env()
-            result = subprocess.run(crt_prj_cmd, cwd=os.environ["HAGENT_REPO_DIR"], shell=True, check=True, capture_output=True, text=True)
+            result = subprocess.run(
+                crt_prj_cmd, cwd=os.environ['HAGENT_REPO_DIR'], shell=True, check=True, capture_output=True, text=True
+            )
         except subprocess.CalledProcessError as e:
             return {
                 'success': False,
@@ -234,15 +239,15 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
             'exit_code': 1,
             'stdout': '',
             'stderr': 'ESP-IDF not installed. Run api_install() before running api_setup()',
-        } 
+        }
 
     return {
         'success': True,
         'exit_code': 1,
         'stdout': result.stout,
         'stderr': result.stderr,
-        'project_path': os.env["HAGENT_REPO_DIR"],
-        'target_config': target_config
+        'project_path': os.env['HAGENT_REPO_DIR'],
+        'target_config': target_config,
     }
 
 
@@ -262,22 +267,23 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
     # 3. Navigate to HAGENT_REPO_DIR
     # 4. Run: idf.py build
     # 5. Capture and return build output
-    
-    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
-    # export_script_cmd = f"call {os.path.join(idf_path, 'export.bat')}" if platform.system() == "Windows" else f"source {os.path.join(idf_path, 'export.sh')}"
 
     try:
-        # Check if idf.py is in PATH; source export.sh/export.bat before build if not in path  
+        # Check if idf.py is in PATH; source export.sh/export.bat before build if not in path
         if not shutil.which('idf.py'):
             initialize_idf_env()
-        result = subprocess.run(f"idf.py build", cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
-        project_name = json.load(open(os.path.join(os.environ["HAGENT_REPO_DIR"], 'build', 'project_description.json')))["project_name"] 
-        binary_location = os.path.join(os.environ["HAGENT_REPO_DIR"], 'build', f"{project_name}.bin")
+        result = subprocess.run(
+            'idf.py build', cwd=os.environ['HAGENT_REPO_DIR'], shell=True, capture_output=True, text=True, check=True
+        )
+        project_name = json.load(open(os.path.join(os.environ['HAGENT_REPO_DIR'], 'build', 'project_description.json')))[
+            'project_name'
+        ]
+        binary_location = os.path.join(os.environ['HAGENT_REPO_DIR'], 'build', f'{project_name}.bin')
     except subprocess.CalledProcessError as e:
         return {
             'success': False,
             'exit_code': 1,
-            'binary_location': "",
+            'binary_location': '',
             'stdout': e.stdout,
             'stderror': e.stderr,
         }
@@ -285,7 +291,7 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
     return {
         'success': True,
         'binary_location': binary_location,
-        'exit_code': 0, 
+        'exit_code': 0,
         'stdout': result.stdout,
         'stderr': result.stderr,
     }
@@ -306,21 +312,21 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
     # 2. Navigate to HAGENT_REPO_DIR
     # 3. Run: idf.py flash (with optional port arg)
     # 4. Capture flash output
-    
-    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
-    # export_script_cmd = f"call {os.path.join(idf_path, 'export.bat')}" if platform.system() == "Windows" else f"source {os.path.join(idf_path, 'export.sh')}"
-    flash_cmd = "idf.py flash"
+
+    flash_cmd = 'idf.py flash'
 
     try:
-        # Check if idf.py is in PATH; source export.sh/export.bat before flash if not in path  
+        # Check if idf.py is in PATH; source export.sh/export.bat before flash if not in path
         if not shutil.which('idf.py'):
             initialize_idf_env()
-        result = subprocess.run(flash_cmd, cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            flash_cmd, cwd=os.environ['HAGENT_REPO_DIR'], shell=True, capture_output=True, text=True, check=True
+        )
     except subprocess.CalledProcessError as e:
         return {
             'success': False,
             'exit_code': e.returncode,
-            'flash_status': "Flash failed",
+            'flash_status': 'Flash failed',
             'stdout': e.stdout,
             'stderror': e.stderr,
         }
@@ -330,7 +336,7 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
         'exit_code': result.returncode,
         'stdout': result.stdout,
         'stderr': result.stderr,
-        'flash_result': "Flash done"
+        'flash_result': 'Flash done',
     }
 
 
@@ -356,7 +362,7 @@ def api_factory_reset(args: Optional[str] = None) -> Dict[str, Any]:
     # 4. Flash hello world
     # 5. Instruct user to press RESET
     # 6. Run monitor briefly to verify
-    
+
     return {
         'success': False,
         'exit_code': 1,
@@ -384,40 +390,27 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
     # 5. Send CTRL+] to exit monitor
     # 6. Return captured output
 
-    repo_dir = os.path.join(os.environ["HAGENT_REPO_DIR"])
-    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
-    export_sh = os.path.join(idf_path, 'export.sh')
-    export_script_cmd = f"bash -c 'source {export_sh} >/dev/null 2>&1 && python3 - <<PY\nimport os, json\nprint(json.dumps(dict(os.environ)))\nPY'"
-    monitor_cmd = "script -q /dev/null idf.py monitor"
-        
+    repo_dir = os.path.join(os.environ['HAGENT_REPO_DIR'])
+    monitor_cmd = 'script -q /dev/null idf.py monitor'
+
     try:
         # Check if idf.py is in PATH, source export.sh/export.bat before running the command
         if not shutil.which('idf.py'):
-            initialize_idf_env() 
+            initialize_idf_env()
         proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True, cwd=repo_dir)
-           
+
         # Communicate and read stdout from the process monitoring serial output
         # The communicate function call runs till timeout then throws an exception, which needs to be caught and handled
         out, err = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired as e:
+    except subprocess.TimeoutExpired:
         # This is where the function exits by default
         proc.kill()
         out, err = proc.communicate()
-        return {
-            'success': True,
-            'exit_code': 0,
-            'stdout': out,
-            'stderr': err
-        }
+        return {'success': True, 'exit_code': 0, 'stdout': out, 'stderr': err}
     except subprocess.CalledProcessError as e:
-        # This block is reached when initialize_idf_env fails 
-        return {
-            'success': False,
-            'exit_code': 1,
-            'stdout': export_proc.stdout,
-            'stderr': export_proc.stderr 
-        }
-    
+        # This block is reached when initialize_idf_env fails
+        return {'success': False, 'exit_code': 1, 'stdout': '', 'stderr': str(e)}
+
     # The process exits prematurely if an error is encountered
     return {
         'success': False,
@@ -425,6 +418,7 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
         'stdout': out,
         'stderr': err,
     }
+
 
 def api_idf(args: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -666,18 +660,19 @@ def main():
         traceback.print_exc()
         return 1
 
+
 if __name__ == '__main__':
     # sys.exit(api_install("rust board that uses esp32"))
     # sys.exit(api_setup("newproject"))
     # api_setup("newproject")
-    api_install("rust board that uses esp32")
-    print("Executable is being built...")
+    api_install('rust board that uses esp32')
+    print('Executable is being built...')
     build_result = api_build()
-    if build_result['success'] == True:
-        print("Build successful ")
+    if build_result['success']:
+        print('Build successful ')
     else:
-        print("Build failed")
-        print(f"Build output: {build_result}")
+        print('Build failed')
+        print(f'Build output: {build_result}')
         sys.exit(1)
 
     # print("Flashing the firmware...")
