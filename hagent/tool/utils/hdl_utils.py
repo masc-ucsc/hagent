@@ -28,8 +28,8 @@ from rich.console import Console
 
 console = Console()
 
-SV_EXTS = {".sv", ".v"}
-HDR_EXTS = {".svh", ".vh"}
+SV_EXTS = {'.sv', '.v'}
+HDR_EXTS = {'.svh', '.vh'}
 
 
 # -----------------------------------------------------------------------------
@@ -37,8 +37,8 @@ HDR_EXTS = {".svh", ".vh"}
 # -----------------------------------------------------------------------------
 def strip_comments(text: str) -> str:
     """Remove both block and line comments from HDL text."""
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)  # block comments
-    text = re.sub(r"//.*?$", "", text, flags=re.M)     # line comments
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)  # block comments
+    text = re.sub(r'//.*?$', '', text, flags=re.M)  # line comments
     return text
 
 
@@ -48,7 +48,7 @@ def strip_comments(text: str) -> str:
 def find_sv_files(root: Path, skip_dirs: Set[str]) -> List[Path]:
     """Recursively collect all .sv/.v/.svh/.vh files, skipping unwanted dirs."""
     files = []
-    for p in root.rglob("*"):
+    for p in root.rglob('*'):
         if p.is_dir():
             continue
         if any(part in skip_dirs for part in p.parts):
@@ -69,12 +69,12 @@ def index_modules_packages(files: List[Path]) -> Tuple[Dict[str, Path], Dict[str
     modules = {}
     packages = {}
 
-    mod_re = re.compile(r"\bmodule\s+([A-Za-z_]\w*)\b")
-    pkg_re = re.compile(r"\bpackage\s+([A-Za-z_]\w*)\b")
+    mod_re = re.compile(r'\bmodule\s+([A-Za-z_]\w*)\b')
+    pkg_re = re.compile(r'\bpackage\s+([A-Za-z_]\w*)\b')
 
     for f in files:
         try:
-            txt = strip_comments(f.read_text(errors="ignore"))
+            txt = strip_comments(f.read_text(errors='ignore'))
         except Exception:
             continue
 
@@ -89,8 +89,8 @@ def index_modules_packages(files: List[Path]) -> Tuple[Dict[str, Path], Dict[str
             pkg_found = True
 
         # Fallback: file name heuristic (e.g. config_pkg.sv)
-        if not pkg_found and "_pkg" in f.stem.lower():
-            pkg_name = f.stem.replace(".sv", "").replace(".svh", "")
+        if not pkg_found and '_pkg' in f.stem.lower():
+            pkg_name = f.stem.replace('.sv', '').replace('.svh', '')
             packages[pkg_name] = f
 
     return modules, packages
@@ -106,15 +106,15 @@ def find_includes(text: str) -> List[str]:
 
 def find_pkg_imports(text: str) -> Set[str]:
     """Find package import statements like `import foo_pkg::*;`"""
-    return set(re.findall(r"\bimport\s+([A-Za-z_]\w*)::\*\s*;", text))
+    return set(re.findall(r'\bimport\s+([A-Za-z_]\w*)::\*\s*;', text))
 
 
 def find_module_insts(text: str, known_modules: Set[str]) -> Set[str]:
     """Find instantiated submodules within HDL text."""
     insts = set()
-    for stmt in re.split(r";", text):
+    for stmt in re.split(r';', text):
         for mn in known_modules:
-            if re.search(rf"\b{re.escape(mn)}\b\s*(#\s*\([^;]*\))?\s+[A-Za-z_]\w*\s*\(", stmt):
+            if re.search(rf'\b{re.escape(mn)}\b\s*(#\s*\([^;]*\))?\s+[A-Za-z_]\w*\s*\(', stmt):
                 insts.add(mn)
     return insts
 
@@ -147,7 +147,7 @@ def collect_file_deps(
       (instantiated_module_names, imported_pkg_names, header_paths, header_dirs)
     """
     try:
-        txt = strip_comments(fpath.read_text(errors="ignore"))
+        txt = strip_comments(fpath.read_text(errors='ignore'))
     except Exception:
         return set(), set(), set(), set()
 
@@ -172,7 +172,7 @@ def collect_file_deps(
         headers.add(resolved)
         header_dirs.add(resolved.parent.resolve())
         try:
-            htxt = strip_comments(resolved.read_text(errors="ignore"))
+            htxt = strip_comments(resolved.read_text(errors='ignore'))
         except Exception:
             continue
         for ntok in find_includes(htxt):
@@ -218,9 +218,7 @@ def compute_transitive_closure(
             continue
         needed_files.add(mod_file.resolve())
 
-        insts, pkgs, headers, hdr_dirs = collect_file_deps(
-            mod_file, src_root, list(needed_incdirs), known_mods
-        )
+        insts, pkgs, headers, hdr_dirs = collect_file_deps(mod_file, src_root, list(needed_incdirs), known_mods)
 
         # Add submodules recursively
         for child in insts:
@@ -237,9 +235,7 @@ def compute_transitive_closure(
                     pfile = alt_pkg
             if pfile:
                 needed_files.add(pfile.resolve())
-                _, _, p_headers, p_hdr_dirs = collect_file_deps(
-                    pfile, src_root, list(needed_incdirs), known_mods
-                )
+                _, _, p_headers, p_hdr_dirs = collect_file_deps(pfile, src_root, list(needed_incdirs), known_mods)
                 needed_files.update(p_headers)
                 needed_incdirs.update(p_hdr_dirs)
 
