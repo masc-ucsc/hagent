@@ -1,8 +1,10 @@
 *.log
 *.swp
+.cache
 htmlcov
 .pytest_cache
 .coverage
+output
 __pycache__
 env/
 tmp*
