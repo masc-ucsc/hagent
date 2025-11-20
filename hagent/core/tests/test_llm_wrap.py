@@ -132,6 +132,50 @@ def test_hagent_llm_model_override(monkeypatch):
     assert 'environment keys not set for fakeprovider/fake-model' in lw.last_error
 
 
+def test_openai_model():
+    import pytest
+
+    # Skip test if OPENAI_API_KEY is not set
+    if not os.environ.get('OPENAI_API_KEY'):
+        pytest.skip('OPENAI_API_KEY not set')
+
+    # Simple LLM configuration for OpenAI
+    llm_config = {'model': 'openai/gpt-4o-mini', 'max_tokens': 100, 'temperature': 0.7}
+
+    # Use a simple prompt for testing
+    prompt_config = {
+        'test_prompt': [
+            {
+                'role': 'system',
+                'content': 'You are a helpful assistant. Respond briefly.',
+            },
+            {
+                'role': 'user',
+                'content': 'Say hello in exactly 3 words.',
+            },
+        ]
+    }
+
+    # Complete configuration
+    complete_config = {'llm': llm_config, **prompt_config}
+
+    lw = LLM_wrap(
+        name='test_openai',
+        log_file='test_openai.log',
+        conf_file='',
+        overwrite_conf=complete_config,
+    )
+
+    assert not lw.last_error, f'LLM initialization error: {lw.last_error}'
+
+    # Make test LLM call
+    response_list = lw.inference({}, prompt_index='test_prompt', n=1)
+
+    assert not lw.last_error, f'LLM error: {lw.last_error}'
+    assert response_list and len(response_list) > 0, 'LLM returned empty response'
+    assert len(response_list[0]) > 0, 'Response text is empty'
+
+
 if __name__ == '__main__':  # pragma: no cover
     test_llm_wrap_caching()
     test_llm_wrap_n_diff()
@@ -140,3 +184,4 @@ if __name__ == '__main__':  # pragma: no cover
     # test_missing_env_var()
     # test_hagent_llm_model_override()
     test_bad_prompt()
+    test_openai_model()
