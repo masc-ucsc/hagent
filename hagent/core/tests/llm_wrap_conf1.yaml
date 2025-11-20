@@ -1,9 +1,9 @@
 test_caching:
   llm:
-    model: "bedrock/us.meta.llama3-3-70b-instruct-v1:0"
+    model: "openai/gpt-4o-mini"
     temperature: 0.1
     top_p: 0.3
-    aws_region_name: "us-east-1"
+    max_tokens: 100
 
   not_used_field: "xxx"
 
