@@ -27,7 +27,7 @@ Docker images are recommended to be derived from hagent-builer like hagent-simpl
 
 ```bash
 # Required for Docker mode - set HAGENT_DOCKER to activate docker mode
-export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.10
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.11
 
 # Optional: Mount host directories into container
 export HAGENT_REPO_DIR=/path/to/your/git/repository     # Will be mounted to /code/workspace/repo
@@ -189,7 +189,7 @@ HAgent uses a modernized container management system that automatically handles 
 **Example Docker Usage:**
 ```bash
 # Set Docker mode by setting HAGENT_DOCKER
-export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.10
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.11
 
 # Optionally mount your project directory
 export HAGENT_REPO_DIR=/path/to/your/project

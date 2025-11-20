@@ -1,7 +1,7 @@
 """Tests for hagent.inou.cli_locator module.
 
 These are blackbox tests that exercise the CLI using subprocess only.
-Tests use Docker mode with mascucsc/hagent-simplechisel:2025.10.
+Tests use Docker mode with mascucsc/hagent-simplechisel:2025.11.
 """
 
 import os
@@ -166,7 +166,7 @@ class TestCLILocatorWithPipelinedD:
     These tests use Docker mode with prebuilt files from the Docker image.
     Only HAGENT_CACHE_DIR is mounted for faster re-runs. HAGENT_REPO_DIR and
     HAGENT_BUILD_DIR are not mounted, so tests use prebuilt files inside
-    mascucsc/hagent-simplechisel:2025.10.
+    mascucsc/hagent-simplechisel:2025.11.
     """
 
     @pytest.fixture(scope='class')
@@ -177,7 +177,7 @@ class TestCLILocatorWithPipelinedD:
         - Prebuilt files (repo, build) inside the Docker image to be used
         - Cache directory for faster re-runs
         - HAGENT_DOCKER set (docker mode)
-        - HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.10
+        - HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.11
         - HAGENT_CACHE_DIR=<temp_dir>/cache (for caching)
         """
         # Check if Docker is available
@@ -211,7 +211,7 @@ class TestCLILocatorWithPipelinedD:
         env.update(
             {
                 # Docker mode via HAGENT_DOCKER,
-                'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
+                'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.11',
                 'HAGENT_CACHE_DIR': str(cache_dir),
             }
         )
@@ -433,7 +433,7 @@ class TestCLILocatorWithGCD:
         env.update(
             {
                 # Docker mode via HAGENT_DOCKER,
-                'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
+                'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.11',
                 'HAGENT_CACHE_DIR': str(cache_dir),
             }
         )
@@ -589,7 +589,7 @@ class TestCLILocatorWithPipelinedDHierarchy:
         env.update(
             {
                 # Docker mode via HAGENT_DOCKER,
-                'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
+                'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.11',
                 'HAGENT_CACHE_DIR': str(cache_dir),
             }
         )

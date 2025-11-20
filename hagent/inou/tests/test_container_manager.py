@@ -114,9 +114,9 @@ class TestContainerManager:
                 mock_pm = MagicMock()
                 mock_get_pm.return_value = mock_pm
 
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
-                assert manager.image == 'mascucsc/hagent-simplechisel:2025.10'
+                assert manager.image == 'mascucsc/hagent-simplechisel:2025.11'
                 assert manager.path_manager == mock_pm
                 assert manager._workdir == '/code/workspace/repo'
                 mock_get_pm.assert_called_once()
@@ -128,9 +128,9 @@ class TestContainerManager:
             mock_get_pm.return_value = mock_pm
 
             with patch.object(ContainerManager, '_initialize_docker_client'):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
-                assert manager.image == 'mascucsc/hagent-simplechisel:2025.10'
+                assert manager.image == 'mascucsc/hagent-simplechisel:2025.11'
                 assert manager.path_manager == mock_pm
                 mock_get_pm.assert_called_once()
 
@@ -142,7 +142,7 @@ class TestContainerManager:
         mock_from_env.return_value = mock_client
 
         with patch('hagent.inou.container_manager.PathManager'):
-            manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+            manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
             assert manager.client == mock_client
             mock_from_env.assert_called_once()
@@ -159,7 +159,7 @@ class TestContainerManager:
 
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_get_docker_socket_paths', return_value=['/test/socket']):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
                 assert manager.client == mock_client
                 mock_docker_client.assert_called_once_with(base_url='unix:///test/socket')
@@ -170,7 +170,7 @@ class TestContainerManager:
         """Test Docker client initialization failure."""
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_get_docker_socket_paths', return_value=['/test/socket']):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
                 assert manager.get_error(), 'Should have error message'
                 assert 'Docker client initialization failed' in manager.get_error()
 
@@ -180,7 +180,7 @@ class TestContainerManager:
             with patch('os.getenv', return_value='testuser'):
                 with patch('hagent.inou.container_manager.PathManager'):
                     with patch.object(ContainerManager, '_initialize_docker_client'):
-                        manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                        manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
                         paths = manager._get_docker_socket_paths()
 
@@ -194,7 +194,7 @@ class TestContainerManager:
             with patch('os.getuid', return_value=1000):
                 with patch('hagent.inou.container_manager.PathManager'):
                     with patch.object(ContainerManager, '_initialize_docker_client'):
-                        manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                        manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
                         paths = manager._get_docker_socket_paths()
 
@@ -209,7 +209,7 @@ class TestContainerManager:
 
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
                 manager.client = mock_client
 
                 info = manager._get_docker_info()
@@ -222,7 +222,7 @@ class TestContainerManager:
         """Test _get_docker_info when client is not connected."""
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
                 manager.client = None
 
                 info = manager._get_docker_info()
@@ -234,7 +234,7 @@ class TestContainerManager:
         """Test that _get_image_user method was removed in root-based approach."""
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
                 # Verify the method no longer exists - this is expected in root-based approach
                 assert not hasattr(manager, '_get_image_user')
@@ -301,7 +301,7 @@ class TestContainerManager:
 
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
-                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
                 with patch('docker.types.Mount') as mock_mount:
                     mock_mount_obj = MagicMock()
@@ -359,7 +359,7 @@ class TestContainerManager:
 
         with patch.object(ContainerManager, '_initialize_docker_client'):
             with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
             manager.client = mock_client
             # Avoid dependence on global workspace flag by stubbing validation
             with patch.object(ContainerManager, '_setup_docker_workspace_if_needed', return_value=True):
@@ -417,14 +417,14 @@ class TestContainerManager:
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 with patch.object(ContainerManager, '_pull_image_with_progress') as mock_pull:
                     with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
-                        manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                        manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
                         manager.client = mock_client
 
                         result = manager.setup()
 
                         assert result is True
                         assert manager._has_bash is False  # bash test failed
-                        mock_pull.assert_called_once_with('mascucsc/hagent-simplechisel:2025.10')
+                        mock_pull.assert_called_once_with('mascucsc/hagent-simplechisel:2025.11')
 
     def test_setup_pull_credential_error(self, setup_local_directory):
         """Test setup with credential error during pull."""
@@ -446,7 +446,7 @@ class TestContainerManager:
                 mock_pull.side_effect = APIError('credential issue detected')
 
                 with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
-                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
                     manager.client = mock_client
 
                     result = manager.setup()
@@ -469,7 +469,7 @@ class TestContainerManager:
 
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
                 manager.container = mock_container
                 manager.client = mock_client
                 manager._has_bash = True
@@ -483,13 +483,13 @@ class TestContainerManager:
                 assert 'error1\n' in stderr
 
                 # Verify streaming output was printed
-                mock_print.assert_any_call('hagent-simplechisel:2025.10:run: line1')
+                mock_print.assert_any_call('hagent-simplechisel:2025.11:run: line1')
 
     def test_run_no_container(self):
         """Test running command without container setup."""
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
-                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
                 exit_code, stdout, stderr = manager.run_cmd('echo test')
                 assert exit_code == -1, 'Should return -1 exit code when no container'
@@ -505,14 +505,14 @@ class TestContainerManager:
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 with patch.object(ContainerManager, '_get_image_config', return_value={'Cmd': ['bash']}):
-                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
                     manager.container = mock_container
                     manager._has_bash = True
 
                     with patch('builtins.print'):
                         checkpoint_name = manager.image_checkpoint('test_checkpoint')
 
-                    assert checkpoint_name == 'mascucsc/hagent-simplechisel:2025.10_checkpoint_test_checkpoint'
+                    assert checkpoint_name == 'mascucsc/hagent-simplechisel:2025.11_checkpoint_test_checkpoint'
                     mock_container.commit.assert_called_once()
 
     def test_cleanup(self):
@@ -525,7 +525,7 @@ class TestContainerManager:
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 with patch.object(ContainerManager, '_cleanup_anonymous_checkpoints') as mock_cleanup_checkpoints:
-                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
                     manager.container = mock_container
                     manager._reference_container = mock_ref_container
 
@@ -546,7 +546,7 @@ class TestContainerManager:
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 with patch.object(ContainerManager, 'cleanup') as mock_cleanup:
-                    with ContainerManager('mascucsc/hagent-simplechisel:2025.10') as manager:
+                    with ContainerManager('mascucsc/hagent-simplechisel:2025.11') as manager:
                         assert isinstance(manager, ContainerManager)
 
                     mock_cleanup.assert_called_once()
@@ -561,7 +561,7 @@ class TestContainerManager:
         with patch('hagent.inou.container_manager.PathManager'):
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 with patch.object(ContainerManager, 'cleanup') as mock_cleanup:
-                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
                     # Reset mock call count to ensure we only count calls from this instance
                     mock_cleanup.reset_mock()
@@ -593,7 +593,7 @@ class TestContainerManager:
 
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
-                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
                 with patch('docker.types.Mount') as mock_mount:
                     mock_mount_obj = MagicMock()
@@ -636,7 +636,7 @@ class TestContainerManager:
 
             with patch.object(ContainerManager, '_initialize_docker_client'):
                 with patch('hagent.inou.container_manager.PathManager', return_value=mock_pm):
-                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+                    manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
 
                 with patch('docker.types.Mount') as mock_mount:
                     mock_mount_obj = MagicMock()
@@ -678,7 +678,7 @@ class TestContainerManager:
             },
         ):
             # Create container manager using the fixture for cleanup
-            manager = container_manager_with_cleanup('mascucsc/hagent-builder:2025.10')
+            manager = container_manager_with_cleanup('mascucsc/hagent-builder:2025.11')
 
             # Setup the container
             setup_result = manager.setup()

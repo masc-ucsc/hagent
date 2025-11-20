@@ -69,7 +69,7 @@ class V2chisel_batch(Step):
         self.use_hints_v2 = True  # Default to V2 for testing
 
         # Initialize Builder for automated Docker management
-        self.builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.10')
+        self.builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.11')
 
         # Initialize ChiselDiffCorrector for auto-correcting LLM-generated diffs
         # Confidence threshold: 0.90 = moderate (0.85 aggressive, 0.95 conservative)

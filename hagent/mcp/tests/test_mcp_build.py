@@ -55,13 +55,13 @@ class TestMCPBuildDocker(unittest.TestCase):
         # Check if required Docker image is available
         try:
             result = subprocess.run(
-                ['docker', 'images', 'mascucsc/hagent-simplechisel:2025.10', '--format', '{{.Repository}}:{{.Tag}}'],
+                ['docker', 'images', 'mascucsc/hagent-simplechisel:2025.11', '--format', '{{.Repository}}:{{.Tag}}'],
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
-            if 'mascucsc/hagent-simplechisel:2025.10' not in result.stdout:
-                raise unittest.SkipTest('Required Docker image mascucsc/hagent-simplechisel:2025.10 not found')
+            if 'mascucsc/hagent-simplechisel:2025.11' not in result.stdout:
+                raise unittest.SkipTest('Required Docker image mascucsc/hagent-simplechisel:2025.11 not found')
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             raise unittest.SkipTest('Failed to check Docker images')
 
@@ -123,7 +123,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         try:
             # Find and remove containers using the test image
             result = subprocess.run(
-                ['docker', 'ps', '-a', '--filter', 'ancestor=mascucsc/hagent-simplechisel:2025.10', '--format', '{{.ID}}'],
+                ['docker', 'ps', '-a', '--filter', 'ancestor=mascucsc/hagent-simplechisel:2025.11', '--format', '{{.ID}}'],
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -143,7 +143,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         test_env = {
             **os.environ,
             'HAGENT_ROOT': str(self.hagent_root),
-            'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
+            'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.11',
             'HAGENT_REPO_DIR': str(self.test_dir / 'repo'),
             'HAGENT_BUILD_DIR': str(self.test_dir / 'build'),
             'HAGENT_CACHE_DIR': str(self.test_dir / 'cache'),
@@ -275,7 +275,7 @@ class TestMCPBuildDocker(unittest.TestCase):
         test_env = {
             **os.environ,
             'HAGENT_ROOT': str(self.hagent_root),
-            'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.10',
+            'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.11',
             'HAGENT_REPO_DIR': str(self.test_dir / 'repo'),
             'HAGENT_BUILD_DIR': str(self.test_dir / 'build'),
             'HAGENT_CACHE_DIR': str(self.test_dir / 'cache'),

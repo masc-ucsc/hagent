@@ -14,20 +14,20 @@ set -e
 
 EXECUTION_MODE="docker"
 TEMP_ARGS=()
-while (( "$#" )); do
+while (("$#")); do
   case "$1" in
-    --local)
-      EXECUTION_MODE="local"
-      shift
-      ;;
-    -*)
-      echo "Error: Unsupported flag $1" >&2
-      exit 1
-      ;;
-    *)
-      TEMP_ARGS+=("$1")
-      shift
-      ;;
+  --local)
+    EXECUTION_MODE="local"
+    shift
+    ;;
+  -*)
+    echo "Error: Unsupported flag $1" >&2
+    exit 1
+    ;;
+  *)
+    TEMP_ARGS+=("$1")
+    shift
+    ;;
   esac
 done
 set -- "${TEMP_ARGS[@]}"
@@ -51,30 +51,30 @@ cva6)
   DOCKER_IMAGE="mascucsc/hagent-cva6:2025.10"
   ;;
 simplechisel)
-  DOCKER_IMAGE="mascucsc/hagent-simplechisel:2025.10"
+  DOCKER_IMAGE="mascucsc/hagent-simplechisel:2025.11"
   ;;
 soomrv)
   DOCKER_IMAGE="mascucsc/hagent-soomrv:2025.11"
   ;;
 verilog-adder)
-  DOCKER_IMAGE="mascucsc/hagent-builder:2025.10"
+  DOCKER_IMAGE="mascucsc/hagent-builder:2025.11"
   EXAMPLE_SOURCE_DIR="${HAGENT_ROOT}/examples/verilog_adder"
   ;;
 xiangshan)
   DOCKER_IMAGE="mascucsc/hagent-xiangshan:2025.10"
   ;;
 esp32_led)
-  DOCKER_IMAGE="mascucsc/hagent-builder:2025.10"
+  DOCKER_IMAGE="mascucsc/hagent-builder:2025.11"
   EXAMPLE_SOURCE_DIR="${HAGENT_ROOT}/examples/esp32_led"
   ;;
 *)
   # Check if it's a directory in examples or a direct path
   if [[ -d "${HAGENT_ROOT}/examples/${PROJECT_NAME}" ]]; then
     EXAMPLE_SOURCE_DIR="${HAGENT_ROOT}/examples/${PROJECT_NAME}"
-    DOCKER_IMAGE="mascucsc/hagent-builder:2025.10"
+    DOCKER_IMAGE="mascucsc/hagent-builder:2025.11"
   elif [[ -d "$PROJECT_NAME" ]]; then
     EXAMPLE_SOURCE_DIR="$(cd "$PROJECT_NAME" && pwd)" # Get absolute path
-    DOCKER_IMAGE="mascucsc/hagent-builder:2025.10"
+    DOCKER_IMAGE="mascucsc/hagent-builder:2025.11"
   else
     echo "Unknown project: '$PROJECT_NAME'" >&2
     echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan, esp32_led" >&2
@@ -84,7 +84,7 @@ esp32_led)
   ;;
 esac
 
-# Extract docker version from image tag (e.g., "mascucsc/hagent-simplechisel:2025.10" -> "2025.10")
+# Extract docker version from image tag (e.g., "mascucsc/hagent-simplechisel:2025.11" -> "2025.11")
 DOCKER_VERSION=$(echo "$DOCKER_IMAGE" | sed 's/.*://')
 CACHE_TEMPLATE_DIR="${HAGENT_ROOT}/.cache/setup_${PROJECT_NAME}_mcp_${DOCKER_VERSION}"
 
