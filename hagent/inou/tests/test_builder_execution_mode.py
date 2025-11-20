@@ -18,7 +18,7 @@ def reset_path_manager():
 
 def test_builder_uses_environment_mode_by_default(monkeypatch):
     """Builder should respect HAGENT_DOCKER when no docker override is provided."""
-    monkeypatch.setenv('HAGENT_DOCKER', 'mascucsc/hagent-builder:2025.09')
+    monkeypatch.setenv('HAGENT_DOCKER', 'mascucsc/hagent-builder:2025.11')
 
     builder = Builder()
     try:
@@ -42,10 +42,10 @@ def test_builder_explicit_docker_override(monkeypatch, tmp_path):
     monkeypatch.setenv('HAGENT_BUILD_DIR', str(build_dir))
     monkeypatch.setenv('HAGENT_CACHE_DIR', str(cache_dir))
 
-    builder = Builder(docker_image='mascucsc/hagent-builder:2025.09')
+    builder = Builder(docker_image='mascucsc/hagent-builder:2025.11')
     try:
         assert builder.runner.path_manager.is_docker_mode()
-        assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-builder:2025.09'
+        assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-builder:2025.11'
     finally:
         builder.cleanup()
 
@@ -54,12 +54,12 @@ def test_builder_explicit_docker_override(monkeypatch, tmp_path):
 
 def test_builder_overrides_docker_image(monkeypatch):
     """Builder should temporarily override HAGENT_DOCKER when a custom image is provided."""
-    monkeypatch.setenv('HAGENT_DOCKER', 'mascucsc/hagent-simplechisel:2025.10')
+    monkeypatch.setenv('HAGENT_DOCKER', 'mascucsc/hagent-simplechisel:2025.11')
 
-    builder = Builder(docker_image='mascucsc/hagent-builder:2025.09')
+    builder = Builder(docker_image='mascucsc/hagent-builder:2025.11')
     try:
-        assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-builder:2025.09'
+        assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-builder:2025.11'
     finally:
         builder.cleanup()
 
-    assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-simplechisel:2025.10'
+    assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-simplechisel:2025.11'

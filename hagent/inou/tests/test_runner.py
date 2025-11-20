@@ -79,14 +79,14 @@ class TestRunner:
     def test_docker_mode_initialization(self):
         """Test Case 2: Docker mode with image specification."""
         # Switch to docker mode by setting HAGENT_DOCKER
-        os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-simplechisel:2025.10'
+        os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-simplechisel:2025.11'
         PathManager.reset()  # Reset singleton to pick up new environment
 
-        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.10')
+        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.11')
 
         assert runner.is_docker_mode()
         assert not runner.is_local_mode()
-        assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.10'
+        assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.11'
         assert runner.container_manager is not None
 
         runner.cleanup()

@@ -31,7 +31,7 @@ def setup_hagent_environment():
 
     # Set Docker mode environment with host-accessible paths for testing
     # Docker mode enabled via HAGENT_DOCKER
-    os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-simplechisel:2025.10'
+    os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-simplechisel:2025.11'
 
     # Use local directories that Docker can easily mount
     # IMPORTANT: Don't mount the repository root directory - use output subdirectory instead
@@ -99,7 +99,7 @@ class TestExecutorContainerOperations:
             os.makedirs(cache_dir, exist_ok=True)
 
         PathManager()  # Initialize the singleton
-        container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.10')
+        container_manager = ContainerManager('mascucsc/hagent-simplechisel:2025.11')
         executor = ExecutorFactory.create_executor(container_manager)
 
         assert executor.setup(), f'Executor setup failed: {executor.get_error()}'

@@ -160,7 +160,7 @@ class TestDockerExecutor:
 
             executor = DockerExecutor()
             assert executor.container_manager == mock_cm
-            mock_cm_class.assert_called_once_with(image='mascucsc/hagent-simplechisel:2025.10')
+            mock_cm_class.assert_called_once_with(image='mascucsc/hagent-simplechisel:2025.11')
 
     def test_initialization_with_container_manager(self):
         """Test DockerExecutor initialization with container_manager (preferred)."""
@@ -182,7 +182,7 @@ class TestDockerExecutor:
 
             executor = DockerExecutor()
             assert executor.container_manager == mock_cm
-            mock_cm_class.assert_called_once_with(image='mascucsc/hagent-simplechisel:2025.10')
+            mock_cm_class.assert_called_once_with(image='mascucsc/hagent-simplechisel:2025.11')
 
     def test_run_basic_with_file_manager(self):
         """Test DockerExecutor.run basic functionality with container_manager."""

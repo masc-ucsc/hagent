@@ -25,7 +25,7 @@ class Runner:
     - Common error handling and cleanup
 
     Example usage:
-        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.10')
+        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.11')
         if not runner.setup():
             print(f"Setup failed: {runner.get_error()}")
             return

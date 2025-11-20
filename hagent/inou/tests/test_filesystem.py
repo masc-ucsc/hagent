@@ -83,12 +83,12 @@ def local_filesystem(setup_test_directory):
 def docker_filesystem(setup_test_directory, monkeypatch):
     """
     Create a Docker filesystem instance for testing.
-    Uses mascucsc/hagent-simplechisel:2025.10 image.
+    Uses mascucsc/hagent-simplechisel:2025.11 image.
     """
     test_dirs = setup_test_directory
 
     # Set up environment for Docker mode
-    monkeypatch.setenv('HAGENT_DOCKER', 'mascucsc/hagent-simplechisel:2025.10')
+    monkeypatch.setenv('HAGENT_DOCKER', 'mascucsc/hagent-simplechisel:2025.11')
     monkeypatch.setenv('HAGENT_REPO_DIR', str(test_dirs['repo']))
     monkeypatch.setenv('HAGENT_BUILD_DIR', str(test_dirs['build']))
     monkeypatch.setenv('HAGENT_CACHE_DIR', str(test_dirs['cache']))

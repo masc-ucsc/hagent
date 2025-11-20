@@ -140,8 +140,6 @@ endmodule
         # Force Docker fallback by directly calling the Docker setup method
         docker_success = equiv_checker._setup_docker_fallback()
 
-        print('HELLO')
-
         if not docker_success:
             print(f'Docker setup failed: {equiv_checker.get_error()}')
             pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')

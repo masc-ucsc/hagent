@@ -38,7 +38,7 @@ class TestV2chisel_batch(V2chisel_batch):
         self.baseline_generated = False  # Track if we generated fresh baseline
 
         # Initialize Builder for automated Docker management
-        self.runner = Builder(docker_image='mascucsc/hagent-simplechisel:2025.10')
+        self.runner = Builder(docker_image='mascucsc/hagent-simplechisel:2025.11')
 
     def _run_docker_command(self, cmd_list, timeout=None):
         """Override parent method to use our Builder instead of subprocess"""

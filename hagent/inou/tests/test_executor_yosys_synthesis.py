@@ -34,7 +34,7 @@ def setup_hagent_environment():
 
     # Set Docker mode environment with host-accessible paths for testing
     # Docker mode enabled via HAGENT_DOCKER
-    os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-builder:2025.09'
+    os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-builder:2025.11'
 
     # Use local directories that Docker can easily mount
     repo_dir = os.path.abspath('./output/test_executor_yosys_synthesis')
@@ -120,7 +120,7 @@ endmodule
             os.makedirs(cache_dir, exist_ok=True)
 
         # Create Runner instance with Docker image
-        runner = Runner(docker_image='mascucsc/hagent-builder:2025.09')
+        runner = Runner(docker_image='mascucsc/hagent-builder:2025.11')
         assert runner.setup(), f'Runner setup failed: {runner.get_error()}'
 
         # Runner provides its own filesystem
