@@ -251,6 +251,27 @@ class LLM_wrap:
         except Exception as e:
             self._set_error(f'unable to log: {e}')
 
+    def _messages_to_input(self, messages: List[Dict]) -> str:
+        """Convert messages array to input string for responses API.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys
+
+        Returns:
+            str: Formatted input string
+        """
+        prompt_parts = []
+        for msg in messages:
+            role = msg.get('role', 'user')
+            content = msg.get('content', '')
+            if role == 'system':
+                prompt_parts.append(f'System: {content}')
+            elif role == 'user':
+                prompt_parts.append(f'{content}')
+            elif role == 'assistant':
+                prompt_parts.append(f'Assistant: {content}')
+        return '\n\n'.join(prompt_parts)
+
     def _call_llm(self, prompt_dict: Dict, prompt_index: str, n: int, max_history: int) -> List[str]:
         if self.last_error:
             return []
@@ -293,11 +314,22 @@ class LLM_wrap:
             messages = []
         messages += formatted
 
-        # For inference, messages might just be what we got. For chat, this is final messages to send.
+        # Convert messages to input string for responses API
+        input_text = self._messages_to_input(messages)
+
+        # Build llm_call_args for responses API
         llm_call_args = {}
-        llm_call_args.update(self.llm_args)
-        llm_call_args['messages'] = messages
-        llm_call_args['n'] = n
+        llm_call_args['model'] = self.llm_args.get('model', '')
+        llm_call_args['input'] = input_text
+
+        # Convert max_tokens to max_output_tokens for responses API
+        if 'max_tokens' in self.llm_args:
+            llm_call_args['max_output_tokens'] = self.llm_args['max_tokens']
+
+        # Copy other supported parameters
+        for param in ['temperature', 'top_p', 'stream']:
+            if param in self.llm_args:
+                llm_call_args[param] = self.llm_args[param]
 
         model = llm_call_args.get('model', '')
         if model == '':
@@ -308,24 +340,20 @@ class LLM_wrap:
             self._set_error(f'environment keys not set for {model}')
             return []
 
-        # Call litellm
+        # Call litellm responses API
         try:
             start = time.time()
 
             # For better diversity when n > 1, make separate calls with varied parameters
             # This works for all models and ensures more diverse responses
             if n > 1:
-                # Remove 'n' parameter and make multiple calls with varied parameters for diversity
-                varied_args = llm_call_args.copy()
-                varied_args.pop('n', None)
-
                 responses = []
-                base_temperature = varied_args.get('temperature', 0.7)
-                base_top_p = varied_args.get('top_p', 0.9)
+                base_temperature = llm_call_args.get('temperature', 0.7)
+                base_top_p = llm_call_args.get('top_p', 0.9)
                 last_response = None  # Track only the last response for variation
 
                 for i in range(n):
-                    call_args = varied_args.copy()
+                    call_args = llm_call_args.copy()
 
                     # Scale temperature from 0 to 1 based on n, with one sample having default temperature
                     if n == 2:
@@ -352,61 +380,82 @@ class LLM_wrap:
                         else:
                             call_args['top_p'] = min(1.0, base_top_p + ((i - 1) * 0.15))
 
-                    # Copy messages and add variation to avoid caching when seeking diversity
-                    call_args['messages'] = [msg.copy() for msg in call_args['messages']]
+                    # Add variation to input to avoid caching when seeking diversity
+                    if i > 0 and last_response:
+                        # Truncate last response to 2KB if needed
+                        prev_response = last_response
+                        if len(prev_response) > 2048:
+                            prev_response = prev_response[:2048] + '...'
+                        call_args['input'] += (
+                            f'\n\nThe last response answer was: """{prev_response}""" please try something different.'
+                        )
 
-                    if i > 0 and last_response and call_args['messages']:
-                        last_msg = call_args['messages'][-1]
-                        if last_msg.get('role') == 'user':
-                            # Truncate last response to 2KB if needed
-                            prev_response = last_response
-                            if len(prev_response) > 2048:
-                                prev_response = prev_response[:2048] + '...'
-                            last_msg['content'] += (
-                                f'\n\nThe last response answer was: """{prev_response}""" please try something different.'
-                            )
-
-                    r = litellm.completion(**call_args)
+                    r = litellm.responses(**call_args)
                     responses.append(r)
 
                     # Store only the last response for next iteration's variation
-                    if r and 'choices' in r and r['choices']:
-                        last_response = r['choices'][0]['message']['content']
+                    # Extract text from output[0].content[0].text
+                    if hasattr(r, 'output') and r.output:
+                        try:
+                            last_response = r.output[0].content[0].text
+                        except (IndexError, AttributeError):
+                            pass
 
-                # Combine responses
-                combined_choices = []
+                # For responses API, we collect answers directly instead of combining choices
+                answers = []
+                total_tokens = 0
+                total_cost = 0.0
+
                 for resp in responses:
-                    combined_choices.extend(resp['choices'])
+                    if hasattr(resp, 'output') and resp.output:
+                        try:
+                            text = resp.output[0].content[0].text
+                            if text:
+                                answers.append(text)
+                        except (IndexError, AttributeError):
+                            pass
+                    if hasattr(resp, 'usage'):
+                        total_tokens += getattr(resp.usage, 'total_tokens', 0)
+                    try:
+                        total_cost += litellm.completion_cost(completion_response=resp)
+                    except Exception:
+                        pass
 
-                # Use the first response as template and replace choices
-                r = responses[0]
-                # Convert to dict first since ModelResponse doesn't support item assignment
-                r_dict = r.to_dict()
-                r_dict['choices'] = combined_choices
-                # Convert back to ModelResponse-like object for consistency
-                r = litellm.ModelResponse(**r_dict)
+                end = time.time()
+                response = {'created': start, 'elapsed': end - start}
+                tokens = total_tokens
+                cost = total_cost
             else:
-                r = litellm.completion(**llm_call_args)
+                r = litellm.responses(**llm_call_args)
 
-            end = time.time()
-            # Augment the litellm.ModelResponse with duration.
-            response = r.to_dict()
-            # Overwrite the response 'created' time to get matching sub-second accuracy.
-            response['created'] = start
-            response['elapsed'] = end - start
+                end = time.time()
+                response = {'created': start, 'elapsed': end - start}
+
+                # Extract answer from response
+                answers = []
+                if hasattr(r, 'output') and r.output:
+                    try:
+                        text = r.output[0].content[0].text
+                        if text:
+                            answers.append(text)
+                    except (IndexError, AttributeError):
+                        pass
+
+                # Get tokens and cost
+                tokens = 0
+                if hasattr(r, 'usage'):
+                    tokens = getattr(r.usage, 'total_tokens', 0)
+
+                try:
+                    cost = litellm.completion_cost(completion_response=r)
+                except Exception:
+                    cost = 0
+
         except Exception as e:
             self._set_error(f'litellm call error: {e}')
             data = {'error': self.last_error}
             self._log_event(event_type=f'{self.name}:LLM_wrap.error', data=data)
             return []
-
-        answers = []
-        cost = 0.0
-        tokens = 0
-        try:
-            cost = litellm.completion_cost(completion_response=r)
-        except Exception:
-            cost = 0  # Model may not be updated for cost
 
         if cost == 0:
             # Simple proxy for https://fireworks.ai/pricing
@@ -414,15 +463,6 @@ class LLM_wrap:
                 cost = 3.0 * tokens / 1e6
             else:
                 cost = 0.9 * tokens / 1e6
-
-        try:
-            for c in r['choices']:
-                answers.append(c['message']['content'])
-
-            usage = r['usage']
-            tokens += usage.get('total_tokens', 0)
-        except Exception as e:
-            self._set_error(f'parsing litellm response error: {e}')
 
         time_ms = (time.time() - start_time) * 1000.0
         self.total_cost += cost

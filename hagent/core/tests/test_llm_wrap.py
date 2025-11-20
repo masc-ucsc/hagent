@@ -8,6 +8,12 @@ from hagent.core.llm_wrap import LLM_wrap
 
 
 def test_llm_wrap_caching():
+    import pytest
+
+    # Skip test if OpenAI API key is not set
+    if not os.environ.get('OPENAI_API_KEY'):
+        pytest.skip('OPENAI_API_KEY not set')
+
     # Use existing configuration file for caching test.
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
@@ -24,6 +30,11 @@ def test_llm_wrap_caching():
 
 def test_llm_wrap_n_diff():
     import litellm
+    import pytest
+
+    # Skip test if OpenAI API key is not set
+    if not os.environ.get('OPENAI_API_KEY'):
+        pytest.skip('OPENAI_API_KEY not set')
 
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
