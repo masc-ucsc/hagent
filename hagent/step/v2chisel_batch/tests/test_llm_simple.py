@@ -5,6 +5,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
@@ -13,6 +15,10 @@ from hagent.core.llm_wrap import LLM_wrap
 
 def test_llm_simple():
     """Test LLM with simple configuration"""
+
+    # Skip if no LLM API key available
+    if not os.environ.get('FIREWORKS_AI_API_KEY') and not os.environ.get('OPENAI_API_KEY'):
+        pytest.skip('No LLM API key available (FIREWORKS_AI_API_KEY or OPENAI_API_KEY)')
 
     # Use the v2chisel_batch config file
     conf_file = os.path.join(os.path.dirname(__file__), '..', 'v2chisel_batch_conf.yaml')

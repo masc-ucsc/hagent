@@ -14,27 +14,17 @@ Converted from original test_file_manager_yosys.py to use new Executor API.
 
 import os
 import pytest
+from hagent.inou.path_manager import PathManager
 from hagent.inou.runner import Runner
 
 
 @pytest.fixture(scope='function', autouse=True)
 def setup_hagent_environment():
-    """Setup HAGENT environment variables for Docker mode tests."""
+    """Setup HAGENT environment for Docker mode tests using PathManager.configured()."""
     import hagent.inou.container_manager as cm
-
-    original_env = {}
-
-    # Save original environment
-    hagent_vars = ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_DOCKER']
-    for var in hagent_vars:
-        original_env[var] = os.environ.get(var)
 
     # Reset container state before setting new environment
     cm._docker_workspace_validated = False
-
-    # Set Docker mode environment with host-accessible paths for testing
-    # Docker mode enabled via HAGENT_DOCKER
-    os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-builder:2025.11'
 
     # Use local directories that Docker can easily mount
     repo_dir = os.path.abspath('./output/test_executor_yosys_synthesis')
@@ -46,20 +36,16 @@ def setup_hagent_environment():
     os.makedirs(build_dir, exist_ok=True)
     os.makedirs(cache_dir, exist_ok=True)
 
-    os.environ['HAGENT_REPO_DIR'] = repo_dir
-    os.environ['HAGENT_BUILD_DIR'] = build_dir
-    os.environ['HAGENT_CACHE_DIR'] = cache_dir
+    # Use PathManager.configured() context manager for clean test isolation
+    with PathManager.configured(
+        docker_image='mascucsc/hagent-builder:2025.11',
+        repo_dir=repo_dir,
+        build_dir=build_dir,
+        cache_dir=cache_dir,
+    ):
+        yield
 
-    yield
-
-    # Restore original environment
-    for var, value in original_env.items():
-        if value is None:
-            os.environ.pop(var, None)
-        else:
-            os.environ[var] = value
-
-    # Reset container state after restoring environment
+    # Reset container state after test
     cm._docker_workspace_validated = False
 
 
@@ -114,11 +100,6 @@ endmodule
     @pytest.fixture
     def runner_filesystem(self):
         """Create and setup a Runner and FileSystem instance with Yosys tools."""
-        # Ensure directories exist
-        cache_dir = os.environ.get('HAGENT_CACHE_DIR')
-        if cache_dir:
-            os.makedirs(cache_dir, exist_ok=True)
-
         # Create Runner instance with Docker image
         runner = Runner(docker_image='mascucsc/hagent-builder:2025.11')
         assert runner.setup(), f'Runner setup failed: {runner.get_error()}'
@@ -238,7 +219,8 @@ endmodule
         assert rc == 0, f'Yosys synthesis with stats failed - RC: {rc}, ERR: {err}'
 
         # Check that statistics are in output
-        assert 'Number of cells' in out or 'Chip area' in out, f'Statistics not found in output: {out}'
+        # Yosys stat command outputs lines like "1 cells", "3 wires", etc.
+        assert 'Printing statistics' in out or 'cells' in out, f'Statistics not found in output: {out}'
 
     def test_synthesis_to_json(self, runner_filesystem, verilog_files):
         """Test synthesis with JSON output format."""
