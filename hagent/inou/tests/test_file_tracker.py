@@ -11,11 +11,12 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from hagent.inou.file_tracker_local import FileTrackerLocal as FileTracker
+from hagent.inou.path_manager import PathManager
 
 
 @pytest.fixture(autouse=True)
 def reset_docker_state():
-    """Reset global Docker state and environment variables before each test."""
+    """Reset global Docker state and use PathManager.configured() for test isolation."""
     import hagent.inou.container_manager as cm
     import os
 
@@ -28,7 +29,10 @@ def reset_docker_state():
     # Reset global state
     cm._docker_workspace_validated = False
 
-    yield
+    # Use PathManager.configured() for test isolation
+    # Since these tests are mocked, we use local mode with temp paths
+    with PathManager.configured():
+        yield
 
     # Restore environment variables
     current_hagent_vars = [k for k in os.environ.keys() if k.startswith('HAGENT_')]

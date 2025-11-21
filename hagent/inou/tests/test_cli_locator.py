@@ -2,15 +2,77 @@
 
 These are blackbox tests that exercise the CLI using subprocess only.
 Tests use Docker mode with mascucsc/hagent-simplechisel:2025.11.
+
+Note: These tests use subprocess.run() and need to pass environment variables
+to the subprocess. For subprocess-based CLI tests, we create a copy of os.environ
+and modify that copy (not using PathManager.configured() which only affects
+the current process).
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+
+
+@pytest.fixture(scope='class')
+def docker_env_for_cli():
+    """Setup environment for Docker-based CLI testing.
+
+    Creates a temporary directory with cache dir and returns environment
+    variables suitable for passing to subprocess.run().
+
+    Uses Docker mode with only cache directory mounted. This allows:
+    - Prebuilt files (repo, build) inside the Docker image to be used
+    - Cache directory for faster re-runs
+    - HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.11
+    - HAGENT_CACHE_DIR=<temp_dir>/cache (for caching)
+    """
+    # Check if Docker is available
+    try:
+        result = subprocess.run(['docker', 'info'], capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            pytest.skip('Docker not available')
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pytest.skip('Docker not available')
+
+    # Create a temporary working directory for test execution
+    test_file = Path(__file__).resolve()
+    hagent_root = test_file.parent.parent.parent.parent
+    setup_run_dir = hagent_root / 'setup_run'
+    setup_run_dir.mkdir(exist_ok=True)
+    test_dir = Path(tempfile.mkdtemp(prefix='cli_locator_', dir=setup_run_dir))
+
+    # Create cache directory
+    cache_dir = test_dir / 'cache'
+    cache_dir.mkdir(exist_ok=True)
+
+    # Set up Docker environment with only cache mounted
+    # Create a NEW dict based on os.environ (don't modify global state)
+    env = os.environ.copy()
+
+    # Remove any existing HAGENT path variables except cache
+    for key in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_OUTPUT_DIR']:
+        env.pop(key, None)
+
+    # Set execution mode, Docker image, and cache directory
+    env.update(
+        {
+            'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.11',
+            'HAGENT_CACHE_DIR': str(cache_dir),
+        }
+    )
+
+    try:
+        yield {'env': env, 'test_dir': test_dir}
+    finally:
+        # Cleanup: remove temporary test directory
+        if test_dir.exists():
+            shutil.rmtree(test_dir, ignore_errors=True)
 
 
 class TestCLILocatorBasics:
@@ -160,6 +222,7 @@ class TestCLILocatorValidation:
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures('docker_env_for_cli')
 class TestCLILocatorWithPipelinedD:
     """Integration tests with pipelined_d module using Docker.
 
@@ -169,64 +232,8 @@ class TestCLILocatorWithPipelinedD:
     mascucsc/hagent-simplechisel:2025.11.
     """
 
-    @pytest.fixture(scope='class')
-    def docker_env(self):
-        """Setup environment for Docker-based testing.
-
-        Uses Docker mode with only cache directory mounted. This allows:
-        - Prebuilt files (repo, build) inside the Docker image to be used
-        - Cache directory for faster re-runs
-        - HAGENT_DOCKER set (docker mode)
-        - HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.11
-        - HAGENT_CACHE_DIR=<temp_dir>/cache (for caching)
-        """
-        # Check if Docker is available
-        try:
-            result = subprocess.run(['docker', 'info'], capture_output=True, text=True, timeout=5)
-            if result.returncode != 0:
-                pytest.skip('Docker not available')
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pytest.skip('Docker not available')
-
-        # Create a temporary working directory for test execution
-        test_file = Path(__file__).resolve()
-        hagent_root = test_file.parent.parent.parent.parent
-        setup_run_dir = hagent_root / 'setup_run'
-        setup_run_dir.mkdir(exist_ok=True)
-        test_dir = Path(tempfile.mkdtemp(prefix='cli_locator_', dir=setup_run_dir))
-
-        # Create cache directory
-        cache_dir = test_dir / 'cache'
-        cache_dir.mkdir(exist_ok=True)
-
-        # Set up Docker environment with only cache mounted
-        # This ensures we use the prebuilt repo/build files inside the Docker image
-        env = os.environ.copy()
-
-        # Remove any existing HAGENT path variables except cache
-        for key in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_OUTPUT_DIR']:
-            env.pop(key, None)
-
-        # Set execution mode, Docker image, and cache directory
-        env.update(
-            {
-                # Docker mode via HAGENT_DOCKER,
-                'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.11',
-                'HAGENT_CACHE_DIR': str(cache_dir),
-            }
-        )
-
-        try:
-            yield {'env': env, 'test_dir': test_dir}
-        finally:
-            # Cleanup: remove temporary test directory
-            import shutil
-
-            if test_dir.exists():
-                shutil.rmtree(test_dir, ignore_errors=True)
-
     @pytest.mark.skip(reason='Locator does not yet support flat netlist/SystemVerilog (no hierarchy)')
-    def test_locate_vcd_to_chisel(self, docker_env):
+    def test_locate_vcd_to_chisel(self, docker_env_for_cli):
         """Test VCD signal mapping to Chisel using locate_vcd API.
 
         Example: pipelined_d.id_ex_ctrl.reg_ex_ctrl_aluop -> stage-register.scala
@@ -249,8 +256,8 @@ class TestCLILocatorWithPipelinedD:
             ],
             capture_output=True,
             text=True,
-            env=docker_env['env'],
-            cwd=str(docker_env['test_dir']),
+            env=docker_env_for_cli['env'],
+            cwd=str(docker_env_for_cli['test_dir']),
         )
 
         # Should succeed and find locations in Scala source
@@ -265,7 +272,7 @@ class TestCLILocatorWithPipelinedD:
         assert ':' in result.stdout
 
     @pytest.mark.skip(reason='Locator does not yet support flat netlist/SystemVerilog (no hierarchy)')
-    def test_locate_vcd_to_verilog(self, docker_env):
+    def test_locate_vcd_to_verilog(self, docker_env_for_cli):
         """Test VCD signal mapping to Verilog using locate_vcd API.
 
         Example: pipelined_d.id_ex_ctrl.reg_ex_ctrl_aluop -> StageReg.sv
@@ -286,8 +293,8 @@ class TestCLILocatorWithPipelinedD:
             ],
             capture_output=True,
             text=True,
-            env=docker_env['env'],
-            cwd=str(docker_env['test_dir']),
+            env=docker_env_for_cli['env'],
+            cwd=str(docker_env_for_cli['test_dir']),
         )
 
         if result.returncode != 0:
@@ -299,7 +306,7 @@ class TestCLILocatorWithPipelinedD:
         assert ':' in result.stdout
 
     @pytest.mark.skip(reason='Locator does not yet support flat netlist/SystemVerilog (no hierarchy)')
-    def test_locate_vcd_verbose(self, docker_env):
+    def test_locate_vcd_verbose(self, docker_env_for_cli):
         """Test verbose output with confidence scores and module info."""
         result = subprocess.run(
             [
@@ -317,8 +324,8 @@ class TestCLILocatorWithPipelinedD:
             ],
             capture_output=True,
             text=True,
-            env=docker_env['env'],
-            cwd=str(docker_env['test_dir']),
+            env=docker_env_for_cli['env'],
+            cwd=str(docker_env_for_cli['test_dir']),
         )
 
         if result.returncode != 0:
@@ -331,7 +338,7 @@ class TestCLILocatorWithPipelinedD:
         output = result.stdout + result.stderr
         assert 'Confidence:' in output or 'Module:' in output or '.scala' in output.lower()
 
-    def test_map_variable_verilog_to_chisel(self, docker_env):
+    def test_map_variable_verilog_to_chisel(self, docker_env_for_cli):
         """Test cross-representation variable mapping from Verilog to Chisel."""
         result = subprocess.run(
             [
@@ -352,8 +359,8 @@ class TestCLILocatorWithPipelinedD:
             ],
             capture_output=True,
             text=True,
-            env=docker_env['env'],
-            cwd=str(docker_env['test_dir']),
+            env=docker_env_for_cli['env'],
+            cwd=str(docker_env_for_cli['test_dir']),
         )
 
         # This may succeed or fail depending on whether files exist
@@ -362,7 +369,7 @@ class TestCLILocatorWithPipelinedD:
             # Error should be informative
             assert len(result.stderr) > 0
 
-    def test_locate_variable_in_chisel(self, docker_env):
+    def test_locate_variable_in_chisel(self, docker_env_for_cli):
         """Test single-representation variable location within Chisel."""
         result = subprocess.run(
             [
@@ -381,8 +388,8 @@ class TestCLILocatorWithPipelinedD:
             ],
             capture_output=True,
             text=True,
-            env=docker_env['env'],
-            cwd=str(docker_env['test_dir']),
+            env=docker_env_for_cli['env'],
+            cwd=str(docker_env_for_cli['test_dir']),
         )
 
         # May succeed or fail depending on exact variable names
@@ -393,6 +400,7 @@ class TestCLILocatorWithPipelinedD:
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures('docker_env_for_cli')
 class TestCLILocatorWithGCD:
     """Integration tests with GCD module using Docker.
 
@@ -400,54 +408,7 @@ class TestCLILocatorWithGCD:
     Uses the same Docker environment as PipelinedD tests.
     """
 
-    @pytest.fixture(scope='class')
-    def docker_env(self):
-        """Setup environment for Docker-based testing (same as PipelinedD)."""
-        # Check if Docker is available
-        try:
-            result = subprocess.run(['docker', 'info'], capture_output=True, text=True, timeout=5)
-            if result.returncode != 0:
-                pytest.skip('Docker not available')
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pytest.skip('Docker not available')
-
-        # Create a temporary working directory for test execution
-        test_file = Path(__file__).resolve()
-        hagent_root = test_file.parent.parent.parent.parent
-        setup_run_dir = hagent_root / 'setup_run'
-        setup_run_dir.mkdir(exist_ok=True)
-        test_dir = Path(tempfile.mkdtemp(prefix='cli_locator_gcd_', dir=setup_run_dir))
-
-        # Create cache directory
-        cache_dir = test_dir / 'cache'
-        cache_dir.mkdir(exist_ok=True)
-
-        # Set up Docker environment with only cache mounted
-        env = os.environ.copy()
-
-        # Remove any existing HAGENT path variables except cache
-        for key in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_OUTPUT_DIR']:
-            env.pop(key, None)
-
-        # Set execution mode, Docker image, and cache directory
-        env.update(
-            {
-                # Docker mode via HAGENT_DOCKER,
-                'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.11',
-                'HAGENT_CACHE_DIR': str(cache_dir),
-            }
-        )
-
-        try:
-            yield {'env': env, 'test_dir': test_dir}
-        finally:
-            # Cleanup: remove temporary test directory
-            import shutil
-
-            if test_dir.exists():
-                shutil.rmtree(test_dir, ignore_errors=True)
-
-    def test_locate_vcd_gcd_lowercase(self, docker_env):
+    def test_locate_vcd_gcd_lowercase(self, docker_env_for_cli):
         """Test VCD signal location with lowercase module name: gcd.x -> GCD.sv.
 
         Tests case-insensitive hierarchy matching where user provides 'gcd'
@@ -468,8 +429,8 @@ class TestCLILocatorWithGCD:
             ],
             capture_output=True,
             text=True,
-            env=docker_env['env'],
-            cwd=str(docker_env['test_dir']),
+            env=docker_env_for_cli['env'],
+            cwd=str(docker_env_for_cli['test_dir']),
         )
 
         # Should succeed and find 'x' variable in GCD.sv
@@ -482,7 +443,7 @@ class TestCLILocatorWithGCD:
         # Should find multiple occurrences of 'x' (at lines 12, 16, 19, 20, 22, 24)
         assert result.stdout.count(':') >= 6, f'Expected at least 6 occurrences, got: {result.stdout}'
 
-    def test_locate_vcd_gcd_uppercase(self, docker_env):
+    def test_locate_vcd_gcd_uppercase(self, docker_env_for_cli):
         """Test VCD signal location with uppercase module name: GCD.x -> GCD.sv.
 
         Tests exact case matching when user provides correct case.
@@ -502,8 +463,8 @@ class TestCLILocatorWithGCD:
             ],
             capture_output=True,
             text=True,
-            env=docker_env['env'],
-            cwd=str(docker_env['test_dir']),
+            env=docker_env_for_cli['env'],
+            cwd=str(docker_env_for_cli['test_dir']),
         )
 
         # Should succeed and find 'x' variable in GCD.sv
@@ -516,7 +477,7 @@ class TestCLILocatorWithGCD:
         # Should find multiple occurrences of 'x' (at lines 12, 16, 19, 20, 22, 24)
         assert result.stdout.count(':') >= 6, f'Expected at least 6 occurrences, got: {result.stdout}'
 
-    def test_locate_vcd_gcd_io_signal(self, docker_env):
+    def test_locate_vcd_gcd_io_signal(self, docker_env_for_cli):
         """Test VCD signal location with IO signal: gcd.io_outputGCD -> GCD.sv."""
         result = subprocess.run(
             [
@@ -533,8 +494,8 @@ class TestCLILocatorWithGCD:
             ],
             capture_output=True,
             text=True,
-            env=docker_env['env'],
-            cwd=str(docker_env['test_dir']),
+            env=docker_env_for_cli['env'],
+            cwd=str(docker_env_for_cli['test_dir']),
         )
 
         # Should succeed and find 'io_outputGCD' in GCD.sv
@@ -549,6 +510,7 @@ class TestCLILocatorWithGCD:
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures('docker_env_for_cli')
 class TestCLILocatorWithPipelinedDHierarchy:
     """Integration tests with hierarchical PipelinedCPU module using Docker.
 
@@ -556,54 +518,7 @@ class TestCLILocatorWithPipelinedDHierarchy:
     returns multiple modules with instance paths.
     """
 
-    @pytest.fixture(scope='class')
-    def docker_env(self):
-        """Setup environment for Docker-based testing (same as GCD)."""
-        # Check if Docker is available
-        try:
-            result = subprocess.run(['docker', 'info'], capture_output=True, text=True, timeout=5)
-            if result.returncode != 0:
-                pytest.skip('Docker not available')
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pytest.skip('Docker not available')
-
-        # Create a temporary working directory for test execution
-        test_file = Path(__file__).resolve()
-        hagent_root = test_file.parent.parent.parent.parent
-        setup_run_dir = hagent_root / 'setup_run'
-        setup_run_dir.mkdir(exist_ok=True)
-        test_dir = Path(tempfile.mkdtemp(prefix='cli_locator_pipelined_hier_', dir=setup_run_dir))
-
-        # Create cache directory
-        cache_dir = test_dir / 'cache'
-        cache_dir.mkdir(exist_ok=True)
-
-        # Set up Docker environment with only cache mounted
-        env = os.environ.copy()
-
-        # Remove any existing HAGENT path variables except cache
-        for key in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_OUTPUT_DIR']:
-            env.pop(key, None)
-
-        # Set execution mode, Docker image, and cache directory
-        env.update(
-            {
-                # Docker mode via HAGENT_DOCKER,
-                'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.11',
-                'HAGENT_CACHE_DIR': str(cache_dir),
-            }
-        )
-
-        try:
-            yield {'env': env, 'test_dir': test_dir}
-        finally:
-            # Cleanup: remove temporary test directory
-            import shutil
-
-            if test_dir.exists():
-                shutil.rmtree(test_dir, ignore_errors=True)
-
-    def test_locate_vcd_hierarchical_signal(self, docker_env):
+    def test_locate_vcd_hierarchical_signal(self, docker_env_for_cli):
         """Test VCD signal location in hierarchical design: PipelinedCPU.aluControl.io_aluop -> ALUControl.sv.
 
         Tests that:
@@ -627,8 +542,8 @@ class TestCLILocatorWithPipelinedDHierarchy:
             ],
             capture_output=True,
             text=True,
-            env=docker_env['env'],
-            cwd=str(docker_env['test_dir']),
+            env=docker_env_for_cli['env'],
+            cwd=str(docker_env_for_cli['test_dir']),
         )
 
         # Should succeed and find 'io_aluop' in ALUControl.sv

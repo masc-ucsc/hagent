@@ -14,6 +14,7 @@ across the entire application.
 
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional
 
@@ -455,14 +456,135 @@ class PathManager:
         return self.inou_dir / 'logs'
 
     @classmethod
-    def reset(cls) -> None:
-        """
-        Reset the singleton instance.
+    def _reset_singleton(cls) -> None:
+        """Reset the singleton instance (internal use only).
 
-        Useful for testing when you need to reinitialize with different environment.
+        This is for internal use by Builder when it needs to force PathManager
+        to re-read environment variables. Tests should use configured() instead.
         """
         cls._instance = None
         cls._initialized = False
+
+    @classmethod
+    @contextmanager
+    def configured(
+        cls,
+        docker_image: Optional[str] = None,
+        repo_dir: Optional[str] = None,
+        build_dir: Optional[str] = None,
+        cache_dir: Optional[str] = None,
+        tech_dir: Optional[str] = None,
+        private_dir: Optional[str] = None,
+    ):
+        """Context manager for temporarily configuring PathManager.
+
+        This is the preferred way to configure PathManager in tests, avoiding
+        direct manipulation of environment variables.
+
+        Args:
+            docker_image: Docker image name (if set, enables Docker mode)
+            repo_dir: Repository directory path
+            build_dir: Build directory path
+            cache_dir: Cache directory path
+            tech_dir: Tech directory path
+            private_dir: Private directory path (optional)
+
+        Usage in tests:
+            with PathManager.configured(docker_image='test:latest'):
+                # PathManager uses these settings
+                processor = V2chisel_batch()
+            # Automatically restored after
+
+        Yields:
+            The configured PathManager instance
+        """
+        # Save current state
+        old_instance = cls._instance
+        old_initialized = cls._initialized
+
+        # Reset singleton
+        cls._instance = None
+        cls._initialized = False
+
+        try:
+            # Create new instance with explicit config
+            instance = super().__new__(cls)
+            cls._instance = instance
+
+            # Initialize attributes
+            instance._repo_dir = None
+            instance._build_dir = None
+            instance._cache_dir = None
+            instance._tech_dir = None
+            instance._private_dir = None
+            instance._is_docker = None
+
+            # Configure with explicit values
+            instance._configure_explicit(
+                docker_image=docker_image,
+                repo_dir=repo_dir,
+                build_dir=build_dir,
+                cache_dir=cache_dir,
+                tech_dir=tech_dir,
+                private_dir=private_dir,
+            )
+
+            cls._initialized = True
+            yield instance
+        finally:
+            # Restore previous state
+            cls._instance = old_instance
+            cls._initialized = old_initialized
+
+    def _configure_explicit(
+        self,
+        docker_image: Optional[str],
+        repo_dir: Optional[str],
+        build_dir: Optional[str],
+        cache_dir: Optional[str],
+        tech_dir: Optional[str],
+        private_dir: Optional[str],
+    ) -> None:
+        """Configure PathManager with explicit values instead of environment variables.
+
+        Args:
+            docker_image: Docker image name (if set, enables Docker mode)
+            repo_dir: Repository directory path
+            build_dir: Build directory path
+            cache_dir: Cache directory path
+            tech_dir: Tech directory path
+            private_dir: Private directory path (optional)
+        """
+        self._is_docker = docker_image is not None
+
+        if self._is_docker:
+            # Docker mode - use provided paths or defaults
+            self._repo_dir = Path(repo_dir) if repo_dir else Path('/code/workspace/repo')
+            self._build_dir = Path(build_dir) if build_dir else Path('/code/workspace/build')
+            self._cache_dir = Path(cache_dir) if cache_dir else Path('/code/workspace/cache')
+            self._tech_dir = Path(tech_dir) if tech_dir else Path('/code/workspace/tech')
+        else:
+            # Local mode - use provided paths or create temp paths for testing
+            import tempfile
+
+            temp_base = Path(tempfile.gettempdir()) / 'hagent_test'
+            self._repo_dir = Path(repo_dir) if repo_dir else temp_base / 'repo'
+            self._build_dir = Path(build_dir) if build_dir else temp_base / 'build'
+            self._cache_dir = Path(cache_dir) if cache_dir else temp_base / 'cache'
+            self._tech_dir = Path(tech_dir) if tech_dir else temp_base / 'tech'
+
+            # Create directories if they don't exist (for local test mode)
+            for dir_path in [self._repo_dir, self._build_dir, self._cache_dir, self._tech_dir]:
+                dir_path.mkdir(parents=True, exist_ok=True)
+
+        # Private dir is optional
+        if private_dir:
+            self._private_dir = Path(private_dir)
+        else:
+            self._private_dir = None
+
+        # Create cache structure (skip for Docker container paths)
+        self._create_cache_structure()
 
 
 # Global singleton instance getter

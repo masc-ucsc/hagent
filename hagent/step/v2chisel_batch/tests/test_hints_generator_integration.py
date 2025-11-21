@@ -12,9 +12,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 
-# Set environment before importing
-# Docker mode enabled via HAGENT_DOCKER
-
+from hagent.inou.path_manager import PathManager
 from hagent.step.v2chisel_batch.v2chisel_batch import V2chisel_batch
 from hagent.step.v2chisel_batch.components.hints_generator import HintsGenerator
 from hagent.step.v2chisel_batch.components.bug_info import BugInfo
@@ -51,60 +49,62 @@ def test_hints_generator_integration():
 
     output_file = tempfile.mktemp(suffix='.yaml')
 
-    try:
-        # Test 1: Initialize V2chisel_batch and check HintsGenerator is created
-        processor = V2chisel_batch()
-        processor.input_file = input_file
-        processor.output_file = output_file
-
-        # This will call setup() which should initialize hints_generator
-        processor.setup()
-
-        print('✅ V2chisel_batch setup completed')
-
-        # Check that HintsGenerator was initialized
-        assert hasattr(processor, 'hints_generator'), 'HintsGenerator not found in processor'
-        assert isinstance(processor.hints_generator, HintsGenerator), 'hints_generator is not HintsGenerator instance'
-
-        print('✅ HintsGenerator properly initialized in processor')
-        print(f'✅ HintsGenerator debug mode: {processor.hints_generator.debug}')
-
-        # Test 2: Test that BugInfo and HintsGenerator work together
-        bug_entry = test_input_data['bugs'][0]
-        bug_info = BugInfo(bug_entry, 0)
-
-        print(f'✅ BugInfo created: {bug_info.get_display_name()}')
-
-        # Test 3: Test HintsGenerator can be called (we won't actually run it with Docker)
-        print('✅ Components integrate correctly - BugInfo + HintsGenerator ready')
-
-        # Test 4: Check that the interface is compatible
-        # The hints_generator.find_hints should accept bug_info as first parameter
-        import inspect
-
-        find_hints_sig = inspect.signature(processor.hints_generator.find_hints)
-        params = list(find_hints_sig.parameters.keys())
-        expected_params = ['bug_info', 'all_files', 'docker_container']
-
-        assert params == expected_params, f'find_hints signature mismatch: got {params}, expected {expected_params}'
-        print('✅ HintsGenerator.find_hints interface is compatible')
-
-        return True
-
-    except Exception as e:
-        print(f'❌ Integration test failed: {e}')
-        import traceback
-
-        traceback.print_exc()
-        return False
-
-    finally:
-        # Cleanup
+    # Use PathManager.configured() context manager for clean test isolation
+    with PathManager.configured(docker_image='mascucsc/hagent-simplechisel:2025.11'):
         try:
-            os.unlink(input_file)
-            os.unlink(output_file)
-        except OSError:
-            pass
+            # Test 1: Initialize V2chisel_batch and check HintsGenerator is created
+            processor = V2chisel_batch()
+            processor.input_file = input_file
+            processor.output_file = output_file
+
+            # This will call setup() which should initialize hints_generator
+            processor.setup()
+
+            print('✅ V2chisel_batch setup completed')
+
+            # Check that HintsGenerator was initialized
+            assert hasattr(processor, 'hints_generator'), 'HintsGenerator not found in processor'
+            assert isinstance(processor.hints_generator, HintsGenerator), 'hints_generator is not HintsGenerator instance'
+
+            print('✅ HintsGenerator properly initialized in processor')
+            print(f'✅ HintsGenerator debug mode: {processor.hints_generator.debug}')
+
+            # Test 2: Test that BugInfo and HintsGenerator work together
+            bug_entry = test_input_data['bugs'][0]
+            bug_info = BugInfo(bug_entry, 0)
+
+            print(f'✅ BugInfo created: {bug_info.get_display_name()}')
+
+            # Test 3: Test HintsGenerator can be called (we won't actually run it with Docker)
+            print('✅ Components integrate correctly - BugInfo + HintsGenerator ready')
+
+            # Test 4: Check that the interface is compatible
+            # The hints_generator.find_hints should accept bug_info as first parameter
+            import inspect
+
+            find_hints_sig = inspect.signature(processor.hints_generator.find_hints)
+            params = list(find_hints_sig.parameters.keys())
+            expected_params = ['bug_info', 'all_files', 'docker_container']
+
+            assert params == expected_params, f'find_hints signature mismatch: got {params}, expected {expected_params}'
+            print('✅ HintsGenerator.find_hints interface is compatible')
+
+            return True
+
+        except Exception as e:
+            print(f'❌ Integration test failed: {e}')
+            import traceback
+
+            traceback.print_exc()
+            return False
+
+        finally:
+            # Cleanup temp files
+            try:
+                os.unlink(input_file)
+                os.unlink(output_file)
+            except OSError:
+                pass
 
 
 if __name__ == '__main__':

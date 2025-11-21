@@ -4,7 +4,6 @@ These tests use the mascucsc/hagent-simplechisel:2025.11 Docker image to test
 the full Locator workflow with actual Chisel compilation and slang-hier integration.
 """
 
-import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -13,6 +12,7 @@ import pytest
 
 from hagent.inou.builder import Builder
 from hagent.inou.locator import Locator, RepresentationType
+from hagent.inou.path_manager import PathManager
 
 
 @pytest.fixture(scope='class')
@@ -60,32 +60,18 @@ def docker_env():
         if not all([repo_dir.exists(), build_dir.exists(), cache_dir.exists()]):
             pytest.skip('Setup script did not create expected directories')
 
-        # Set environment variables for hagent
-        old_env = {}
-        env_vars = {
-            # Docker mode via HAGENT_DOCKER,
-            'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.11',
-            'HAGENT_REPO_DIR': str(repo_dir),
-            'HAGENT_BUILD_DIR': str(build_dir),
-            'HAGENT_CACHE_DIR': str(cache_dir),
-        }
-
-        for key, value in env_vars.items():
-            old_env[key] = os.environ.get(key)
-            os.environ[key] = value
-
-        yield {
-            'repo_dir': repo_dir,
-            'build_dir': build_dir,
-            'cache_dir': cache_dir,
-        }
-
-        # Restore environment
-        for key, value in old_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+        # Use PathManager.configured() for clean test isolation
+        with PathManager.configured(
+            docker_image='mascucsc/hagent-simplechisel:2025.11',
+            repo_dir=str(repo_dir),
+            build_dir=str(build_dir),
+            cache_dir=str(cache_dir),
+        ):
+            yield {
+                'repo_dir': repo_dir,
+                'build_dir': build_dir,
+                'cache_dir': cache_dir,
+            }
 
     finally:
         # Cleanup: remove temporary test directory

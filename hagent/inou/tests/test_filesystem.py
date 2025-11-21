@@ -24,11 +24,11 @@ from hagent.inou.path_manager import PathManager
 
 
 @pytest.fixture(autouse=True)
-def reset_path_manager():
-    """Ensure PathManager starts clean for each test."""
-    PathManager.reset()
-    yield
-    PathManager.reset()
+def isolate_path_manager():
+    """Ensure PathManager is isolated for each test using configured()."""
+    # Use PathManager.configured() with no args to create an isolated local mode instance
+    with PathManager.configured():
+        yield
 
 
 @pytest.fixture(scope='session')
