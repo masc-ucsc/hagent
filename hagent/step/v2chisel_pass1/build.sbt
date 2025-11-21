@@ -6,7 +6,7 @@ scalaVersion := "2.13.18"
 
 libraryDependencies ++= Seq(
   "edu.berkeley.cs" %% "chisel3" % "3.5.5",
-  "edu.berkeley.cs" %% "chiseltest" % "0.5.4" % "test"
+  "edu.berkeley.cs" %% "chiseltest" % "0.6.2" % "test"
 )
 
 ThisBuild / organization := "example"
