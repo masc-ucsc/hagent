@@ -9,11 +9,25 @@ from hagent.inou.path_manager import PathManager
 
 
 @pytest.fixture(autouse=True)
-def reset_path_manager():
-    """Ensure PathManager starts clean for each test."""
-    PathManager.reset()
+def reset_path_manager_state():
+    """Reset PathManager state before and after each test.
+
+    These tests check Builder behavior with different environment configurations,
+    so we need to reset PathManager directly to allow tests to control the env.
+    """
+    # Save original state
+    old_instance = PathManager._instance
+    old_initialized = PathManager._initialized
+
+    # Reset before test
+    PathManager._instance = None
+    PathManager._initialized = False
+
     yield
-    PathManager.reset()
+
+    # Reset after test
+    PathManager._instance = old_instance
+    PathManager._initialized = old_initialized
 
 
 def test_builder_uses_environment_mode_by_default(monkeypatch):

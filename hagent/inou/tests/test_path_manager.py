@@ -17,13 +17,27 @@ from hagent.inou.path_manager import PathManager
 class TestPathManager:
     """Test PathManager functionality."""
 
-    def setup_method(self, method):
-        """Reset PathManager singleton before each test."""
-        PathManager.reset()
+    @pytest.fixture(autouse=True)
+    def reset_path_manager_state(self):
+        """Reset PathManager state before and after each test.
 
-    def teardown_method(self, method):
-        """Reset PathManager singleton after each test."""
-        PathManager.reset()
+        This test class specifically tests PathManager's initialization behavior,
+        so we can't use PathManager.configured() - we need to test the singleton
+        pattern directly. We reset the class variables directly.
+        """
+        # Save original state
+        old_instance = PathManager._instance
+        old_initialized = PathManager._initialized
+
+        # Reset before test
+        PathManager._instance = None
+        PathManager._initialized = False
+
+        yield
+
+        # Reset after test
+        PathManager._instance = old_instance
+        PathManager._initialized = old_initialized
 
     @patch.dict(os.environ, {}, clear=True)
     def test_local_mode_missing_variables_fails_fast(self):

@@ -6,7 +6,6 @@ These tests demonstrate how Runner simplifies the usage of Executor, ContainerMa
 PathManager, and FileTracker by providing a unified interface.
 """
 
-import os
 import pytest
 import uuid
 import datetime
@@ -20,11 +19,9 @@ from hagent.inou.path_manager import PathManager
 class TestRunner:
     """Test cases for Runner class showcasing different use cases."""
 
-    def setup_method(self):
-        """Setup test environment before each test."""
-        # Reset PathManager singleton before each test
-        PathManager.reset()
-
+    @pytest.fixture(autouse=True)
+    def setup_test_environment(self):
+        """Setup test environment for each test using PathManager.configured()."""
         # Create unique directories for testing
         test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
         self.test_dir = Path('output') / 'test_runner' / test_id
@@ -38,22 +35,13 @@ class TestRunner:
         self.build_dir.mkdir(parents=True)
         self.cache_dir.mkdir(parents=True)
 
-        # Set environment variables for local mode
-        # Ensure HAGENT_DOCKER is not set (local mode)
-        os.environ.pop('HAGENT_DOCKER', None)
-        os.environ['HAGENT_REPO_DIR'] = str(self.repo_dir)
-        os.environ['HAGENT_BUILD_DIR'] = str(self.build_dir)
-        os.environ['HAGENT_CACHE_DIR'] = str(self.cache_dir)
-
-    def teardown_method(self):
-        """Clean up test environment after each test."""
-        # Clean up environment variables
-        for var in ['HAGENT_DOCKER', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
-            if var in os.environ:
-                del os.environ[var]
-
-        # Reset PathManager singleton after each test
-        PathManager.reset()
+        # Use PathManager.configured() for clean test isolation
+        with PathManager.configured(
+            repo_dir=str(self.repo_dir),
+            build_dir=str(self.build_dir),
+            cache_dir=str(self.cache_dir),
+        ):
+            yield
 
         # Leave directories for inspection - they will be in output/
 
@@ -78,30 +66,36 @@ class TestRunner:
 
     def test_docker_mode_initialization(self):
         """Test Case 2: Docker mode with image specification."""
-        # Switch to docker mode by setting HAGENT_DOCKER
-        os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-simplechisel:2025.11'
-        PathManager.reset()  # Reset singleton to pick up new environment
+        # Use PathManager.configured() to switch to docker mode
+        with PathManager.configured(
+            docker_image='mascucsc/hagent-simplechisel:2025.11',
+            repo_dir=str(self.repo_dir),
+            build_dir=str(self.build_dir),
+            cache_dir=str(self.cache_dir),
+        ):
+            runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.11')
 
-        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.11')
+            assert runner.is_docker_mode()
+            assert not runner.is_local_mode()
+            assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.11'
+            assert runner.container_manager is not None
 
-        assert runner.is_docker_mode()
-        assert not runner.is_local_mode()
-        assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.11'
-        assert runner.container_manager is not None
-
-        runner.cleanup()
+            runner.cleanup()
 
     def test_docker_mode_without_image_fails(self):
         """Test Case 3: Docker mode should fail without image specification."""
-        # Enable docker mode by setting HAGENT_DOCKER
-        os.environ['HAGENT_DOCKER'] = 'some-image:tag'
-        PathManager.reset()  # Reset singleton to pick up new environment
+        # Use PathManager.configured() to enable docker mode
+        with PathManager.configured(
+            docker_image='some-image:tag',
+            repo_dir=str(self.repo_dir),
+            build_dir=str(self.build_dir),
+            cache_dir=str(self.cache_dir),
+        ):
+            runner = Runner()  # No docker_image provided
 
-        runner = Runner()  # No docker_image provided
+            assert runner.get_error() == 'Docker image must be provided when HAGENT_DOCKER is set (docker mode)'
 
-        assert runner.get_error() == 'Docker image must be provided when HAGENT_DOCKER is set (docker mode)'
-
-        runner.cleanup()
+            runner.cleanup()
 
     def test_file_tracking_lazy_initialization(self):
         """Test Case 4: FileTracker lazy initialization when tracking is used."""
@@ -299,11 +293,9 @@ class TestRunner:
 class TestRunnerAdvancedUseCases:
     """Advanced use cases that showcase Runner's capabilities."""
 
-    def setup_method(self):
-        """Setup test environment."""
-        # Reset PathManager singleton before each test
-        PathManager.reset()
-
+    @pytest.fixture(autouse=True)
+    def setup_test_environment(self):
+        """Setup test environment using PathManager.configured()."""
         test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
         self.test_dir = Path('output') / 'test_runner_advanced' / test_id
         self.test_dir.mkdir(parents=True, exist_ok=True)
@@ -314,20 +306,13 @@ class TestRunnerAdvancedUseCases:
         for dir_path in [self.repo_dir, self.build_dir, self.cache_dir]:
             dir_path.mkdir(parents=True)
 
-        # Ensure HAGENT_DOCKER is not set (local mode)
-        os.environ.pop('HAGENT_DOCKER', None)
-        os.environ['HAGENT_REPO_DIR'] = str(self.repo_dir)
-        os.environ['HAGENT_BUILD_DIR'] = str(self.build_dir)
-        os.environ['HAGENT_CACHE_DIR'] = str(self.cache_dir)
-
-    def teardown_method(self):
-        """Clean up test environment."""
-        for var in ['HAGENT_DOCKER', 'HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']:
-            if var in os.environ:
-                del os.environ[var]
-
-        # Reset PathManager singleton after each test
-        PathManager.reset()
+        # Use PathManager.configured() for clean test isolation
+        with PathManager.configured(
+            repo_dir=str(self.repo_dir),
+            build_dir=str(self.build_dir),
+            cache_dir=str(self.cache_dir),
+        ):
+            yield
 
         # Leave directories for inspection - they will be in output/
 

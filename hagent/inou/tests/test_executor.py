@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 from hagent.inou.executor import ExecutorFactory, create_executor, run_cmd
 from hagent.inou.executor_local import LocalExecutor
 from hagent.inou.executor_docker import DockerExecutor
@@ -140,17 +142,13 @@ class TestLocalExecutor:
 class TestDockerExecutor:
     """Test DockerExecutor functionality."""
 
-    def setup_method(self, method):
-        """Reset PathManager singleton before each test."""
+    @pytest.fixture(autouse=True)
+    def isolate_path_manager(self):
+        """Ensure PathManager is isolated for each test."""
         from hagent.inou.path_manager import PathManager
 
-        PathManager.reset()
-
-    def teardown_method(self, method):
-        """Reset PathManager singleton after each test."""
-        from hagent.inou.path_manager import PathManager
-
-        PathManager.reset()
+        with PathManager.configured():
+            yield
 
     def test_initialization_with_file_manager(self):
         """Test DockerExecutor initialization without managers (creates default container_manager)."""
@@ -333,17 +331,13 @@ class TestDockerExecutor:
 class TestExecutorFactory:
     """Test ExecutorFactory functionality."""
 
-    def setup_method(self, method):
-        """Reset PathManager singleton before each test."""
+    @pytest.fixture(autouse=True)
+    def isolate_path_manager(self):
+        """Ensure PathManager is isolated for each test."""
         from hagent.inou.path_manager import PathManager
 
-        PathManager.reset()
-
-    def teardown_method(self, method):
-        """Reset PathManager singleton after each test."""
-        from hagent.inou.path_manager import PathManager
-
-        PathManager.reset()
+        with PathManager.configured():
+            yield
 
     def test_create_executor_local_mode(self):
         """Test factory creates LocalExecutor for local mode."""

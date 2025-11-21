@@ -14,45 +14,36 @@ def prepare_checker(monkeypatch):
     Fixture to instantiate the checker and ensure a clean workspace before each test.
 
     Sets up a minimal valid environment so PathManager can initialize properly.
-    Tests can override these settings with monkeypatch if needed.
+    Uses PathManager.configured() for clean test isolation.
     """
-    PathManager.reset()
-
     # Create unique directory for test
     test_id = f'{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:8]}'
     test_dir = (Path('output') / 'equiv_check' / test_id).resolve()
     test_dir.mkdir(parents=True, exist_ok=True)
 
-    # Always set up environment variables for local mode to ensure clean state
-    # Use monkeypatch to ensure proper cleanup
-    # Ensure HAGENT_DOCKER is not set (local mode)
-    monkeypatch.delenv('HAGENT_DOCKER', raising=False)
+    # Create test directories
     repo_dir = (test_dir / 'repo').resolve()
     repo_dir.mkdir(exist_ok=True)
-    monkeypatch.setenv('HAGENT_REPO_DIR', str(repo_dir))
     build_dir = (test_dir / 'build').resolve()
     build_dir.mkdir(exist_ok=True)
-    monkeypatch.setenv('HAGENT_BUILD_DIR', str(build_dir))
     cache_dir = (test_dir / 'cache').resolve()
     cache_dir.mkdir(exist_ok=True)
-    monkeypatch.setenv('HAGENT_CACHE_DIR', str(cache_dir))
-
-    # Reset PathManager singleton to pick up new environment
-    PathManager.reset()
 
     # Change to test directory for the test
     original_cwd = os.getcwd()
     os.chdir(test_dir)
 
-    checker = Equiv_check()
-
-    yield checker
+    # Use PathManager.configured() for clean test isolation
+    with PathManager.configured(
+        repo_dir=str(repo_dir),
+        build_dir=str(build_dir),
+        cache_dir=str(cache_dir),
+    ):
+        checker = Equiv_check()
+        yield checker
 
     # Change back to original directory
     os.chdir(original_cwd)
-
-    # Reset PathManager singleton after test
-    PathManager.reset()
 
 
 def test_setup_failure(prepare_checker):
