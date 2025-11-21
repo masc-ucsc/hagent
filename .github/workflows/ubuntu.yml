@@ -5,7 +5,6 @@ on: [push, pull_request]
 env:
   HAGENT_BUILDER_IMAGE: mascucsc/hagent-builder:2025.11
   HAGENT_SIMPLECHISEL_IMAGE: mascucsc/hagent-simplechisel:2025.11
-  HAGENT_IMAGE_CACHE_KEY: builder-2025-11-simplechisel-2025-11
 
 jobs:
   install_uv:
@@ -68,42 +67,10 @@ jobs:
       - name: Install project
         run: uv sync --extra dev
 
-      - name: Restore Docker image cache
-        id: docker-image-cache
-        uses: actions/cache@v4
-        with:
-          path: /tmp/docker-image-cache
-          key: docker-image-cache-${{ runner.os }}-${{ env.HAGENT_IMAGE_CACHE_KEY }}
-
-      - name: Load cached Docker images
-        if: steps.docker-image-cache.outputs.cache-hit == 'true'
+      - name: Pull Docker images
         run: |
-          set -euo pipefail
-          shopt -s nullglob
-          for archive in /tmp/docker-image-cache/*.tar; do
-            docker load -i "$archive"
-          done
-
-      - name: Pull required Docker images
-        run: |
-          set -euo pipefail
-          images=("${HAGENT_BUILDER_IMAGE}" "${HAGENT_SIMPLECHISEL_IMAGE}")
-          for image in "${images[@]}"; do
-            if ! docker image inspect "$image" >/dev/null 2>&1; then
-              docker pull "$image"
-            fi
-          done
-
-      - name: Save Docker images to cache
-        if: steps.docker-image-cache.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/docker-image-cache
-          images=("${HAGENT_BUILDER_IMAGE}" "${HAGENT_SIMPLECHISEL_IMAGE}")
-          for image in "${images[@]}"; do
-            archive="/tmp/docker-image-cache/$(echo "$image" | tr '/:' '__').tar"
-            docker save "$image" -o "$archive"
-          done
+          docker pull ${{ env.HAGENT_BUILDER_IMAGE }}
+          docker pull ${{ env.HAGENT_SIMPLECHISEL_IMAGE }}
 
       - name: Run tests with coverage
         env:
@@ -158,42 +125,10 @@ jobs:
       - name: Install project
         run: uv sync --extra dev
 
-      - name: Restore Docker image cache
-        id: docker-image-cache
-        uses: actions/cache@v4
-        with:
-          path: /tmp/docker-image-cache
-          key: docker-image-cache-${{ runner.os }}-${{ env.HAGENT_IMAGE_CACHE_KEY }}
-
-      - name: Load cached Docker images
-        if: steps.docker-image-cache.outputs.cache-hit == 'true'
+      - name: Pull Docker images
         run: |
-          set -euo pipefail
-          shopt -s nullglob
-          for archive in /tmp/docker-image-cache/*.tar; do
-            docker load -i "$archive"
-          done
-
-      - name: Pull required Docker images
-        run: |
-          set -euo pipefail
-          images=("${HAGENT_BUILDER_IMAGE}" "${HAGENT_SIMPLECHISEL_IMAGE}")
-          for image in "${images[@]}"; do
-            if ! docker image inspect "$image" >/dev/null 2>&1; then
-              docker pull "$image"
-            fi
-          done
-
-      - name: Save Docker images to cache
-        if: steps.docker-image-cache.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/docker-image-cache
-          images=("${HAGENT_BUILDER_IMAGE}" "${HAGENT_SIMPLECHISEL_IMAGE}")
-          for image in "${images[@]}"; do
-            archive="/tmp/docker-image-cache/$(echo "$image" | tr '/:' '__').tar"
-            docker save "$image" -o "$archive"
-          done
+          docker pull ${{ env.HAGENT_BUILDER_IMAGE }}
+          docker pull ${{ env.HAGENT_SIMPLECHISEL_IMAGE }}
 
       - name: Run slow tests
         env:
