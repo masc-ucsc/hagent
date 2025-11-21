@@ -283,20 +283,12 @@ class TestContainerManager:
         local_dirs = setup_local_directory
 
         # Create a real PathManager with test environment
-        # Explicitly don't set HAGENT_PRIVATE_DIR to ensure consistent test behavior
-        env_vars = {
-            'HAGENT_REPO_DIR': str(local_dirs['repo_dir']),
-            'HAGENT_BUILD_DIR': str(local_dirs['build_dir']),
-            'HAGENT_CACHE_DIR': str(local_dirs['cache_dir']),
-        }
-        # Remove HAGENT_PRIVATE_DIR if it exists in the environment
-        env_to_remove = ['HAGENT_PRIVATE_DIR'] if 'HAGENT_PRIVATE_DIR' in os.environ else []
-        with patch.dict('os.environ', env_vars, clear=False):
-            for key in env_to_remove:
-                if key in os.environ:
-                    del os.environ[key]
-            # Reset PathManager singleton to pick up new environment
-            PathManager.reset()
+        # Use PathManager.configured() for clean test isolation
+        with PathManager.configured(
+            repo_dir=str(local_dirs['repo_dir']),
+            build_dir=str(local_dirs['build_dir']),
+            cache_dir=str(local_dirs['cache_dir']),
+        ):
             mock_pm = PathManager()
 
             with patch.object(ContainerManager, '_initialize_docker_client'):
@@ -576,19 +568,12 @@ class TestContainerManager:
     def test_setup_mount_points_relative_paths(self, setup_local_directory):
         """Test setup of mount points with relative paths."""
         # Create a real PathManager with test environment using relative paths
-        # Explicitly don't set HAGENT_PRIVATE_DIR to ensure consistent test behavior
-        env_vars = {
-            'HAGENT_REPO_DIR': 'output/local/repo',
-            'HAGENT_BUILD_DIR': 'output/local/build',
-            'HAGENT_CACHE_DIR': 'output/local/cache',
-        }
-        env_to_remove = ['HAGENT_PRIVATE_DIR'] if 'HAGENT_PRIVATE_DIR' in os.environ else []
-        with patch.dict('os.environ', env_vars, clear=False):
-            for key in env_to_remove:
-                if key in os.environ:
-                    del os.environ[key]
-            # Reset PathManager singleton to pick up new environment
-            PathManager.reset()
+        # Use PathManager.configured() for clean test isolation
+        with PathManager.configured(
+            repo_dir='output/local/repo',
+            build_dir='output/local/build',
+            cache_dir='output/local/cache',
+        ):
             mock_pm = PathManager()
 
             with patch.object(ContainerManager, '_initialize_docker_client'):
@@ -619,19 +604,12 @@ class TestContainerManager:
         local_dirs = setup_local_directory
 
         # Create a real PathManager with test environment
-        # Explicitly don't set HAGENT_PRIVATE_DIR to ensure consistent test behavior
-        env_vars = {
-            'HAGENT_REPO_DIR': str(local_dirs['repo_dir'].resolve()),
-            'HAGENT_BUILD_DIR': str(local_dirs['build_dir'].resolve()),
-            'HAGENT_CACHE_DIR': str(local_dirs['cache_dir'].resolve()),
-        }
-        env_to_remove = ['HAGENT_PRIVATE_DIR'] if 'HAGENT_PRIVATE_DIR' in os.environ else []
-        with patch.dict('os.environ', env_vars, clear=False):
-            for key in env_to_remove:
-                if key in os.environ:
-                    del os.environ[key]
-            # Reset PathManager singleton to pick up new environment
-            PathManager.reset()
+        # Use PathManager.configured() for clean test isolation
+        with PathManager.configured(
+            repo_dir=str(local_dirs['repo_dir'].resolve()),
+            build_dir=str(local_dirs['build_dir'].resolve()),
+            cache_dir=str(local_dirs['cache_dir'].resolve()),
+        ):
             mock_pm = PathManager()
 
             with patch.object(ContainerManager, '_initialize_docker_client'):

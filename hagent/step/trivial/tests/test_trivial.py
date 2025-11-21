@@ -3,7 +3,6 @@
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 import pytest
 from hagent.step.trivial.trivial import Trivial
 from hagent.inou.path_manager import PathManager
@@ -26,16 +25,12 @@ def test_trivial():
         # Create repo directory (must exist for validation)
         repo_dir.mkdir()
 
-        env_vars = {
-            'HAGENT_REPO_DIR': str(repo_dir),
-            'HAGENT_BUILD_DIR': str(build_dir),
-            'HAGENT_CACHE_DIR': str(cache_dir),
-        }
-
-        with patch.dict(os.environ, env_vars, clear=True):
-            # Reset PathManager singleton to pick up new environment
-            PathManager.reset()
-
+        # Use PathManager.configured() for clean test isolation
+        with PathManager.configured(
+            repo_dir=str(repo_dir),
+            build_dir=str(build_dir),
+            cache_dir=str(cache_dir),
+        ):
             trivial_step = Trivial()
 
             trivial_step.set_io(inp_file=inp_file, out_file='test_trivial_output.yaml')
@@ -78,9 +73,6 @@ def test_trivial():
             assert result_data['pwd_ret'] == '0', 'pwd command should succeed'
             assert len(result_data['uname_out']) > 0, 'uname should produce output'
             assert len(result_data['pwd_out']) > 0, 'pwd should produce output'
-
-            # Reset PathManager singleton after test
-            PathManager.reset()
 
 
 if __name__ == '__main__':  # pragma: no cover

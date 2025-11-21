@@ -56,8 +56,9 @@ class Builder:
                 self._original_docker_image = current_docker_image
                 os.environ['HAGENT_DOCKER'] = docker_image
                 self._docker_image_env_overridden = True
-                # Reset PathManager so it re-reads HAGENT_DOCKER
-                PathManager._reset_singleton()
+                # Reset PathManager singleton so it re-reads HAGENT_DOCKER
+                PathManager._instance = None
+                PathManager._initialized = False
 
         # Determine docker image when running in docker mode without explicit override
         # Docker mode is active when HAGENT_DOCKER is set
@@ -956,8 +957,9 @@ class Builder:
             else:
                 os.environ['HAGENT_DOCKER'] = self._original_docker_image
             self._docker_image_env_overridden = False
-            # Reset PathManager to re-read HAGENT_DOCKER
-            PathManager._reset_singleton()
+            # Reset PathManager singleton to re-read HAGENT_DOCKER
+            PathManager._instance = None
+            PathManager._initialized = False
 
         self.error_message = ''
 

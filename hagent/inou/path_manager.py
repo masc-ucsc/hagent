@@ -456,16 +456,6 @@ class PathManager:
         return self.inou_dir / 'logs'
 
     @classmethod
-    def _reset_singleton(cls) -> None:
-        """Reset the singleton instance (internal use only).
-
-        This is for internal use by Builder when it needs to force PathManager
-        to re-read environment variables. Tests should use configured() instead.
-        """
-        cls._instance = None
-        cls._initialized = False
-
-    @classmethod
     @contextmanager
     def configured(
         cls,

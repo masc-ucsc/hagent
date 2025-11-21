@@ -20,19 +20,6 @@ from hagent.inou.path_manager import PathManager
 @pytest.fixture(scope='class', autouse=True)
 def setup_hagent_environment():
     """Setup HAGENT environment variables for Docker mode tests."""
-    original_env = {}
-
-    # Save original environment
-    hagent_vars = ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR']
-    for var in hagent_vars:
-        original_env[var] = os.environ.get(var)
-
-    # Reset PathManager singleton to pick up new environment
-    PathManager.reset()
-
-    # Set Docker mode environment with host-accessible paths for testing
-    # Docker mode enabled via HAGENT_DOCKER
-
     # Use local directories that tests can actually create and access
     # Use home directory subfolders which Docker Desktop has access to by default
     home_dir = os.path.expanduser('~')
@@ -46,21 +33,13 @@ def setup_hagent_environment():
     os.makedirs(build_dir, exist_ok=True)
     os.makedirs(cache_dir, exist_ok=True)
 
-    os.environ['HAGENT_REPO_DIR'] = repo_dir
-    os.environ['HAGENT_BUILD_DIR'] = build_dir
-    os.environ['HAGENT_CACHE_DIR'] = cache_dir
-
-    yield
-
-    # Restore original environment
-    for var, value in original_env.items():
-        if value is None:
-            os.environ.pop(var, None)
-        else:
-            os.environ[var] = value
-
-    # Reset PathManager singleton again after tests
-    PathManager.reset()
+    # Use PathManager.configured() for clean test isolation
+    with PathManager.configured(
+        repo_dir=repo_dir,
+        build_dir=build_dir,
+        cache_dir=cache_dir,
+    ):
+        yield
 
 
 class TestEquivCheckDocker:
@@ -361,33 +340,36 @@ endmodule
 
     # Docker mode enabled via HAGENT_DOCKER
 
-    # Reset PathManager to pick up the new environment
-    PathManager.reset()
-
     try:
-        # Test Docker fallback setup
-        equiv_checker = Equiv_check()
-        docker_success = equiv_checker._setup_docker_fallback()
+        # Use PathManager.configured() for clean test isolation
+        with PathManager.configured(
+            repo_dir=repo_dir,
+            build_dir=build_dir,
+            cache_dir=cache_dir,
+        ):
+            # Test Docker fallback setup
+            equiv_checker = Equiv_check()
+            docker_success = equiv_checker._setup_docker_fallback()
 
-        if not docker_success:
-            print(f'Docker setup failed: {equiv_checker.get_error()}')
-            return False
+            if not docker_success:
+                print(f'Docker setup failed: {equiv_checker.get_error()}')
+                return False
 
-        print(f'✓ Docker setup successful - using Docker: {equiv_checker.use_docker}')
+            print(f'✓ Docker setup successful - using Docker: {equiv_checker.use_docker}')
 
-        # Run equivalence check
-        result = equiv_checker.check_equivalence(gold_code=gold_code, gate_code=gate_code, desired_top='simple_test')
+            # Run equivalence check
+            result = equiv_checker.check_equivalence(gold_code=gold_code, gate_code=gate_code, desired_top='simple_test')
 
-        print(f'gold_code:{gold_code}')
-        print(f'gate_code:{gate_code}')
-        print(f'✓ Equivalence check result: {result}')
+            print(f'gold_code:{gold_code}')
+            print(f'gate_code:{gate_code}')
+            print(f'✓ Equivalence check result: {result}')
 
-        if result is True:
-            print('✓ Docker integration test passed')
-            return True
-        else:
-            print('✗ Docker integration test failed')
-            return False
+            if result is True:
+                print('✓ Docker integration test passed')
+                return True
+            else:
+                print('✗ Docker integration test failed')
+                return False
 
     except Exception as e:
         print(f'✗ Docker integration test exception: {e}')

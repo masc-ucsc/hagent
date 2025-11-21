@@ -41,6 +41,7 @@ Follow these concise rules when working in this repo.
   - **Example**: `content = builder.filesystem.read_file("input.v")` not `run_cmd("cat input.v")`.
 - **Path handling**: Builder and filesystem automatically handle Docker vs local mode path translation.
 - Use `Path.resolve()` for internal paths; avoid relative paths.
+- **Environment variables**: Never access `HAGENT_*` env vars directly with `os.environ`. Use `PathManager` accessors (`repo_dir`, `build_dir`, `cache_dir`, `tech_dir`). For tests, use `PathManager.configured()` context manager instead of setting env vars.
 
 ### Handy Snippets
 - Verify env: `uv run python -c "import hagent; print('HAgent OK')"`.
