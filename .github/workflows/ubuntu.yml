@@ -126,6 +126,7 @@ jobs:
           git clone --depth 1 https://github.com/masc-ucsc/simplechisel.git output/local/repo
 
           # Run tests with coverage, excluding slow tests by default
+          # Note: Not using parallel (-n auto) here to avoid coverage data corruption
           uv run pytest --cov --cov-branch --cov-report=xml:coverage.xml -m "not slow"
       - name: Upload coverage reports to Codecov
         if: always()
@@ -206,5 +207,5 @@ jobs:
           sudo mkdir -p /tmp/pytest_temp
           sudo chmod 777 /tmp/pytest_temp
 
-          # Run only slow tests with extended timeout
-          uv run pytest -m "slow" --tb=short --maxfail=3 -v
+          # Run only slow tests in parallel with extended timeout
+          uv run pytest -n auto --forked -m "slow" --tb=short --maxfail=3 -v
