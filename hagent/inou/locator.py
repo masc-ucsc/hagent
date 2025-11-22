@@ -58,15 +58,24 @@ class Locator:
         self._cache_dir: Optional[Path] = None
         self._profile_config: Optional[dict] = None
 
+    def _debug_print(self, message: str) -> None:
+        """Print debug message to stderr if debug mode is enabled."""
+        if self.debug:
+            import sys
+
+            print(f'[DEBUG] {message}', file=sys.stderr)
+
     def setup(self) -> bool:
         """Initialize Builder and load configuration.
 
         Returns:
             True if setup successful, False otherwise
         """
+        self._debug_print(f'setup() called with profile_name={self.profile_name}, config_path={self.config_path}')
         try:
             # Get docker image from environment if in docker mode
             docker_image = os.environ.get('HAGENT_DOCKER')
+            self._debug_print(f'Docker image: {docker_image or "None (local mode)"}')
 
             # Initialize builder (pass docker_image for docker mode)
             self.builder = Builder(self.config_path, docker_image=docker_image)
@@ -87,10 +96,12 @@ class Locator:
             # Setup cache directory
             cache_base = Path(self.builder.runner.path_manager.cache_dir)
             self._cache_dir = cache_base / 'locator' / self.profile_name
+            self._debug_print(f'Cache directory: {self._cache_dir}')
 
             # Create cache directory using filesystem API (works in both local and Docker modes)
             self.builder.filesystem.makedirs(str(self._cache_dir), exist_ok=True)
 
+            self._debug_print(f'Setup completed successfully')
             return True
         except Exception as e:
             self._error = f'Setup failed: {e!s}'
@@ -113,10 +124,14 @@ class Locator:
             List of SourceLocation objects in target representation,
             sorted by confidence (highest first)
         """
+        self._debug_print(f'locate_vcd() called: vcd_variable={vcd_variable}, to={to.value}')
         try:
-            return self._find_vcd_in_hierarchy(vcd_variable, to)
+            result = self._find_vcd_in_hierarchy(vcd_variable, to)
+            self._debug_print(f'locate_vcd() returning {len(result)} location(s)')
+            return result
         except Exception as e:
             self._error = f'VCD mapping failed: {e!s}'
+            self._debug_print(f'locate_vcd() failed: {e!s}')
             return []
 
     def map_variable(
@@ -138,6 +153,7 @@ class Locator:
             - VERILOG ↔ CHISEL (using module_finder)
             - VERILOG ↔ NETLIST (TODO: requires synalign - currently returns error)
         """
+        self._debug_print(f'map_variable() called: variable={variable}, from={from_type.value}, to={to.value}, module={module}')
         # Validate same-representation requests
         if to == from_type:
             self._error = 'same representation mapping not supported'
@@ -172,10 +188,14 @@ class Locator:
             List of SourceLocation objects where variable is defined/assigned,
             sorted by confidence (highest first)
         """
+        self._debug_print(f'locate_variable() called: variable={variable}, to={to.value}, module={module}')
         try:
-            return self._find_variable_in_files(variable, to, module_hint=module)
+            result = self._find_variable_in_files(variable, to, module_hint=module)
+            self._debug_print(f'locate_variable() returning {len(result)} location(s)')
+            return result
         except Exception as e:
             self._error = f'Variable lookup failed: {e!s}'
+            self._debug_print(f'locate_variable() failed: {e!s}')
             return []
 
     def locate_code(self, to: RepresentationType, from_type: RepresentationType, diff_patch: str) -> List[SourceLocation]:
@@ -190,6 +210,7 @@ class Locator:
             List of SourceLocation objects in target representation,
             sorted by confidence (highest first)
         """
+        self._debug_print(f'locate_code() called: from={from_type.value}, to={to.value}, diff_length={len(diff_patch)}')
         # Validate same-representation requests
         if to == from_type:
             self._error = 'same representation mapping not supported'
@@ -206,9 +227,12 @@ class Locator:
             return []
 
         try:
-            return self._map_diff_to_target(diff_patch, from_type, to)
+            result = self._map_diff_to_target(diff_patch, from_type, to)
+            self._debug_print(f'locate_code() returning {len(result)} location(s)')
+            return result
         except Exception as e:
             self._error = f'Code mapping failed: {e!s}'
+            self._debug_print(f'locate_code() failed: {e!s}')
             return []
 
     def invalidate_cache(self, force: bool = False) -> None:
@@ -393,13 +417,17 @@ class Locator:
         Args:
             target_type: Optional target representation type (currently not used, kept for API compatibility)
         """
+        self._debug_print(f'_build_hierarchy_cache() called')
         # Check cache first
         cached = self._load_cache('hierarchy')
         if cached is not None:
+            self._debug_print(f'Using cached hierarchy with {len(cached)} entries')
             return cached
 
         if not self.builder:
             return {}
+
+        self._debug_print(f'Building hierarchy cache (no cache found)')
 
         # Get synthesis command info from profile
         cmd_info = self._get_synthesis_command()
@@ -491,14 +519,18 @@ class Locator:
 
             # run_cmd returns (exit_code, stdout, stderr)
             # Use quiet based on debug flag
+            self._debug_print(f'Running slang-hier command: {slang_hier_cmd}')
+            self._debug_print(f'Working directory: {cwd}')
             exit_code, stdout, stderr = self.builder.runner.run_cmd(slang_hier_cmd, cwd=cwd, quiet=(not self.debug))
 
             if exit_code != 0:
                 self._error = f'slang-hier failed (exit {exit_code}): {stderr}'
+                self._debug_print(f'slang-hier failed with exit code {exit_code}')
                 return {}
 
             # Parse hierarchy output
             hierarchy = self._parse_slang_hierarchy(stdout)
+            self._debug_print(f'Parsed {len(hierarchy)} hierarchy entries')
 
             # Add metadata about how this cache was generated
             hierarchy['_metadata'] = {
@@ -921,8 +953,10 @@ class Locator:
         3. Partial hierarchy suffix: "pipeB_aluControl.io_aluop" → matches any instance ending with pipeB_aluControl
         4. Case-insensitive matching: "gcd.x" matches "GCD" module
         """
+        self._debug_print(f'_find_vcd_in_hierarchy() called: hier_path={hier_path}, target={target_type.value}')
         hierarchy = self._build_hierarchy_cache(target_type=target_type)
         if not hierarchy:
+            self._debug_print(f'No hierarchy cache available')
             return []
 
         # Extract variable name from hierarchical path (last component)
@@ -932,6 +966,7 @@ class Locator:
         # Extract module hierarchy (all but last component)
         # e.g., "top.cpu.alu.result" → "top.cpu.alu"
         module_path = '.'.join(parts[:-1]) if len(parts) > 1 else ''
+        self._debug_print(f'Extracted variable={var_name}, module_path={module_path}')
 
         # Try to find matching hierarchy entries
         matching_entries = []
@@ -974,7 +1009,12 @@ class Locator:
 
         if not matching_entries:
             # No matches found
+            self._debug_print(f'No matching hierarchy entries found for {module_path}')
             return []
+
+        self._debug_print(f'Found {len(matching_entries)} matching hierarchy entries')
+        for entry in matching_entries:
+            self._debug_print(f'  - Module: {entry.get("module", "?")}, File: {entry.get("file", "?")}')
 
         # Search in all matching files
         locations = []
@@ -1262,6 +1302,7 @@ class Locator:
             base_dir = Path(self.builder.runner.path_manager.repo_dir)
 
         full_path = base_dir / file_path
+        self._debug_print(f'Searching for variable "{variable}" in file: {full_path}')
 
         # Read file using filesystem API (works in both Docker and local modes)
         try:
@@ -1289,7 +1330,10 @@ class Locator:
                             representation=representation,
                         )
                     )
-        except Exception:
+            if locations:
+                self._debug_print(f'  Found {len(locations)} match(es) in {full_path}')
+        except Exception as e:
+            self._debug_print(f'  Error reading file {full_path}: {e}')
             return []
 
         return locations
@@ -1307,6 +1351,9 @@ class Locator:
         Returns:
             List of SourceLocation objects sorted by confidence
         """
+        self._debug_print(
+            f'_find_variable_in_files() called: variable={variable}, representation={representation.value}, module_hint={module_hint}'
+        )
         if not self.builder:
             return []
 
@@ -1321,6 +1368,8 @@ class Locator:
             extensions = ['*.v', '*.sv']
         else:
             return []
+
+        self._debug_print(f'Searching in directory: {search_dir} with extensions: {extensions}')
 
         # Search for variable in files
         for ext in extensions:
@@ -1401,6 +1450,7 @@ class Locator:
         # Sort by confidence
         locations.sort(key=lambda x: x.confidence, reverse=True)
 
+        self._debug_print(f'_find_variable_in_files() found {len(locations)} total location(s)')
         return locations
 
     def _map_diff_to_target(
