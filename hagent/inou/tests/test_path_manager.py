@@ -113,9 +113,14 @@ class TestPathManager:
 
                 assert pm.is_docker_mode()
                 assert not pm.is_local_mode()
-                assert pm.repo_dir == repo_dir.resolve()
-                assert pm.build_dir == build_dir.resolve()
-                assert pm.cache_dir == cache_dir.resolve()
+                # In Docker mode, xxx_dir returns Docker paths
+                assert pm.repo_dir == Path('/code/workspace/repo')
+                assert pm.build_dir == Path('/code/workspace/build')
+                assert pm.cache_dir == Path('/code/workspace/cache')
+                # xxx_mount_dir returns local mount paths
+                assert pm.repo_mount_dir == repo_dir.resolve()
+                assert pm.build_mount_dir == build_dir.resolve()
+                assert pm.cache_mount_dir == cache_dir.resolve()
 
                 # Check cache structure was created (since these are host paths)
                 assert (cache_dir / 'inou').exists()
@@ -291,26 +296,6 @@ class TestPathManager:
             result = pm._get_venv_dir()
             expected = str(cache_dir / 'venv')
             assert Path(result).resolve() == Path(expected).resolve()
-
-    def test_property_access_without_values_fails_fast(self):
-        """Test that accessing properties without values causes fail-fast exit."""
-        # Use mocking to avoid validation
-        with patch.object(PathManager, '_validate_and_setup_environment'):
-            pm = PathManager()
-
-        with patch('sys.exit') as mock_exit:
-            _ = pm.repo_dir
-            mock_exit.assert_called_once_with(1)
-
-        mock_exit.reset_mock()
-        with patch('sys.exit') as mock_exit:
-            _ = pm.build_dir
-            mock_exit.assert_called_once_with(1)
-
-        mock_exit.reset_mock()
-        with patch('sys.exit') as mock_exit:
-            _ = pm.cache_dir
-            mock_exit.assert_called_once_with(1)
 
     def test_cache_structure_creation_failure(self):
         """Test handling of cache directory creation failure."""

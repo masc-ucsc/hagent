@@ -111,15 +111,17 @@ class Builder:
             if hasattr(self.filesystem, 'container_manager') and self.runner:
                 # This is DockerFileSystem - translate host path to container path
                 path_manager = self.runner.path_manager
-                if hasattr(path_manager, '_repo_dir') and path_manager._repo_dir:
-                    host_repo_dir = str(path_manager._repo_dir)
+                # Use repo_mount_dir (local mount path) for path translation
+                host_repo_dir = path_manager.repo_mount_dir
+                if host_repo_dir:
+                    host_repo_dir_str = str(host_repo_dir)
                     container_repo_dir = '/code/workspace/repo'
-                    if self.config_path.startswith(host_repo_dir):
+                    if self.config_path.startswith(host_repo_dir_str):
                         # Replace host repo path with container repo path
                         import os
                         import posixpath
 
-                        relative_path = os.path.relpath(self.config_path, host_repo_dir)
+                        relative_path = os.path.relpath(self.config_path, host_repo_dir_str)
                         # Join using POSIX semantics for container path
                         config_path_for_fs = posixpath.join(container_repo_dir, relative_path)
 

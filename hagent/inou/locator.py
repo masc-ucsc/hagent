@@ -101,7 +101,7 @@ class Locator:
             # Create cache directory using filesystem API (works in both local and Docker modes)
             self.builder.filesystem.makedirs(str(self._cache_dir), exist_ok=True)
 
-            self._debug_print(f'Setup completed successfully')
+            self._debug_print('Setup completed successfully')
             return True
         except Exception as e:
             self._error = f'Setup failed: {e!s}'
@@ -417,7 +417,7 @@ class Locator:
         Args:
             target_type: Optional target representation type (currently not used, kept for API compatibility)
         """
-        self._debug_print(f'_build_hierarchy_cache() called')
+        self._debug_print('_build_hierarchy_cache() called')
         # Check cache first
         cached = self._load_cache('hierarchy')
         if cached is not None:
@@ -427,7 +427,7 @@ class Locator:
         if not self.builder:
             return {}
 
-        self._debug_print(f'Building hierarchy cache (no cache found)')
+        self._debug_print('Building hierarchy cache (no cache found)')
 
         # Get synthesis command info from profile
         cmd_info = self._get_synthesis_command()
@@ -956,7 +956,7 @@ class Locator:
         self._debug_print(f'_find_vcd_in_hierarchy() called: hier_path={hier_path}, target={target_type.value}')
         hierarchy = self._build_hierarchy_cache(target_type=target_type)
         if not hierarchy:
-            self._debug_print(f'No hierarchy cache available')
+            self._debug_print('No hierarchy cache available')
             return []
 
         # Extract variable name from hierarchical path (last component)
