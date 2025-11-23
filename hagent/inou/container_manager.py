@@ -581,12 +581,13 @@ class ContainerManager:
             return []
 
         # Define mount points: (target, path_manager_attr, required)
+        # Use xxx_mount_dir attributes to get local paths for mounting into Docker
         mounts_config = [
-            ('/code/workspace/cache', 'cache_dir', True),
-            ('/code/workspace/repo', 'repo_dir', False),
-            ('/code/workspace/build', 'build_dir', False),
-            ('/code/workspace/tech', 'tech_dir', False),
-            ('/code/workspace/private', 'private_dir', False),
+            ('/code/workspace/cache', 'cache_mount_dir', True),
+            ('/code/workspace/repo', 'repo_mount_dir', False),
+            ('/code/workspace/build', 'build_mount_dir', False),
+            ('/code/workspace/tech', 'tech_mount_dir', False),
+            ('/code/workspace/private', 'private_mount_dir', False),
         ]
 
         for target, attr_name, required in mounts_config:

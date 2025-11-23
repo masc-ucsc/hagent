@@ -377,7 +377,9 @@ class TestFileSystemResolvePath:
         assert 'test/file.txt' in resolved
 
 
-@pytest.mark.skip(reason='Consistency tests require Docker mounts to be properly configured - skip until mount configuration is fixed')
+@pytest.mark.skip(
+    reason='Consistency tests require Docker mounts to be properly configured - skip until mount configuration is fixed'
+)
 class TestFileSystemConsistency:
     """Test consistency between local and Docker filesystems."""
 
