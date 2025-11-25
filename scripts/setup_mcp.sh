@@ -41,6 +41,9 @@ fi
 # Normalize project name to lowercase for portability (macOS bash lacks ${var,,})
 PROJECT_NAME=$(printf '%s' "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]')
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HAGENT_ROOT=${HAGENT_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}
+
 case "$PROJECT_NAME" in
 cva6)
   DOCKER_IMAGE="mascucsc/hagent-cva6:2025.10"
@@ -86,9 +89,6 @@ esp32_led)
   fi
   ;;
 esac
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HAGENT_ROOT=${HAGENT_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}
 CACHE_TEMPLATE_DIR="${HAGENT_ROOT}/.cache/setup_${PROJECT_NAME}_mcp"
 
 create_template() {
