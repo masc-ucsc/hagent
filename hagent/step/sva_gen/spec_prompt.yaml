@@ -126,7 +126,7 @@ default:
         - Use commas as separators. Each subsequent line is one CSV row.
         - No extra spaces around commas, no quotes unless necessary.
         - No blank lines before or after the CSV.
-        - Atleast 50 rows in the CSV.
+        - Atleast 10 rows in the CSV.
 
         COLUMN DETAILS:
         - sid: unique ID like SVA001, SVA002, ...
