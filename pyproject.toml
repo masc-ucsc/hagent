@@ -33,6 +33,7 @@ dependencies = [
     "pytest-testmon >=2.1.4",
     "tomlkit >=0.13.3",
     "boto3 >=1.41.2",
+    "pexpect>=4.9.0",
 ]
 
 [project.optional-dependencies]

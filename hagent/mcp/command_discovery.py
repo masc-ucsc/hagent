@@ -56,12 +56,16 @@ def discover_mcp_commands(hagent_root_dir: str = None) -> Dict[str, Any]:
                 # Verify the module has the required MCP interface
                 if hasattr(module, 'get_mcp_schema') and hasattr(module, 'mcp_execute'):
                     commands[cmd_name] = module
-                    print(f'Loaded MCP command: {cmd_name}', file=sys.stderr)
+                    # Don't print to stderr - breaks MCP stdio protocol
+                    # Logging happens in hagent-mcp-server.py instead
                 else:
-                    print(f'Warning: {filename} missing required MCP interface (get_mcp_schema, mcp_execute)', file=sys.stderr)
+                    # Skip files without MCP interface (like mcp_message_handlers.py)
+                    pass
 
-        except Exception as e:
-            print(f'Error loading {file_path}: {e}', file=sys.stderr)
+        except Exception:
+            # Don't print to stderr - breaks MCP stdio protocol
+            # Log via hagent-mcp-server.py if needed
+            pass
 
     return commands
 
@@ -125,16 +129,20 @@ def get_command_schemas_subprocess(hagent_root_dir: str = None) -> Dict[str, Dic
             if result.returncode == 0:
                 schema = json.loads(result.stdout)
                 schemas[cmd_name] = schema
-                print(f'Got schema via subprocess for {cmd_name}: {schema.get("name", "unnamed")}', file=sys.stderr)
+                # Don't print to stderr - breaks MCP stdio protocol
             else:
-                print(f'Error getting schema for {cmd_name}: {result.stderr}', file=sys.stderr)
+                # Don't print to stderr - breaks MCP stdio protocol
+                pass
 
         except subprocess.TimeoutExpired:
-            print(f'Timeout getting schema for {cmd_name}', file=sys.stderr)
-        except json.JSONDecodeError as e:
-            print(f'JSON decode error for {cmd_name}: {e}', file=sys.stderr)
-        except Exception as e:
-            print(f'Error getting schema for {cmd_name}: {e}', file=sys.stderr)
+            # Don't print to stderr - breaks MCP stdio protocol
+            pass
+        except json.JSONDecodeError:
+            # Don't print to stderr - breaks MCP stdio protocol
+            pass
+        except Exception:
+            # Don't print to stderr - breaks MCP stdio protocol
+            pass
 
     return schemas
 
@@ -160,11 +168,13 @@ def get_command_schemas(hagent_root_dir: str = None) -> Dict[str, Dict[str, Any]
             if hasattr(module, 'get_mcp_schema'):
                 schema = module.get_mcp_schema()
                 schemas[cmd_name] = schema
-                print(f'Got schema for {cmd_name}: {schema.get("name", "unnamed")}', file=sys.stderr)
+                # Don't print to stderr - breaks MCP stdio protocol
             else:
-                print(f'Warning: {cmd_name} missing get_mcp_schema function', file=sys.stderr)
-        except Exception as e:
-            print(f'Error getting schema for {cmd_name}: {e}', file=sys.stderr)
+                # Don't print to stderr - breaks MCP stdio protocol
+                pass
+        except Exception:
+            # Don't print to stderr - breaks MCP stdio protocol
+            pass
 
     return schemas
 
@@ -205,11 +215,13 @@ def get_command_capabilities(hagent_root_dir: str = None) -> Dict[str, Any]:
                     profiles_result = module.mcp_execute({'list': True})
                     if profiles_result.get('success'):
                         capabilities[cmd_name]['available_profiles'] = profiles_result.get('stdout', '')
-                except Exception as e:
-                    print(f'Could not get profiles for {cmd_name}: {e}', file=sys.stderr)
+                except Exception:
+                    # Don't print to stderr - breaks MCP stdio protocol
+                    pass
 
-        except Exception as e:
-            print(f'Error getting capabilities for {cmd_name}: {e}', file=sys.stderr)
+        except Exception:
+            # Don't print to stderr - breaks MCP stdio protocol
+            pass
 
     return capabilities
 

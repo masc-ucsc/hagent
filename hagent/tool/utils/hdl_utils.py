@@ -32,27 +32,19 @@ from typing import Iterable, Dict, List, Set, Tuple
 # ---------------------------------------------------------------------------
 
 # package <name>;
-RE_PACKAGE_DECL = re.compile(
-    r"(?m)^\s*package\s+([a-zA-Z_]\w*)\s*;"
-)
+RE_PACKAGE_DECL = re.compile(r'(?m)^\s*package\s+([a-zA-Z_]\w*)\s*;')
 
 # import pkg::*;
-RE_IMPORT_PKG_STAR = re.compile(
-    r"(?m)^\s*import\s+([a-zA-Z_]\w*)::\*;"
-)
+RE_IMPORT_PKG_STAR = re.compile(r'(?m)^\s*import\s+([a-zA-Z_]\w*)::\*;')
 
 # Any occurrence of pkg::symbol
-RE_PKG_SCOPE_USE = re.compile(
-    r"\b([a-zA-Z_]\w*)::[a-zA-Z_]\w*"
-)
+RE_PKG_SCOPE_USE = re.compile(r'\b([a-zA-Z_]\w*)::[a-zA-Z_]\w*')
 
 # module / interface / program / package names (for optional top detection)
-RE_TOP_LIKE = re.compile(
-    r"(?m)^\s*(module|interface|program|package)\s+([a-zA-Z_]\w*)\b"
-)
+RE_TOP_LIKE = re.compile(r'(?m)^\s*(module|interface|program|package)\s+([a-zA-Z_]\w*)\b')
 
 
-SV_EXTENSIONS = {".sv", ".svh", ".v"}
+SV_EXTENSIONS = {'.sv', '.svh', '.v'}
 
 
 @dataclass(frozen=True)
@@ -80,11 +72,12 @@ class SvFile:
 # Basic file discovery
 # ---------------------------------------------------------------------------
 
+
 def iter_sv_files(root: Path) -> Iterable[Path]:
     """
     Recursively yield all SystemVerilog-ish files under `root`.
     """
-    for p in root.rglob("*"):
+    for p in root.rglob('*'):
         if p.is_file() and p.suffix in SV_EXTENSIONS:
             yield p
 
@@ -97,7 +90,7 @@ def load_sv_tree(root: Path) -> Dict[Path, SvFile]:
     files: Dict[Path, SvFile] = {}
     for p in iter_sv_files(root):
         try:
-            txt = p.read_text(encoding="utf-8", errors="ignore")
+            txt = p.read_text(encoding='utf-8', errors='ignore')
         except OSError:
             continue
         files[p] = SvFile(path=p, text=txt)
@@ -107,6 +100,7 @@ def load_sv_tree(root: Path) -> Dict[Path, SvFile]:
 # ---------------------------------------------------------------------------
 # Package indexing and resolution
 # ---------------------------------------------------------------------------
+
 
 def index_packages(files: Dict[Path, SvFile]) -> Dict[str, Path]:
     """
@@ -134,10 +128,10 @@ def guess_alt_pkg_filenames(pkg: str) -> List[str]:
     names: List[str] = []
 
     # Direct match
-    names.append(f"{pkg}.sv")
+    names.append(f'{pkg}.sv')
     # Common pattern: <name>_pkg.sv when the package is just 'name'
-    if not pkg.endswith("_pkg"):
-        names.append(f"{pkg}_pkg.sv")
+    if not pkg.endswith('_pkg'):
+        names.append(f'{pkg}_pkg.sv')
 
     # Deduplicate while preserving order
     seen = set()
@@ -149,10 +143,7 @@ def guess_alt_pkg_filenames(pkg: str) -> List[str]:
     return out
 
 
-def find_pkg_file_by_name(
-    pkg: str,
-    search_roots: Iterable[Path]
-) -> Path | None:
+def find_pkg_file_by_name(pkg: str, search_roots: Iterable[Path]) -> Path | None:
     """
     Fallback search: if we don't have this package in our index,
     look for a file whose basename matches common patterns:
@@ -165,7 +156,7 @@ def find_pkg_file_by_name(
     candidate_basenames = set(guess_alt_pkg_filenames(pkg))
     for root in search_roots:
         root = root.resolve()
-        for p in root.rglob("*.sv"):
+        for p in root.rglob('*.sv'):
             if p.name in candidate_basenames:
                 return p
     return None
@@ -193,6 +184,7 @@ def resolve_package(
 # ---------------------------------------------------------------------------
 # Dependency closure for packages
 # ---------------------------------------------------------------------------
+
 
 def collect_pkg_closure_for_files(
     start_files: Iterable[Path],
@@ -245,6 +237,7 @@ def collect_pkg_closure_for_files(
 # High-level helper: build ordered filelist for a top
 # ---------------------------------------------------------------------------
 
+
 def find_candidate_top_files(
     rtl_root: Path,
     top_name: str,
@@ -258,7 +251,7 @@ def find_candidate_top_files(
     matches: List[Path] = []
     for p in iter_sv_files(rtl_root):
         try:
-            txt = p.read_text(encoding="utf-8", errors="ignore")
+            txt = p.read_text(encoding='utf-8', errors='ignore')
         except OSError:
             continue
 
@@ -305,9 +298,7 @@ def build_filelist_for_top(
     # Find top
     candidates = find_candidate_top_files(rtl_root, top_name)
     if not candidates:
-        raise FileNotFoundError(
-            f"Top '{top_name}' not found under RTL root {rtl_root}"
-        )
+        raise FileNotFoundError(f"Top '{top_name}' not found under RTL root {rtl_root}")
 
     # For now, pick the first candidate
     top_file = candidates[0]
@@ -328,6 +319,7 @@ def build_filelist_for_top(
 # ---------------------------------------------------------------------------
 # JasperGold .vc writer
 # ---------------------------------------------------------------------------
+
 
 def write_jasper_vc(
     out_path: Path,
@@ -354,17 +346,17 @@ def write_jasper_vc(
     rtl_files = [Path(f).resolve() for f in rtl_files]
 
     lines: List[str] = []
-    lines.append("+libext+.v")
-    lines.append("+libext+.sv")
-    lines.append("+libext+.svh")
-    lines.append("+librescan")
+    lines.append('+libext+.v')
+    lines.append('+libext+.sv')
+    lines.append('+libext+.svh')
+    lines.append('+librescan')
 
     for inc in include_dirs:
-        lines.append(f"+incdir+{inc}")
+        lines.append(f'+incdir+{inc}')
 
     # Optional: treat include dirs as libraries too
     for inc in include_dirs:
-        lines.append(f"-y {inc}")
+        lines.append(f'-y {inc}')
 
     for f in pkg_files:
         lines.append(str(f))
@@ -373,12 +365,13 @@ def write_jasper_vc(
             lines.append(str(f))
 
     out_path = out_path.resolve()
-    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    out_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
 # ---------------------------------------------------------------------------
 # Example: CLI usage (optional)
 # ---------------------------------------------------------------------------
+
 
 def _cli() -> None:
     """
@@ -397,15 +390,15 @@ def _cli() -> None:
     import argparse
 
     p = argparse.ArgumentParser()
-    p.add_argument("--rtl", type=Path, required=True, help="RTL root directory")
-    p.add_argument("--top", type=str, required=True, help="Top module name")
-    p.add_argument("--vc", type=Path, required=True, help="Output .vc file")
+    p.add_argument('--rtl', type=Path, required=True, help='RTL root directory')
+    p.add_argument('--top', type=str, required=True, help='Top module name')
+    p.add_argument('--vc', type=Path, required=True, help='Output .vc file')
     p.add_argument(
-        "--inc",
+        '--inc',
         type=Path,
-        action="append",
+        action='append',
         default=[],
-        help="Extra include directories (can be repeated)",
+        help='Extra include directories (can be repeated)',
     )
 
     args = p.parse_args()
@@ -417,10 +410,7 @@ def _cli() -> None:
     )
 
     if missing:
-        print(
-            "WARNING: some packages could not be resolved: "
-            + ", ".join(sorted(missing))
-        )
+        print('WARNING: some packages could not be resolved: ' + ', '.join(sorted(missing)))
 
     write_jasper_vc(
         out_path=args.vc,
@@ -429,9 +419,8 @@ def _cli() -> None:
         include_dirs=args.inc,
     )
 
-    print(f"Wrote JasperGold filelist to {args.vc}")
+    print(f'Wrote JasperGold filelist to {args.vc}')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     _cli()
-

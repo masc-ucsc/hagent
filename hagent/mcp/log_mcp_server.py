@@ -11,9 +11,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
-import sys
 from functools import wraps
-from pathlib import Path
 from typing import Any
 
 # Import output manager for proper log file placement
@@ -34,7 +32,7 @@ class TransactionLogger:
 
         # Clean command_name for use in filename
         safe_name = command_name.replace('.', '_')
-        log_file = get_output_path(f'mcp/{safe_name}.log')
+        log_file = get_output_path(f'hagent_mcp_{safe_name}.log')
 
         # Create a new logger
         logger = logging.getLogger(f'hagent-mcp-{safe_name}')
@@ -44,8 +42,6 @@ class TransactionLogger:
         logger.handlers = []
 
         # Add file handler
-        # Ensure parent directory exists
-        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
         handler = logging.FileHandler(log_file)
         handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -67,15 +63,33 @@ class TransactionLogger:
         logger.info(f'--- TRANSACTION END [{timestamp}] ---\n')
 
 
-def setup_mcp_server_logging():
-    """Setup logging for MCP server debugging"""
+def setup_mcp_server_logging(debug=False):
+    """Setup logging for MCP server debugging
+
+    Args:
+        debug: If True, set logging level to DEBUG, otherwise INFO
+    """
+    import os
+
+    # Store debug state in environment for child processes/modules to access
+    if debug:
+        os.environ['HAGENT_MCP_DEBUG'] = '1'
+
     log_file = get_output_path('hagent_mcp_server.log')
+    log_level = logging.DEBUG if debug else logging.INFO
+
+    # Only log to file, not stderr, to avoid interfering with MCP stdio protocol
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[logging.FileHandler(log_file), logging.StreamHandler(sys.stderr)],
+        handlers=[logging.FileHandler(log_file)],
     )
-    return logging.getLogger('hagent-mcp-server')
+    logger = logging.getLogger('hagent-mcp-server')
+
+    if debug:
+        logger.info('Debug mode enabled - logging level set to DEBUG')
+
+    return logger
 
 
 def setup_raw_logger():
@@ -87,20 +101,14 @@ def setup_raw_logger():
     raw_logger.handlers = []
 
     # Add file handler using output manager
-    raw_log_file = get_output_path('mcp/raw_mcp_io.log')
-    # Ensure parent directory exists
-    Path(raw_log_file).parent.mkdir(parents=True, exist_ok=True)
+    raw_log_file = get_output_path('hagent_mcp_server_io.log')
     handler = logging.FileHandler(raw_log_file)
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     raw_logger.addHandler(handler)
 
-    # Also add stderr handler for immediate visibility
-    console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
-    raw_logger.addHandler(console_handler)
+    # Don't add stderr handler - it interferes with MCP stdio protocol
 
     return raw_logger
 

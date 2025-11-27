@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -42,7 +43,8 @@ from hagent.mcp.mcp_message_handlers import (  # noqa: E402
 
 
 # Initialize FastMCP and loggers
-logger = setup_mcp_server_logging()
+# Initial setup with INFO level (will be reconfigured if --debug is passed)
+logger = setup_mcp_server_logging(debug=False)
 
 # Create transaction logger
 txn_logger = TransactionLogger()
@@ -107,9 +109,19 @@ def register_mcp_module_impl(module, mcp_instance):
         logger.info(f'Registering MCP module as tool: {tool_name}')
 
         # Create a wrapper function that calls mcp_execute with proper signature
-        def tool_wrapper(name: str = None, profile: str = None, api: str = None, dry_run: bool = False, **extra_kwargs):
+        def tool_wrapper(
+            name: str = None, profile: str = None, api: str = None, dry_run: bool = False, debug: bool = None, **extra_kwargs
+        ):
             # Handle both structured parameters and legacy kwargs format
             params = {}
+
+            # If debug not explicitly set, inherit from MCP server debug mode
+            # Check at runtime because environment variable is set in __main__ after tool registration
+            if debug is None or debug is False:
+                mcp_debug_enabled = os.environ.get('HAGENT_MCP_DEBUG', '0') == '1'
+                if mcp_debug_enabled:
+                    debug = True
+                    logger.debug(f'Debug mode inherited from HAGENT_MCP_DEBUG environment variable for {tool_name}')
 
             # Check if we got legacy kwargs format
             if 'kwargs' in extra_kwargs:
@@ -157,6 +169,8 @@ def register_mcp_module_impl(module, mcp_instance):
                     params['api'] = api
                 if dry_run:
                     params['dry_run'] = dry_run
+                if debug:
+                    params['debug'] = debug
                 # Add any extra kwargs
                 params.update(extra_kwargs)
 
@@ -164,8 +178,21 @@ def register_mcp_module_impl(module, mcp_instance):
             if 'profile' in params and 'name' not in params:
                 params['name'] = params.pop('profile')
 
+            # Ensure debug flag is in params (in case it came from legacy format)
+            if 'debug' not in params and debug:
+                params['debug'] = debug
+
+            # Log the tool call with parameters
+            logger.debug(f'Calling {tool_name} with params: {params}')
+
+            # Log to transaction logger
+            txn_logger.log_transaction(tool_name, {'params': params}, {'status': 'starting'})
+
             # Call mcp_execute and ensure we return the structured output properly
             result = module.mcp_execute(params)
+
+            # Log the result
+            txn_logger.log_transaction(tool_name, {'params': params}, result)
 
             # Check if the command failed and use the pre-formatted error message
             if isinstance(result, dict) and not result.get('success', True):
@@ -305,7 +332,7 @@ def discover_and_register_mcp_modules(mcp_instance):
 
     except Exception as e:
         logger.error(f'Error discovering MCP modules: {e}')
-        print(f'Error discovering MCP modules: {e}', file=sys.stderr)
+        # Don't print to stderr - it breaks MCP stdio protocol
         return []
 
 
@@ -362,12 +389,8 @@ class EnvironmentSetup:
                 logger.error('This would pollute the source code. Please run from a clean directory.')
                 logger.error(f'Recommended: cd to {hagent_root}/potato or {hagent_root}/output/local')
 
-                # Print to stderr for immediate visibility
-                print('ERROR: Running MCP server inside protected hagent directory!', file=sys.stderr)
-                print(f'Current: {current_dir}', file=sys.stderr)
-                print(f'Protected: {unsafe_dir}', file=sys.stderr)
-                print(f'Please run from: {hagent_root}/potato or {hagent_root}/output/local', file=sys.stderr)
-
+                # Don't print to stderr - it breaks MCP stdio protocol
+                # Error is logged above, and server will exit
                 sys.exit(1)
             except ValueError:
                 # current_dir is not inside this unsafe_dir, continue checking
@@ -506,7 +529,7 @@ try:
     logger.info('Environment automatically set up on import')
 except Exception as e:
     logger.error(f'Error setting up environment: {e}')
-    print(f'Error setting up environment: {e}', file=sys.stderr)
+    # Don't print to stderr - it breaks MCP stdio protocol
 
 
 # Custom implementation of FastMCP's run method with raw logging and JSON-RPC 2.0 support
@@ -641,14 +664,35 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true', help='Enable debug mode with detailed logging and raw I/O logging')
     args = parser.parse_args()
 
+    # Reconfigure logging if debug mode is enabled
+    if args.debug:
+        # Set environment variable so tools know debug is enabled
+        os.environ['HAGENT_MCP_DEBUG'] = '1'
+        # Reconfigure root logger to DEBUG level
+        logging.getLogger().setLevel(logging.DEBUG)
+        for handler in logging.getLogger().handlers:
+            handler.setLevel(logging.DEBUG)
+        logger.info('Debug mode enabled - logging level set to DEBUG')
+
     # Run this file as an MCP stdio server
     logger.info('Starting HAgent MCP Server with FastMCP')
-    print("HAgent MCP Server running with FastMCP. Use 'uv run python hagent-mcp-server.py'", file=sys.stderr)
 
-    if args.debug:
-        print('Debug mode enabled - using custom logging', file=sys.stderr)
-        # Use our custom run method with logging for debug mode
-        run_with_logging(mcp, transport='stdio')
-    else:
-        # Use FastMCP's built-in run method (same as working trivial time server)
-        mcp.run(transport='stdio')
+    # Note: Don't print to stderr in stdio mode - it breaks the MCP protocol
+    # All logging goes to logs/hagent_mcp_server.log
+
+    try:
+        if args.debug:
+            # Use our custom run method with logging for debug mode
+            logger.info('Using custom logging mode for debug')
+            run_with_logging(mcp, transport='stdio')
+        else:
+            # Use FastMCP's built-in run method (same as working trivial time server)
+            logger.info('About to call mcp.run(transport="stdio")')
+            mcp.run(transport='stdio')
+            logger.info('mcp.run() returned (server stopped)')
+    except Exception as e:
+        logger.error(f'Fatal error in MCP server: {e}')
+        import traceback
+
+        logger.error(traceback.format_exc())
+        raise

@@ -3,7 +3,7 @@ Test runner for HAgent MCP integration tests.
 
 Usage:
     uv run python hagent/mcp/tests/run_tests.py                    # Run all tests
-    uv run pytest hagent/mcp/tests/test_gemini_setup.py           # Run with pytest
+    uv run pytest hagent/mcp/tests/test_mcp_setup.py              # Run with pytest
     uv run python -m pytest hagent/mcp/tests/                     # Run all tests with pytest
 """
 
@@ -16,7 +16,7 @@ hagent_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(hagent_root))
 
 # Import test modules (after path setup)
-from test_gemini_setup import TestGeminiMCPIntegration  # noqa: E402
+from test_mcp_setup import TestMCPSetupIntegration  # noqa: E402
 
 
 def main():
@@ -28,7 +28,7 @@ def main():
     suite = unittest.TestSuite()
 
     # Add test classes
-    suite.addTests(loader.loadTestsFromTestCase(TestGeminiMCPIntegration))
+    suite.addTests(loader.loadTestsFromTestCase(TestMCPSetupIntegration))
 
     # Configure test runner
     runner = unittest.TextTestRunner(
