@@ -43,6 +43,7 @@ import sys
 from typing import Dict, Any, Optional
 from pathlib import Path
 import re
+import logging
 
 # Ensure we can import hagent by adding project root to sys.path
 script_path = Path(__file__).resolve()
@@ -318,6 +319,11 @@ def get_mcp_schema(config_path: Optional[str] = None) -> Dict[str, Any]:
                 if available_apis
                 else {'type': 'string', 'description': 'API command to execute'},
                 'dry_run': {'type': 'boolean', 'description': 'Show what would be executed without running', 'default': False},
+                'debug': {
+                    'type': 'boolean',
+                    'description': 'Enable debug mode: print commands and use verbose output',
+                    'default': False,
+                },
             },
             'required': [],
         },
@@ -419,23 +425,60 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
 
         # Execute the command
         try:
+            # Handle debug mode
+            debug = params.get('debug', False)
+            quiet = not debug  # Use verbose output when debug is enabled
+
+            # If debug mode and not already doing a dry run, first get the command to log it
+            if debug and not dry_run:
+                logging.debug('[DEBUG] Getting command for debugging...')
+                try:
+                    dry_exit_code, dry_stdout, dry_stderr = builder.run_api(
+                        exact_name=exact_name,
+                        title_query=None,
+                        command_name=api_name,
+                        dry_run=True,
+                        quiet=True,
+                    )
+                    if dry_exit_code == 0 and dry_stdout:
+                        logging.debug(f'[DEBUG] Command to execute:\n{dry_stdout}')
+                except Exception as e:
+                    logging.debug(f'[DEBUG] Could not get command preview: {e}')
+
             # First try with exact name if provided
             exit_code, stdout, stderr = builder.run_api(
                 exact_name=exact_name,
                 title_query=None,
                 command_name=api_name,
                 dry_run=dry_run,
-                quiet=True,
+                quiet=quiet,
             )
 
             # If exact name failed and we have a profile parameter, try as title query
             if exit_code != 0 and profile_query and not exact_name and 'exact_name or title_query' in stderr:
+                # Log the retry in debug mode
+                if debug:
+                    logging.debug('[DEBUG] Retrying with profile query as title_query')
+                    if not dry_run:
+                        try:
+                            dry_exit_code, dry_stdout, dry_stderr = builder.run_api(
+                                exact_name=None,
+                                title_query=profile_query,
+                                command_name=api_name,
+                                dry_run=True,
+                                quiet=True,
+                            )
+                            if dry_exit_code == 0 and dry_stdout:
+                                logging.debug(f'[DEBUG] Command to execute:\n{dry_stdout}')
+                        except Exception as e:
+                            logging.debug(f'[DEBUG] Could not get command preview: {e}')
+
                 exit_code, stdout, stderr = builder.run_api(
                     exact_name=None,
                     title_query=profile_query,
                     command_name=api_name,
                     dry_run=dry_run,
-                    quiet=True,
+                    quiet=quiet,
                 )
 
             # Check if command failed and add formatted error information
@@ -516,6 +559,7 @@ def create_argument_parser():
     parser.add_argument('--api', '-a', help='API to execute (compile, lint, synthesize, etc.)')
 
     parser.add_argument('--dry-run', '-n', action='store_true', help='Show what would be executed without running')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode: print commands and use verbose output')
     parser.add_argument('extra_args', nargs=argparse.REMAINDER, help='Extra arguments to pass to the command (after --)')
 
     return parser
@@ -550,6 +594,7 @@ def main():
             'profile': args.profile,
             'api': args.api,
             'dry_run': args.dry_run if hasattr(args, 'dry_run') else False,
+            'debug': args.debug if hasattr(args, 'debug') else False,
         }
 
         # Handle list operations (no API specified)

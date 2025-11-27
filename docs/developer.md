@@ -1,4 +1,52 @@
 
+## Debug Mode
+
+HAgent provides a debug mode that enables detailed logging and verbose output for troubleshooting and development.
+
+### Enabling Debug Mode
+
+**MCP Server:**
+```bash
+# Run MCP server with debug logging
+uv run python hagent/mcp/hagent-mcp-server.py --debug
+```
+
+**CLI Tools:**
+```bash
+# Run mcp_build.py with debug mode
+uv run python hagent/mcp/mcp_build.py --debug --api compile --name gcd
+```
+
+### What Debug Mode Does
+
+When debug mode is enabled:
+
+1. **Logging Level**: Changes from INFO to DEBUG, showing all debug messages
+2. **Command Preview**: Logs the actual command that will be executed (with `[DEBUG]` prefix)
+3. **Verbose Output**: Builder runs with `quiet=False` for detailed execution output
+4. **Environment Variable**: Sets `HAGENT_MCP_DEBUG=1` so all tools can detect debug mode
+5. **Log Files**: All debug output goes to `logs/hagent_mcp_server.log`
+
+### Debug Output Examples
+
+When debug mode is active, you'll see messages like:
+```
+[DEBUG] Getting command for debugging...
+[DEBUG] Command to execute:
+docker run --rm -v /path/to/repo:/code/workspace/repo ... compile_command
+[DEBUG] Retrying with profile query as title_query
+```
+
+### Automatic Debug Propagation
+
+When the MCP server runs with `--debug`, all tools called through MCP automatically inherit debug mode - no need to pass it explicitly. The `HAGENT_MCP_DEBUG=1` environment variable ensures consistent debug behavior across all components.
+
+### Log File Locations
+
+- `logs/hagent_mcp_server.log` - Main server and tool debug messages
+- `logs/hagent_mcp_server_io.log` - Raw MCP protocol I/O (debug mode only)
+- `logs/hagent_mcp_hagent_build.log` - Transaction logs for build commands
+
 ## Execution Mode Configuration
 
 HAgent supports two execution modes: **local** and **docker**. The mode is controlled by environment variables:
