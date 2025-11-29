@@ -35,8 +35,9 @@ console = Console()
 # -----------------------------------------------------------------------------
 HEADER_RE = re.compile(
     r'module\s+(?P<name>\w+)\s*'
-    r'(?P<params>#\s*\((?P<param_body>.*?)\))?\s*'
-    r'\(\s*(?P<port_body>.*?)\)\s*;',
+    r'(?:import\s+.*?;\s*)*'           # optional one or more import lines
+    r'(?P<params>#\s*\((?P<param_body>.*?)\))?\s*'  # optional #( ... )
+    r'\(\s*(?P<port_body>.*?)\)\s*;',  # (...) ;
     re.DOTALL | re.MULTILINE,
 )
 
@@ -97,69 +98,113 @@ def clean_decl_to_input(decl: str) -> str:
     decl = re.sub(r'\b(wire|reg|logic|var|signed|unsigned)\b', '', decl)
     return re.sub(r'\s+', ' ', decl).strip()
 
+_ID_RE = re.compile(r'\b([\w$]+)\b(?!.*\b[\w$]+\b)')  # last identifier in a string
 
-def header_port_names(port_body: str):
+def extract_last_identifier(token: str) -> str | None:
+    token = token.strip()
+    if not token:
+        return None
+    # strip inline // comments if any slipped through
+    token = re.split(r'//', token, 1)[0]
+    m = _ID_RE.search(token)
+    return m.group(1) if m else None
+
+
+def header_port_names(port_body: str) -> list[str]:
     """
-    Extract port names (in order) from the header port list.
-
+    Heuristic extraction of port names from the module header port list.
     Works for:
-      module m (clk, rst, a, b);
-      module m (input clk, input rst, output [7:0] a, b);
+      - ANSI ports: 'input logic clk_i, output reg [7:0] data_o'
+      - Mixed: 'input clk, rst, input [7:0] a, b'
     """
-    # keep ranges intact but kill newlines
-    tmp = re.sub(r'\[(?:[^\[\]])*?\]', lambda m: m.group(0).replace('\n', ' '), port_body)
+    text = strip_comments(port_body)
+    ports: list[str] = []
+    buf: list[str] = []
 
-    parts, current, depth = [], '', 0
-    for ch in tmp:
-        if ch == '[':
-            depth += 1
+    depth_paren = 0  # for safety if someone nests ()
+    depth_brack = 0  # to ignore commas inside [..]
+
+    for ch in text:
+        if ch == '(':
+            depth_paren += 1
+        elif ch == ')':
+            if depth_paren > 0:
+                depth_paren -= 1
+        elif ch == '[':
+            depth_brack += 1
         elif ch == ']':
-            depth = max(0, depth - 1)
-        if ch == ',' and depth == 0:
-            if current.strip():
-                parts.append(current.strip())
-            current = ''
+            if depth_brack > 0:
+                depth_brack -= 1
+
+        if ch == ',' and depth_paren == 0 and depth_brack == 0:
+            token = ''.join(buf).strip()
+            if token:
+                name = extract_last_identifier(token)
+                if name:
+                    ports.append(name)
+            buf = []
         else:
-            current += ch
-    if current.strip():
-        parts.append(current.strip())
+            buf.append(ch)
 
-    names = []
-    for p in parts:
-        p = p.strip().rstrip(',')
-        m = re.search(r'([\w$]+)\s*$', p)
-        if m:
-            names.append(m.group(1))
-    return names
+    # last token
+    token = ''.join(buf).strip()
+    if token:
+        name = extract_last_identifier(token)
+        if name:
+            ports.append(name)
 
+    return ports
 
-def parse_io_decls_from_body(body: str):
+def parse_io_decls_from_body(body: str) -> dict[str, str]:
     """
-    Parse input/output/inout declarations in the module body and build a map:
-        base_name -> full declaration string
+    Parse non-ANSI style I/O declarations from the module body.
 
-    Handles patterns like:
-        input clk, rst;
-        output [7:0] buf_out;
-        inout [3:0] bus_a, bus_b;
+    Returns a map: base_name -> cleaned declaration string like:
+      'input [7:0] a'
+    The declaration string is already converted to 'input' and has
+    net types (reg/logic/wire/var/signed/unsigned) removed.
     """
     body_nc = strip_comments(body)
-    io_map = {}
+    io_map: dict[str, str] = {}
 
-    io_re = re.compile(
-        r'\b(input|output|inout)\b\s*'
-        r'(?P<packed>\[[^\]]+\]\s*)?'
-        r'(?P<names>[^;]+);'
-    )
+    # Match "input ... ;", "output ... ;", "inout ... ;" including across newlines
+    io_re = re.compile(r'\b(input|output|inout)\b(?P<rest>[^;]*);', re.MULTILINE)
 
     for m in io_re.finditer(body_nc):
         direction = m.group(1)
-        packed = m.group('packed') or ''
-        names_str = m.group('names')
-        for n in [x.strip() for x in names_str.split(',') if x.strip()]:
-            decl = f'{direction} {packed}{n}'
-            base = re.sub(r'\[.*?\]', '', n).strip()
-            io_map[base] = decl
+        rest = m.group('rest')
+        # Split by comma at this declaration level
+        names = [x.strip() for x in rest.split(',') if x.strip()]
+
+        last_prefix = ''  # e.g. "[7:0]" to propagate to "b" in "input [7:0] a, b;"
+
+        for n in names:
+            raw_decl = f'{direction} {n}'
+            decl = clean_decl_to_input(raw_decl)
+            if not decl:
+                continue
+
+            tokens = decl.split()
+            if len(tokens) < 2:
+                continue
+
+            base_token = tokens[-1]
+            prefix_tokens = tokens[1:-1]
+            prefix = ' '.join(prefix_tokens)
+
+            # If this signal has no width/type prefix but a previous sibling did,
+            # propagate that prefix (e.g., width) to this signal.
+            if not prefix and last_prefix:
+                decl = ' '.join([tokens[0], last_prefix, base_token]).strip()
+                tokens = decl.split()
+                prefix = last_prefix
+            else:
+                last_prefix = prefix
+
+            # Compute base name (strip any array indexes)
+            base = re.sub(r'\[.*?\]', '', base_token).strip()
+            if base:
+                io_map[base] = decl
 
     return io_map
 
@@ -217,12 +262,15 @@ def generate_bind(dut_name, params_text, port_decls):
 
     params_inst = ''
     if params_text:
-        pnames = re.findall(r'\bparameter\s+(?:\w+\s+)?(\w+)', params_text)
+        # Get the parameter *names*, even with package types or 'parameter type'
+        # e.g. 'parameter config_pkg::cva6_cfg_t CVA6Cfg = ...'
+        #      'parameter type dcache_req_i_t = logic'
+        #      'parameter integer DWIDTH = 32'
+        pnames = re.findall(r'\bparameter\b[^=]*\b(\w+)\s*(?==)', params_text)
         if pnames:
             params_inst = '#(' + ', '.join(f'.{p}({p})' for p in pnames) + ')'
 
     return f'bind {dut_name} {dut_name}_prop {params_inst} i_{dut_name}_prop ( {assoc} );\n'
-
 
 def emit_prop_and_bind_for_module(
     mod_name: str,
@@ -235,11 +283,10 @@ def emit_prop_and_bind_for_module(
       <out_root>/sva/<mod_name>_prop.sv
       <out_root>/sva/<mod_name>_bind.sv
 
-    Port handling:
-      - Get port names from header (ANSI or non-ANSI).
-      - Look up their full input/output/inout declarations in the body.
-      - Build wrapper ports in header order.
-      - Optionally add internal regs/wires/logic as extra inputs.
+    New strategy:
+      - Use ONLY the module header (port list) to build wrapper ports.
+      - Do NOT mine the body for regs/enums/locals (too error-prone).
+      - All ports are turned into 'input' (Jasper-friendly for SVA wrapper).
     """
     try:
         text = src_file.read_text(errors='ignore')
@@ -253,87 +300,90 @@ def emit_prop_and_bind_for_module(
         return None, None
 
     dut_name = m.group('name')
-    params_text = m.group('params') or ''
-    port_body = m.group('port_body')
+    params_text = m.group('params') or ''     # full "#( ... )" text
+    port_body   = m.group('port_body') or ''  # text inside "( ... )"
 
-    # 1) Port names from header (works for ANSI + non-ANSI)
-    header_names = header_port_names(port_body)
-    port_names_set = set(header_names)
+    # ------------------------------------------------------------------
+    # 1) Split header port list into individual declarations
+    # ------------------------------------------------------------------
+    ports_raw: list[str] = []
+    text_ports = strip_comments(port_body)
+    buf: list[str] = []
 
-    # 2) Extract module body
-    body_match = re.search(
-        r'module\s+' + re.escape(dut_name) + r'\b.*?;(?P<body>.*)endmodule',
-        text,
-        re.S,
-    )
-    body = body_match.group('body') if body_match else ''
+    depth_paren = 0  # for safety
+    depth_brack = 0  # ignore commas inside [..]
 
-    # 3) Map name -> full input/output/inout decl from body
-    io_map = parse_io_decls_from_body(body) if body else {}
+    for ch in text_ports:
+        if ch == '(':
+            depth_paren += 1
+        elif ch == ')':
+            if depth_paren > 0:
+                depth_paren -= 1
+        elif ch == '[':
+            depth_brack += 1
+        elif ch == ']':
+            if depth_brack > 0:
+                depth_brack -= 1
 
-    # 4) Build port declarations in header order
-    port_decls = []
-    for pname in header_names:
-        base = re.sub(r'\[.*?\]', '', pname).strip()
-        if base in io_map:
-            decl = io_map[base]
+        if ch == ',' and depth_paren == 0 and depth_brack == 0:
+            token = ''.join(buf).strip()
+            if token:
+                ports_raw.append(token)
+            buf = []
         else:
-            # Fallback if nothing found in body: treat as scalar input
-            decl = f'input {pname}'
+            buf.append(ch)
+
+    # last token
+    token = ''.join(buf).strip()
+    if token:
+        ports_raw.append(token)
+
+    # ------------------------------------------------------------------
+    # 2) Normalize each header port into an 'input' declaration
+    # ------------------------------------------------------------------
+    port_decls: list[str] = []
+    seen: set[str] = set()
+
+    for tok in ports_raw:
+        tok = tok.strip()
+        if not tok:
+            continue
+
+        # Ensure there is a direction keyword
+        if not re.search(r'\b(input|output|inout)\b', tok):
+            tok = 'input ' + tok
+
+        # Normalize: make everything 'input', strip net types
+        decl = clean_decl_to_input(tok)
+
+        # Extract the signal name (last identifier)
+        name = extract_last_identifier(decl)
+        if not name:
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+
+        # Make sure it starts with 'input'
+        if not decl.startswith('input'):
+            decl = 'input ' + decl
+
         port_decls.append(decl)
 
-    # 5) Optionally add internal regs/wires/logic as extra inputs
-    internal_ports = []
-    if body:
-        body_nc = strip_comments(body)
-        reg_re = re.compile(
-            r'\b(?:reg|logic|wire)\b\s*'
-            r'(?P<packed>\[[^\]]+\]\s*)?'
-            r'(?P<names>[^;]+?)'
-            r'(?P<unpacked>\[[^\]]+\])?\s*;',
-        )
-        for m2 in reg_re.finditer(body_nc):
-            packed = m2.group('packed') or ''
-            unpacked = m2.group('unpacked') or ''
-            names_str = m2.group('names')
-            names = [n.strip() for n in names_str.split(',') if n.strip()]
-            for n in names:
-                base = re.sub(r'\[.*?\]', '', n).strip()
-                if base in port_names_set:
-                    continue  # already a top-level port
-                if unpacked:
-                    internal_ports.append(f'input {packed}{n}{unpacked}')
-                elif packed:
-                    internal_ports.append(f'input {packed}{n}')
-                else:
-                    internal_ports.append(f'input {n}')
-
-    # 6) Merge and dedup (by base name)
-    all_ports = port_decls + internal_ports
-    unique_ports = []
-    seen = set()
-    for decl in all_ports:
-        d_clean = decl.strip().rstrip(',')
-        if not d_clean:
-            continue
-        sig = d_clean.split()[-1]
-        sig = re.sub(r'\[.*?\]', '', sig).strip()
-        if sig not in seen:
-            seen.add(sig)
-            unique_ports.append(d_clean)
-
-    if not unique_ports:
+    if not port_decls:
         console.print(f'[red]⚠ No ports found for module {dut_name} in {src_file}[/red]')
         return None, None
 
-    # 7) Emit wrapper and bind files
+    # ------------------------------------------------------------------
+    # 3) Emit wrapper and bind files
+    # ------------------------------------------------------------------
     sva_dir = out_root / 'sva'
     sva_dir.mkdir(parents=True, exist_ok=True)
     prop_path = sva_dir / f'{mod_name}_prop.sv'
     bind_path = sva_dir / f'{mod_name}_bind.sv'
 
-    prop_sv = generate_prop_module_min(dut_name, params_text, unique_ports, include_file)
-    bind_sv = generate_bind(dut_name, params_text, unique_ports)
+    prop_sv = generate_prop_module_min(dut_name, params_text, port_decls, include_file)
+    bind_sv = generate_bind(dut_name, params_text, port_decls)
 
     prop_path.write_text(prop_sv)
     bind_path.write_text(bind_sv)
