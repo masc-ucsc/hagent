@@ -1,126 +1,107 @@
 #!/usr/bin/env python3
 # See LICENSE for details
 
-from hagent.inou.runner import Runner
-from hagent.core.step import Step
 from typing import Dict
-import os
 import time
+import os
+
+from hagent.step.replicate_code.schema import PipelineConfig
+from hagent.step.replicate_code.opt_pipe_step_base import OptPipeStepBase
 
 
-class CreateTop(Step):
+class CreateTop(OptPipeStepBase):
+    """
+    Use Yosys to elaborate and isolate the chosen top-level module from the original RTL source files generated and write it as a clean single-file design (rtl_single) to prepare for synthesis.
+    Example of what this function does: top.v(rtl)--{yosys}-->rtl_single/pipelinedCPU.v(rtl) 
+    """
+    def __init__(self):
+        super().__init__()
+        self.step_name = 'step_02_create_top'
+
     def setup(self):
         super().setup()
 
-    def run(self, data: Dict):
-        data_copy = data.copy()
-        start_time = time.time()
+    def _run_impl(self, data: Dict):
+        # Parse input dictionary into typed configuration
+        config = PipelineConfig.from_dict(data)
 
-        # Extract configuration from input YAML
-        benchmark = data_copy.get('benchmark', {})
-        docker_config = data_copy.get('docker', {})
-        local_storage = data_copy.get('local_storage', {})
-        tools = data_copy.get('tools', {})
+        self.prepare_environment(config, self.step_name)
+        assert self.runner is not None
 
-        # Setup runner with docker image from config
-        if os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
-            docker_image = docker_config.get('image')
-            self.runner = Runner(docker_image=docker_image)
-        else:
-            self.runner = Runner()
+        # Access configuration via typed fields
+        top_module = config.benchmark.top_module
+        yosys_cmd = config.tools.yosys_cmd
 
-        if not self.runner.setup():
-            self.error(f'OOPS in step_02_create_top.py error from runner:{self.runner.get_error()}')
-            return data_copy
-
-        # Create debug directory
-        cache_dir = os.getenv('HAGENT_CACHE_DIR', local_storage.get('debug_base_dir', '/tmp/rtl_optimization_debug'))
-        timestamp = str(int(time.time()))
-        step_debug_dir = f"{cache_dir}/step02_create_top_{timestamp}"
-        os.makedirs(step_debug_dir, exist_ok=True)
-
-        step_results = {
-            'start_time': start_time,
-            'debug_directory': step_debug_dir,
-            'timestamp': timestamp
-        }
-
-        # Get configuration
-        rtl_path = docker_config.get('rtl_path')
-        top_module = benchmark.get('top_module')
-        yosys_cmd = tools.get('yosys_cmd', 'yosys')
-
-        if not rtl_path or not top_module:
-            self.error("RTL path or top module not specified in config")
-            return data_copy
+        if not top_module:
+            self.error('RTL top module not specified in config')
 
         # Create directories in docker
-        ret, out, err = self.runner.run('mkdir -p /tmp/rtl_single')
-        if ret != 0:
-            self.error(f"Failed to create directory: {err}")
-            return data_copy
+        rtl_selected_top_path = os.path.join(self.work_dir, 'rtl_single')
+        os.makedirs(rtl_selected_top_path, exist_ok=True)
 
         # Create top module file using Yosys
-        rtl_selected_top_file = f"/tmp/rtl_single/{top_module}.v"
+        rtl_selected_top_file = os.path.join(rtl_selected_top_path, f'{top_module}.v')
         yosys_script = f"""
-            read_verilog -sv -defer {rtl_path}/*;
+            read_verilog -sv -defer {config.populated_file_paths.rtl_real_src_dir}/*;
             hierarchy -top {top_module};
             write_verilog {rtl_selected_top_file};
         """
 
-        ret, out, err = self.runner.run(f'{yosys_cmd} -p "{yosys_script}"')
-        step_results['yosys_execution'] = {
-            'ret': ret, 'stdout': out, 'stderr': err,
-            'command': f'{yosys_cmd} -p "{yosys_script}"'
+        self.logger.info(f'Creating top module using Yosys: {top_module}')
+        ret, out, err = self.runner.run_cmd(f'{yosys_cmd} -p "{yosys_script}"', quiet=True)
+        self.step_results['yosys_execution'] = {
+            'ret': ret,
+            'stdout': out,
+            'stderr': err,
+            'command': f'{yosys_cmd} -p "{yosys_script}"',
         }
 
         if ret != 0:
-            self.error(f"Yosys failed to create top module: {err}")
-            return data_copy
+            self.logger.error('Yosys failed to create top module!')
+            self.logger.error(f'Return code: {ret}')
+            self.logger.error(f'STDOUT:\n{out}')
+            self.logger.error(f'STDERR:\n{err}')
+            self.error(f'Yosys failed to create top module: {err}')
 
         # Verify the file was created
-        ret, out, err = self.runner.run(f'ls -la {rtl_selected_top_file}')
-        step_results['file_verification'] = {
-            'ret': ret, 'stdout': out, 'stderr': err
-        }
+        self.logger.info(f'Verifying created file: {rtl_selected_top_file}')
+        ret, out, err = self.runner.run_cmd(f'ls -la {rtl_selected_top_file}', quiet=True)
+        self.step_results['file_verification'] = {'ret': ret, 'stdout': out, 'stderr': err}
 
         # Get file stats for debugging
-        ret, out, err = self.runner.run(f'wc -l {rtl_selected_top_file}')
-        step_results['file_stats'] = {
-            'ret': ret, 'stdout': out, 'stderr': err
-        }
+        ret, out, err = self.runner.run_cmd(f'wc -l {rtl_selected_top_file}', quiet=True)
+        self.step_results['file_stats'] = {'ret': ret, 'stdout': out, 'stderr': err}
 
         # Store execution metadata locally for debugging
-        debug_log = f"{step_debug_dir}/execution_log.txt"
+        debug_log = f'{self.step_debug_dir}/execution_log.txt'
+        self.logger.debug(f'Writing debug log to {debug_log}')
         with open(debug_log, 'w') as f:
-            f.write(f"Step 02 - Create Top Module\n")
-            f.write(f"Execution Time: {time.time() - start_time:.2f}s\n")
-            f.write(f"Benchmark: {benchmark.get('name', 'Unknown')}\n")
-            f.write(f"Top Module: {top_module}\n")
-            f.write(f"RTL Path: {rtl_path}\n")
-            f.write(f"Output File: {rtl_selected_top_file}\n")
-            f.write(f"Yosys Command: {yosys_cmd}\n")
-            f.write(f"Yosys Return Code: {step_results['yosys_execution']['ret']}\n")
-            if step_results['yosys_execution']['ret'] == 0:
-                f.write(f"File Created Successfully\n")
+            f.write('Step 02 - Create Top Module\n')
+            f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
+            f.write(f'Benchmark: {config.benchmark.name}\n')
+            f.write(f'Top Module: {top_module}\n')
+            f.write(f'RTL Real Source Directory: {config.populated_file_paths.rtl_real_src_dir}\n')
+            f.write(f'Output File: {rtl_selected_top_file}\n')
+            f.write(f'Yosys Command: {yosys_cmd}\n')
+            f.write(f'Yosys Return Code: {self.step_results["yosys_execution"]["ret"]}\n')
+            if self.step_results['yosys_execution']['ret'] == 0:
+                f.write('File Created Successfully\n')
             else:
-                f.write(f"Error: {step_results['yosys_execution']['stderr']}\n")
+                f.write(f'Error: {self.step_results["yosys_execution"]["stderr"]}\n')
 
-        # Update file paths
-        if 'file_paths' not in data_copy:
-            data_copy['file_paths'] = {}
-        data_copy['file_paths']['rtl_single_dir'] = '/tmp/rtl_single'
-        data_copy['file_paths']['top_module_file'] = rtl_selected_top_file
+        # Update populated file paths in config
+        config.populated_file_paths.rtl_selected_top_path = rtl_selected_top_path
 
         # Store execution time and results
-        step_results['execution_time'] = time.time() - start_time
-        step_results['success'] = (ret == 0)
+        self.step_results['execution_time'] = time.time() - self.start_time
+        self.step_results['success'] = ret == 0
 
-        if 'step_results' not in data_copy:
-            data_copy['step_results'] = {}
-        data_copy['step_results']['step_02_create_top'] = step_results
+        # Save step results to file and store reference in config
+        results_file = self.save_step_results()
+        config.step_results[self.step_name] = {'results_file': results_file}
 
-        return data_copy
+        # Convert back to dict for pipeline compatibility
+        return config.to_dict()
 
 
 if __name__ == '__main__':

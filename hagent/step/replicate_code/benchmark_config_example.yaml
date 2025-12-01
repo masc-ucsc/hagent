@@ -8,27 +8,32 @@ benchmark:
   design_type: "CPU"
 
 # Docker configuration
-docker:
-  image: "mascucsc/hagent-simplechisel:2025.08"
-  rtl_path: "/code/workspace/build/build_pipelined_d"
-  chisel_path: "/repo/src/main/scala"
+# docker:
+#   image: "mascucsc/hagent-simplechisel:2025.10"
+#   rtl_real_src_dir: "/code/workspace/build/build_pipelined_d"
+#   chisel_path: "/repo/src/main/scala"
+
+# Source file configuration
+source_file_paths:
+  rtl_source_file_path: "~/hagent/hagent/step/replicate_code/tests/rtl_code/testPipelineDino/rtl_real_source/"
 
 # Tool paths and configuration
 tools:
-  liberty_file: "/home/sgarg3/livehd/sky130_fd_sc_hd__ff_100C_1v95.lib"
+  liberty_file: "/mada/software/techfiles/sky130_fd_sc/sky130_fd_sc_hd__ff_100C_1v95.lib"
+  sdc_file: "~/hagent/hagent/step/replicate_code/tests/rtl_code/testPipelineDino/PipelinedCPU.sdc"
   livehd_path: "~/livehd/"
-  opensta_path: "~/opensta/OpenSTA/app/sta"
+  opensta_path: "/soe/jxie84/opt/opensta/bin/sta"
   yosys_cmd: "yosys"
 
 # Local storage configuration
 local_storage:
-  debug_base_dir: "/tmp/rtl_optimization_debug"
-  results_dir: "/home/sgarg3/hagent/generated_yamls"
-  input_yamls_dir: "/home/sgarg3/hagent/hagent/step/replicate_code/tests/input_yamls"
+  cache_dir: "~/hagent/cache/"
+  output_dir: "~/hagent/cache/pipeline_results"
+  input_yamls_dir: "~/hagent/hagent/step/replicate_code/tests/input_yamls"
 
 # Optimization configuration
 optimization:
-  model: "openai/o3-mini-2025-01-31"
+  model: "openai/gpt-5.1-codex-mini"
   run_with_synalign: false  # For baseline run
   threshold: 40
 
@@ -53,10 +58,12 @@ step_results:
   step_08_compare_timing: {}
 
 # File paths (populated during execution)
-file_paths:
-  rtl_files: []
+populated_file_paths:
+  rtl_real_src_dir: ""
   chisel_files: []
-  rtl_single_dir: null
-  rtl_modules_dir: null
-  synth_dir: null
-  optimized_dir: null
+  rtl_selected_top_path: ""
+  rtl_selected_top_file: ""
+  rtl_path: ""
+  synth_dir: ""
+  synth_file: ""
+  optimized_dir: "" 

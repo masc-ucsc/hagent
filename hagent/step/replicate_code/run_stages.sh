@@ -4,24 +4,44 @@
 # RTL Optimization Baseline Run Pipeline
 # This script orchestrates all stages of the RTL optimization pipeline
 
+# ============================================================================
+# DEPRECATION NOTICE
+# ============================================================================
+# This shell script is being deprecated in favor of the Python orchestrator.
+# Please use run_pipeline.py instead:
+#
+#   ./run_pipeline.py config.yaml              # Run full pipeline
+#   ./run_pipeline.py config.yaml --step 5     # Run only step 5
+#   ./run_pipeline.py config.yaml --start 3 --end 6  # Run steps 3-6
+#
+# This script will continue to work but may be removed in the future.
+# ============================================================================
+
 set -e  # Exit on any error
 
-# Configuration
-HAGENT_EXECUTION_MODE=${HAGENT_EXECUTION_MODE:-docker}
-HAGENT_CACHE_DIR=${HAGENT_CACHE_DIR:-/tmp/rtl_optimization_debug}
+# HAgent configuration
+GIT_ROOT=$(git rev-parse --show-toplevel)
+HAGENT_REPO_DIR=${HAGENT_REPO_DIR:-$GIT_ROOT}
+HAGENT_BUILD_DIR=${HAGENT_BUILD_DIR:-$GIT_ROOT/build}
+HAGENT_CACHE_DIR=${HAGENT_CACHE_DIR:-$GIT_ROOT/cache}
+
+# Export so child processes (like uv/python) can see them
+export HAGENT_REPO_DIR HAGENT_BUILD_DIR HAGENT_CACHE_DIR
 
 # Default paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INPUT_CONFIG=${1:-"${SCRIPT_DIR}/benchmark_config_example.yaml"}
 OUTPUT_DIR=${2:-"${HAGENT_CACHE_DIR}/pipeline_results"}
 
-# Create output directory
-mkdir -p "$OUTPUT_DIR"
+# Note: OUTPUT_DIR from command line is for reference/logging only
+# The actual output_dir is read from the input config YAML by Python scripts
+# The Python scripts will create the subdirectories (step_output/, work/, debug/)
 
 echo "========================================================================"
 echo "RTL Optimization Baseline Run Pipeline"
 echo "========================================================================"
-echo "Execution Mode: $HAGENT_EXECUTION_MODE"
+echo "HAgent Dir: $HAGENT_REPO_DIR"
+echo "Build Dir: $HAGENT_BUILD_DIR"
 echo "Cache Dir: $HAGENT_CACHE_DIR"
 echo "Input Config: $INPUT_CONFIG"
 echo "Output Dir: $OUTPUT_DIR"
@@ -30,14 +50,14 @@ echo "========================================================================"
 # Check if input config exists
 if [ ! -f "$INPUT_CONFIG" ]; then
     echo "ERROR: Input configuration file not found: $INPUT_CONFIG"
-    echo "Usage: $0 <config.yaml> [output_dir]"
+    echo "Usage: $0 <config.yaml> [output_dir] "
     exit 1
 fi
 
-# Stage naming function
+# Stage naming function - puts step outputs in step_output/ subdirectory
 get_output_file() {
     local stage=$1
-    echo "${OUTPUT_DIR}/step_${stage}_output.yaml"
+    echo "${OUTPUT_DIR}/step_output/step_${stage}_output.yaml"
 }
 
 # Run stage function with error handling
@@ -58,13 +78,12 @@ run_stage() {
 
     start_time=$(date +%s)
 
-    if HAGENT_EXECUTION_MODE=$HAGENT_EXECUTION_MODE uv run python "${SCRIPT_DIR}/${script_name}" "$input_file" -o "$output_file"; then
+    if uv run python "${SCRIPT_DIR}/${script_name}" "$input_file" -o "$output_file"; then
         end_time=$(date +%s)
         duration=$((end_time - start_time))
         echo "✓ Stage ${stage_num} completed successfully in ${duration}s"
     else
         echo "✗ Stage ${stage_num} failed!"
-        echo "Check logs in: $HAGENT_CACHE_DIR"
         exit 1
     fi
 }

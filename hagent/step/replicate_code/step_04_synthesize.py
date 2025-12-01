@@ -1,84 +1,50 @@
 #!/usr/bin/env python3
 # See LICENSE for details
 
-from hagent.inou.runner import Runner
-from hagent.core.step import Step
 from typing import Dict
-import os
 import time
+import os
+
+from hagent.step.replicate_code.schema import PipelineConfig
+from hagent.step.replicate_code.opt_pipe_step_base import OptPipeStepBase
 
 
-class Synthesize(Step):
+class Synthesize(OptPipeStepBase):
+    """
+    Example of what this function does: pipelinedCPU.v(rtl)---{yosys}--->nl_single/PipelinedCPU_synth.v (netlist)
+    """
+    def __init__(self):
+        super().__init__()
+        self.step_name = 'step_04_synthesize'
+
     def setup(self):
         super().setup()
 
-    def run(self, data: Dict):
-        data_copy = data.copy()
-        start_time = time.time()
+    def _run_impl(self, data: Dict):
+        # Parse input dictionary into typed configuration
+        config = PipelineConfig.from_dict(data)
 
-        # Extract configuration from input YAML
-        benchmark = data_copy.get('benchmark', {})
-        docker_config = data_copy.get('docker', {})
-        local_storage = data_copy.get('local_storage', {})
-        tools = data_copy.get('tools', {})
+        self.prepare_environment(config, self.step_name)
+        assert self.runner is not None
 
-        # Setup runner with docker image from config
-        if os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
-            docker_image = docker_config.get('image')
-            self.runner = Runner(docker_image=docker_image)
-        else:
-            self.runner = Runner()
+        # Access configuration via typed fields
+        top_module_file = config.populated_file_paths.rtl_selected_top_file
+        if not top_module_file:
+            self.error('Top module file not populated from previous step results')
 
-        if not self.runner.setup():
-            self.error(f'OOPS in step_04_synthesize.py error from runner:{self.runner.get_error()}')
-            return data_copy
+        top_module = config.benchmark.top_module
+        liberty_file = config.tools.liberty_file
+        yosys_cmd = config.tools.yosys_cmd
 
-        # Create debug directory
-        cache_dir = os.getenv('HAGENT_CACHE_DIR', local_storage.get('debug_base_dir', '/tmp/rtl_optimization_debug'))
-        timestamp = str(int(time.time()))
-        step_debug_dir = f"{cache_dir}/step04_synthesize_{timestamp}"
-        os.makedirs(step_debug_dir, exist_ok=True)
-
-        step_results = {
-            'start_time': start_time,
-            'debug_directory': step_debug_dir,
-            'timestamp': timestamp
-        }
-
-        # Get configuration
-        top_module_file = data_copy.get('file_paths', {}).get('top_module_file')
-        top_module = benchmark.get('top_module')
-        liberty_file = tools.get('liberty_file')
-        yosys_cmd = tools.get('yosys_cmd', 'yosys')
-
-        if not top_module_file or not top_module or not liberty_file:
-            self.error("Missing required configuration: top_module_file, top_module, or liberty_file")
-            return data_copy
+        if not top_module or not liberty_file:
+            self.error('Missing required configuration: top_module, or liberty_file')
 
         # Create synthesis directory
-        synth_dir = '/tmp/nl_single'
-        ret, out, err = self.runner.run(f'rm -rf {synth_dir} && mkdir -p {synth_dir}')
-        step_results['directory_setup'] = {
-            'ret': ret, 'stdout': out, 'stderr': err
-        }
+        synth_dir = os.path.join(self.work_dir, 'nl_single')
+        self._prepare_dir(synth_dir)
 
         # Define synthesis output file
-        synth_file = f"{synth_dir}/{top_module}_synth.v"
-
-        # Create SDC file for timing constraints
-        sdc_file = f"/tmp/{top_module}.sdc"
-        sdc_content = f"""
-# Basic SDC constraints for {top_module}
-set_operating_conditions ff_100C_1v95
-create_clock -name clk -period 10.0 [get_ports clk]
-set_input_delay 1.0 [all_inputs]
-set_output_delay 1.0 [all_outputs]
-set_load 0.1 [all_outputs]
-"""
-        ret, out, err = self.runner.run(f'cat > {sdc_file} << "EOF"\n{sdc_content}\nEOF')
-        step_results['sdc_creation'] = {
-            'ret': ret, 'stdout': out, 'stderr': err
-        }
+        synth_file = f'{synth_dir}/{top_module}_synth.v'
 
         # Run Yosys synthesis
         yosys_script = f"""
@@ -95,72 +61,74 @@ set_load 0.1 [all_outputs]
             write_verilog {synth_file};
         """
 
-        ret, out, err = self.runner.run(f'{yosys_cmd} -p "{yosys_script}"')
-        step_results['yosys_synthesis'] = {
-            'ret': ret, 'stdout': out, 'stderr': err,
-            'command': f'{yosys_cmd} -p "{yosys_script}"'
+        self.logger.info(f'Synthesizing original design with Yosys: {top_module}')
+        ret, out, err = self.runner.run_cmd(f'{yosys_cmd} -p "{yosys_script}"', quiet=True)
+        self.step_results['yosys_synthesis'] = {
+            'ret': ret,
+            'stdout': out,
+            'stderr': err,
+            'command': f'{yosys_cmd} -p "{yosys_script}"',
         }
 
         if ret != 0:
-            self.error(f"Yosys synthesis failed: {err}")
-            return data_copy
+            self.logger.error('Yosys synthesis failed!')
+            self.logger.error(f'Return code: {ret}')
+            self.logger.error(f'STDOUT:\n{out}')
+            self.logger.error(f'STDERR:\n{err}')
+            self.error(f'Yosys synthesis failed: {err}')
 
         # Verify the synthesis file was created
-        ret, out, err = self.runner.run(f'ls -la {synth_file}')
-        step_results['file_verification'] = {
-            'ret': ret, 'stdout': out, 'stderr': err
-        }
+        self.logger.info(f'Verifying synthesis output: {synth_file}')
+        ret, out, err = self.runner.run_cmd(f'ls -la {synth_file}', quiet=True)
+        self.step_results['file_verification'] = {'ret': ret, 'stdout': out, 'stderr': err}
 
         # Get synthesis statistics
-        ret, out, err = self.runner.run(f'wc -l {synth_file}')
-        step_results['file_stats'] = {
-            'ret': ret, 'stdout': out, 'stderr': err
-        }
+        ret, out, err = self.runner.run_cmd(f'wc -l {synth_file}', quiet=True)
+        self.step_results['file_stats'] = {'ret': ret, 'stdout': out, 'stderr': err}
 
         # Store execution metadata locally for debugging
-        debug_log = f"{step_debug_dir}/execution_log.txt"
+        debug_log = f'{self.step_debug_dir}/execution_log.txt'
+        self.logger.info(f'Writing debug log to {debug_log}')
         with open(debug_log, 'w') as f:
-            f.write(f"Step 04 - Synthesize Original Design\n")
-            f.write(f"Execution Time: {time.time() - start_time:.2f}s\n")
-            f.write(f"Benchmark: {benchmark.get('name', 'Unknown')}\n")
-            f.write(f"Top Module: {top_module}\n")
-            f.write(f"Input File: {top_module_file}\n")
-            f.write(f"Output File: {synth_file}\n")
-            f.write(f"Liberty File: {liberty_file}\n")
-            f.write(f"SDC File: {sdc_file}\n")
-            f.write(f"Yosys Return Code: {step_results['yosys_synthesis']['ret']}\n")
-            if step_results['yosys_synthesis']['ret'] == 0:
-                f.write(f"Synthesis Completed Successfully\n")
+            f.write('Step 04 - Synthesize Original Design\n')
+            f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
+            f.write(f'Benchmark: {config.benchmark.name}\n')
+            f.write(f'Top Module: {top_module}\n')
+            f.write(f'Input File: {top_module_file}\n')
+            f.write(f'Output File: {synth_file}\n')
+            f.write(f'Liberty File: {liberty_file}\n')
+            f.write(f'Yosys Return Code: {self.step_results["yosys_synthesis"]["ret"]}\n')
+            if self.step_results['yosys_synthesis']['ret'] == 0:
+                f.write('Synthesis Completed Successfully\n')
             else:
-                f.write(f"Synthesis Error: {step_results['yosys_synthesis']['stderr']}\n")
+                f.write(f'Synthesis Error: {self.step_results["yosys_synthesis"]["stderr"]}\n')
 
         # Store synthesis log locally for debugging
-        synth_log_file = f"{step_debug_dir}/synthesis_log.txt"
+        synth_log_file = f'{self.step_debug_dir}/synthesis_log.txt'
+        self.logger.info(f'Writing synthesis log to {synth_log_file}')
         with open(synth_log_file, 'w') as f:
-            f.write("Yosys Synthesis Output:\n")
-            f.write("=====================\n")
-            f.write(step_results['yosys_synthesis']['stdout'])
-            if step_results['yosys_synthesis']['stderr']:
-                f.write("\n\nYosys Synthesis Errors:\n")
-                f.write("======================\n")
-                f.write(step_results['yosys_synthesis']['stderr'])
+            f.write('Yosys Synthesis Output:\n')
+            f.write('=====================\n')
+            f.write(self.step_results['yosys_synthesis']['stdout'])
+            if self.step_results['yosys_synthesis']['stderr']:
+                f.write('\n\nYosys Synthesis Errors:\n')
+                f.write('======================\n')
+                f.write(self.step_results['yosys_synthesis']['stderr'])
 
-        # Update file paths
-        if 'file_paths' not in data_copy:
-            data_copy['file_paths'] = {}
-        data_copy['file_paths']['synth_dir'] = synth_dir
-        data_copy['file_paths']['synth_file'] = synth_file
-        data_copy['file_paths']['sdc_file'] = sdc_file
+        # Update populated file paths in config
+        config.populated_file_paths.synth_dir = synth_dir
+        config.populated_file_paths.synth_file = synth_file
 
         # Store execution time and results
-        step_results['execution_time'] = time.time() - start_time
-        step_results['success'] = (ret == 0)
+        self.step_results['execution_time'] = time.time() - self.start_time
+        self.step_results['success'] = ret == 0
 
-        if 'step_results' not in data_copy:
-            data_copy['step_results'] = {}
-        data_copy['step_results']['step_04_synthesize'] = step_results
+        # Save step results to file and store reference in config
+        results_file = self.save_step_results()
+        config.step_results[self.step_name] = {'results_file': results_file}
 
-        return data_copy
+        # Convert back to dict for pipeline compatibility
+        return config.to_dict()
 
 
 if __name__ == '__main__':

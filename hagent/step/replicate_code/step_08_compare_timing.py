@@ -1,104 +1,87 @@
 #!/usr/bin/env python3
 # See LICENSE for details
 
-from hagent.inou.runner import Runner
-from hagent.core.step import Step
 from typing import Dict
-import os
 import time
 import re
+import os
+
+from hagent.step.replicate_code.schema import PipelineConfig
+from hagent.step.replicate_code.opt_pipe_step_base import OptPipeStepBase
 
 
-class CompareTiming(Step):
+class CompareTiming(OptPipeStepBase):
+    def __init__(self):
+        super().__init__()
+        self.step_name = 'step_08_compare_timing'
+
     def setup(self):
         super().setup()
 
-    def run(self, data: Dict):
-        data_copy = data.copy()
-        start_time = time.time()
+    def _run_impl(self, data: Dict):
+        # Parse input dictionary into typed configuration
+        config = PipelineConfig.from_dict(data)
 
-        # Extract configuration from input YAML
-        benchmark = data_copy.get('benchmark', {})
-        docker_config = data_copy.get('docker', {})
-        local_storage = data_copy.get('local_storage', {})
-        tools = data_copy.get('tools', {})
+        self.prepare_environment(config, self.step_name)
+        assert self.runner is not None
 
-        # Setup runner with docker image from config
-        if os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
-            docker_image = docker_config.get('image')
-            self.runner = Runner(docker_image=docker_image)
-        else:
-            self.runner = Runner()
+        # Access configuration via typed fields
+        top_module = config.benchmark.top_module
+        liberty_file = config.tools.liberty_file
+        yosys_cmd = config.tools.yosys_cmd
+        opensta_path = config.tools.opensta_path
+        rtl_modules_dir = config.populated_file_paths.rtl_path
+        optimization_results = config.metrics.modules_optimized
 
-        if not self.runner.setup():
-            self.error(f'OOPS in step_08_compare_timing.py error from runner:{self.runner.get_error()}')
-            return data_copy
+        self.logger.info('Preparing optimized design for timing comparison')
 
-        # Create debug directory
-        cache_dir = os.getenv('HAGENT_CACHE_DIR', local_storage.get('debug_base_dir', '/tmp/rtl_optimization_debug'))
-        timestamp = str(int(time.time()))
-        step_debug_dir = f"{cache_dir}/step08_compare_timing_{timestamp}"
-        os.makedirs(step_debug_dir, exist_ok=True)
+        # Get rtl_optimized directory from step_07
+        rtl_optimized_dir = config.populated_file_paths.optimized_dir
+        if not rtl_optimized_dir or not os.path.exists(rtl_optimized_dir):
+            self.error('Previous step did not produce rtl_optimized directory')
 
-        step_results = {
-            'start_time': start_time,
-            'debug_directory': step_debug_dir,
-            'timestamp': timestamp
-        }
+        # Create directory for synthesis (contains original + optimized modules)
+        optimized_rtl_dir = os.path.join(self.work_dir, "rtl_for_synthesis")
+        self._prepare_dir(optimized_rtl_dir)
 
-        # Get configuration
-        top_module = benchmark.get('top_module')
-        liberty_file = tools.get('liberty_file')
-        yosys_cmd = tools.get('yosys_cmd', 'yosys')
-        opensta_path = tools.get('opensta_path', '~/opensta/OpenSTA/app/sta')
-        rtl_modules_dir = data_copy.get('file_paths', {}).get('rtl_modules_dir', '/tmp/rtl_modules')
-        results_dir = data_copy.get('file_paths', {}).get('results_dir')
-        optimization_results = data_copy.get('metrics', {}).get('modules_optimized', [])
+        # Copy ALL original modules first
+        self.logger.info('Copying original module files')
+        ret, out, err = self.runner.run_cmd(f'cp {rtl_modules_dir}/liveparse/*.v {optimized_rtl_dir}/', quiet=True)
+        self.step_results['original_modules_copy'] = {'ret': ret, 'stdout': out, 'stderr': err}
+        if ret != 0:
+            self.error(f'Failed to copy original modules: {err}')
 
-        # Create optimized RTL directory
-        optimized_rtl_dir = '/tmp/rtl_optimized'
-        ret, out, err = self.runner.run(f'rm -rf {optimized_rtl_dir} && mkdir -p {optimized_rtl_dir}')
+        # Copy best optimized variants from step_07 (overwrite originals)
+        self.logger.info(f'Copying best optimized variants from {rtl_optimized_dir}')
+        ret, out, err = self.runner.run_cmd(f'cp {rtl_optimized_dir}/*.v {optimized_rtl_dir}/', quiet=True)
+        self.step_results['optimized_modules_copy'] = {'ret': ret, 'stdout': out, 'stderr': err}
 
-        # Copy original modules (excluding optimized ones)
-        ret, out, err = self.runner.run(f'cp {rtl_modules_dir}/liveparse/*.v {optimized_rtl_dir}/')
-        step_results['original_modules_copy'] = {
-            'ret': ret, 'stdout': out, 'stderr': err
-        }
-
-        # Find and copy optimized modules
+        # Track which modules were optimized
         optimized_files_found = []
         for opt_result in optimization_results:
-            if not opt_result.get('success', False):
-                continue
+            if opt_result.success and opt_result.best_variant_file:
+                module_name = opt_result.module_name
+                optimized_files_found.append({
+                    'module_name': module_name,
+                    'best_variant_file': opt_result.best_variant_file,
+                    'best_variant_timing': opt_result.best_variant_timing,
+                    'num_variants': opt_result.num_variants,
+                })
 
-            module_name = opt_result['module_name']
-            module_results_dir = f"{results_dir}/{module_name}"
-
-            # Look for _optimized_*.v files in the module results directory
-            ret, out, err = self.runner.run(f'find {module_results_dir} -name "*_optimized_*.v" | head -1')
-            if ret == 0 and out.strip():
-                optimized_file = out.strip()
-                target_file = f"{optimized_rtl_dir}/{module_name}.v"
-
-                # Copy optimized module, replacing original
-                ret, out, err = self.runner.run(f'cp {optimized_file} {target_file}')
-                if ret == 0:
-                    optimized_files_found.append({
-                        'module_name': module_name,
-                        'optimized_file': optimized_file,
-                        'target_file': target_file
-                    })
-
-        step_results['optimized_modules'] = {
-            'files_found': len(optimized_files_found),
+        self.step_results['optimized_modules'] = {
+            'count': len(optimized_files_found),
             'modules': optimized_files_found
         }
 
-        # Synthesize optimized design
-        optimized_synth_dir = '/tmp/nl_optimized'
-        ret, out, err = self.runner.run(f'rm -rf {optimized_synth_dir} && mkdir -p {optimized_synth_dir}')
+        self.logger.info(f'Integrated {len(optimized_files_found)} optimized modules with original design')
 
-        optimized_synth_file = f"{optimized_synth_dir}/{top_module}_optimized_synth.v"
+        # Synthesize optimized design
+        self.logger.info('Synthesizing optimized design')
+
+        optimized_synth_dir = os.path.join(self.work_dir, 'nl_optimized')
+        self._prepare_dir(optimized_synth_dir)
+
+        optimized_synth_file = f'{optimized_synth_dir}/{top_module}_optimized_synth.v'
 
         yosys_script = f"""
             read_verilog -sv -defer {optimized_rtl_dir}/*.v;
@@ -114,19 +97,20 @@ class CompareTiming(Step):
             write_verilog {optimized_synth_file};
         """
 
-        ret, out, err = self.runner.run(f'{yosys_cmd} -p "{yosys_script}"')
-        step_results['optimized_synthesis'] = {
-            'ret': ret, 'stdout': out, 'stderr': err,
-            'command': f'{yosys_cmd} -p "{yosys_script}"'
+        ret, out, err = self.runner.run_cmd(f'{yosys_cmd} -p "{yosys_script}"')
+        self.step_results['optimized_synthesis'] = {
+            'ret': ret,
+            'stdout': out,
+            'stderr': err,
+            'command': f'{yosys_cmd} -p "{yosys_script}"',
         }
 
         if ret != 0:
-            self.error(f"Optimized synthesis failed: {err}")
-            return data_copy
+            self.error(f'Optimized synthesis failed: {err}')
 
         # Run timing analysis on optimized design
-        optimized_timing_report = "/tmp/timing_report_optimized.rpt"
-        sdc_file = data_copy.get('file_paths', {}).get('sdc_file', f"/tmp/{top_module}.sdc")
+        optimized_timing_report = os.path.join(self.work_dir, 'timing_report_optimized.rpt')
+        sdc_file = config.tools.sdc_file
 
         tcl_content = f"""
 read_liberty {liberty_file}
@@ -136,18 +120,17 @@ read_verilog {optimized_synth_file}
 link_design {top_module}
 read_sdc {sdc_file}
 report_checks -path_delay max > {optimized_timing_report}
+exit
 """
 
-        optimized_sta_tcl = "/tmp/run_sta_optimized.tcl"
-        ret, out, err = self.runner.run(f'cat > {optimized_sta_tcl} << "EOF"\n{tcl_content}\nEOF')
+        optimized_sta_tcl = os.path.join(self.work_dir, 'run_sta_optimized.tcl')
+        ret, out, err = self.runner.run_cmd(f'cat > {optimized_sta_tcl} << "EOF"\n{tcl_content}\nEOF')
 
-        ret, out, err = self.runner.run(f'echo "source {optimized_sta_tcl}" | {opensta_path}')
-        step_results['optimized_timing_analysis'] = {
-            'ret': ret, 'stdout': out, 'stderr': err
-        }
+        ret, out, err = self.runner.run_cmd(f'echo "source {optimized_sta_tcl}" | {opensta_path}')
+        self.step_results['optimized_timing_analysis'] = {'ret': ret, 'stdout': out, 'stderr': err}
 
         # Parse optimized timing results
-        ret, report_content, err = self.runner.run(f'cat {optimized_timing_report}')
+        ret, report_content, err = self.runner.run_cmd(f'cat {optimized_timing_report}')
         optimized_arrival_time = None
         optimized_slack = None
         optimized_frequency = None
@@ -165,9 +148,17 @@ report_checks -path_delay max > {optimized_timing_report}
                 optimized_frequency = 1000.0 / optimized_arrival_time
 
         # Calculate improvements
-        original_arrival_time = data_copy.get('metrics', {}).get('original_arrival_time')
-        original_slack = data_copy.get('metrics', {}).get('original_slack')
-        original_frequency = data_copy.get('metrics', {}).get('original_frequency')
+        original_slack = config.metrics.original_slack
+        original_frequency = config.metrics.original_frequency
+
+        # Get original arrival time from step_05 results
+        original_arrival_time = None
+        if 'step_05_timing_analysis' in config.step_results:
+            step_05_results = self.load_step_results_from_path(
+                config.step_results['step_05_timing_analysis']['results_file']
+            )
+            timing_metrics = step_05_results.get('timing_metrics', {})
+            original_arrival_time = timing_metrics.get('arrival_time')
 
         arrival_time_improvement = None
         slack_improvement = None
@@ -183,78 +174,71 @@ report_checks -path_delay max > {optimized_timing_report}
             frequency_improvement = optimized_frequency - original_frequency
 
         # Store execution metadata locally for debugging
-        debug_log = f"{step_debug_dir}/execution_log.txt"
+        debug_log = f'{self.step_debug_dir}/execution_log.txt'
         with open(debug_log, 'w') as f:
-            f.write(f"Step 08 - Compare Timing (Optimized vs Original)\n")
-            f.write(f"Execution Time: {time.time() - start_time:.2f}s\n")
-            f.write(f"Benchmark: {benchmark.get('name', 'Unknown')}\n")
-            f.write(f"Optimized Modules Found: {len(optimized_files_found)}\n\n")
+            f.write('Step 08 - Compare Timing (Optimized vs Original)\n')
+            f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
+            f.write(f'Benchmark: {config.benchmark.name}\n')
+            f.write(f'Optimized Modules Found: {len(optimized_files_found)}\n\n')
 
-            f.write(f"ORIGINAL TIMING:\n")
-            f.write(f"  Arrival Time: {original_arrival_time} ns\n")
-            f.write(f"  Slack: {original_slack} ns\n")
-            f.write(f"  Frequency: {original_frequency} MHz\n\n")
+            f.write('ORIGINAL TIMING:\n')
+            f.write(f'  Arrival Time: {original_arrival_time} ns\n')
+            f.write(f'  Slack: {original_slack} ns\n')
+            f.write(f'  Frequency: {original_frequency} MHz\n\n')
 
-            f.write(f"OPTIMIZED TIMING:\n")
-            f.write(f"  Arrival Time: {optimized_arrival_time} ns\n")
-            f.write(f"  Slack: {optimized_slack} ns\n")
-            f.write(f"  Frequency: {optimized_frequency} MHz\n\n")
+            f.write('OPTIMIZED TIMING:\n')
+            f.write(f'  Arrival Time: {optimized_arrival_time} ns\n')
+            f.write(f'  Slack: {optimized_slack} ns\n')
+            f.write(f'  Frequency: {optimized_frequency} MHz\n\n')
 
-            f.write(f"IMPROVEMENTS:\n")
-            f.write(f"  Arrival Time: {arrival_time_improvement} ns\n")
-            f.write(f"  Slack: {slack_improvement} ns\n")
-            f.write(f"  Frequency: {frequency_improvement} MHz\n\n")
+            f.write('IMPROVEMENTS:\n')
+            f.write(f'  Arrival Time: {arrival_time_improvement} ns\n')
+            f.write(f'  Slack: {slack_improvement} ns\n')
+            f.write(f'  Frequency: {frequency_improvement} MHz\n\n')
 
-            f.write(f"OPTIMIZATION SUMMARY:\n")
+            f.write('OPTIMIZATION SUMMARY:\n')
             for result in optimization_results:
-                f.write(f"  {result['module_name']}: {'SUCCESS' if result['success'] else 'FAILED'} "
-                       f"({result['tokens_used']} tokens, {result['execution_time']:.2f}s)\n")
+                status = "SUCCESS" if result.success else "FAILED"
+                f.write(f'  {result.module_name}: {status}\n')
+                if result.success:
+                    f.write(f'    Variants: {getattr(result, "num_variants", "N/A")}\n')
+                    if result.best_variant_timing:
+                        f.write(f'    Best Variant Timing: {result.best_variant_timing:.2f} ns\n')
+                f.write(f'    Tokens: {result.tokens_used}, Time: {result.execution_time:.2f}s\n')
 
         # Store timing reports locally
         if report_content:
-            with open(f"{step_debug_dir}/timing_report_optimized.rpt", 'w') as f:
+            with open(f'{self.step_debug_dir}/timing_report_optimized.rpt', 'w') as f:
                 f.write(report_content)
 
+        # Update populated file paths
+        config.populated_file_paths.optimized_dir = optimized_rtl_dir
+
         # Update final metrics
-        if 'metrics' not in data_copy:
-            data_copy['metrics'] = {}
+        config.metrics.end_time = time.time()
+        if config.metrics.start_time:
+            config.metrics.total_execution_time = config.metrics.end_time - config.metrics.start_time
 
-        data_copy['metrics']['optimized_arrival_time'] = optimized_arrival_time
-        data_copy['metrics']['optimized_slack'] = optimized_slack
-        data_copy['metrics']['optimized_frequency'] = optimized_frequency
-        data_copy['metrics']['arrival_time_improvement'] = arrival_time_improvement
-        data_copy['metrics']['slack_improvement'] = slack_improvement
-        data_copy['metrics']['frequency_improvement'] = frequency_improvement
-        data_copy['metrics']['end_time'] = time.time()
-        data_copy['metrics']['total_execution_time'] = time.time() - data_copy['metrics'].get('start_time', start_time)
-
-        step_results['timing_comparison'] = {
-            'original': {
-                'arrival_time': original_arrival_time,
-                'slack': original_slack,
-                'frequency': original_frequency
-            },
-            'optimized': {
-                'arrival_time': optimized_arrival_time,
-                'slack': optimized_slack,
-                'frequency': optimized_frequency
-            },
+        self.step_results['timing_comparison'] = {
+            'original': {'arrival_time': original_arrival_time, 'slack': original_slack, 'frequency': original_frequency},
+            'optimized': {'arrival_time': optimized_arrival_time, 'slack': optimized_slack, 'frequency': optimized_frequency},
             'improvements': {
                 'arrival_time': arrival_time_improvement,
                 'slack': slack_improvement,
-                'frequency': frequency_improvement
-            }
+                'frequency': frequency_improvement,
+            },
         }
 
         # Store execution time and results
-        step_results['execution_time'] = time.time() - start_time
-        step_results['success'] = (optimized_arrival_time is not None)
+        self.step_results['execution_time'] = time.time() - self.start_time
+        self.step_results['success'] = optimized_arrival_time is not None
 
-        if 'step_results' not in data_copy:
-            data_copy['step_results'] = {}
-        data_copy['step_results']['step_08_compare_timing'] = step_results
+        # Save step results to file and store reference in config
+        results_file = self.save_step_results()
+        config.step_results[self.step_name] = {'results_file': results_file}
 
-        return data_copy
+        # Convert back to dict for pipeline compatibility
+        return config.to_dict()
 
 
 if __name__ == '__main__':

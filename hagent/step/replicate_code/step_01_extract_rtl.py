@@ -1,119 +1,113 @@
 #!/usr/bin/env python3
 # See LICENSE for details
 
-from hagent.inou.runner import Runner
-from hagent.core.step import Step
 from typing import Dict
-import os
 import time
+import os
+import shutil
 
 
-class ExtractRTL(Step):
+from hagent.step.replicate_code.schema import PipelineConfig
+from hagent.step.replicate_code.opt_pipe_step_base import OptPipeStepBase
+
+
+class ExtractRTL(OptPipeStepBase):
+    """Extract the RTL original source code to the working directory."""
+    def __init__(self):
+        super().__init__()
+        self.step_name = 'step_01_extract_rtl'
+
     def setup(self):
         super().setup()
-        # Runner setup will be done in run() after loading config
+        # Runner setup will be done in _run_impl() after loading config
 
-    def run(self, data: Dict):
-        data_copy = data.copy()
-        start_time = time.time()
+    def _run_impl(self, data: Dict):
+        # Parse input dictionary into typed configuration
+        config = PipelineConfig.from_dict(data)
 
-        # Extract configuration from input YAML
-        benchmark = data_copy.get('benchmark', {})
-        docker_config = data_copy.get('docker', {})
-        local_storage = data_copy.get('local_storage', {})
+        self.prepare_environment(config, self.step_name)
+        assert self.runner is not None  # to get rid of linting errors when invoking `self.runner.run_cmd` below
 
-        # Setup runner with docker image from config
-        if os.getenv('HAGENT_EXECUTION_MODE') == 'docker':
-            docker_image = docker_config.get('image', 'mascucsc/hagent-simplechisel:2025.08')
-            self.runner = Runner(docker_image=docker_image)
-        else:
-            self.runner = Runner()
+        # Access configuration via typed fields
+        rtl_source_file_path = config.source_file_paths.rtl_source_file_path
+        chisel_path = config.source_file_paths.chisel_path
 
-        if not self.runner.setup():
-            self.error(f'OOPS in step_01_extract_rtl.py error from runner:{self.runner.get_error()}')
-            return data_copy
-
-        # Create debug directory using HAGENT_CACHE_DIR for execution metadata only
-        cache_dir = os.getenv('HAGENT_CACHE_DIR', local_storage.get('debug_base_dir', '/tmp/rtl_optimization_debug'))
-        timestamp = str(int(time.time()))
-        step_debug_dir = f"{cache_dir}/step01_extract_rtl_{timestamp}"
-        os.makedirs(step_debug_dir, exist_ok=True)
-
-        step_results = {
-            'start_time': start_time,
-            'debug_directory': step_debug_dir,
-            'timestamp': timestamp
-        }
-
-        # Get paths from config
-        rtl_path = docker_config.get('rtl_path')
-        chisel_path = docker_config.get('chisel_path')
-
-        if not rtl_path:
-            self.error("RTL path not specified in docker config")
-            return data_copy
+        if not rtl_source_file_path:
+            self.error('RTL source code directory not specified in config')
 
         # List Chisel source files (if chisel_path is provided)
         if chisel_path:
-            ret, out, err = self.runner.run(f'find {chisel_path} -name "*.scala" 2>/dev/null || echo "No Chisel files found"')
-            step_results['chisel_discovery'] = {
-                'ret': ret, 'stdout': out, 'stderr': err,
-                'files_found': [f.strip() for f in out.split('\n') if f.strip() and not f.startswith('No Chisel')] if out else []
+            self.logger.info(f'Discovering Chisel source files in {chisel_path}')
+            ret, out, err = self.runner.run_cmd(
+                f'find {chisel_path} -name "*.scala" 2>/dev/null || echo "No Chisel files found"', quiet=True
+            )
+            self.step_results['chisel_discovery'] = {
+                'ret': ret,
+                'stdout': out,
+                'stderr': err,
+                'files_found': [f.strip() for f in out.split('\n') if f.strip() and not f.startswith('No Chisel')] if out else [],
             }
         else:
-            step_results['chisel_discovery'] = {
-                'ret': 0, 'stdout': '', 'stderr': '',
-                'files_found': []
-            }
-
-        # List generated Verilog files
-        ret, out, err = self.runner.run(f'find {rtl_path} -name "*.v" -o -name "*.sv" 2>/dev/null || echo "No RTL files found"')
-        rtl_files = [f.strip() for f in out.split('\n') if f.strip() and not f.startswith('No RTL')] if out else []
-        step_results['rtl_discovery'] = {
-            'ret': ret, 'stdout': out, 'stderr': err,
-            'files_found': rtl_files
-        }
+            self.step_results['chisel_discovery'] = {'ret': 0, 'stdout': '', 'stderr': '', 'files_found': []}
 
         # Get detailed listing of RTL directory
-        ret, out, err = self.runner.run(f'ls -la {rtl_path}/ 2>/dev/null || echo "Directory not found"')
-        step_results['rtl_directory_listing'] = {
-            'ret': ret, 'stdout': out, 'stderr': err
-        }
+        self.logger.info(f'Listing RTL source directory: {rtl_source_file_path}')
+        ret, out, err = self.runner.run_cmd(
+            f'ls -la {rtl_source_file_path}/ 2>/dev/null || echo "Directory not found"', quiet=True
+        )
+        self.step_results['rtl_directory_listing'] = {'ret': ret, 'stdout': out, 'stderr': err}
+
+        # List generated Verilog files
+        self.logger.info('Discovering Verilog/SystemVerilog files')
+        ret, out, err = self.runner.run_cmd(
+            f'find {rtl_source_file_path} -name "*.v" -o -name "*.sv" 2>/dev/null || echo "No RTL files found"',
+            quiet=True,
+        )
+        rtl_source_files = [f.strip() for f in out.split('\n') if f.strip() and not f.startswith('No RTL')] if out else []
+        self.step_results['rtl_discovery'] = {'ret': ret, 'stdout': out, 'stderr': err, 'files_found': rtl_source_files}
+
+        rtl_real_src_dir = os.path.join(self.work_dir, 'rtl_real_source')
+        os.makedirs(rtl_real_src_dir, exist_ok=True)
+        self.logger.info(f'Copying {len(rtl_source_files)} RTL files to {rtl_real_src_dir}')
+        for src_file in rtl_source_files:
+            if os.path.isfile(src_file):
+                dst_file = os.path.join(rtl_real_src_dir, os.path.basename(src_file))
+                shutil.copy2(src_file, dst_file)
 
         # Store execution metadata locally for debugging
-        debug_log = f"{step_debug_dir}/execution_log.txt"
+        debug_log = f'{self.step_debug_dir}/execution_log.txt'
+        self.logger.info(f'Writing debug log to {debug_log}')
         with open(debug_log, 'w') as f:
-            f.write(f"Step 01 - Extract RTL\n")
-            f.write(f"Execution Time: {time.time() - start_time:.2f}s\n")
-            f.write(f"Benchmark: {benchmark.get('name', 'Unknown')}\n")
-            f.write(f"Top Module: {benchmark.get('top_module', 'Unknown')}\n")
-            f.write(f"Docker Image: {docker_config.get('image', 'Unknown')}\n")
-            f.write(f"RTL Path: {rtl_path}\n")
-            f.write(f"Chisel Path: {chisel_path or 'Not specified'}\n")
-            f.write(f"RTL Files Found: {len(rtl_files)}\n")
-            f.write(f"Files: {rtl_files}\n")
+            f.write('Step 01 - Extract RTL\n')
+            f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
+            f.write(f'Benchmark: {config.benchmark.name}\n')
+            f.write(f'Top Module: {config.benchmark.top_module}\n')
+            f.write(f'Docker Image: {config.docker.image if config.docker else "Not specified"}\n')
+            f.write(f'RTL Real Source Directory: {rtl_real_src_dir}\n')
+            f.write(f'Chisel Path: {chisel_path or "Not specified"}\n')
+            f.write(f'RTL Files Found: {len(rtl_source_files)}\n')
+            f.write(f'Files: {rtl_source_files}\n')
 
-        # Update data structure
-        if 'file_paths' not in data_copy:
-            data_copy['file_paths'] = {}
-        data_copy['file_paths']['rtl_files'] = rtl_files
-        data_copy['file_paths']['chisel_files'] = step_results['chisel_discovery']['files_found']
+        # Update populated file paths in config
+        config.populated_file_paths.rtl_real_src_dir = rtl_real_src_dir
+        config.populated_file_paths.chisel_files = self.step_results['chisel_discovery']['files_found']
 
         # Store execution time and results
-        step_results['execution_time'] = time.time() - start_time
-        step_results['files_extracted'] = len(rtl_files)
+        self.step_results['execution_time'] = time.time() - self.start_time
+        self.step_results['files_extracted'] = len(rtl_real_src_dir)
 
-        if 'step_results' not in data_copy:
-            data_copy['step_results'] = {}
-        data_copy['step_results']['step_01_extract_rtl'] = step_results
+        # Save step results to file and store reference in config
+        results_file = self.save_step_results()
+        config.step_results[self.step_name] = {'results_file': results_file}
 
         # Initialize metrics if not present
-        if 'metrics' not in data_copy:
-            data_copy['metrics'] = {}
-        if not data_copy['metrics'].get('start_time'):
-            data_copy['metrics']['start_time'] = start_time
+        if not config.metrics.start_time:
+            config.metrics.start_time = self.start_time
+        if not config.metrics.end_time:
+            config.metrics.end_time = time.time()
 
-        return data_copy
+        # Convert back to dict for pipeline compatibility
+        return config.to_dict()
 
 
 if __name__ == '__main__':

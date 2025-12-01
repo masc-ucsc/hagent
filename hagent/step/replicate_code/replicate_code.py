@@ -80,7 +80,7 @@ class Replicate_code(Step):
 
         # print(f'code:{original_code}')
         try:
-            res = self.lw.inference({'code_content': original_code}, 'replicate_code_prompt1', n=5)
+            res = self.lw.inference({'code_content': original_code}, 'replicate_code_prompt1', n=2)
         except Exception:
             res = []
         # print("--------res:-----\n")
@@ -104,7 +104,7 @@ class Replicate_code(Step):
         codes_passing_lec = self.check_lec(result)
         result['optimized_equivalent'] = codes_passing_lec
 
-        x = 1
+        x = 3
         # get the optimized code from result and save it in output directory
         output_dir = PathManager().get_cache_dir()
         for markdown in codes_passing_lec:
