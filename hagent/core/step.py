@@ -7,12 +7,14 @@ import os
 import contextlib
 import time
 
+from pathlib import Path
+from typing import Dict, Optional
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from hagent.core.llm_wrap import dict_deep_merge
 from hagent.core.llm_wrap import LLM_wrap
-from hagent.core.tracer import Tracer, TracerMetaClass, s_to_us
+from hagent.core.tracer import Tracer, TracerMetaClass, DictWithRef, s_to_us
 
 
 def wrap_literals(obj):
@@ -57,11 +59,11 @@ class Step(metaclass=TracerMetaClass):
 
     def __init__(self):
         """Initialize a new Step with default values."""
-        self.input_file = None
-        self.output_file = None
+        self.input_file: Optional[str | Path] = None
+        self.output_file: Optional[str | Path] = None
         self.overwrite_conf = {}
         self.setup_called = False
-        self.input_data = None
+        self.input_data: Dict = {}
 
     def set_io(self, inp_file: str, out_file: str, overwrite_conf: dict = {}):
         """Set input/output files and configuration overrides.
@@ -134,6 +136,8 @@ class Step(metaclass=TracerMetaClass):
         yaml_obj = YAML()
         yaml_obj.default_flow_style = False
         processed_data = wrap_literals(data)
+
+        assert self.output_file is not None
         with open(self.output_file, 'w') as f:
             yaml_obj.dump(processed_data, f)
 
@@ -261,8 +265,10 @@ class Step(metaclass=TracerMetaClass):
         output_data = {}
         try:
             # Set environment variables temporarily before running.
+            # Wrap input_data with DictWithRef to avoid logging huge nested dicts in traces
+            input_data_with_ref = DictWithRef(self.input_data, self.input_file)
             with self._temporary_env_vars():
-                result_data = self.run(self.input_data)
+                result_data = self.run(input_data_with_ref)
             if result_data is None:
                 result_data = {}
             # Propagate all fields from input to output unless overridden.
@@ -298,4 +304,6 @@ class Step(metaclass=TracerMetaClass):
         # Ensure that all relevant tracing attributes are accurate for this Step.
         self._augment_output_data(output_data, start, elapsed, history)
         self._write_output(output_data)
+        # Clear trace events to prevent accumulation in sequential step execution
+        Tracer.clear_events()
         return output_data

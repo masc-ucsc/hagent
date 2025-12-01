@@ -8,10 +8,7 @@ import time
 from abc import ABCMeta
 from enum import Enum
 from pathlib import Path
-from typing import (
-    List,
-    Tuple,
-)
+from typing import List, Tuple, Optional
 
 from ruamel.yaml import YAML
 from hagent.inou.path_manager import PathManager
@@ -64,6 +61,76 @@ def read_yaml(input_file: Path) -> dict:
     except Exception as e:
         data = {'error': e}
     return data
+
+
+class TraceRef:
+    """
+    A wrapper class for file paths to avoid logging large data structures in traces.
+
+    When passed to @trace_function decorated methods, the serialization will show
+    the file path reference instead of the full content, reducing trace bloat.
+
+    This is particularly useful for step run() methods that pass large config
+    dictionaries between steps, where each dict accumulates data from all previous steps.
+
+    Example:
+        ref = TraceRef('/path/to/step_01_output.yaml', 'yaml')
+        # When logged in trace: "TraceRef(path=/path/to/step_01_output.yaml, type=yaml)"
+    """
+
+    def __init__(self, path: str | Path, ref_type: str = 'yaml'):
+        """
+        Args:
+            path: The file path being referenced
+            ref_type: Type of reference (e.g., 'yaml', 'json')
+        """
+        self.path = str(path)
+        self.ref_type = ref_type
+
+    def __str__(self) -> str:
+        """String representation for trace logging."""
+        return f'TraceRef(path={self.path}, type={self.ref_type})'
+
+    def __repr__(self) -> str:
+        """Repr for debugging."""
+        return self.__str__()
+
+
+class DictWithRef(dict):
+    """
+    A dictionary subclass that includes a file path reference for trace logging.
+
+    This class behaves exactly like a normal dict for all operations, but when
+    converted to string (as done by trace_function), it shows only the file
+    reference instead of the full dict content. This prevents trace bloat from
+    accumulated config data.
+
+    Example:
+        data = DictWithRef({'key': 'value'}, '/path/to/input.yaml')
+        # str(data) returns: "DictWithRef(ref=/path/to/input.yaml, keys=1)"
+        # instead of printing out the content of the entire dictionary.
+    """
+
+    def __init__(self, data: dict, file_path: Optional[str | Path]):
+        """
+        Args:
+            data: The dictionary data
+            file_path: Path to the source file
+        """
+        super().__init__(data)
+        self._trace_ref = TraceRef(file_path) if file_path else None
+
+    def __str__(self) -> str:
+        """String representation for trace logging - shows ref instead of full content."""
+        if self._trace_ref:
+            return f'DictWithRef(ref={self._trace_ref.path}, keys={len(self)})'
+        else:
+            # Fallback to normal dict representation if no ref
+            return f'DictWithRef(keys={len(self)})'
+
+    def __repr__(self) -> str:
+        """Repr for debugging."""
+        return self.__str__()
 
 
 #####################
@@ -297,6 +364,14 @@ class Tracer:
         cls.steps.clear()
         cls.id_steps.clear()
         cls.graph = None
+
+    @classmethod
+    def clear_events(cls):
+        """
+        Clears only the events list, preserving step metadata.
+        Use this between sequential step executions to prevent event accumulation.
+        """
+        cls.events.clear()
 
     @classmethod
     def get_events(cls) -> List[TraceEvent]:
@@ -615,6 +690,9 @@ class Tracer:
 def trace_function(func):
     """
     Decorator to provide the Tracer logger with all metadata to construct a trace.
+
+    Automatically detects TraceRef objects in arguments and return values to avoid
+    logging large nested data structures. This keeps traces compact and readable.
     """
 
     @functools.wraps(func)
@@ -625,13 +703,34 @@ def trace_function(func):
         # Mark each function as a complete event.
         # We can augment the log with Flow comments later on.
 
+        # Helper function to serialize arguments intelligently
+        def serialize_arg(arg, max_length=1000):
+            """Serialize an argument, handling TraceRef specially and truncating large strings.
+            Args:
+                arg: The argument to serialize
+                max_length: Maximum length for serialized string
+
+            Returns:
+                Serialized string representation of the argument
+            """
+            if isinstance(arg, TraceRef):
+                # For TraceRef, just use its string representation
+                return str(arg)
+            else:
+                # For other types, convert to string
+                arg_str = str(arg)
+                # Truncate if too long to avoid bloating traces with large dicts
+                if len(arg_str) > max_length:
+                    return f'{arg_str[:max_length]}... [truncated, total length: {len(arg_str)}]'
+                return arg_str
+
         # Ensure all arguments (*args, **kwargs) are JSON serializable.
         serialized_args = []
         serialized_kwargs = {}
         for arg in args:
-            serialized_args.append(str(arg))
+            serialized_args.append(serialize_arg(arg))
         for key, val in kwargs.items():
-            serialized_kwargs[str(key)] = str(val)
+            serialized_kwargs[str(key)] = serialize_arg(val)
 
         Tracer.log(
             TraceEvent(
@@ -646,7 +745,7 @@ def trace_function(func):
                     'func': func.__name__,
                     'func_args': serialized_args,
                     'func_kwargs': serialized_kwargs,
-                    'func_result': str(result),
+                    'func_result': serialize_arg(result),
                 },
                 dur=s_to_us(end_time - start_time),
             )
