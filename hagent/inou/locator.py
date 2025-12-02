@@ -93,6 +93,19 @@ class Locator:
             if not self._profile_config:
                 return False
 
+            # Setup file tracking for this profile so get_tracked_files() works
+            # This populates the tracked files from the profile's source/output directives
+            if not self.builder.setup_file_tracking_for_profile(self.profile_name, debug=self.debug):
+                self._debug_print(f'Warning: File tracking setup failed: {self.builder.get_error()}')
+            else:
+                # Debug: show what files are tracked
+                tracked_scala = self.builder.get_tracked_files(ext_filter='.scala')
+                tracked_v = self.builder.get_tracked_files(ext_filter='.v')
+                tracked_sv = self.builder.get_tracked_files(ext_filter='.sv')
+                self._debug_print(
+                    f'Tracked files after setup: .scala={len(tracked_scala)}, .v={len(tracked_v)}, .sv={len(tracked_sv)}'
+                )
+
             # Setup cache directory
             cache_base = Path(self.builder.runner.path_manager.cache_dir)
             self._cache_dir = cache_base / 'locator' / self.profile_name
@@ -581,24 +594,40 @@ class Locator:
             return {}
 
         try:
-            # Use builder's tracked files (works in both Docker and local modes)
-            # The profile configuration already tracks repo and build directories
+            repo_dir = Path(self.builder.runner.path_manager.repo_dir)
+            build_dir = Path(self.builder.runner.path_manager.build_dir)
+
+            # Get Chisel files (tracked or scanned)
             chisel_files_set = self.builder.get_tracked_files(ext_filter='.scala')
+            if chisel_files_set:
+                chisel_files = [str(repo_dir / f) for f in chisel_files_set]
+            else:
+                # Fallback: scan repo directory
+                chisel_files = [str(f) for f in repo_dir.rglob('*.scala')]
+
+            # Get Verilog files (tracked or scanned)
             verilog_v_files = self.builder.get_tracked_files(ext_filter='.v')
             verilog_sv_files = self.builder.get_tracked_files(ext_filter='.sv')
 
-            # Combine .v and .sv files, filter out netlist.v
-            verilog_files = [Path(f) for f in (verilog_v_files | verilog_sv_files) if 'netlist.v' not in f]
-            chisel_files = list(chisel_files_set)
+            if verilog_v_files or verilog_sv_files:
+                # Use tracked files, filter out netlist.v
+                verilog_files = [build_dir / f for f in (verilog_v_files | verilog_sv_files) if 'netlist.v' not in f]
+            else:
+                # Fallback: scan build directory
+                verilog_files = [f for f in build_dir.rglob('*.sv')] + [
+                    f for f in build_dir.rglob('*.v') if 'netlist.v' not in str(f)
+                ]
 
             if not chisel_files or not verilog_files:
+                self._debug_print(f'No files for mapping: chisel={len(chisel_files)}, verilog={len(verilog_files)}')
                 return {}
+
+            self._debug_print(f'Building mapping with {len(chisel_files)} Chisel and {len(verilog_files)} Verilog files')
 
             # Use module_finder to create mapping
             finder = Module_finder()
             mapping = {}
 
-            # chisel_files is already a list of strings from get_tracked_files
             for verilog_file in verilog_files:
                 # Extract module name from verilog file
                 module_name = verilog_file.stem
@@ -618,9 +647,11 @@ class Locator:
                         'module_name': module_name,
                     }
 
+            self._debug_print(f'Built mapping with {len(mapping)} entries')
             return mapping
         except Exception as e:
             self._error = f'Failed to build Verilog-Chisel mapping: {e!s}'
+            self._debug_print(f'Error in _build_verilog_chisel_mapping: {e}')
             return {}
 
     def _load_cache(self, cache_type: str) -> Optional[dict]:
@@ -1081,7 +1112,7 @@ class Locator:
         # For Chisel target: first find Verilog locations, then map to Chisel
         elif target_type == RepresentationType.CHISEL:
             # Step 1: Find variable in Verilog files from hierarchy
-            verilog_files_with_var = set()
+            verilog_modules_with_var = {}  # module_name -> verilog_file_path
 
             for module_info in matching_entries:
                 module_name = module_info.get('module', '')
@@ -1098,28 +1129,47 @@ class Locator:
                 )
 
                 if verilog_locs:
-                    # Track which Verilog files have this variable
-                    verilog_files_with_var.add(file_path)
+                    # Track which Verilog modules have this variable
+                    verilog_modules_with_var[module_name] = file_path
 
-            # Step 2: Map each Verilog file to target representation
+            # Step 2: Map each Verilog module to Chisel files using the mapping cache
+            # This leverages module_finder which properly matches modules
+            mapping_cache = self._build_mapping_cache(RepresentationType.VERILOG, RepresentationType.CHISEL)
+            self._debug_print(f'Mapping cache has {len(mapping_cache)} entries')
             seen_target_files = set()
 
-            for verilog_file_path in verilog_files_with_var:
-                # Use Module_finder to map this specific Verilog file to Chisel
-                chisel_file = self._map_verilog_file_to_chisel(verilog_file_path)
+            for module_name, verilog_file_path in verilog_modules_with_var.items():
+                self._debug_print(f'Looking for mapping: module={module_name}, verilog_file={verilog_file_path}')
 
-                if chisel_file and chisel_file not in seen_target_files:
-                    seen_target_files.add(chisel_file)
+                # Look up this Verilog file in the mapping cache
+                chisel_files = None
+                for verilog_file, mapping_info in mapping_cache.items():
+                    if Path(verilog_file).stem == module_name or verilog_file == verilog_file_path:
+                        chisel_files = mapping_info.get('chisel_files', [])
+                        self._debug_print(f'Found mapping in cache: {chisel_files}')
+                        break
 
-                    # Search for variable in the mapped Chisel file
-                    # The regex pattern in _build_variable_regex handles name variations
-                    chisel_locs = self._find_variable_in_specific_file(
-                        variable=var_name,
-                        file_path=chisel_file,
-                        module_name='',  # Module name not critical for Chisel
-                        representation=target_type,
-                    )
-                    locations.extend(chisel_locs)
+                if not chisel_files:
+                    # Fallback: try direct file name matching if mapping cache doesn't have it
+                    self._debug_print(f'No mapping found for {module_name}, trying direct search')
+                    chisel_files = self._find_chisel_files_with_module(module_name)
+                    self._debug_print(f'Direct search found {len(chisel_files)} files: {chisel_files}')
+
+                if chisel_files:
+                    for chisel_file in chisel_files:
+                        if chisel_file in seen_target_files:
+                            continue
+                        seen_target_files.add(chisel_file)
+
+                        # Search for variable in the mapped Chisel file
+                        # The regex pattern in _build_variable_regex handles name variations
+                        chisel_locs = self._find_variable_in_specific_file(
+                            variable=var_name,
+                            file_path=chisel_file,
+                            module_name=module_name,
+                            representation=target_type,
+                        )
+                        locations.extend(chisel_locs)
 
         else:
             # For Verilog target: search directly in hierarchy files
@@ -1233,46 +1283,85 @@ class Locator:
 
         return locations
 
-    def _map_verilog_file_to_chisel(self, verilog_file_path: str) -> Optional[str]:
-        """Map a Verilog file to its corresponding Chisel source file.
+    def _find_chisel_files_with_module(self, module_name: str) -> List[str]:
+        """Find Chisel files that contain a class/object definition matching the module name.
+
+        Scans the repo directory for .scala files and searches for class/object definitions
+        that match the module name (case-insensitive). Falls back to tracked files if
+        direct scanning fails.
 
         Args:
-            verilog_file_path: Relative Verilog file path (e.g., "build_pipelined_d/ALUControl.sv")
+            module_name: Module name to search for (e.g., "GCD")
 
         Returns:
-            Relative Chisel file path or None if not found
+            List of file paths (relative to repo_dir) that contain the module
         """
-        if not self.builder or not self._profile_config:
-            return None
+        if not self.builder:
+            self._debug_print('No builder available')
+            return []
 
         try:
-            # Get Chisel directories from profile config
-            config = self._profile_config.get('configuration', {})
-            source_spec = config.get('source', '')
+            repo_dir = Path(self.builder.runner.path_manager.repo_dir)
+            matching_files = []
 
-            # Parse source directory from track_repo_dir('src/main/scala', ext='.scala')
-            match = re.search(r"track_repo_dir\('([^']+)'", source_spec)
-            if not match:
-                return None
+            # First, try to get tracked Chisel files from builder
+            chisel_files_set = self.builder.get_tracked_files(ext_filter='.scala')
 
-            chisel_dir = match.group(1)
-            chisel_full_dir = Path(self.builder.runner.path_manager.repo_dir) / chisel_dir
+            if chisel_files_set:
+                # Use tracked files
+                self._debug_print(f'Using {len(chisel_files_set)} tracked Chisel files')
+                chisel_files = [repo_dir / f for f in chisel_files_set]
+            else:
+                # Fallback: scan repo directory for .scala files
+                self._debug_print(f'No tracked files, scanning repo directory: {repo_dir}')
+                chisel_files = list(repo_dir.rglob('*.scala'))
+                self._debug_print(f'Found {len(chisel_files)} .scala files in repo directory')
 
-            if not chisel_full_dir.exists():
-                return None
+            # Search for module in each file
+            for full_path in chisel_files:
+                relative_path = str(full_path.relative_to(repo_dir))
+                self._debug_print(f'  Checking file: {relative_path}')
 
-            # Extract module name from Verilog file
-            module_name = verilog_file_path.split('/')[-1].replace('.sv', '').replace('.v', '')
+                # Read file content using filesystem API
+                try:
+                    content = self.builder.filesystem.read_text(str(full_path))
+                    if not content:
+                        self._debug_print('    File is empty or unreadable')
+                        continue
 
-            # Search for Chisel file with similar name (case-insensitive)
-            for chisel_file in chisel_full_dir.rglob('*.scala'):
-                if module_name.lower() in chisel_file.stem.lower():
-                    # Return relative path from repo_dir
-                    return str(chisel_file.relative_to(self.builder.runner.path_manager.repo_dir))
+                    lines = content.splitlines()
 
-            return None
-        except Exception:
-            return None
+                    # Look for class or object definitions matching module name
+                    class_pattern = re.compile(r'^\s*class\s+(\w+)')
+                    object_pattern = re.compile(r'^\s*object\s+(\w+)')
+
+                    for line in lines:
+                        class_match = class_pattern.match(line)
+                        object_match = object_pattern.match(line)
+
+                        match = class_match or object_match
+                        if match:
+                            class_name = match.group(1)
+                            self._debug_print(f'    Found class/object: {class_name}')
+                            # Case-insensitive comparison
+                            if class_name.lower() == module_name.lower():
+                                matching_files.append(relative_path)
+                                self._debug_print(f'    MATCH! Module {module_name} found in {relative_path}')
+                                break  # Found match in this file, move to next file
+
+                except Exception as e:
+                    self._debug_print(f'    Error reading file {relative_path}: {e}')
+                    continue
+
+            self._debug_print(f'Search complete. Found {len(matching_files)} matching files')
+            return matching_files
+
+        except Exception as e:
+            self._debug_print(f'Error in _find_chisel_files_with_module: {e}')
+            import traceback
+
+            self._debug_print(f'Traceback: {traceback.format_exc()}')
+            return []
 
     def _find_variable_in_specific_file(
         self, variable: str, file_path: str, module_name: str, representation: RepresentationType

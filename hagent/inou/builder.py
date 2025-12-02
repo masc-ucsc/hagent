@@ -393,13 +393,14 @@ class Builder:
 
         return host_path
 
-    def _setup_file_tracking(self, profile: dict, build_dir: Optional[Path] = None) -> None:
+    def _setup_file_tracking(self, profile: dict, build_dir: Optional[Path] = None, debug: bool = False) -> None:
         """
         Setup file tracking based on profile configuration.
 
         Args:
             profile: Profile configuration dictionary
             build_dir: Build directory for this profile
+            debug: If True, print debug messages to stderr
         """
         # Only setup file tracking if Runner is available
         if not self.runner:
@@ -410,20 +411,74 @@ class Builder:
 
         cfg = profile.get('configuration', {})
         if not isinstance(cfg, dict):
+            if debug:
+                import sys
+
+                print('[BUILDER DEBUG] No configuration section in profile', file=sys.stderr)
             return
+
+        if debug:
+            import sys
+
+            print(f'[BUILDER DEBUG] Setting up file tracking for profile: {profile.get("name")}', file=sys.stderr)
+            print(f'[BUILDER DEBUG] Configuration keys: {list(cfg.keys())}', file=sys.stderr)
 
         # Parse source and output directives
         for key in ['source', 'output']:
             if key in cfg:
                 directive = cfg[key]
+                if debug:
+                    import sys
+
+                    print(f'[BUILDER DEBUG] Found {key} directive: {directive}', file=sys.stderr)
                 if isinstance(directive, str) and ('track_repo_dir(' in directive or 'track_build_dir(' in directive):
                     resolved_path, func_type, ext = self._parse_track_directive(directive, build_dir)
+                    if debug:
+                        import sys
+
+                        print(
+                            f'[BUILDER DEBUG] Parsed directive: path={resolved_path}, type={func_type}, ext={ext}',
+                            file=sys.stderr,
+                        )
                     if func_type in ['repo_dir', 'build_dir']:
-                        # Use Runner's file tracking
-                        if Path(resolved_path).is_file():
-                            self.runner.track_file(resolved_path)
-                        else:
-                            self.runner.track_dir(resolved_path, ext)
+                        # For track_repo_dir and track_build_dir, the first argument is always a directory
+                        # These directives are designed to track directories with optional extension filters
+                        # Example: track_repo_dir('src/main/scala', ext='.scala')
+                        #          track_build_dir('build_gcd', ext='.sv')
+                        # Both are directories, not individual files
+
+                        # Use Runner's file tracking for directories
+                        if debug:
+                            import sys
+
+                            print(f'[BUILDER DEBUG] Tracking directory: {resolved_path} (ext={ext})', file=sys.stderr)
+                        self.runner.track_dir(resolved_path, ext)
+
+    def setup_file_tracking_for_profile(self, profile_name: str, build_dir: Optional[Path] = None, debug: bool = False) -> bool:
+        """
+        Public method to setup file tracking for a specific profile.
+
+        This is useful when you need to use get_tracked_files() without running an API.
+
+        Args:
+            profile_name: Name of the profile to set up tracking for
+            build_dir: Optional build directory (defaults to PathManager's build_dir)
+            debug: If True, print debug messages to stderr
+
+        Returns:
+            True if tracking was set up successfully, False otherwise
+        """
+        if not self.has_config:
+            self.set_error('No configuration loaded')
+            return False
+
+        try:
+            profile = self._select_profile(exact_name=profile_name)
+            self._setup_file_tracking(profile, build_dir, debug=debug)
+            return True
+        except ValueError as e:
+            self.set_error(str(e))
+            return False
 
     def _validate_configuration(self, profile: dict, build_dir: Optional[Path] = None, dry_run: bool = False) -> None:
         """
