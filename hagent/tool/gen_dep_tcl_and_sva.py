@@ -35,7 +35,7 @@ console = Console()
 # -----------------------------------------------------------------------------
 HEADER_RE = re.compile(
     r'module\s+(?P<name>\w+)\s*'
-    r'(?:import\s+.*?;\s*)*'           # optional one or more import lines
+    r'(?:import\s+.*?;\s*)*'  # optional one or more import lines
     r'(?P<params>#\s*\((?P<param_body>.*?)\))?\s*'  # optional #( ... )
     r'\(\s*(?P<port_body>.*?)\)\s*;',  # (...) ;
     re.DOTALL | re.MULTILINE,
@@ -98,7 +98,9 @@ def clean_decl_to_input(decl: str) -> str:
     decl = re.sub(r'\b(wire|reg|logic|var|signed|unsigned)\b', '', decl)
     return re.sub(r'\s+', ' ', decl).strip()
 
+
 _ID_RE = re.compile(r'\b([\w$]+)\b(?!.*\b[\w$]+\b)')  # last identifier in a string
+
 
 def extract_last_identifier(token: str) -> str | None:
     token = token.strip()
@@ -154,6 +156,7 @@ def header_port_names(port_body: str) -> list[str]:
             ports.append(name)
 
     return ports
+
 
 def parse_io_decls_from_body(body: str) -> dict[str, str]:
     """
@@ -272,6 +275,7 @@ def generate_bind(dut_name, params_text, port_decls):
 
     return f'bind {dut_name} {dut_name}_prop {params_inst} i_{dut_name}_prop ( {assoc} );\n'
 
+
 def emit_prop_and_bind_for_module(
     mod_name: str,
     src_file: Path,
@@ -300,8 +304,8 @@ def emit_prop_and_bind_for_module(
         return None, None
 
     dut_name = m.group('name')
-    params_text = m.group('params') or ''     # full "#( ... )" text
-    port_body   = m.group('port_body') or ''  # text inside "( ... )"
+    params_text = m.group('params') or ''  # full "#( ... )" text
+    port_body = m.group('port_body') or ''  # text inside "( ... )"
 
     # ------------------------------------------------------------------
     # 1) Split header port list into individual declarations
