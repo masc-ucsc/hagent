@@ -29,17 +29,17 @@ class FileTrackerLocal:
     approach works consistently across all execution modes and directory types.
     """
 
-    def __init__(self, path_manager: PathManager, container_manager=None):
+    def __init__(self, container_manager=None):
         """
-        Initialize file tracker with path manager dependency.
+        Initialize file tracker.
 
         Args:
-            path_manager: PathManager instance for resolving HAGENT_* paths
+            container_manager: Optional ContainerManager for Docker mode
 
         Raises:
             SystemExit: If git repository validation fails or git is not available
         """
-        self.path_manager = path_manager
+        self.path_manager = PathManager()
         self.logger = logging.getLogger(__name__)
         # Optional handle to an active ContainerManager when in docker mode
         self.container_manager = container_manager

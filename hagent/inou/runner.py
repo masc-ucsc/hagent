@@ -52,7 +52,6 @@ class Runner:
             docker_image: Docker image to use if HAGENT_DOCKER is set (docker mode)
         """
         self.docker_image = docker_image
-        self.path_manager = PathManager()
         self.container_manager: Optional[ContainerManager] = None
         self.executor = None  # Keep for backward compatibility, but will be deprecated
         self.filesystem: Optional[FileSystem] = None  # New unified approach
@@ -60,7 +59,7 @@ class Runner:
         self.error_message = ''
 
         # Create container manager for docker mode
-        if self.path_manager.is_docker_mode():
+        if PathManager().is_docker_mode():
             if not docker_image:
                 self.set_error('Docker image must be provided when HAGENT_DOCKER is set (docker mode)')
                 return
@@ -163,7 +162,7 @@ class Runner:
         if self.file_tracker is None:
             try:
                 # Pass FileSystem to FileTracker for unified operations
-                self.file_tracker = FileTracker(self.path_manager, self.container_manager, filesystem=self.filesystem)
+                self.file_tracker = FileTracker(self.container_manager, filesystem=self.filesystem)
                 return True
             except Exception as e:
                 self.set_error(f'Failed to initialize FileTracker: {e}')
@@ -293,11 +292,11 @@ class Runner:
 
     def is_docker_mode(self) -> bool:
         """Check if running in Docker execution mode."""
-        return self.path_manager.is_docker_mode()
+        return PathManager().is_docker_mode()
 
     def is_local_mode(self) -> bool:
         """Check if running in local execution mode."""
-        return self.path_manager.is_local_mode()
+        return PathManager().is_local_mode()
 
     def __enter__(self):
         """Context manager entry."""

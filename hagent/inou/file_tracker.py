@@ -18,22 +18,22 @@ class FileTracker:
     Facade that selects Local or Docker file tracker implementation.
     """
 
-    def __init__(self, path_manager: PathManager, container_manager=None, filesystem: Optional[FileSystem] = None):
+    def __init__(self, container_manager=None, filesystem: Optional[FileSystem] = None):
         """
         Initialize FileTracker with optional FileSystem for unified operations.
 
         Args:
-            path_manager: PathManager instance
             container_manager: Optional ContainerManager for Docker mode
             filesystem: Optional FileSystem for unified file operations
         """
         self.filesystem = filesystem
+        path_manager = PathManager()
 
         # Keep existing implementation as fallback
         if path_manager.is_docker_mode() and container_manager is not None:
-            self._impl = FileTrackerDocker(path_manager, container_manager)
+            self._impl = FileTrackerDocker(container_manager)
         else:
-            self._impl = FileTrackerLocal(path_manager, container_manager)
+            self._impl = FileTrackerLocal(container_manager)
 
     # Delegate API
     def cleanup(self) -> None:

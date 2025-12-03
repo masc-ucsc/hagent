@@ -36,7 +36,7 @@ def test_builder_uses_environment_mode_by_default(monkeypatch):
 
     builder = Builder()
     try:
-        assert builder.runner.path_manager.is_docker_mode()
+        assert builder.runner.is_docker_mode()
     finally:
         builder.cleanup()
 
@@ -58,7 +58,7 @@ def test_builder_explicit_docker_override(monkeypatch, tmp_path):
 
     builder = Builder(docker_image='mascucsc/hagent-builder:2025.11')
     try:
-        assert builder.runner.path_manager.is_docker_mode()
+        assert builder.runner.is_docker_mode()
         assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-builder:2025.11'
     finally:
         builder.cleanup()

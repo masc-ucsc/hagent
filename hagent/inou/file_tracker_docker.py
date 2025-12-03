@@ -24,8 +24,8 @@ class FileTrackerDocker:
     against the current contents later.
     """
 
-    def __init__(self, path_manager: PathManager, container_manager):
-        self.path_manager = path_manager
+    def __init__(self, container_manager):
+        self.path_manager = PathManager()
         self.container_manager = container_manager
         self.logger = logging.getLogger(__name__)
 
