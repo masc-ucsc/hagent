@@ -36,15 +36,7 @@ class TestPathManagerIntegration:
     """Test FileTracker integration with PathManager."""
 
     def test_file_tracker_with_real_path_manager(self):
-        """Test FileTracker with mock PathManager instance."""
-        # Create a mock PathManager instead of using the singleton
-        mock_path_manager = MagicMock()
-        mock_path_manager.is_local_mode.return_value = True
-        mock_path_manager.is_docker_mode.return_value = False
-        mock_path_manager.repo_dir = Path('/test/repo')
-        mock_path_manager.build_dir = Path('/test/build')
-        mock_path_manager.cache_dir = Path('/test/cache')
-
+        """Test FileTracker with PathManager singleton."""
         with (
             patch('pathlib.Path.exists', return_value=True),
             patch('pathlib.Path.mkdir'),
@@ -52,9 +44,8 @@ class TestPathManagerIntegration:
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker(mock_path_manager)
+            tracker = FileTracker()
 
-            assert tracker.path_manager is mock_path_manager
             assert tracker.path_manager.is_local_mode()
             assert str(tracker.path_manager.repo_dir) == '/test/repo'
 
@@ -125,16 +116,11 @@ class TestGitRepositoryIntegration:
     def test_file_tracker_with_real_git_repo(self):
         """Test FileTracker with real git repository."""
         # Create mock PathManager pointing to real repo
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = self.repo_dir
-        mock_path_manager.build_dir = self.temp_dir / 'build'
-        mock_path_manager.cache_dir = self.temp_dir / 'cache'
 
         # Create FileTracker
-        tracker = FileTracker(mock_path_manager)
+        tracker = FileTracker()
 
         # Verify it was initialized properly
-        assert tracker.path_manager is mock_path_manager
 
         # Test tracking a real file
         test_file = self.repo_dir / 'test.py'
@@ -157,13 +143,9 @@ class TestGitRepositoryIntegration:
         test_file = self.repo_dir / 'uncommitted.py'
         test_file.write_text('print("uncommitted")\n')
 
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = self.repo_dir
-        mock_path_manager.build_dir = self.temp_dir / 'build'
-        mock_path_manager.cache_dir = self.temp_dir / 'cache'
 
         # FileTracker should create baseline snapshot of uncommitted changes
-        tracker = FileTracker(mock_path_manager)
+        tracker = FileTracker()
 
         # Should have created a baseline stash
         assert tracker._baseline_stash is not None
@@ -174,13 +156,9 @@ class TestGitRepositoryIntegration:
 
     def test_file_tracker_with_clean_repository(self):
         """Test FileTracker with clean repository (no uncommitted changes)."""
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = self.repo_dir
-        mock_path_manager.build_dir = self.temp_dir / 'build'
-        mock_path_manager.cache_dir = self.temp_dir / 'cache'
 
         # Repository is clean, so no baseline stash should be created
-        tracker = FileTracker(mock_path_manager)
+        tracker = FileTracker()
 
         # Should not have created a baseline stash
         assert tracker._baseline_stash is None
@@ -195,12 +173,8 @@ class TestGitRepositoryIntegration:
         test_file = self.repo_dir / 'modified.py'
         test_file.write_text('original content\n')
 
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = self.repo_dir
-        mock_path_manager.build_dir = self.temp_dir / 'build'
-        mock_path_manager.cache_dir = self.temp_dir / 'cache'
 
-        tracker = FileTracker(mock_path_manager)
+        tracker = FileTracker()
 
         # Track the file
         result = tracker.track_file('modified.py')
@@ -241,17 +215,13 @@ class TestFileSystemIntegration:
 
     def test_file_tracker_with_various_file_types(self):
         """Test FileTracker with different file types."""
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = self.repo_dir
-        mock_path_manager.build_dir = self.build_dir
-        mock_path_manager.cache_dir = self.cache_dir
 
         with (
             patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker(mock_path_manager)
+            tracker = FileTracker()
 
             # Create different file types
             text_file = self.repo_dir / 'text.txt'
@@ -281,17 +251,13 @@ class TestFileSystemIntegration:
 
     def test_file_tracker_with_nested_directories(self):
         """Test FileTracker with nested directory structures."""
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = self.repo_dir
-        mock_path_manager.build_dir = self.build_dir
-        mock_path_manager.cache_dir = self.cache_dir
 
         with (
             patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker(mock_path_manager)
+            tracker = FileTracker()
 
             # Create nested directory structure
             src_dir = self.repo_dir / 'src'
@@ -326,17 +292,13 @@ class TestFileSystemIntegration:
 
     def test_file_tracker_permission_handling(self):
         """Test FileTracker behavior with permission issues."""
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = self.repo_dir
-        mock_path_manager.build_dir = self.build_dir
-        mock_path_manager.cache_dir = self.cache_dir
 
         with (
             patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker(mock_path_manager)
+            tracker = FileTracker()
 
             # Try to track a non-existent file
             result = tracker.track_file('nonexistent/file.py')
@@ -369,17 +331,13 @@ class TestPerformanceIntegration:
 
     def test_file_tracker_with_many_files(self):
         """Test FileTracker performance with many files."""
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = self.repo_dir
-        mock_path_manager.build_dir = self.temp_dir / 'build'
-        mock_path_manager.cache_dir = self.temp_dir / 'cache'
 
         with (
             patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker(mock_path_manager)
+            tracker = FileTracker()
 
             # Create many files
             num_files = 50  # Reasonable number for testing
@@ -403,17 +361,13 @@ class TestPerformanceIntegration:
 
     def test_file_tracker_memory_usage(self):
         """Test FileTracker memory usage patterns."""
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = self.repo_dir
-        mock_path_manager.build_dir = self.temp_dir / 'build'
-        mock_path_manager.cache_dir = self.temp_dir / 'cache'
 
         with (
             patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker(mock_path_manager)
+            tracker = FileTracker()
 
             # Track and untrack files multiple times
             for iteration in range(5):
@@ -441,27 +395,21 @@ class TestErrorRecoveryIntegration:
 
     def test_file_tracker_recovery_from_git_errors(self):
         """Test FileTracker recovery from git command errors."""
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = Path('/nonexistent/repo')
-        mock_path_manager.build_dir = Path('/nonexistent/build')
-        mock_path_manager.cache_dir = Path('/nonexistent/cache')
 
         # Should fail fast due to invalid repo
         with patch('hagent.inou.file_tracker_local.sys.exit') as mock_exit:
-            FileTracker(mock_path_manager)
+            FileTracker()
             mock_exit.assert_called_with(1)
 
     def test_file_tracker_cleanup_resilience(self):
         """Test FileTracker cleanup resilience to errors."""
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = Path('/test/repo')
 
         with (
             patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker(mock_path_manager)
+            tracker = FileTracker()
 
             # Add some stashes to cleanup list
             tracker._hagent_stashes = ['abc123', 'def456']
@@ -477,8 +425,6 @@ class TestErrorRecoveryIntegration:
 
     def test_file_tracker_context_manager_exception_handling(self):
         """Test FileTracker context manager with exceptions."""
-        mock_path_manager = MagicMock()
-        mock_path_manager.repo_dir = Path('/test/repo')
 
         with (
             patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=True),
@@ -487,7 +433,7 @@ class TestErrorRecoveryIntegration:
         ):
             with patch.object(FileTracker, 'cleanup') as mock_cleanup:
                 with pytest.raises(ValueError):
-                    with FileTracker(mock_path_manager):
+                    with FileTracker():
                         raise ValueError('Test exception')
 
                 # Cleanup should still be called even with exception

@@ -221,8 +221,7 @@ class PathManager:
 
         try:
             # Create main directories
-            (cache_local / 'inou').mkdir(parents=True, exist_ok=True)
-            (cache_local / 'inou' / 'logs').mkdir(parents=True, exist_ok=True)
+            (cache_local / 'logs').mkdir(parents=True, exist_ok=True)
             (cache_local / 'build').mkdir(parents=True, exist_ok=True)
             (cache_local / 'venv').mkdir(parents=True, exist_ok=True)
         except Exception as e:
@@ -423,10 +422,9 @@ class PathManager:
         Replaces output_manager.get_output_dir().
 
         Returns:
-            Path to HAGENT_CACHE_DIR/inou/
+            Path to HAGENT_CACHE_DIR/
         """
-        cache_inou = self.cache_dir / 'inou'
-        return str(cache_inou)
+        return str(self.cache_dir)
 
     def get_cache_path(self, filename: str) -> str:
         """
@@ -437,7 +435,7 @@ class PathManager:
             filename: The name of the cache file (must be relative path)
 
         Returns:
-            Full path to the cache file in HAGENT_CACHE_DIR/inou/
+            Full path to the cache file in HAGENT_CACHE_DIR/
 
         Raises:
             SystemExit: If filename is invalid (same validation as output_manager)
@@ -466,16 +464,16 @@ class PathManager:
             print("  get_cache_path('../escape/file.txt')    #  escapes cache directory", file=sys.stderr)
             sys.exit(1)
 
-        return str(self.cache_dir / 'inou' / filename)
+        return str(self.cache_dir / filename)
 
     def get_log_dir(self) -> str:
         """
         Get the log directory path.
 
         Returns:
-            Path to HAGENT_CACHE_DIR/inou/logs/
+            Path to HAGENT_CACHE_DIR/logs/
         """
-        log_dir = self.cache_dir / 'inou' / 'logs'
+        log_dir = self.cache_dir / 'logs'
         return str(log_dir)
 
     def get_build_cache_dir(self) -> str:
@@ -499,14 +497,9 @@ class PathManager:
         return str(venv_dir)
 
     @property
-    def inou_dir(self) -> Path:
-        """Directory for HAgent-internal files."""
-        return self.cache_dir / 'inou'
-
-    @property
     def logs_dir(self) -> Path:
-        """Directory for log files."""
-        return self.inou_dir / 'logs'
+        """Directory for HAgent-internal files."""
+        return self.cache_dir / 'logs'
 
     @classmethod
     @contextmanager

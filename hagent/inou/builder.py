@@ -110,7 +110,7 @@ class Builder:
             config_path_for_fs = self.config_path
             if hasattr(self.filesystem, 'container_manager') and self.runner:
                 # This is DockerFileSystem - translate host path to container path
-                path_manager = self.runner.path_manager
+                path_manager = PathManager()
                 # Use repo_mount_dir (local mount path) for path translation
                 host_repo_dir = path_manager.repo_mount_dir
                 if host_repo_dir:
@@ -259,7 +259,7 @@ class Builder:
         """
         # Get PathManager (either from Runner or create new one)
         if self.runner:
-            path_manager = self.runner.path_manager
+            path_manager = PathManager()
         else:
             path_manager = PathManager()
 
@@ -315,7 +315,7 @@ class Builder:
         """
         # Get PathManager (either from Runner or create new one)
         if self.runner:
-            path_manager = self.runner.path_manager
+            path_manager = PathManager()
         else:
             path_manager = PathManager()
 
@@ -367,7 +367,7 @@ class Builder:
         if not self.runner:
             return host_path
 
-        path_manager = self.runner.path_manager
+        path_manager = PathManager()
         host_path_obj = Path(host_path).resolve()
 
         # Check if this is a known host path that should be translated
@@ -407,7 +407,7 @@ class Builder:
             return
 
         if build_dir is None:
-            build_dir = self.runner.path_manager.build_dir
+            build_dir = PathManager().build_dir
 
         cfg = profile.get('configuration', {})
         if not isinstance(cfg, dict):
@@ -493,7 +493,7 @@ class Builder:
             ValueError: If configuration directive syntax is invalid
         """
         if build_dir is None:
-            build_dir = self.runner.path_manager.build_dir
+            build_dir = PathManager().build_dir
 
         cfg = profile.get('configuration', {})
         if not isinstance(cfg, dict):
@@ -606,7 +606,7 @@ class Builder:
                 build_dir = path_manager.build_dir
         elif self.runner:
             if build_dir is None:
-                build_dir = self.runner.path_manager.build_dir
+                build_dir = PathManager().build_dir
         else:
             raise RuntimeError('Runner not available and not in dry run mode')
 
@@ -666,7 +666,7 @@ class Builder:
             path_manager = PathManager()
             repo_dir = path_manager.repo_dir
         else:
-            repo_dir = self.runner.path_manager.repo_dir
+            repo_dir = PathManager().repo_dir
 
         # In Docker mode, use container paths for string replacement
         if self.runner and self.runner.is_docker_mode():
@@ -858,7 +858,7 @@ class Builder:
             return path
 
         # In local mode, translate local paths to container paths for compatibility
-        path_manager = self.runner.path_manager
+        path_manager = PathManager()
 
         # Define path mappings
         local_to_container = {
@@ -899,7 +899,7 @@ class Builder:
             return path
 
         # In local mode, translate container paths to local paths
-        path_manager = self.runner.path_manager
+        path_manager = PathManager()
 
         container_to_local = {
             '/code/workspace/repo': str(path_manager.repo_dir),

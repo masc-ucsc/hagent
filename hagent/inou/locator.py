@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from hagent.inou.builder import Builder
+from hagent.inou.path_manager import PathManager
 from hagent.tool.code_scope import Code_scope
 from hagent.tool.module_finder import Module_finder
 
@@ -107,7 +108,7 @@ class Locator:
                 )
 
             # Setup cache directory
-            cache_base = Path(self.builder.runner.path_manager.cache_dir)
+            cache_base = Path(PathManager().cache_dir)
             self._cache_dir = cache_base / 'locator' / self.profile_name
             self._debug_print(f'Cache directory: {self._cache_dir}')
 
@@ -417,8 +418,8 @@ class Locator:
                 # Expand environment variables if present
                 if '$' in token:
                     # Simple expansion for common vars
-                    token = token.replace('$HAGENT_BUILD_DIR', str(self.builder.runner.path_manager.build_dir))
-                    token = token.replace('$HAGENT_REPO_DIR', str(self.builder.runner.path_manager.repo_dir))
+                    token = token.replace('$HAGENT_BUILD_DIR', str(PathManager().build_dir))
+                    token = token.replace('$HAGENT_REPO_DIR', str(PathManager().repo_dir))
 
                 verilog_patterns.append(token)
 
@@ -528,7 +529,7 @@ class Locator:
             # Use runner.run_cmd() to execute slang-hier (not run_api)
             # This ensures proper path handling and environment
             if not cwd:
-                cwd = str(self.builder.runner.path_manager.repo_dir)
+                cwd = str(PathManager().repo_dir)
 
             # run_cmd returns (exit_code, stdout, stderr)
             # Use quiet based on debug flag
@@ -594,8 +595,8 @@ class Locator:
             return {}
 
         try:
-            repo_dir = Path(self.builder.runner.path_manager.repo_dir)
-            build_dir = Path(self.builder.runner.path_manager.build_dir)
+            repo_dir = Path(PathManager().repo_dir)
+            build_dir = Path(PathManager().build_dir)
 
             # Get Chisel files (tracked or scanned)
             chisel_files_set = self.builder.get_tracked_files(ext_filter='.scala')
@@ -1089,7 +1090,7 @@ class Locator:
                     escaped_pattern = f'\\\\{re_module.escape(hierarchical_name)}\\s'
 
                     # Search directly in netlist file (inline to avoid regex transformation)
-                    netlist_path = Path(self.builder.runner.path_manager.build_dir) / netlist_file
+                    netlist_path = Path(PathManager().build_dir) / netlist_file
                     try:
                         content = self.builder.filesystem.read_text(str(netlist_path))
                         if content:
@@ -1301,7 +1302,7 @@ class Locator:
             return []
 
         try:
-            repo_dir = Path(self.builder.runner.path_manager.repo_dir)
+            repo_dir = Path(PathManager().repo_dir)
             matching_files = []
 
             # First, try to get tracked Chisel files from builder
@@ -1385,10 +1386,10 @@ class Locator:
         # Construct full path based on representation type
         if representation == RepresentationType.VERILOG or representation == RepresentationType.NETLIST:
             # Verilog files are relative to build_dir
-            base_dir = Path(self.builder.runner.path_manager.build_dir)
+            base_dir = Path(PathManager().build_dir)
         else:
             # Chisel files are relative to repo_dir
-            base_dir = Path(self.builder.runner.path_manager.repo_dir)
+            base_dir = Path(PathManager().repo_dir)
 
         full_path = base_dir / file_path
         self._debug_print(f'Searching for variable "{variable}" in file: {full_path}')
@@ -1450,10 +1451,10 @@ class Locator:
 
         # Determine search directory and file extension
         if representation == RepresentationType.CHISEL:
-            search_dir = Path(self.builder.runner.path_manager.repo_dir)
+            search_dir = Path(PathManager().repo_dir)
             extensions = ['*.scala']
         elif representation == RepresentationType.VERILOG:
-            search_dir = Path(self.builder.runner.path_manager.build_dir)
+            search_dir = Path(PathManager().build_dir)
             extensions = ['*.v', '*.sv']
         else:
             return []

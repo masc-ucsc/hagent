@@ -18,8 +18,7 @@ def cmd_track_file(args):
     print(f'Tracking file: {args.path}')
 
     try:
-        path_manager = PathManager()
-        with FileTracker(path_manager) as tracker:
+        with FileTracker() as tracker:
             if tracker.track_file(args.path):
                 print(f'✓ Successfully tracking file: {args.path}')
                 return 0
@@ -39,8 +38,7 @@ def cmd_track_dir(args):
         print(f'Extension filter: {args.ext}')
 
     try:
-        path_manager = PathManager()
-        with FileTracker(path_manager) as tracker:
+        with FileTracker() as tracker:
             if tracker.track_dir(args.path, args.ext):
                 print(f'✓ Successfully tracking directory: {args.path}')
                 return 0
@@ -58,8 +56,7 @@ def cmd_get_diff(args):
     print(f'Getting diff for: {args.path}')
 
     try:
-        path_manager = PathManager()
-        with FileTracker(path_manager) as tracker:
+        with FileTracker() as tracker:
             # First track the file
             tracker.track_file(args.path)
 
@@ -85,8 +82,7 @@ def cmd_get_all_diffs(args):
         print(f'Extension filter: {args.ext}')
 
     try:
-        path_manager = PathManager()
-        with FileTracker(path_manager) as tracker:
+        with FileTracker() as tracker:
             # Track current directory by default for demo
             tracker.track_dir('.', args.ext)
 
@@ -114,16 +110,15 @@ def cmd_status(args):
     print('FileTracker Status:')
 
     try:
-        path_manager = PathManager()
-
         # Show path manager info
+        path_manager = PathManager()
         docker_mode = 'Yes' if path_manager.is_docker_mode() else 'No'
         print(f'Docker mode: {docker_mode}')
         print(f'Repo directory: {path_manager.repo_dir}')
         print(f'Build directory: {path_manager.build_dir}')
         print(f'Cache directory: {path_manager.cache_dir}')
 
-        with FileTracker(path_manager) as tracker:
+        with FileTracker() as tracker:
             # Show some basic tracking info
             print(f'Baseline stash: {"Yes" if tracker._baseline_stash else "No"}')
             print(f'Tracked files: {len(tracker._tracked_files)}')
@@ -152,8 +147,7 @@ def cmd_patch_dict(args):
     print('Generating patch dictionary...')
 
     try:
-        path_manager = PathManager()
-        with FileTracker(path_manager) as tracker:
+        with FileTracker() as tracker:
             # Track current directory for demo
             tracker.track_dir('.', args.ext)
 
@@ -196,10 +190,8 @@ def cmd_cleanup(args):
     print('Cleaning up FileTracker resources...')
 
     try:
-        path_manager = PathManager()
-
         # Create and immediately cleanup a tracker to demonstrate
-        tracker = FileTracker(path_manager)
+        tracker = FileTracker()
         tracker.cleanup()
 
         print('✓ Cleanup completed successfully')
