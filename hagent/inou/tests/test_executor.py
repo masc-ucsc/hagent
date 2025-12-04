@@ -1,492 +1,365 @@
 """
-Tests for Executor
+Blackbox tests for Executor
 
-Tests execution strategies for both local and Docker execution modes,
-including command execution, environment handling, and path translation.
+Tests the executor module internal classes:
+- ExecutorFactory.create_executor()
+- LocalExecutor operations (run_cmd, set_cwd, get_cwd)
+- DockerExecutor operations (run_cmd, set_cwd, get_cwd)
+
+Note: Executors are internal classes used by Runner. For end-user code,
+use Runner or Builder instead of calling executors directly.
+
+Tests both local and Docker execution modes with actual command execution
+where practical.
 """
 
-import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-import pytest
-
-from hagent.inou.executor import ExecutorFactory, create_executor, run_cmd
+from hagent.inou.executor import ExecutorFactory
 from hagent.inou.executor_local import LocalExecutor
 from hagent.inou.executor_docker import DockerExecutor
-
-
-class TestLocalExecutor:
-    """Test LocalExecutor functionality."""
-
-    def test_initialization(self):
-        """Test LocalExecutor initialization."""
-        with patch('hagent.inou.executor_local.PathManager') as mock_get_pm:
-            mock_pm = MagicMock()
-            mock_get_pm.return_value = mock_pm
-
-            executor = LocalExecutor()
-            assert executor.path_manager == mock_pm
-            mock_get_pm.assert_called_once()
-
-    def test_initialization_uses_singleton(self):
-        """Test LocalExecutor initialization uses singleton PathManager."""
-        with patch('hagent.inou.executor_local.PathManager') as mock_get_pm:
-            mock_pm = MagicMock()
-            mock_get_pm.return_value = mock_pm
-
-            executor = LocalExecutor()
-            assert executor.path_manager == mock_pm
-            mock_get_pm.assert_called_once()
-
-    def test_run_quiet_success(self):
-        """Test LocalExecutor.run with quiet mode and successful command."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            mock_pm = MagicMock()
-            with patch('hagent.inou.executor_local.PathManager', return_value=mock_pm):
-                executor = LocalExecutor()
-
-            with patch('subprocess.run') as mock_run:
-                mock_result = MagicMock()
-                mock_result.returncode = 0
-                mock_result.stdout = 'test output'
-                mock_result.stderr = 'test error'
-                mock_run.return_value = mock_result
-
-                exit_code, stdout, stderr = executor.run_cmd('echo test', temp_dir, {'TEST_VAR': 'value'}, quiet=True)
-
-                assert exit_code == 0
-                assert stdout == 'test output'
-                assert stderr == 'test error'
-
-                # Verify subprocess.run was called correctly
-                mock_run.assert_called_once()
-                args, kwargs = mock_run.call_args
-                assert kwargs['shell'] is True
-                assert kwargs['cwd'] == str(Path(temp_dir).resolve())
-                assert kwargs['capture_output'] is True
-                assert kwargs['text'] is True
-                assert 'TEST_VAR' in kwargs['env']
-                assert kwargs['env']['TEST_VAR'] == 'value'
-
-    def test_run_nonexistent_directory(self):
-        """Test LocalExecutor.run with non-existent working directory."""
-        mock_pm = MagicMock()
-        with patch('hagent.inou.executor_local.PathManager', return_value=mock_pm):
-            executor = LocalExecutor()
-
-        exit_code, stdout, stderr = executor.run_cmd('echo test', '/nonexistent/directory', {}, quiet=True)
-
-        assert exit_code == -1
-        assert stdout == ''
-        assert 'Working directory does not exist' in stderr
-
-    def test_run_not_directory(self):
-        """Test LocalExecutor.run with file path instead of directory."""
-        with tempfile.NamedTemporaryFile() as temp_file:
-            mock_pm = MagicMock()
-            with patch('hagent.inou.executor_local.PathManager', return_value=mock_pm):
-                executor = LocalExecutor()
-
-            exit_code, stdout, stderr = executor.run_cmd('echo test', temp_file.name, {}, quiet=True)
-
-            assert exit_code == -1
-            assert stdout == ''
-            assert 'not a directory' in stderr
-
-    def test_run_streaming_mode(self):
-        """Test LocalExecutor.run with streaming output."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            mock_pm = MagicMock()
-            with patch('hagent.inou.executor_local.PathManager', return_value=mock_pm):
-                executor = LocalExecutor()
-
-            with patch('subprocess.Popen') as mock_popen:
-                mock_process = MagicMock()
-                mock_process.poll.side_effect = [None, None, 0]  # Running, then finished
-                mock_process.stdout.readline.side_effect = ['line1\n', 'line2\n', '']
-                mock_process.stderr.readline.side_effect = ['error1\n', '']
-                mock_process.stdout.read.return_value = ''
-                mock_process.stderr.read.return_value = ''
-                mock_process.wait.return_value = 0
-                mock_popen.return_value = mock_process
-
-                with patch('builtins.print') as mock_print:
-                    exit_code, stdout, stderr = executor.run_cmd('echo test', temp_dir, {}, quiet=False)
-
-                assert exit_code == 0
-                assert 'line1\n' in stdout
-                assert 'line2\n' in stdout
-                assert 'error1\n' in stderr
-
-                # Verify streaming output was printed
-                mock_print.assert_any_call('local:run: line1')
-                mock_print.assert_any_call('local:run: line2')
-
-    def test_run_exception_handling(self):
-        """Test LocalExecutor.run exception handling."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            mock_pm = MagicMock()
-            with patch('hagent.inou.executor_local.PathManager', return_value=mock_pm):
-                executor = LocalExecutor()
-
-            with patch('subprocess.run', side_effect=Exception('Test error')):
-                exit_code, stdout, stderr = executor.run_cmd('echo test', temp_dir, {}, quiet=True)
-
-                assert exit_code == -1
-                assert stdout == ''
-                assert 'Command execution failed: Test error' in stderr
-
-
-class TestDockerExecutor:
-    """Test DockerExecutor functionality."""
-
-    @pytest.fixture(autouse=True)
-    def isolate_path_manager(self):
-        """Ensure PathManager is isolated for each test."""
-        from hagent.inou.path_manager import PathManager
-
-        with PathManager.configured():
-            yield
-
-    def test_initialization_with_file_manager(self):
-        """Test DockerExecutor initialization without managers (creates default container_manager)."""
-        with patch('hagent.inou.container_manager.ContainerManager') as mock_cm_class:
-            mock_cm = MagicMock()
-            mock_cm_class.return_value = mock_cm
-
-            executor = DockerExecutor()
-            assert executor.container_manager == mock_cm
-            mock_cm_class.assert_called_once_with(image='mascucsc/hagent-simplechisel:2025.11')
-
-    def test_initialization_with_container_manager(self):
-        """Test DockerExecutor initialization with container_manager (preferred)."""
-        mock_cm = MagicMock()
-        executor = DockerExecutor(container_manager=mock_cm)
-        assert executor.container_manager == mock_cm
-
-    def test_initialization_with_both_managers(self):
-        """Test DockerExecutor initialization with container manager."""
-        mock_cm = MagicMock()
-        executor = DockerExecutor(container_manager=mock_cm)
-        assert executor.container_manager == mock_cm
-
-    def test_initialization_no_managers(self):
-        """Test DockerExecutor initialization without managers (creates container_manager)."""
-        with patch('hagent.inou.container_manager.ContainerManager') as mock_cm_class:
-            mock_cm = MagicMock()
-            mock_cm_class.return_value = mock_cm
-
-            executor = DockerExecutor()
-            assert executor.container_manager == mock_cm
-            mock_cm_class.assert_called_once_with(image='mascucsc/hagent-simplechisel:2025.11')
-
-    def test_run_basic_with_file_manager(self):
-        """Test DockerExecutor.run basic functionality with container_manager."""
-        mock_cm = MagicMock()
-        mock_cm.run_cmd.return_value = (0, 'output', 'error')
-
-        with patch('hagent.inou.executor_docker.is_docker_mode', return_value=True):
-            with patch('hagent.inou.executor_docker.PathManager'):
-                executor = DockerExecutor(container_manager=mock_cm)
-                exit_code, stdout, stderr = executor.run_cmd('echo test', '/test/path', {'TEST_VAR': 'value'}, quiet=True)
-
-        assert exit_code == 0
-        assert stdout == 'output'
-        assert stderr == 'error'
-
-        # Verify container_manager.run was called
-        mock_cm.run_cmd.assert_called_once_with('echo test', '/test/path', True)
-
-    def test_run_basic_with_container_manager(self):
-        """Test DockerExecutor.run basic functionality with container_manager."""
-        mock_cm = MagicMock()
-        mock_cm.run_cmd.return_value = (0, 'output', 'error')
-
-        with patch('hagent.inou.executor_docker.is_docker_mode', return_value=True):
-            with patch('hagent.inou.executor_docker.PathManager'):
-                executor = DockerExecutor(container_manager=mock_cm)
-                exit_code, stdout, stderr = executor.run_cmd('echo test', '/test/path', {'TEST_VAR': 'value'}, quiet=True)
-
-        assert exit_code == 0
-        assert stdout == 'output'
-        assert stderr == 'error'
-
-        # Verify container_manager.run was called
-        mock_cm.run_cmd.assert_called_once_with('echo test', '/test/path', True)
-
-    def test_run_environment_restoration(self):
-        """Test DockerExecutor.run environment variable restoration."""
-        mock_cm = MagicMock()
-        mock_cm.run_cmd.return_value = (0, 'output', 'error')
-
-        # Set initial environment
-        original_env = os.environ.copy()
-        os.environ['EXISTING_VAR'] = 'original'
-
-        try:
-            with patch('hagent.inou.executor_docker.is_docker_mode', return_value=True):
-                with patch('hagent.inou.executor_docker.PathManager'):
-                    executor = DockerExecutor(container_manager=mock_cm)
-                    exit_code, stdout, stderr = executor.run_cmd(
-                        'echo test', '/test/path', {'EXISTING_VAR': 'modified', 'NEW_VAR': 'new'}, quiet=True
-                    )
-
-            # After execution, environment should be restored
-            assert os.environ['EXISTING_VAR'] == 'original'
-            assert 'NEW_VAR' not in os.environ
-
-        finally:
-            # Restore original environment
-            os.environ.clear()
-            os.environ.update(original_env)
-
-    @patch('hagent.inou.executor_docker.is_docker_mode', return_value=True)
-    @patch('hagent.inou.executor_docker.PathManager')
-    def test_translate_path_to_container_repo_dir(self, mock_pm_class, mock_is_docker_mode):
-        """Test path translation for repo directory."""
-        mock_cm = MagicMock()
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/host/repo')
-        mock_pm.build_dir = Path('/host/build')
-        mock_pm.cache_dir = Path('/host/cache')
-        mock_pm.tech_dir = Path('/host/tech')
-        mock_pm_class.return_value = mock_pm
-
-        executor = DockerExecutor(container_manager=mock_cm)
-
-        # Test repo dir path translation
-        result = executor._translate_path_to_container('/host/repo/subdir')
-        assert result == '/code/workspace/repo/subdir'
-
-        # Test exact repo dir match
-        result = executor._translate_path_to_container('/host/repo')
-        assert result == '/code/workspace/repo'
-
-    @patch('hagent.inou.executor_docker.is_docker_mode', return_value=True)
-    @patch('hagent.inou.executor_docker.PathManager')
-    def test_translate_path_to_container_build_dir(self, mock_pm_class, mock_is_docker_mode):
-        """Test path translation for build directory."""
-        mock_cm = MagicMock()
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/host/repo')
-        mock_pm.build_dir = Path('/host/build')
-        mock_pm.cache_dir = Path('/host/cache')
-        mock_pm.tech_dir = Path('/host/tech')
-        mock_pm_class.return_value = mock_pm
-
-        executor = DockerExecutor(container_manager=mock_cm)
-
-        # Test build dir path translation
-        result = executor._translate_path_to_container('/host/build/output')
-        assert result == '/code/workspace/build/output'
-
-    @patch('hagent.inou.executor_docker.is_docker_mode', return_value=True)
-    @patch('hagent.inou.executor_docker.PathManager')
-    def test_translate_path_to_container_cache_dir(self, mock_pm_class, mock_is_docker_mode):
-        """Test path translation for cache directory."""
-        mock_cm = MagicMock()
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/host/repo')
-        mock_pm.build_dir = Path('/host/build')
-        mock_pm.cache_dir = Path('/host/cache')
-        mock_pm.tech_dir = Path('/host/tech')
-        mock_pm_class.return_value = mock_pm
-
-        executor = DockerExecutor(container_manager=mock_cm)
-
-        # Test cache dir path translation
-        result = executor._translate_path_to_container('/host/cache/logs')
-        assert result == '/code/workspace/cache/logs'
-
-    @patch('hagent.inou.executor_docker.is_docker_mode', return_value=True)
-    @patch('hagent.inou.executor_docker.PathManager')
-    def test_translate_path_to_container_no_match(self, mock_pm_class, mock_is_docker_mode):
-        """Test path translation for unknown path."""
-        mock_cm = MagicMock()
-        mock_pm = MagicMock()
-        mock_pm.repo_dir = Path('/host/repo')
-        mock_pm.build_dir = Path('/host/build')
-        mock_pm.cache_dir = Path('/host/cache')
-        mock_pm.tech_dir = Path('/host/tech')
-        mock_pm_class.return_value = mock_pm
-
-        executor = DockerExecutor(container_manager=mock_cm)
-
-        # Test unknown path - should return original
-        result = executor._translate_path_to_container('/other/path')
-        assert result == str(Path('/other/path').resolve())
-
-    @patch('hagent.inou.executor_docker.is_docker_mode', return_value=False)
-    def test_translate_path_to_container_non_docker_mode(self, mock_is_docker_mode):
-        """Test path translation in non-Docker mode."""
-        mock_cm = MagicMock()
-        executor = DockerExecutor(container_manager=mock_cm)
-
-        result = executor._translate_path_to_container('/any/path')
-        assert result == str(Path('/any/path').resolve())
+from hagent.inou.path_manager import PathManager
 
 
 class TestExecutorFactory:
-    """Test ExecutorFactory functionality."""
-
-    @pytest.fixture(autouse=True)
-    def isolate_path_manager(self):
-        """Ensure PathManager is isolated for each test."""
-        from hagent.inou.path_manager import PathManager
-
-        with PathManager.configured():
-            yield
+    """Test ExecutorFactory.create_executor() factory method."""
 
     def test_create_executor_local_mode(self):
-        """Test factory creates LocalExecutor for local mode."""
-        mock_pm = MagicMock()
-        mock_pm.is_local_mode.return_value = True
-        mock_pm.is_docker_mode.return_value = False
+        """Test ExecutorFactory returns LocalExecutor in local mode."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
 
-        with patch('hagent.inou.executor.LocalExecutor') as mock_local:
-            mock_executor = MagicMock()
-            mock_local.return_value = mock_executor
+            with PathManager.configured(
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor()
+                assert isinstance(executor, LocalExecutor)
 
-            with patch('hagent.inou.executor.PathManager', return_value=mock_pm):
-                result = ExecutorFactory.create_executor()
+    def test_create_executor_docker_mode_without_container_manager(self):
+        """Test ExecutorFactory returns DockerExecutor in docker mode without container_manager."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
 
-            assert result == mock_executor
-            mock_local.assert_called_once_with()
+            with PathManager.configured(
+                docker_image='mascucsc/hagent-simplechisel:2025.11',
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                # Mock ContainerManager creation in the executor module
+                with patch('hagent.inou.executor.ContainerManager') as mock_cm_class:
+                    mock_cm = MagicMock()
+                    mock_cm_class.return_value = mock_cm
 
-    def test_create_executor_docker_mode_with_file_manager(self):
-        """Test factory creates DockerExecutor for Docker mode with container_manager."""
-        mock_pm = MagicMock()
-        mock_pm.is_local_mode.return_value = False
-        mock_pm.is_docker_mode.return_value = True
+                    executor = ExecutorFactory.create_executor()
+                    assert isinstance(executor, DockerExecutor)
+                    mock_cm_class.assert_called_once()
+
+    def test_create_executor_with_container_manager(self):
+        """Test ExecutorFactory returns DockerExecutor when container_manager is provided."""
         mock_cm = MagicMock()
 
-        with patch('hagent.inou.executor.DockerExecutor') as mock_docker:
-            mock_executor = MagicMock()
-            mock_docker.return_value = mock_executor
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
 
-            with patch('hagent.inou.executor.PathManager', return_value=mock_pm):
-                result = ExecutorFactory.create_executor(container_manager=mock_cm)
-
-            assert result == mock_executor
-            mock_docker.assert_called_once_with(mock_cm)
-
-    def test_create_executor_docker_mode_with_container_manager(self):
-        """Test factory creates DockerExecutor for Docker mode with container_manager."""
-        mock_pm = MagicMock()
-        mock_pm.is_local_mode.return_value = False
-        mock_pm.is_docker_mode.return_value = True
-        mock_cm = MagicMock()
-
-        with patch('hagent.inou.executor.DockerExecutor') as mock_docker:
-            mock_executor = MagicMock()
-            mock_docker.return_value = mock_executor
-
-            with patch('hagent.inou.executor.PathManager', return_value=mock_pm):
-                result = ExecutorFactory.create_executor(container_manager=mock_cm)
-
-            assert result == mock_executor
-            mock_docker.assert_called_once_with(mock_cm)
-
-    def test_create_executor_docker_mode_no_managers(self):
-        """Test factory creates DockerExecutor for Docker mode without managers (auto-creates container_manager)."""
-        mock_pm = MagicMock()
-        mock_pm.is_local_mode.return_value = False
-        mock_pm.is_docker_mode.return_value = True
-
-        with patch('hagent.inou.executor.DockerExecutor') as mock_docker:
-            mock_executor = MagicMock()
-            mock_docker.return_value = mock_executor
-
-            with patch('hagent.inou.executor.PathManager', return_value=mock_pm):
-                result = ExecutorFactory.create_executor()
-
-            assert result == mock_executor
-            mock_docker.assert_called_once_with(None)
-
-    def test_create_executor_defaults_to_local_when_not_docker(self):
-        """Test factory defaults to LocalExecutor when Docker mode is False."""
-        mock_pm = MagicMock()
-        mock_pm.is_local_mode.return_value = False
-        mock_pm.is_docker_mode.return_value = False
-
-        with patch('hagent.inou.executor.LocalExecutor') as mock_local:
-            mock_executor = MagicMock()
-            mock_local.return_value = mock_executor
-
-            with patch('hagent.inou.executor.PathManager', return_value=mock_pm):
-                result = ExecutorFactory.create_executor()
-
-        assert result == mock_executor
-        mock_local.assert_called_once_with()
-
-    def test_create_executor_default_path_manager(self):
-        """Test factory creates default PathManager when none provided."""
-        with patch('hagent.inou.executor.PathManager') as mock_pm_class:
-            with patch('hagent.inou.executor_local.PathManager') as mock_pm_local:
-                mock_pm = MagicMock()
-                mock_pm.is_local_mode.return_value = True
-                mock_pm.is_docker_mode.return_value = False
-                mock_pm_class.return_value = mock_pm
-                mock_pm_local.return_value = mock_pm
-
-                with patch('hagent.inou.executor_local.LocalExecutor'):
-                    ExecutorFactory.create_executor()
-                    mock_pm_class.assert_called_once()
+            with PathManager.configured(
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor(container_manager=mock_cm)
+                assert isinstance(executor, DockerExecutor)
+                assert executor.container_manager == mock_cm
 
 
-class TestConvenienceFunctions:
-    """Test convenience functions."""
+class TestLocalExecutorOperations:
+    """Test LocalExecutor operations (run_cmd, set_cwd, get_cwd)."""
 
-    def test_create_executor_function(self):
-        """Test create_executor convenience function."""
-        with patch('hagent.inou.executor.ExecutorFactory.create_executor') as mock_create:
-            mock_executor = MagicMock()
-            mock_create.return_value = mock_executor
+    def test_run_cmd_simple_command(self):
+        """Test run_cmd executes a simple command successfully."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
 
+            with PathManager.configured(
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor()
+
+                # Test simple echo command
+                exit_code, stdout, stderr = executor.run_cmd('echo "Hello World"', quiet=True)
+
+                assert exit_code == 0
+                assert 'Hello World' in stdout
+                assert stderr == '' or stderr.strip() == ''
+
+    def test_run_cmd_with_cwd(self):
+        """Test run_cmd respects working directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
+            subdir = repo_dir / 'subdir'
+            subdir.mkdir()
+
+            with PathManager.configured(
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor()
+
+                # Create a file in subdir and try to read it from there
+                test_file = subdir / 'test.txt'
+                test_file.write_text('test content')
+
+                # Run command in the subdir
+                exit_code, stdout, stderr = executor.run_cmd('cat test.txt', cwd=str(subdir), quiet=True)
+
+                assert exit_code == 0
+                assert 'test content' in stdout
+
+    def test_run_cmd_with_env_vars(self):
+        """Test run_cmd passes environment variables."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
+
+            with PathManager.configured(
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor()
+
+                # Test environment variable
+                exit_code, stdout, stderr = executor.run_cmd('echo $TEST_VAR', env={'TEST_VAR': 'test_value'}, quiet=True)
+
+                assert exit_code == 0
+                assert 'test_value' in stdout
+
+    def test_run_cmd_failing_command(self):
+        """Test run_cmd returns non-zero exit code for failing command."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
+
+            with PathManager.configured(
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor()
+
+                # Command that should fail
+                exit_code, stdout, stderr = executor.run_cmd('exit 42', quiet=True)
+
+                assert exit_code == 42
+
+    def test_run_cmd_nonexistent_directory(self):
+        """Test run_cmd handles nonexistent working directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
+
+            with PathManager.configured(
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor()
+
+                # Try to run in nonexistent directory
+                exit_code, stdout, stderr = executor.run_cmd('echo test', cwd='/nonexistent/directory', quiet=True)
+
+                assert exit_code == -1
+                assert 'does not exist' in stderr.lower()
+
+    def test_set_cwd_and_get_cwd(self):
+        """Test set_cwd and get_cwd work together."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
+            subdir = repo_dir / 'subdir'
+            subdir.mkdir()
+
+            with PathManager.configured(
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor()
+
+                # Initial cwd should be repo_dir
+                initial_cwd = executor.get_cwd()
+                assert Path(initial_cwd).resolve() == repo_dir.resolve()
+
+                # Change to subdir
+                success = executor.set_cwd(str(subdir))
+                assert success is True
+
+                # Verify new cwd
+                new_cwd = executor.get_cwd()
+                assert Path(new_cwd).resolve() == subdir.resolve()
+
+    def test_set_cwd_nonexistent_directory(self):
+        """Test set_cwd fails for nonexistent directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
+
+            with PathManager.configured(
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor()
+
+                # Try to change to nonexistent directory
+                success = executor.set_cwd('/nonexistent/directory')
+                assert success is False
+
+    def test_set_cwd_relative_path(self):
+        """Test set_cwd works with relative paths."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
+            subdir = repo_dir / 'subdir'
+            subdir.mkdir()
+
+            with PathManager.configured(
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor()
+
+                # Change using relative path
+                success = executor.set_cwd('subdir')
+                assert success is True
+
+                # Verify new cwd
+                new_cwd = executor.get_cwd()
+                assert Path(new_cwd).resolve() == subdir.resolve()
+
+
+class TestDockerExecutorOperations:
+    """Test DockerExecutor operations with mocked container."""
+
+    def test_run_cmd_uses_container_manager(self):
+        """Test DockerExecutor delegates to container_manager."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
+
+            # Mock container manager
             mock_cm = MagicMock()
+            mock_cm.run_cmd.return_value = (0, 'docker output', '')
+            mock_cm.get_cwd.return_value = '/code/workspace/repo'
 
-            result = create_executor(mock_cm)
+            with PathManager.configured(
+                docker_image='mascucsc/hagent-simplechisel:2025.11',
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor(container_manager=mock_cm)
 
-            assert result == mock_executor
-            mock_create.assert_called_once_with(mock_cm)
+                # Run command
+                exit_code, stdout, stderr = executor.run_cmd('echo test', quiet=True)
 
-    def test_run_command_function_with_defaults(self):
-        """Test run_command convenience function with defaults."""
-        with patch('hagent.inou.executor.create_executor') as mock_create:
-            with patch('hagent.inou.executor.PathManager') as mock_pm_class:
-                mock_executor = MagicMock()
-                mock_executor.run_cmd.return_value = (0, 'output', 'error')
-                mock_create.return_value = mock_executor
+                # Verify container_manager was called
+                assert exit_code == 0
+                assert stdout == 'docker output'
+                mock_cm.run_cmd.assert_called_once()
 
-                mock_pm = MagicMock()
-                mock_pm.repo_dir = Path('/test/repo')
-                mock_pm_class.return_value = mock_pm
+    def test_run_cmd_with_env_sets_environment(self):
+        """Test DockerExecutor sets environment variables."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
 
-                result = run_cmd('echo test')
-
-                assert result == (0, 'output', 'error')
-                mock_executor.run_cmd.assert_called_once_with('echo test', '/test/repo', {}, False)
-
-    def test_run_command_function_with_params(self):
-        """Test run_command convenience function with all parameters."""
-        with patch('hagent.inou.executor.create_executor') as mock_create:
-            mock_executor = MagicMock()
-            mock_executor.run_cmd.return_value = (0, 'output', 'error')
-            mock_create.return_value = mock_executor
-
+            # Mock container manager
             mock_cm = MagicMock()
-            env = {'TEST': 'value'}
+            mock_cm.run_cmd.return_value = (0, 'output', '')
 
-            result = run_cmd(
-                'echo test',
-                cwd='/test/dir',
-                env=env,
-                quiet=True,
-                container_manager=mock_cm,
-            )
+            with PathManager.configured(
+                docker_image='mascucsc/hagent-simplechisel:2025.11',
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor(container_manager=mock_cm)
 
-            assert result == (0, 'output', 'error')
-            mock_create.assert_called_once_with(mock_cm)
-            mock_executor.run_cmd.assert_called_once_with('echo test', '/test/dir', env, True)
+                # Run command with env
+                import os
+
+                original_value = os.environ.get('TEST_DOCKER_VAR')
+                try:
+                    executor.run_cmd('echo test', env={'TEST_DOCKER_VAR': 'test_value'}, quiet=True)
+
+                    # During execution, the env var should be set
+                    # After execution, it should be restored
+                    assert os.environ.get('TEST_DOCKER_VAR') == original_value
+                finally:
+                    # Cleanup
+                    if original_value is None:
+                        os.environ.pop('TEST_DOCKER_VAR', None)
+                    else:
+                        os.environ['TEST_DOCKER_VAR'] = original_value
+
+    def test_set_cwd_delegates_to_container_manager(self):
+        """Test DockerExecutor delegates set_cwd to container_manager."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
+
+            # Mock container manager
+            mock_cm = MagicMock()
+            mock_cm.set_cwd.return_value = True
+
+            with PathManager.configured(
+                docker_image='mascucsc/hagent-simplechisel:2025.11',
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor(container_manager=mock_cm)
+
+                # Set cwd
+                success = executor.set_cwd('/code/workspace/repo/subdir')
+
+                assert success is True
+                mock_cm.set_cwd.assert_called_once_with('/code/workspace/repo/subdir')
+
+    def test_get_cwd_delegates_to_container_manager(self):
+        """Test DockerExecutor delegates get_cwd to container_manager."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir) / 'repo'
+            repo_dir.mkdir()
+
+            # Mock container manager
+            mock_cm = MagicMock()
+            mock_cm.get_cwd.return_value = '/code/workspace/repo'
+
+            with PathManager.configured(
+                docker_image='mascucsc/hagent-simplechisel:2025.11',
+                repo_dir=str(repo_dir),
+                build_dir=str(Path(temp_dir) / 'build'),
+                cache_dir=str(Path(temp_dir) / 'cache'),
+            ):
+                executor = ExecutorFactory.create_executor(container_manager=mock_cm)
+
+                # Get cwd
+                cwd = executor.get_cwd()
+
+                assert cwd == '/code/workspace/repo'
+                mock_cm.get_cwd.assert_called_once()

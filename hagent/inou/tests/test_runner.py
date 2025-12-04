@@ -83,7 +83,7 @@ class TestRunner:
             runner.cleanup()
 
     def test_docker_mode_without_image_fails(self):
-        """Test Case 3: Docker mode should fail without image specification."""
+        """Test Case 3: Docker mode picks image from PathManager when not explicitly provided."""
         # Use PathManager.configured() to enable docker mode
         with PathManager.configured(
             docker_image='some-image:tag',
@@ -91,9 +91,10 @@ class TestRunner:
             build_dir=str(self.build_dir),
             cache_dir=str(self.cache_dir),
         ):
-            runner = Runner()  # No docker_image provided
+            runner = Runner()  # No docker_image provided, should use PathManager value
 
-            assert runner.get_error() == 'Docker image must be provided when HAGENT_DOCKER is set (docker mode)'
+            assert runner.docker_image == 'some-image:tag'
+            assert runner.container_manager is not None
 
             runner.cleanup()
 

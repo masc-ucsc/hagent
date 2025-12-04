@@ -14,7 +14,7 @@ from typing import (
 )
 
 from ruamel.yaml import YAML
-from hagent.inou.output_manager import get_output_path
+from hagent.inou.path_manager import PathManager
 
 # Keep everything under specific tabs in the Perfetto timeline.
 HAGENT_PID = 0
@@ -594,9 +594,9 @@ class Tracer:
 
         """
         if filename is None:
-            filename = get_output_path('hagent.json')
+            filename = PathManager().get_cache_path('hagent.json')
         else:
-            filename = get_output_path(filename)
+            filename = PathManager().get_cache_path(filename)
         # Modify the TraceEvents to be fully parallelized.
         if asynchronous:
             cls._create_asynchronous_trace(dependencies, step_offset)

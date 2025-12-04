@@ -3,9 +3,10 @@ import re
 import subprocess
 import tempfile
 import sys
+from pathlib import Path
 from typing import Optional, Tuple, List
-from hagent.inou.output_manager import get_output_dir
-from hagent.inou.builder import Builder
+from hagent.inou.path_manager import PathManager
+from hagent.inou.runner import Runner
 from hagent.tool.compile_slang import Compile_slang
 
 
@@ -26,7 +27,7 @@ class Equiv_check:
         Initializes the Equiv_check object:
          - yosys_installed: indicates if Yosys is available.
          - use_docker: indicates if Docker fallback should be used.
-         - builder: Builder instance for unified operations.
+         - runner: Runner instance for unified operations.
          - error_message: stores any error encountered.
          - equivalence_check_result: last known equivalence outcome (True/False/None).
          - counterexample_info: stores counterexample details if available.
@@ -34,67 +35,47 @@ class Equiv_check:
         """
         self.yosys_installed = False
         self.use_docker = False
-        self.builder: Optional[Builder] = None
+        self.runner: Optional[Runner] = None
         self.error_message = ''
         self.equivalence_check_result: Optional[bool] = None
         self.counterexample_info: Optional[str] = None
         self.timeout_seconds = 120
 
-    def setup(self, yosys_path: Optional[str] = None) -> bool:
+    def setup(self, try_local: bool = True) -> bool:
         """
         Checks if Yosys is installed, accessible, and meets the minimum version 0.4.
-        If yosys_path is provided, that binary is used; otherwise, the system PATH is used.
         If local Yosys is not available, falls back to Docker with mascucsc/hagent-builder:2025.11.
 
         Returns True if Yosys is available (locally or via Docker), False otherwise.
         """
-        # Check if HAGENT_DOCKER is set (docker mode enabled) - if so, skip local yosys and use Docker
-        from hagent.inou.path_manager import PathManager
 
-        is_docker_mode = PathManager().is_docker_mode()
-
-        if is_docker_mode and yosys_path is None:
+        if not try_local:
             return self._setup_docker_fallback()
 
-        command = [yosys_path, '-V'] if yosys_path else ['yosys', '-V']
+        command = ['yosys', '-V']
 
         try:
-            # Try local Yosys installation first
             result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-            # Attempt to extract version number (e.g., "0.4" or "0.4.1") from stdout
             match = re.search(r'(\d+\.\d+(?:\.\d+)?)', result.stdout)
             if not match:
                 self.yosys_installed = False
                 self.error_message = f'Unable to parse Yosys version output: {result.stdout}'
-                # Only fall back to Docker if no specific yosys_path was provided
-                if yosys_path is None:
-                    original_error = self.error_message
-                    docker_result = self._setup_docker_fallback()
-                    if not docker_result:
-                        # Docker fallback failed, preserve the original version parsing error
-                        self.error_message = original_error
-                    return docker_result
-                else:
-                    return False
+                original_error = self.error_message
+                if self._setup_docker_fallback():
+                    return True
+                self.error_message = original_error
+                return False
 
-            version_str = match.group(1)
-            # Convert version string into a tuple of integers for comparison
-            version_tuple = tuple(map(int, version_str.split('.')))
+            version_tuple = tuple(map(int, match.group(1).split('.')))
             required_version = (0, 40)
-
             if version_tuple < required_version:
                 self.yosys_installed = False
-                self.error_message = f'Yosys version {version_str} is below the required version 0.4'
-                # Only fall back to Docker if no specific yosys_path was provided
-                if yosys_path is None:
-                    original_error = self.error_message
-                    docker_result = self._setup_docker_fallback()
-                    if not docker_result:
-                        # Docker fallback failed, preserve the original version error
-                        self.error_message = original_error
-                    return docker_result
-                else:
-                    return False
+                self.error_message = f'Yosys version {".".join(map(str, version_tuple))} is below the required version 0.4'
+                original_error = self.error_message
+                if self._setup_docker_fallback():
+                    return True
+                self.error_message = original_error
+                return False
 
             self.yosys_installed = True
             self.use_docker = False
@@ -103,11 +84,7 @@ class Equiv_check:
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
             self.yosys_installed = False
             self.error_message = f'Yosys not found or not accessible: {e}'
-            # Only fall back to Docker if no specific yosys_path was provided
-            if yosys_path is None:
-                return self._setup_docker_fallback()
-            else:
-                return False
+            return self._setup_docker_fallback()
 
     def _setup_docker_fallback(self) -> bool:
         """
@@ -116,27 +93,60 @@ class Equiv_check:
 
         Returns True if Docker setup succeeds, False otherwise.
         """
-        try:
-            # path_manager handled by Builder
-            self.builder = Builder(docker_image='mascucsc/hagent-builder:2025.11')
 
-            # Setup container with no automatic mounts for equiv_check operations
-            if self.builder.setup():
-                # Test that Yosys is available in the Docker container
-                rc, out, err = self.builder.run_cmd('yosys --version')
-                if rc == 0 and 'Yosys' in out:
-                    self.use_docker = True
-                    self.yosys_installed = True
-                    # Initialize file tracker for Docker mode with container access
-                    return True
-                else:
-                    self.error_message = f'Yosys not available in Docker container - RC: {rc}, ERR: {err}'
-                    return False
-            else:
-                self.error_message = f'Docker setup failed: {self.builder.get_error()}'
+        docker_image = 'mascucsc/hagent-builder:2025.11'
+        try:
+            self.runner = Runner(docker_image=docker_image)
+            if not self.runner.setup():
+                self.error_message = f'Docker setup failed: {self.runner.get_error()}'
                 return False
+
+            rc, out, err = self.runner.run_cmd('yosys --version')
+            if rc == 0 and 'Yosys' in out:
+                self.use_docker = True
+                self.yosys_installed = True
+                return True
+
+            self.error_message = f'Yosys not available in Docker container - RC: {rc}, ERR: {err}'
+            return False
         except Exception as e:
             self.error_message = f'Docker fallback setup error: {e}'
+            return False
+
+    def _translate_to_container(self, host_path: str) -> str:
+        """
+        Translate a host path to container path when running in Docker mode.
+        Falls back to the original path in local mode.
+        """
+        if not self.runner or not self.runner.is_docker_mode():
+            return host_path
+
+        path_manager = PathManager()
+        host_path_obj = Path(host_path).resolve()
+
+        mappings = [
+            (path_manager.repo_mount_dir, path_manager.repo_dir),
+            (path_manager.build_mount_dir, path_manager.build_dir),
+            (path_manager.cache_mount_dir, path_manager.cache_dir),
+        ]
+
+        for local_root, container_root in mappings:
+            if local_root and (host_path_obj == local_root or local_root in host_path_obj.parents):
+                relative = host_path_obj.relative_to(local_root)
+                return str(container_root / relative)
+
+        return host_path
+
+    def _write_text(self, path: str, content: str) -> bool:
+        """Write text using Runner filesystem when available."""
+        if self.runner and self.runner.filesystem:
+            return self.runner.filesystem.write_text(path, content)
+        try:
+            with open(path, 'w') as f:
+                f.write(content)
+            return True
+        except Exception as exc:
+            self.error_message = str(exc)
             return False
 
     def _copy_results_from_docker(self, work_dir: str) -> None:
@@ -144,16 +154,15 @@ class Equiv_check:
         Copy any result files from the Docker container back to the local work directory.
         This ensures output files are available in the expected output directory.
         """
-        if not self.use_docker or not self.builder:
+        if not self.use_docker or not self.runner:
             return
 
         try:
-            # Use Builder's translate_path_to_container method
-            container_work_dir = self.builder.translate_path_to_container(work_dir)
+            container_work_dir = self._translate_to_container(work_dir)
 
             # Get list of files to copy from the container work directory
             # We want to copy check.s script and any .log files
-            rc, out, err = self.builder.run_cmd(
+            rc, out, err = self.runner.run_cmd(
                 f'find {container_work_dir} -type f \\( -name "check.s" -o -name "*.log" \\) 2>/dev/null || true'
             )
             if rc != 0:
@@ -171,14 +180,14 @@ class Equiv_check:
 
                 # Use filesystem to read and write files
                 try:
-                    if self.builder.filesystem:
-                        file_content = self.builder.filesystem.read_text(container_file_path)
+                    if self.runner.filesystem:
+                        file_content = self.runner.filesystem.read_text(container_file_path)
                         # Write to local file using standard Python (since this is for local output)
                         with open(local_file_path, 'w') as f:
                             f.write(file_content)
                     else:
                         # Fallback to run_cmd if filesystem not available
-                        rc, file_content, err = self.builder.run_cmd(f'cat {container_file_path}')
+                        rc, file_content, err = self.runner.run_cmd(f'cat {container_file_path}')
                         if rc == 0:
                             with open(local_file_path, 'w') as f:
                                 f.write(file_content)
@@ -205,10 +214,10 @@ class Equiv_check:
         """
         try:
             # Save Yosys output using unified approach
-            if self.builder and hasattr(self.builder, 'filesystem') and self.builder.filesystem:
+            if self.runner and self.runner.filesystem:
                 # Use unified FileSystem approach
                 self._save_yosys_output_unified(work_dir, method_name, return_code, stdout, stderr)
-            elif self.use_docker and self.builder:
+            elif self.use_docker and self.runner:
                 # Fallback to Docker-specific method
                 self._save_yosys_output_docker(work_dir, method_name, return_code, stdout, stderr)
             else:
@@ -221,7 +230,7 @@ class Equiv_check:
 
     def _save_yosys_output_unified(self, work_dir: str, method_name: str, return_code: int, stdout: str, stderr: str) -> None:
         """Save Yosys output using unified FileSystem approach."""
-        filesystem = self.builder.filesystem
+        filesystem = self.runner.filesystem
 
         # Create output files using FileSystem
         stdout_content = f'Return code: {return_code}\nMethod: {method_name}\n{"-" * 50}\n{stdout}'
@@ -256,8 +265,7 @@ class Equiv_check:
 
     def _save_yosys_output_docker(self, work_dir: str, method_name: str, return_code: int, stdout: str, stderr: str) -> None:
         """Save Yosys output to Docker container files."""
-        # Use Builder's translate_path method
-        container_work_dir = self.builder.translate_path(work_dir, 'to_container')
+        container_work_dir = self._translate_to_container(work_dir)
 
         stdout_content = 'Return code: {}\nMethod: {}\n{}\n{}'.format(return_code, method_name, '-' * 50, stdout)
         stderr_content = 'Return code: {}\nMethod: {}\n{}\n{}'.format(return_code, method_name, '-' * 50, stderr)
@@ -268,9 +276,8 @@ class Equiv_check:
         ]
 
         for filename, content in files_to_create:
-            # Use the write_text API to avoid escaping issues
-            if not self.builder.write_text(filename, content):
-                print(f'Warning: Failed to create {filename} in Docker: {self.builder.get_error()}', file=sys.stderr)
+            if not self._write_text(filename, content):
+                print(f'Warning: Failed to create {filename} in Docker: {self.error_message}', file=sys.stderr)
 
     def check_equivalence(self, gold_code: str, gate_code: str, desired_top: str = '') -> Optional[bool]:
         """
@@ -306,11 +313,12 @@ class Equiv_check:
         # 2) Write each design to a temp file
         #
         # Create a subdirectory for working files
-        work_dir = tempfile.mkdtemp(dir=get_output_dir(), prefix='equiv_check_')
+        work_dir = tempfile.mkdtemp(dir=PathManager().get_cache_dir(), prefix='equiv_check_')
 
         # Track working directory for file changes (works in both local and Docker modes)
-        if self.builder:
-            self.builder.track_dir(work_dir)
+        if self.runner:
+            tracked_dir = self._translate_to_container(work_dir) if self.use_docker else work_dir
+            self.runner.track_dir(tracked_dir)
 
         gold_v_filename = self._write_temp_verilog(work_dir, gold_code, 'gold')
         gate_v_filename = self._write_temp_verilog(work_dir, gate_code, 'gate')
@@ -656,19 +664,11 @@ class Equiv_check:
         if len(lines) > 3:
             print(f'     ... ({len(lines) - 3} more lines)')
 
-        if self.use_docker and self.builder:
-            # For Docker mode, create the file in the container using filesystem
-            container_work_dir = self.builder.translate_path_to_container(work_dir)
+        if self.use_docker and self.runner:
+            container_work_dir = self._translate_to_container(work_dir)
             container_filename = f'{container_work_dir}/{label}.v'
-
-            # Use filesystem for unified file operations
-            if self.builder.filesystem:
-                if not self.builder.filesystem.write_text(container_filename, verilog_code):
-                    raise RuntimeError(f'Failed to create {label}.v in container using filesystem')
-            else:
-                # Fallback to write_text API
-                if not self.builder.write_text(container_filename, verilog_code):
-                    raise RuntimeError(f'Failed to create {label}.v in container: {self.builder.get_error()}')
+            if not self._write_text(container_filename, verilog_code):
+                raise RuntimeError(f'Failed to create {label}.v in container: {self.error_message}')
 
         # Also create the file locally for reference and compatibility
         with open(filename, 'w') as f:
@@ -703,8 +703,9 @@ class Equiv_check:
         full_cmd = ';\n'.join(cmd)
 
         if self.use_docker:
-            # Use Builder's translate_path_to_container method
-            container_work_dir = self.builder.translate_path_to_container(work_dir)
+            if not self.runner:
+                return 1, '', 'Docker mode enabled but Runner is not initialized'
+            container_work_dir = self._translate_to_container(work_dir)
 
             script_name = 'check.s'
             container_script_path = f'{container_work_dir}/{script_name}'
@@ -717,14 +718,12 @@ class Equiv_check:
             full_cmd = ';\n'.join(cmd) + '\n'
 
             # Create the script using filesystem or fallback to write_text
-            if self.builder.filesystem:
-                if not self.builder.filesystem.write_text(container_script_path, full_cmd):
+            if self.runner.filesystem:
+                if not self.runner.filesystem.write_text(container_script_path, full_cmd):
                     return 1, '', 'Failed to create script in container using filesystem'
             else:
-                # Fallback to write_text API
-                if not self.builder.write_text(container_script_path, full_cmd):
-                    error_msg = self.builder.get_error()
-                    return 1, '', f'Failed to create script in container: {error_msg}'
+                if not self._write_text(container_script_path, full_cmd):
+                    return 1, '', f'Failed to create script in container: {self.error_message}'
 
             # Run Yosys from within container_work_dir
             yosys_cmd = f'cd {container_work_dir} && yosys -s {script_name}'
@@ -745,10 +744,10 @@ class Equiv_check:
         # Print the exact LEC command being executed
         print(f'🔧 [LEC] Executing command: {command}')
 
-        if self.use_docker and self.builder:
+        if self.use_docker and self.runner:
             # Docker execution
             try:
-                rc, stdout, stderr = self.builder.run_cmd(command)
+                rc, stdout, stderr = self.runner.run_cmd(command)
                 return rc, stdout, stderr
             except Exception as e:
                 self.error_message = f'Docker Yosys execution error: {e}'

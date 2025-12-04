@@ -8,7 +8,7 @@ from hagent.core.step import Step
 from hagent.core.llm_wrap import LLM_wrap
 from hagent.tool.equiv_check import Equiv_check
 from hagent.tool.extract_code import Extract_code_verilog
-from hagent.inou.output_manager import get_output_dir
+from hagent.inou.path_manager import PathManager
 
 
 class Replicate_code(Step):
@@ -106,7 +106,7 @@ class Replicate_code(Step):
 
         x = 1
         # get the optimized code from result and save it in output directory
-        output_dir = get_output_dir()
+        output_dir = PathManager().get_cache_dir()
         for markdown in codes_passing_lec:
             optimized_vers = self.verilog_extractor.parse(markdown)
             for optimized_ver in optimized_vers:

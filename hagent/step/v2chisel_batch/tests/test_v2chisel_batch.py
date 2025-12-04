@@ -38,7 +38,7 @@ class TestV2chisel_batch(V2chisel_batch):
         self.baseline_generated = False  # Track if we generated fresh baseline
 
         # Initialize Builder for automated Docker management
-        self.runner = Builder(docker_image='mascucsc/hagent-simplechisel:2025.11')
+        self.runner = Builder()
 
     def _run_docker_command(self, cmd_list, timeout=None):
         """Override parent method to use our Builder instead of subprocess"""
@@ -316,7 +316,7 @@ class TestV2chisel_batch(V2chisel_batch):
 
         try:
             # Generate ONLY SingleCycleCPU to match what the gate design will be
-            # Use Builder directly like the working cli_executor_simplechisel.py pattern
+            # Use Builder directly like the working cli_runner_simplechisel.py pattern
             print('🔧 [TEST] Running: sbt "runMain dinocpu.SingleCycleCPUNoDebug"')
             exit_code, stdout, stderr = self.runner.run(
                 'bash -l -c \'cd /code/workspace/repo && sbt "runMain dinocpu.SingleCycleCPUNoDebug"\''

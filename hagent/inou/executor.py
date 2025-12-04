@@ -8,7 +8,9 @@ local and Docker execution.
 
 from typing import Dict, Optional, Tuple, Protocol
 
-from .path_manager import PathManager
+from hagent.inou.container_manager import ContainerManager
+from hagent.inou.path_manager import PathManager
+
 from .executor_local import LocalExecutor
 from .executor_docker import DockerExecutor
 
@@ -68,7 +70,7 @@ class ExecutorFactory:
     """Factory for creating appropriate executor instances."""
 
     @staticmethod
-    def create_executor(container_manager=None) -> ExecutionStrategy:
+    def create_executor(container_manager: ContainerManager = None) -> ExecutionStrategy:
         """
         Create an appropriate executor based on HAGENT_DOCKER setting.
 
@@ -78,64 +80,11 @@ class ExecutorFactory:
         Returns:
             ExecutionStrategy instance (LocalExecutor or DockerExecutor)
         """
-        path_manager = PathManager()
-        if path_manager.is_docker_mode():
+        # Check if we're in docker mode
+        pm = PathManager()
+        if pm.is_docker_mode() or container_manager:
+            # Docker mode: create or use provided container_manager
+            if not container_manager:
+                container_manager = ContainerManager()
             return DockerExecutor(container_manager)
         return LocalExecutor()
-
-
-# Convenience functions for backward compatibility and ease of use
-
-
-def create_executor(container_manager=None) -> ExecutionStrategy:
-    """
-    Convenience function to create an appropriate executor.
-
-    Args:
-        container_manager: Optional ContainerManager instance for Docker execution
-
-    Returns:
-        ExecutionStrategy instance
-    """
-    return ExecutorFactory.create_executor(container_manager)
-
-
-def run_cmd(
-    command: str,
-    cwd: str = '.',
-    env: Optional[Dict[str, str]] = None,
-    quiet: bool = False,
-    container_manager=None,
-) -> Tuple[int, str, str]:
-    """
-    Convenience function to run a command using the appropriate executor.
-
-    Args:
-        command: The command to execute
-        cwd: Working directory for the command
-        env: Additional environment variables
-        quiet: Whether to run in quiet mode
-        container_manager: Optional ContainerManager instance for Docker execution
-
-    Returns:
-        Tuple of (exit_code, stdout, stderr)
-    """
-    executor = create_executor(container_manager)
-    env = env or {}
-
-    # Resolve working directory
-    if cwd == '.':
-        cwd = str(PathManager().repo_dir)
-
-    return executor.run_cmd(command, cwd, env, quiet)
-
-
-# Backward-compatible alias (deprecated). Prefer run_cmd().
-def run_command(
-    command: str,
-    cwd: str = '.',
-    env: Optional[Dict[str, str]] = None,
-    quiet: bool = False,
-    container_manager=None,
-) -> Tuple[int, str, str]:
-    return run_cmd(command, cwd, env, quiet, container_manager)

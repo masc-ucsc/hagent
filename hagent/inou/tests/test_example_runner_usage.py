@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Example showing how existing cli_executor* files can be simplified using Runner.
+Example showing how existing cli_runner* files can be simplified using Runner.
 
 This demonstrates the before/after comparison of using Runner vs direct usage
 of Executor, ContainerManager, PathManager, and FileTracker.
@@ -12,7 +12,7 @@ from hagent.inou.runner import Runner
 
 def example_simplechisel_with_runner():
     """
-    Simplified version of cli_executor_simplechisel.py using Runner.
+    Simplified version of cli_runner_simplechisel.py using Runner.
 
     Compare this with the original 99-line file that manually manages:
     - PathManager initialization
@@ -71,7 +71,7 @@ def example_simplechisel_with_runner():
 
 def example_xiangshan_with_runner_and_tracking():
     """
-    Simplified version of cli_executor_xiangshan.py using Runner with file tracking.
+    Simplified version of cli_runner_xiangshan.py using Runner with file tracking.
 
     This shows how Runner makes file tracking much simpler compared to the original
     315-line file that manually manages FileTracker initialization and cleanup.

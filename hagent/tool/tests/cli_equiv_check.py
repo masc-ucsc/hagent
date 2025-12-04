@@ -115,8 +115,6 @@ Examples:
 
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose output')
 
-    parser.add_argument('--yosys-path', help='Path to yosys binary (optional, uses system PATH by default)')
-
     args = parser.parse_args()
 
     try:
@@ -155,7 +153,7 @@ Examples:
         print('Setting up equivalence checker...')
         checker = Equiv_check()
 
-        setup_ok = checker.setup(yosys_path=args.yosys_path)
+        setup_ok = checker.setup()
         if not setup_ok:
             print(f'ERROR: Equivalence checker setup failed: {checker.get_error()}', file=sys.stderr)
             sys.exit(1)

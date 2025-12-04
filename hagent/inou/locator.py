@@ -78,8 +78,8 @@ class Locator:
             docker_image = os.environ.get('HAGENT_DOCKER')
             self._debug_print(f'Docker image: {docker_image or "None (local mode)"}')
 
-            # Initialize builder (pass docker_image for docker mode)
-            self.builder = Builder(self.config_path, docker_image=docker_image)
+            # Initialize builder
+            self.builder = Builder(self.config_path)
             if not self.builder.setup():
                 self._error = f'Builder setup failed: {self.builder.get_error()}'
                 return False

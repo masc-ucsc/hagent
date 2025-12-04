@@ -301,19 +301,31 @@ class TestContainerManager:
 
                     mounts = manager._setup_mount_points()
 
-                    # Should have 5 mounts (hagent, cache, repo, build, tech)
-                    # private mount is optional and not set in this test
-                    assert len(mounts) == 5
-                    assert mock_mount.call_count == 5
+                    if mock_pm.is_local_mode():
+                        # Local execution mode: no host mounts needed for ad-hoc Docker runs
+                        assert mounts == []
+                        mock_mount.assert_not_called()
+                    else:
+                        expected_mounts = 1  # /code/hagent
+                        for attr in ('cache_mount_dir', 'repo_mount_dir', 'build_mount_dir', 'tech_mount_dir'):
+                            if getattr(mock_pm, attr) is not None:
+                                expected_mounts += 1
 
-                    # Verify mount calls
-                    calls = mock_mount.call_args_list
-                    mount_targets = [call[1]['target'] for call in calls]
-                    assert '/code/hagent' in mount_targets
-                    assert '/code/workspace/cache' in mount_targets
-                    assert '/code/workspace/repo' in mount_targets
-                    assert '/code/workspace/build' in mount_targets
-                    assert '/code/workspace/tech' in mount_targets
+                        assert len(mounts) == expected_mounts
+                        assert mock_mount.call_count == expected_mounts
+
+                        # Verify mount calls
+                        calls = mock_mount.call_args_list
+                        mount_targets = [call[1]['target'] for call in calls]
+                        assert '/code/hagent' in mount_targets
+                        if mock_pm.cache_mount_dir is not None:
+                            assert '/code/workspace/cache' in mount_targets
+                        if mock_pm.repo_mount_dir is not None:
+                            assert '/code/workspace/repo' in mount_targets
+                        if mock_pm.build_mount_dir is not None:
+                            assert '/code/workspace/build' in mount_targets
+                        if mock_pm.tech_mount_dir is not None:
+                            assert '/code/workspace/tech' in mount_targets
 
     @patch('docker.types.Mount')
     def test_setup_success(self, mock_mount, setup_local_directory):
@@ -586,18 +598,27 @@ class TestContainerManager:
 
                     mounts = manager._setup_mount_points()
 
-                    # Should have 5 mounts (hagent, cache, repo, build, tech)
-                    # private mount is optional and not set in this test
-                    assert len(mounts) == 5
-                    assert mock_mount.call_count == 5
+                    if mock_pm.is_local_mode():
+                        assert mounts == []
+                        mock_mount.assert_not_called()
+                    else:
+                        expected_mounts = 1  # /code/hagent
+                        for attr in ('cache_mount_dir', 'repo_mount_dir', 'build_mount_dir', 'tech_mount_dir'):
+                            if getattr(mock_pm, attr) is not None:
+                                expected_mounts += 1
 
-                    # Verify mount calls
-                    calls = mock_mount.call_args_list
-                    mount_targets = [call[1]['target'] for call in calls]
-                    assert '/code/hagent' in mount_targets
-                    assert '/code/workspace/cache' in mount_targets
-                    assert '/code/workspace/repo' in mount_targets
-                    assert '/code/workspace/build' in mount_targets
+                        assert len(mounts) == expected_mounts
+                        assert mock_mount.call_count == expected_mounts
+
+                        calls = mock_mount.call_args_list
+                        mount_targets = [call[1]['target'] for call in calls]
+                        assert '/code/hagent' in mount_targets
+                        if mock_pm.cache_mount_dir is not None:
+                            assert '/code/workspace/cache' in mount_targets
+                        if mock_pm.repo_mount_dir is not None:
+                            assert '/code/workspace/repo' in mount_targets
+                        if mock_pm.build_mount_dir is not None:
+                            assert '/code/workspace/build' in mount_targets
 
     def test_setup_mount_points_absolute_paths(self, setup_local_directory):
         """Test setup of mount points with absolute paths."""
@@ -622,18 +643,27 @@ class TestContainerManager:
 
                     mounts = manager._setup_mount_points()
 
-                    # Should have 5 mounts (hagent, cache, repo, build, tech)
-                    # private mount is optional and not set in this test
-                    assert len(mounts) == 5
-                    assert mock_mount.call_count == 5
+                    if mock_pm.is_local_mode():
+                        assert mounts == []
+                        mock_mount.assert_not_called()
+                    else:
+                        expected_mounts = 1  # /code/hagent
+                        for attr in ('cache_mount_dir', 'repo_mount_dir', 'build_mount_dir', 'tech_mount_dir'):
+                            if getattr(mock_pm, attr) is not None:
+                                expected_mounts += 1
 
-                    # Verify mount calls
-                    calls = mock_mount.call_args_list
-                    mount_targets = [call[1]['target'] for call in calls]
-                    assert '/code/hagent' in mount_targets
-                    assert '/code/workspace/cache' in mount_targets
-                    assert '/code/workspace/repo' in mount_targets
-                    assert '/code/workspace/build' in mount_targets
+                        assert len(mounts) == expected_mounts
+                        assert mock_mount.call_count == expected_mounts
+
+                        calls = mock_mount.call_args_list
+                        mount_targets = [call[1]['target'] for call in calls]
+                        assert '/code/hagent' in mount_targets
+                        if mock_pm.cache_mount_dir is not None:
+                            assert '/code/workspace/cache' in mount_targets
+                        if mock_pm.repo_mount_dir is not None:
+                            assert '/code/workspace/repo' in mount_targets
+                        if mock_pm.build_mount_dir is not None:
+                            assert '/code/workspace/build' in mount_targets
 
     @pytest.mark.skip(reason='Docker container setup fails with temporary directory mount issues')
     def test_mcp_build_script_execution(self, container_manager_with_cleanup, setup_local_directory):

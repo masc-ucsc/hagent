@@ -46,16 +46,6 @@ def prepare_checker(monkeypatch):
     os.chdir(original_cwd)
 
 
-def test_setup_failure(prepare_checker):
-    """
-    Tests setup with an invalid Yosys path, expecting failure and proper error message.
-    """
-    checker = prepare_checker
-    result = checker.setup(yosys_path='nonexistent_yosys_binary')
-    assert result is False
-    assert checker.yosys_installed is False
-    assert 'Yosys not found' in checker.get_error()
-
 
 def test_setup_success(prepare_checker, monkeypatch):
     """

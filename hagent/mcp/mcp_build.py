@@ -225,11 +225,10 @@ def get_mcp_schema(config_path: Optional[str] = None) -> Dict[str, Any]:
             captured_output = StringIO()
             captured_errors = StringIO()
 
-            docker_image = os.environ.get('HAGENT_DOCKER')
             builder = None
             try:
                 with redirect_stdout(captured_output), redirect_stderr(captured_errors):
-                    builder = Builder(config_path=config_path, docker_image=docker_image)
+                    builder = Builder(config_path=config_path)
                     setup_success = builder.setup()
 
                 if not setup_success:
@@ -346,8 +345,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
         config_path = os.environ.get('HAGENT_CONFIG_PATH')
 
         # Initialize Builder with Docker configuration from environment
-        docker_image = os.environ.get('HAGENT_DOCKER')
-        builder = Builder(config_path=config_path, docker_image=docker_image)
+        builder = Builder(config_path=config_path)
 
         # Handle parameters
         exact_name = params.get('name')

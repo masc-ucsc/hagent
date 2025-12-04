@@ -10,7 +10,7 @@ import json
 import random
 from hagent.tool.compile import Diagnostic
 from hagent.tool.memory import FewShotMemory, Memory_shot
-from hagent.inou.output_manager import get_output_path
+from hagent.inou.path_manager import PathManager
 
 
 def process_multiline_strings(obj):
@@ -223,7 +223,7 @@ class React:
         finally:
             try:
                 fname = f'react_{os.getpid()}_{int(time.time())}.json'
-                path = get_output_path(fname)
+                path = PathManager().get_cache_path(fname)
                 with open(path, 'w') as f:
                     json.dump({'log': self._log, 'last_code': self.last_code}, f, indent=2)
             except Exception:

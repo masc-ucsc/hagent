@@ -5,8 +5,8 @@ Demonstrates file modification, Verilog generation, and change tracking with sim
 Converted to use Runner instead of direct Executor/ContainerManager/PathManager/FileTracker usage.
 
 Can be run as:
-1. CLI tool: uv run python hagent/inou/tests/cli_executor_xiangshan.py
-2. Slow test: uv run pytest -m slow hagent/inou/tests/cli_executor_xiangshan.py
+1. CLI tool: uv run python hagent/inou/tests/cli_runner_xiangshan.py
+2. Slow test: uv run pytest -m slow hagent/inou/tests/cli_runner_xiangshan.py
 """
 
 import pytest

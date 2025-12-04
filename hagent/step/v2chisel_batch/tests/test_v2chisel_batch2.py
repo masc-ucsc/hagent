@@ -190,7 +190,7 @@ def main():
 
         # Step 1: Setup builder
         print('🏗️  [TEST] Setting up Builder with Docker image...')
-        builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.11')
+        builder = Builder()
 
         if not builder.setup():
             print(f'❌ [TEST] Failed to setup Builder: {builder.get_error()}')

@@ -66,6 +66,7 @@ class PathManager:
         self._cache_mount_dir: Optional[Path] = None
         self._tech_mount_dir: Optional[Path] = None
         self._private_mount_dir: Optional[Path] = None
+        self._docker_image: Optional[str] = None
         self._is_docker: Optional[bool] = None
 
         self._validate_and_setup_environment()
@@ -82,7 +83,8 @@ class PathManager:
         - If HAGENT_DOCKER is not set → local mode
         """
         # Determine execution mode based on HAGENT_DOCKER
-        self._is_docker = bool(os.environ.get('HAGENT_DOCKER'))
+        self._docker_image = os.environ.get('HAGENT_DOCKER')
+        self._is_docker = bool(self._docker_image)
         if self._is_docker:
             self._validate_docker_mode()
         else:
@@ -97,6 +99,7 @@ class PathManager:
         In local mode, xxx_dir and xxx_mount_dir are the same (local paths).
         """
         missing_vars = []
+        self._docker_image = None
 
         repo_dir = os.environ.get('HAGENT_REPO_DIR')
         if not repo_dir:
@@ -596,14 +599,15 @@ class PathManager:
             tech_dir: Tech directory path
             private_dir: Private directory path (optional)
         """
+        self._docker_image = docker_image
         self._is_docker = docker_image is not None
 
         if self._is_docker:
             # Docker mode - xxx_dir = Docker path, xxx_mount_dir = local path
-            self._repo_mount_dir = Path(repo_dir) if repo_dir else None
-            self._build_mount_dir = Path(build_dir) if build_dir else None
-            self._cache_mount_dir = Path(cache_dir) if cache_dir else None
-            self._tech_mount_dir = Path(tech_dir) if tech_dir else None
+            self._repo_mount_dir = Path(repo_dir).resolve() if repo_dir else None
+            self._build_mount_dir = Path(build_dir).resolve() if build_dir else None
+            self._cache_mount_dir = Path(cache_dir).resolve() if cache_dir else None
+            self._tech_mount_dir = Path(tech_dir).resolve() if tech_dir else None
             # Docker container paths
             self._repo_dir = Path('/code/workspace/repo')
             self._build_dir = Path('/code/workspace/build')
@@ -613,11 +617,11 @@ class PathManager:
             # Local mode - use provided paths or create temp paths for testing
             import tempfile
 
-            temp_base = Path(tempfile.gettempdir()) / 'hagent_test'
-            self._repo_dir = Path(repo_dir) if repo_dir else temp_base / 'repo'
-            self._build_dir = Path(build_dir) if build_dir else temp_base / 'build'
-            self._cache_dir = Path(cache_dir) if cache_dir else temp_base / 'cache'
-            self._tech_dir = Path(tech_dir) if tech_dir else temp_base / 'tech'
+            temp_base = (Path(tempfile.gettempdir()) / 'hagent_test').resolve()
+            self._repo_dir = Path(repo_dir).resolve() if repo_dir else temp_base / 'repo'
+            self._build_dir = Path(build_dir).resolve() if build_dir else temp_base / 'build'
+            self._cache_dir = Path(cache_dir).resolve() if cache_dir else temp_base / 'cache'
+            self._tech_dir = Path(tech_dir).resolve() if tech_dir else temp_base / 'tech'
             # In local mode, mount_dir = dir
             self._repo_mount_dir = self._repo_dir
             self._build_mount_dir = self._build_dir
@@ -630,14 +634,20 @@ class PathManager:
 
         # Private dir is optional
         if private_dir:
-            self._private_dir = Path(private_dir) if not self._is_docker else Path('/code/workspace/private')
-            self._private_mount_dir = Path(private_dir)
+            private_mount = Path(private_dir).resolve()
+            self._private_dir = Path('/code/workspace/private') if self._is_docker else private_mount
+            self._private_mount_dir = private_mount
         else:
             self._private_dir = None
             self._private_mount_dir = None
 
         # Create cache structure (skip for Docker container paths)
         self._create_cache_structure()
+
+    @property
+    def docker_image(self) -> Optional[str]:
+        """Return configured Docker image name, if any."""
+        return self._docker_image
 
 
 # Global singleton instance getter

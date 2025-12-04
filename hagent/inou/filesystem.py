@@ -31,6 +31,12 @@ class FileSystemFactory:
         Returns:
             FileSystem implementation appropriate for current execution mode
         """
+        # If an explicit ContainerManager is provided, force Docker filesystem
+        # (used by tools that spin up a dedicated Docker container even when
+        # the global PathManager is in local mode).
+        if container_manager:
+            return FileSystemDocker(container_manager)
+
         if PathManager().is_docker_mode():
             if not container_manager:
                 raise ValueError('ContainerManager required for Docker execution mode')

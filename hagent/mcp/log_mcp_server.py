@@ -15,7 +15,7 @@ from functools import wraps
 from typing import Any
 
 # Import output manager for proper log file placement
-from hagent.inou.output_manager import get_output_path
+from hagent.inou.path_manager import PathManager
 
 
 class TransactionLogger:
@@ -32,7 +32,7 @@ class TransactionLogger:
 
         # Clean command_name for use in filename
         safe_name = command_name.replace('.', '_')
-        log_file = get_output_path(f'hagent_mcp_{safe_name}.log')
+        log_file = PathManager().get_cache_path(f'hagent_mcp_{safe_name}.log')
 
         # Create a new logger
         logger = logging.getLogger(f'hagent-mcp-{safe_name}')
@@ -75,7 +75,7 @@ def setup_mcp_server_logging(debug=False):
     if debug:
         os.environ['HAGENT_MCP_DEBUG'] = '1'
 
-    log_file = get_output_path('hagent_mcp_server.log')
+    log_file = PathManager().get_cache_path('hagent_mcp_server.log')
     log_level = logging.DEBUG if debug else logging.INFO
 
     # Only log to file, not stderr, to avoid interfering with MCP stdio protocol
@@ -101,7 +101,7 @@ def setup_raw_logger():
     raw_logger.handlers = []
 
     # Add file handler using output manager
-    raw_log_file = get_output_path('hagent_mcp_server_io.log')
+    raw_log_file = PathManager().get_cache_path('hagent_mcp_server_io.log')
     handler = logging.FileHandler(raw_log_file)
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')

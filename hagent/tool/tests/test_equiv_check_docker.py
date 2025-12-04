@@ -17,29 +17,30 @@ from hagent.tool.equiv_check import Equiv_check
 from hagent.inou.path_manager import PathManager
 
 
-@pytest.fixture(scope='class', autouse=True)
-def setup_hagent_environment():
+@pytest.fixture(autouse=True)
+def setup_hagent_environment(tmp_path, monkeypatch):
     """Setup HAGENT environment variables for Docker mode tests."""
-    # Use local directories that tests can actually create and access
-    # Use home directory subfolders which Docker Desktop has access to by default
-    home_dir = os.path.expanduser('~')
-    # IMPORTANT: Don't use repository root directory - use home subdirectory instead
-    repo_dir = os.path.join(home_dir, 'hagent_test_repo')  # Use subdirectory instead of '.'
-    build_dir = os.path.join(home_dir, 'hagent_test_build')
-    cache_dir = os.path.join(home_dir, 'hagent_test_cache')
 
-    # Create directories if they don't exist
-    os.makedirs(repo_dir, exist_ok=True)
-    os.makedirs(build_dir, exist_ok=True)
-    os.makedirs(cache_dir, exist_ok=True)
+    # Use tmp_path for test isolation
+    repo_dir = tmp_path / 'repo'
+    build_dir = tmp_path / 'build'
+    cache_dir = tmp_path / 'cache'
+
+    # Create directories
+    repo_dir.mkdir(exist_ok=True)
+    build_dir.mkdir(exist_ok=True)
+    cache_dir.mkdir(exist_ok=True)
 
     # Use PathManager.configured() for clean test isolation
     with PathManager.configured(
-        repo_dir=repo_dir,
-        build_dir=build_dir,
-        cache_dir=cache_dir,
+        repo_dir=str(repo_dir),
+        build_dir=str(build_dir),
+        cache_dir=str(cache_dir),
     ):
         yield
+
+    # WARNING: It should not change/edit HAGENT_DOCKER to force yosys usage inside docker
+    # Should set yosys_isntalled as false, and use_docker as true
 
 
 class TestEquivCheckDocker:
@@ -117,11 +118,11 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker fallback by directly calling the Docker setup method
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup(try_local=False)
 
         if not docker_success:
-            print(f'Docker setup failed: {equiv_checker.get_error()}')
-            pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
+            print(f'failed: {equiv_checker.get_error()}')
+            pytest.skip(f'failed: {equiv_checker.get_error()}')
 
         assert equiv_checker.use_docker is True
         assert equiv_checker.yosys_installed is True
@@ -132,9 +133,9 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup(try_local=False)
         if not docker_success:
-            pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
+            pytest.skip(f'failed: {equiv_checker.get_error()}')
 
         # Test inverter equivalence
         result = equiv_checker.check_equivalence(
@@ -150,9 +151,9 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker.setup()
+        docker_success = equiv_checker.setup(try_local=False)
         if not docker_success:
-            pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
+            pytest.skip(f'failed: {equiv_checker.get_error()}')
 
         # Test AND gate equivalence
         result = equiv_checker.check_equivalence(
@@ -167,9 +168,9 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup(try_local=False)
         if not docker_success:
-            pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
+            pytest.skip(f'failed: {equiv_checker.get_error()}')
 
         # Test non-equivalent designs
         result = equiv_checker.check_equivalence(
@@ -192,9 +193,9 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup(try_local=False)
         if not docker_success:
-            pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
+            pytest.skip(f'failed: {equiv_checker.get_error()}')
 
         # Test with syntax error - should return False
         result = equiv_checker.check_equivalence(
@@ -210,9 +211,9 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup(try_local=False)
         if not docker_success:
-            pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
+            pytest.skip(f'failed: {equiv_checker.get_error()}')
 
         # Perform equivalence check
         equiv_checker.check_equivalence(
@@ -222,7 +223,7 @@ endmodule
         assert equiv_checker.use_docker is True
 
         # Check that patches were tracked (indicates files were managed)
-        patches = equiv_checker.builder.get_patch_dict()
+        patches = equiv_checker.runner.get_patch_dict()
         assert 'full' in patches or 'patch' in patches
 
         print('✓ Docker file management working correctly')
@@ -250,9 +251,9 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup(try_local=False)
         if not docker_success:
-            pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
+            pytest.skip(f'failed: {equiv_checker.get_error()}')
 
         # First check - equivalent designs
         result1 = equiv_checker.check_equivalence(
@@ -282,9 +283,9 @@ endmodule
         equiv_checker = Equiv_check()
 
         # Force Docker usage
-        docker_success = equiv_checker._setup_docker_fallback()
+        docker_success = equiv_checker.setup(try_local=False)
         if not docker_success:
-            pytest.skip(f'Docker setup failed: {equiv_checker.get_error()}')
+            pytest.skip(f'failed: {equiv_checker.get_error()}')
 
         # Test with invalid module names - specified top module not found
         with pytest.raises(ValueError, match='Specified top module .* not found'):
@@ -352,7 +353,7 @@ endmodule
             docker_success = equiv_checker._setup_docker_fallback()
 
             if not docker_success:
-                print(f'Docker setup failed: {equiv_checker.get_error()}')
+                print(f'failed: {equiv_checker.get_error()}')
                 return False
 
             print(f'✓ Docker setup successful - using Docker: {equiv_checker.use_docker}')

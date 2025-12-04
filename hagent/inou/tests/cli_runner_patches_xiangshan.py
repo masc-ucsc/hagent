@@ -17,8 +17,8 @@ This script:
 Converted to use Runner instead of direct Executor/ContainerManager/PathManager usage.
 
 Can be run as:
-1. CLI tool: uv run python hagent/inou/tests/cli_executor_patches_xiangshan.py
-2. Slow test: uv run pytest -m slow hagent/inou/tests/cli_executor_patches_xiangshan.py
+1. CLI tool: uv run python hagent/inou/tests/cli_runner_patches_xiangshan.py
+2. Slow test: uv run pytest -m slow hagent/inou/tests/cli_runner_patches_xiangshan.py
 """
 
 import os
