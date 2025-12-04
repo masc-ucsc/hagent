@@ -44,7 +44,7 @@ class LocalExecutor:
             # Validate that the repo directory exists
             repo_path = Path(self._workdir).resolve()
             if not repo_path.exists():
-                self.set_error(f'Repository directory does not exist: {repo_path}')
+                self.set_error(f'Repository directory does not locally exist: {repo_path}')
                 return False
             if not repo_path.is_dir():
                 self.set_error(f'Repository path is not a directory: {repo_path}')

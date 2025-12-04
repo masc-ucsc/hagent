@@ -96,7 +96,7 @@ def docker_filesystem(setup_test_directory):
         cache_dir=str(test_dirs['cache']),
     ):
         # Create builder which will set up the container
-        builder = Builder(docker_image='mascucsc/hagent-simplechisel:2025.11')
+        builder = Builder()
         try:
             if not builder.setup():
                 pytest.skip(f'Builder setup failed: {builder.get_error()}')

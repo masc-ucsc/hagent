@@ -18,14 +18,16 @@ from hagent.inou.path_manager import PathManager
 
 
 @pytest.fixture(autouse=True)
-def reset_docker_state():
-    """Reset global Docker state before and after each test."""
+def reset_docker_state(tmp_path):
+    """Reset global Docker state and setup PathManager before and after each test."""
     import hagent.inou.container_manager as cm
 
     # Reset global state before test
     cm._docker_workspace_validated = False
 
-    yield
+    # Setup PathManager with tmp_path for tests
+    with PathManager.configured(repo_dir=tmp_path, build_dir=tmp_path, cache_dir=tmp_path):
+        yield
 
     # Reset global state after test
     cm._docker_workspace_validated = False
@@ -143,7 +145,6 @@ class TestGitRepositoryIntegration:
         test_file = self.repo_dir / 'uncommitted.py'
         test_file.write_text('print("uncommitted")\n')
 
-
         # FileTracker should create baseline snapshot of uncommitted changes
         tracker = FileTracker()
 
@@ -172,7 +173,6 @@ class TestGitRepositoryIntegration:
         # Create file BEFORE initializing tracker so it's captured in baseline
         test_file = self.repo_dir / 'modified.py'
         test_file.write_text('original content\n')
-
 
         tracker = FileTracker()
 

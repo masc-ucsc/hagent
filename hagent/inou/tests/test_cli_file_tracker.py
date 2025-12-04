@@ -20,6 +20,14 @@ from hagent.inou.cli_file_tracker import (
     cmd_cleanup,
     main,
 )
+from hagent.inou.path_manager import PathManager
+
+
+@pytest.fixture(autouse=True)
+def setup_path_manager(tmp_path):
+    """Setup PathManager for all tests using PathManager.configured()."""
+    with PathManager.configured(repo_dir=tmp_path, build_dir=tmp_path, cache_dir=tmp_path):
+        yield
 
 
 class TestCLICommands:
@@ -245,7 +253,7 @@ class TestCLIErrorHandling:
         """Setup for each test method."""
         self.mock_args = MagicMock()
 
-    @patch('hagent.inou.cli_file_tracker.PathManager', side_effect=Exception('Path manager error'))
+    @patch('hagent.inou.file_tracker.PathManager', side_effect=Exception('Path manager error'))
     def test_cmd_track_file_exception(self, mock_path_manager_class):
         """Test track file command with exception."""
         self.mock_args.path = 'src/main.py'

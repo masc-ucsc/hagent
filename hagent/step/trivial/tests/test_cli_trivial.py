@@ -84,7 +84,6 @@ class TestTrivialCLI:
     def test_docker_execution_no_env_vars(self, input_file, output_file):
         """Test Docker execution with only execution mode (no directory mounts)."""
         env = os.environ.copy()
-        env['HAGENT_DOCKER'] = 'test-image:latest'
         env['HAGENT_DOCKER'] = DEFAULT_HAGENT_DOCKER
 
         # Remove any existing HAGENT directory env vars to test defaults

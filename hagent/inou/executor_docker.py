@@ -9,26 +9,20 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from .path_manager import PathManager
-from .container_manager import is_docker_mode
+from .container_manager import ContainerManager
 
 
 class DockerExecutor:
     """Execution strategy that runs commands within Docker containers."""
 
-    def __init__(self, container_manager=None):
+    def __init__(self, container_manager: ContainerManager):
         """
         Initialize DockerExecutor.
 
         Args:
             container_manager: ContainerManager instance for Docker operations
         """
-        if container_manager is not None:
-            self.container_manager = container_manager
-        else:
-            # Create a new container_manager if not provided
-            from .container_manager import ContainerManager
-
-            self.container_manager = ContainerManager(image='mascucsc/hagent-simplechisel:2025.11')
+        self.container_manager = container_manager
 
         # Container instance for reuse
         self._container = None
@@ -41,20 +35,6 @@ class DockerExecutor:
     def get_error(self) -> str:
         """Get current error message following Tool pattern."""
         return self.error_message
-
-    def _setup_hagent_environment(self) -> Dict[str, str]:
-        """Setup HAGENT environment variables for Docker execution."""
-        # Inside Docker container, use container paths not host paths
-        env_vars = {
-            'HAGENT_REPO_DIR': '/code/workspace/repo',
-            'HAGENT_BUILD_DIR': '/code/workspace/build',
-            'HAGENT_CACHE_DIR': '/code/workspace/cache',
-            'HAGENT_TECH_DIR': '/code/workspace/tech',
-        }
-        # Add HAGENT_PRIVATE_DIR if it's configured
-        if PathManager().has_private_dir():
-            env_vars['HAGENT_PRIVATE_DIR'] = '/code/workspace/private'
-        return env_vars
 
     def setup(self) -> bool:
         """
@@ -150,7 +130,7 @@ class DockerExecutor:
         host_path_obj = Path(host_path).resolve()
 
         # Check if this is a known host path that should be translated
-        if is_docker_mode():
+        if PathManager().is_docker_mode():
             try:
                 # Try to translate repo_dir path
                 if host_path_obj == PathManager().repo_dir or PathManager().repo_dir in host_path_obj.parents:

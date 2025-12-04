@@ -561,6 +561,13 @@ class ContainerManager:
         """Setup standard mount points based on path manager."""
         mount_objs = []
 
+        # If global execution mode is local (HAGENT_DOCKER not set), don't mount
+        # host directories. Ad-hoc Docker runs (explicit docker_image) don't need
+        # workspace mounts and skipping them avoids macOS/colima path-sharing issues
+        # with temp directories.
+        if self.path_manager.is_local_mode():
+            return mount_objs
+
         # Mount hagent repository root to /code/hagent
         # This provides access to hagent source code inside the container
         try:
@@ -695,11 +702,7 @@ class ContainerManager:
                 self.set_error(f"Image '{self.image}' is not available")
                 return False
 
-            # Setup mount points and environment based on automount setting
-            # if automount:
             mount_objs = self._setup_mount_points()
-            # else:
-            #     mount_objs = []
 
             # Create the container with security restrictions
             # Run as root consistently for simplified permission handling

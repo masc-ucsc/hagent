@@ -37,12 +37,13 @@ def test_builder_uses_environment_mode_by_default(monkeypatch):
     builder = Builder()
     try:
         assert builder.runner.is_docker_mode()
+        assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-builder:2025.11'
     finally:
         builder.cleanup()
 
 
-def test_builder_explicit_docker_override(monkeypatch, tmp_path):
-    """Providing docker_image should force docker mode even if HAGENT_DOCKER is not set."""
+def test_builder_local_mode(monkeypatch, tmp_path):
+    """Builder should stay in local mode when HAGENT_DOCKER is not set."""
     repo_dir = tmp_path / 'repo'
     build_dir = tmp_path / 'build'
     cache_dir = tmp_path / 'cache'
@@ -56,24 +57,9 @@ def test_builder_explicit_docker_override(monkeypatch, tmp_path):
     monkeypatch.setenv('HAGENT_BUILD_DIR', str(build_dir))
     monkeypatch.setenv('HAGENT_CACHE_DIR', str(cache_dir))
 
-    builder = Builder(docker_image='mascucsc/hagent-builder:2025.11')
+    builder = Builder()
     try:
-        assert builder.runner.is_docker_mode()
-        assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-builder:2025.11'
+        assert builder.runner.is_local_mode()
+        assert 'HAGENT_DOCKER' not in os.environ
     finally:
         builder.cleanup()
-
-    assert 'HAGENT_DOCKER' not in os.environ
-
-
-def test_builder_overrides_docker_image(monkeypatch):
-    """Builder should temporarily override HAGENT_DOCKER when a custom image is provided."""
-    monkeypatch.setenv('HAGENT_DOCKER', 'mascucsc/hagent-simplechisel:2025.11')
-
-    builder = Builder(docker_image='mascucsc/hagent-builder:2025.11')
-    try:
-        assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-builder:2025.11'
-    finally:
-        builder.cleanup()
-
-    assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-simplechisel:2025.11'

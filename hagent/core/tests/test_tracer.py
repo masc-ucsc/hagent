@@ -4,7 +4,7 @@ import os
 import pytest
 
 import hagent.core.tracer as tracer
-from hagent.inou.output_manager import get_output_path
+from hagent.inou.path_manager import PathManager
 
 
 @pytest.fixture
@@ -39,6 +39,15 @@ def clean_tracer():
     tracer.Tracer.clear()
     yield
     tracer.Tracer.clear()
+
+
+@pytest.fixture(autouse=True)
+def setup_path_manager(tmp_path):
+    """
+    Sets up PathManager for tests using PathManager.configured() context manager.
+    """
+    with PathManager.configured(repo_dir=tmp_path, build_dir=tmp_path, cache_dir=tmp_path):
+        yield
 
 
 @pytest.fixture
@@ -216,7 +225,7 @@ class TestGeneratePerfetto:
 
         tracer.Tracer.save_perfetto_trace(dependencies=(initial, inputs, outputs), filename='simple_perfetto.json')
 
-        generated_trace = get_output_path('simple_perfetto.json')
+        generated_trace = PathManager().get_cache_path('simple_perfetto.json')
 
         assert os.path.exists(generated_trace) is True
         with open(generated_trace, 'r', encoding='utf-8') as f:
@@ -233,7 +242,7 @@ class TestGeneratePerfetto:
             dependencies=(initial, inputs, outputs), filename='multi_perfetto.json', asynchronous=True
         )
 
-        generated_trace = get_output_path('multi_perfetto.json')
+        generated_trace = PathManager().get_cache_path('multi_perfetto.json')
 
         assert os.path.exists(generated_trace) is True
         with open(generated_trace, 'r', encoding='utf-8') as f:

@@ -5,8 +5,8 @@ Demonstrates simplified command execution with unified API.
 Converted to use Runner instead of direct Executor/ContainerManager/PathManager usage.
 
 Can be run as:
-1. CLI tool: uv run python hagent/inou/tests/cli_executor_simplechisel.py
-2. Slow test: uv run pytest -m slow hagent/inou/tests/cli_executor_simplechisel.py
+1. CLI tool: uv run python hagent/inou/tests/cli_runner_simplechisel.py
+2. Slow test: uv run pytest -m slow hagent/inou/tests/cli_runner_simplechisel.py
 """
 
 import pytest

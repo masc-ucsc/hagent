@@ -74,8 +74,8 @@ class TestPathManager:
                 assert pm.cache_dir == cache_dir.resolve()
 
                 # Check cache structure was created
-                assert (cache_dir / 'inou').exists()
-                assert (cache_dir / 'inou' / 'logs').exists()
+                assert (cache_dir).exists()
+                assert (cache_dir / 'logs').exists()
                 assert (cache_dir / 'build').exists()
                 assert (cache_dir / 'venv').exists()
 
@@ -123,8 +123,8 @@ class TestPathManager:
                 assert pm.cache_mount_dir == cache_dir.resolve()
 
                 # Check cache structure was created (since these are host paths)
-                assert (cache_dir / 'inou').exists()
-                assert (cache_dir / 'inou' / 'logs').exists()
+                assert (cache_dir).exists()
+                assert (cache_dir / 'logs').exists()
                 assert (cache_dir / 'build').exists()
                 assert (cache_dir / 'venv').exists()
 
@@ -216,7 +216,7 @@ class TestPathManager:
             pm._cache_dir = cache_dir.resolve()
 
             result = pm.get_cache_dir()
-            expected = str(cache_dir / 'inou')
+            expected = str(cache_dir)
             assert Path(result).resolve() == Path(expected).resolve()
 
     def test_get_cache_path_valid(self):
@@ -229,7 +229,7 @@ class TestPathManager:
             pm._cache_dir = cache_dir.resolve()
 
             result = pm.get_cache_path('test.log')
-            expected = str(cache_dir / 'inou' / 'test.log')
+            expected = str(cache_dir / 'test.log')
             assert Path(result).resolve() == Path(expected).resolve()
 
     def test_get_cache_path_invalid_absolute(self):
@@ -268,7 +268,7 @@ class TestPathManager:
             pm._cache_dir = cache_dir.resolve()
 
             result = pm.get_log_dir()
-            expected = str(cache_dir / 'inou' / 'logs')
+            expected = str(cache_dir / 'logs')
             assert Path(result).resolve() == Path(expected).resolve()
 
     def test_get_build_cache_dir(self):

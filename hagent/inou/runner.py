@@ -51,22 +51,19 @@ class Runner:
         Args:
             docker_image: Docker image to use if HAGENT_DOCKER is set (docker mode)
         """
-        self.docker_image = docker_image
+
+        self.docker_image = docker_image or PathManager().docker_image
         self.container_manager: Optional[ContainerManager] = None
         self.executor = None  # Keep for backward compatibility, but will be deprecated
         self.filesystem: Optional[FileSystem] = None  # New unified approach
         self.file_tracker: Optional[FileTracker] = None  # Lazy initialization
         self.error_message = ''
 
-        # Create container manager for docker mode
-        if PathManager().is_docker_mode():
-            if not docker_image:
-                self.set_error('Docker image must be provided when HAGENT_DOCKER is set (docker mode)')
-                return
-            self.container_manager = ContainerManager(docker_image)
-
-        # Create executor (backward compatibility)
-        self.executor = ExecutorFactory.create_executor(self.container_manager)
+        if self.docker_image:
+            self.container_manager = ContainerManager(self.docker_image)
+            self.executor = ExecutorFactory.create_executor(self.container_manager)
+        else:
+            self.executor = ExecutorFactory.create_executor()
 
     def set_error(self, message: str) -> None:
         """Set error message following Tool pattern."""
@@ -292,11 +289,11 @@ class Runner:
 
     def is_docker_mode(self) -> bool:
         """Check if running in Docker execution mode."""
-        return PathManager().is_docker_mode()
+        return self.docker_image
 
     def is_local_mode(self) -> bool:
         """Check if running in local execution mode."""
-        return PathManager().is_local_mode()
+        return not self.is_docker_mode()
 
     def __enter__(self):
         """Context manager entry."""

@@ -95,7 +95,9 @@ def generate_hints(input_data: Dict[str, Any]) -> None:
     print('\n🐳 Step 0: Initializing Docker Container')
     print(f'   Docker image: {docker_image}')
 
-    builder = Builder(docker_image=docker_image)
+    previous_docker_image = os.environ.get('HAGENT_DOCKER')
+    os.environ['HAGENT_DOCKER'] = docker_image
+    builder = Builder()
 
     try:
         # Setup builder (starts docker container)
@@ -117,6 +119,10 @@ def generate_hints(input_data: Dict[str, Any]) -> None:
         print('\n🧹 Cleaning up Docker container...')
         builder.cleanup()
         print('   ✅ Docker container stopped and cleaned up')
+        if previous_docker_image is None:
+            os.environ.pop('HAGENT_DOCKER', None)
+        else:
+            os.environ['HAGENT_DOCKER'] = previous_docker_image
 
 
 def _run_hints_pipeline(input_data: Dict[str, Any], builder: Builder, docker_container: str) -> None:
