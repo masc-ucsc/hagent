@@ -704,11 +704,13 @@ class Equiv_check:
                 self.runner.filesystem.makedirs(container_work_dir, exist_ok=True)
             if not self._write_text(container_filename, verilog_code):
                 raise RuntimeError(f'Failed to create {label}.v in container: {self.error_message}')
-
-        # Also create the file locally for reference and compatibility
-        with open(filename, 'w') as f:
-            f.write(verilog_code)
-        return filename
+            # In Docker mode, return container path - local write would fail due to permission issues
+            return container_filename
+        else:
+            # Only write locally in local mode
+            with open(filename, 'w') as f:
+                f.write(verilog_code)
+            return filename
 
     def _run_smt_method(
         self,
