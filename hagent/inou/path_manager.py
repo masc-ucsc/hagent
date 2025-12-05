@@ -427,6 +427,9 @@ class PathManager:
         Returns:
             Path to HAGENT_CACHE_DIR/
         """
+        # In docker mode, prefer host mount path if available for host-side operations.
+        if self.is_docker_mode() and self.cache_mount_dir:
+            return str(self.cache_mount_dir)
         return str(self.cache_dir)
 
     def get_cache_path(self, filename: str) -> str:
@@ -439,6 +442,8 @@ class PathManager:
 
         Returns:
             Full path to the cache file in HAGENT_CACHE_DIR/
+            Uses cache_mount_dir (host path) when available to support host-side operations
+            like MCP server logging. Creates parent directories if they don't exist.
 
         Raises:
             SystemExit: If filename is invalid (same validation as output_manager)
@@ -467,7 +472,15 @@ class PathManager:
             print("  get_cache_path('../escape/file.txt')    #  escapes cache directory", file=sys.stderr)
             sys.exit(1)
 
-        return str(self.cache_dir / filename)
+        # Use cache_mount_dir (host path) when available for host-side operations
+        # This is critical for MCP server which runs on the host even in Docker mode
+        cache_base = self._cache_mount_dir if self._cache_mount_dir else self._cache_dir
+        full_path = cache_base / filename
+
+        # Ensure parent directory exists (create if needed)
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+
+        return str(full_path)
 
     def get_log_dir(self) -> str:
         """

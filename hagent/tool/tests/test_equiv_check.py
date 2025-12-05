@@ -46,7 +46,6 @@ def prepare_checker(monkeypatch):
     os.chdir(original_cwd)
 
 
-
 def test_setup_success(prepare_checker, monkeypatch):
     """
     Tests setup with a mocked 'yosys -V' call that simulates success.

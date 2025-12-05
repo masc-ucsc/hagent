@@ -24,6 +24,21 @@ import sys
 import os
 import glob
 from hagent.tool.equiv_check import Equiv_check
+from pathlib import Path
+
+
+def ensure_hagent_env():
+    """
+    Ensure HAGENT_CACHE_DIR is set up and default Docker image is selected when not provided.
+    Users don't need to set HAGENT_DOCKER manually for this CLI.
+    """
+    # Default Docker image for Yosys if not provided by user
+    os.environ.setdefault('HAGENT_DOCKER', 'mascucsc/hagent-builder:2025.11')
+
+    if not os.environ.get('HAGENT_CACHE_DIR'):
+        cache_dir = Path('output/cli_equiv_check/cache').resolve()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ['HAGENT_CACHE_DIR'] = str(cache_dir)
 
 
 def expand_file_patterns(file_patterns):
@@ -81,6 +96,9 @@ def read_verilog_files(file_list):
 
 
 def main():
+    # Ensure HAGENT_* env vars are available so PathManager can initialize
+    ensure_hagent_env()
+
     parser = argparse.ArgumentParser(
         description='Equivalence checking tool for multiple Verilog files',
         epilog="""

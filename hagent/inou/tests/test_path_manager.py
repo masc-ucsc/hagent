@@ -214,6 +214,8 @@ class TestPathManager:
             with patch.object(PathManager, '_validate_and_setup_environment'):
                 pm = PathManager()
             pm._cache_dir = cache_dir.resolve()
+            pm._is_docker = False
+            pm._cache_mount_dir = None
 
             result = pm.get_cache_dir()
             expected = str(cache_dir)

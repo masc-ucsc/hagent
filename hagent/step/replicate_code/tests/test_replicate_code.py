@@ -14,12 +14,17 @@ def test_replicate_missing_llm():
 
     inp_file = os.path.join(test_dir, 'bad_input.yaml')
 
-    trivial_step = Replicate_code()
-    trivial_step.set_io(inp_file=inp_file, out_file=PathManager().get_cache_path('test_replicate_code_output.yaml'))
+    with PathManager.configured(
+        repo_dir='/tmp',
+        build_dir='/tmp',
+        cache_dir='output/test_replicate_code',
+    ):
+        trivial_step = Replicate_code()
+        trivial_step.set_io(inp_file=inp_file, out_file=PathManager().get_cache_path('test_replicate_code_output.yaml'))
 
-    with pytest.raises(ValueError):
-        trivial_step.setup()
-        trivial_step.step()
+        with pytest.raises(ValueError):
+            trivial_step.setup()
+            trivial_step.step()
 
 
 def test_replicate_code():

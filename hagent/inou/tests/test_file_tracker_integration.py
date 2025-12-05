@@ -9,7 +9,7 @@ import subprocess
 import uuid
 import datetime
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 
 from hagent.inou.file_tracker import FileTracker
@@ -49,16 +49,11 @@ class TestPathManagerIntegration:
             tracker = FileTracker()
 
             assert tracker.path_manager.is_local_mode()
-            assert str(tracker.path_manager.repo_dir) == '/test/repo'
+            # PathManager is configured by the autouse fixture to use tmp_path
+            assert tracker.path_manager.repo_dir == PathManager().repo_dir
 
     def test_file_tracker_docker_mode_integration(self):
         """Test FileTracker integration with Docker mode PathManager."""
-        # Mock PathManager for docker mode
-        mock_pm = MagicMock()
-        mock_pm.is_docker_mode.return_value = True
-        mock_pm.is_local_mode.return_value = False
-        mock_pm.repo_dir = Path('/code/workspace/repo')
-
         with (
             patch('pathlib.Path.exists', return_value=True),
             patch('pathlib.Path.mkdir'),
@@ -66,9 +61,12 @@ class TestPathManagerIntegration:
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker(mock_pm)
+            with PathManager.configured(
+                docker_image='test:latest', repo_dir='/host/repo', build_dir='/host/build', cache_dir='/host/cache'
+            ):
+                tracker = FileTracker()
 
-            assert tracker.path_manager.is_docker_mode()
+                assert tracker.path_manager.is_docker_mode()
 
     def test_file_tracker_with_path_manager_validation_error(self):
         """Test FileTracker behavior when PathManager validation fails."""
@@ -118,9 +116,12 @@ class TestGitRepositoryIntegration:
     def test_file_tracker_with_real_git_repo(self):
         """Test FileTracker with real git repository."""
         # Create mock PathManager pointing to real repo
-
-        # Create FileTracker
-        tracker = FileTracker()
+        with PathManager.configured(
+            repo_dir=str(self.repo_dir),
+            build_dir=str(self.temp_dir / 'build'),
+            cache_dir=str(self.temp_dir / 'cache'),
+        ):
+            tracker = FileTracker()
 
         # Verify it was initialized properly
 
@@ -146,7 +147,12 @@ class TestGitRepositoryIntegration:
         test_file.write_text('print("uncommitted")\n')
 
         # FileTracker should create baseline snapshot of uncommitted changes
-        tracker = FileTracker()
+        with PathManager.configured(
+            repo_dir=str(self.repo_dir),
+            build_dir=str(self.temp_dir / 'build'),
+            cache_dir=str(self.temp_dir / 'cache'),
+        ):
+            tracker = FileTracker()
 
         # Should have created a baseline stash
         assert tracker._baseline_stash is not None
@@ -174,7 +180,12 @@ class TestGitRepositoryIntegration:
         test_file = self.repo_dir / 'modified.py'
         test_file.write_text('original content\n')
 
-        tracker = FileTracker()
+        with PathManager.configured(
+            repo_dir=str(self.repo_dir),
+            build_dir=str(self.temp_dir / 'build'),
+            cache_dir=str(self.temp_dir / 'cache'),
+        ):
+            tracker = FileTracker()
 
         # Track the file
         result = tracker.track_file('modified.py')
@@ -221,7 +232,12 @@ class TestFileSystemIntegration:
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker()
+            with PathManager.configured(
+                repo_dir=str(self.repo_dir),
+                build_dir=str(self.temp_dir / 'build'),
+                cache_dir=str(self.temp_dir / 'cache'),
+            ):
+                tracker = FileTracker()
 
             # Create different file types
             text_file = self.repo_dir / 'text.txt'
@@ -257,7 +273,12 @@ class TestFileSystemIntegration:
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker()
+            with PathManager.configured(
+                repo_dir=str(self.repo_dir),
+                build_dir=str(self.temp_dir / 'build'),
+                cache_dir=str(self.temp_dir / 'cache'),
+            ):
+                tracker = FileTracker()
 
             # Create nested directory structure
             src_dir = self.repo_dir / 'src'
@@ -337,7 +358,12 @@ class TestPerformanceIntegration:
             patch.object(FileTrackerLocal, '_check_git_available', return_value=True),
             patch.object(FileTrackerLocal, '_create_baseline_snapshot', return_value=None),
         ):
-            tracker = FileTracker()
+            with PathManager.configured(
+                repo_dir=str(self.repo_dir),
+                build_dir=str(self.temp_dir / 'build'),
+                cache_dir=str(self.temp_dir / 'cache'),
+            ):
+                tracker = FileTracker()
 
             # Create many files
             num_files = 50  # Reasonable number for testing
@@ -398,7 +424,11 @@ class TestErrorRecoveryIntegration:
 
         # Should fail fast due to invalid repo
         with patch('hagent.inou.file_tracker_local.sys.exit') as mock_exit:
-            FileTracker()
+            with patch.object(FileTrackerLocal, '_ensure_git_repo', return_value=False):
+                with PathManager.configured(
+                    repo_dir='output/bad_repo/repo', build_dir='output/bad_repo/build', cache_dir='output/bad_repo/cache'
+                ):
+                    FileTracker()
             mock_exit.assert_called_with(1)
 
     def test_file_tracker_cleanup_resilience(self):
