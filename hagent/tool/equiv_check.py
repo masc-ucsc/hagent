@@ -124,18 +124,38 @@ class Equiv_check:
         path_manager = PathManager()
         host_path_obj = Path(host_path).resolve()
 
+        # Define container roots explicitly (workspace layout)
+        container_roots = {
+            'repo': Path('/code/workspace/repo'),
+            'build': Path('/code/workspace/build'),
+            'cache': Path('/code/workspace/cache'),
+            'tech': Path('/code/workspace/tech'),
+            'private': Path('/code/workspace/private'),
+        }
+
         mappings = [
-            (path_manager.repo_mount_dir, path_manager.repo_dir),
-            (path_manager.build_mount_dir, path_manager.build_dir),
-            (path_manager.cache_mount_dir, path_manager.cache_dir),
+            (path_manager.repo_mount_dir or path_manager.repo_dir, container_roots['repo']),
+            (path_manager.build_mount_dir or path_manager.build_dir, container_roots['build']),
+            (path_manager.cache_mount_dir or path_manager.cache_dir, container_roots['cache']),
+            (path_manager.tech_mount_dir or path_manager.tech_dir, container_roots['tech']),
+            (
+                path_manager.private_mount_dir or path_manager.private_dir,
+                container_roots['private'] if path_manager.private_dir else None,
+            ),
         ]
 
         for local_root, container_root in mappings:
-            if local_root and (host_path_obj == local_root or local_root in host_path_obj.parents):
-                relative = host_path_obj.relative_to(local_root)
-                return str(container_root / relative)
+            if not local_root or container_root is None:
+                continue
+            try:
+                if host_path_obj == local_root or local_root in host_path_obj.parents:
+                    relative = host_path_obj.relative_to(local_root)
+                    return str(container_root / relative)
+            except ValueError:
+                continue
 
-        return host_path
+        # Fallback: place it under cache in the container
+        return str(container_roots['cache'] / host_path_obj.name)
 
     def _write_text(self, path: str, content: str) -> bool:
         """Write text using Runner filesystem when available."""
@@ -314,6 +334,18 @@ class Equiv_check:
         #
         # Create a subdirectory for working files
         work_dir = tempfile.mkdtemp(dir=PathManager().get_cache_dir(), prefix='equiv_check_')
+
+        # Ensure container working directory exists when running in Docker mode
+        if self.use_docker and self.runner:
+            container_work_dir = self._translate_to_container(work_dir)
+            try:
+                if self.runner.filesystem:
+                    self.runner.filesystem.makedirs(container_work_dir, exist_ok=True)
+                else:
+                    # Best-effort fallback
+                    self.runner.run_cmd(f'mkdir -p {container_work_dir}', quiet=True)
+            except Exception:
+                pass
 
         # Track working directory for file changes (works in both local and Docker modes)
         if self.runner:
@@ -667,6 +699,9 @@ class Equiv_check:
         if self.use_docker and self.runner:
             container_work_dir = self._translate_to_container(work_dir)
             container_filename = f'{container_work_dir}/{label}.v'
+            # Ensure the directory exists inside the container
+            if self.runner.filesystem:
+                self.runner.filesystem.makedirs(container_work_dir, exist_ok=True)
             if not self._write_text(container_filename, verilog_code):
                 raise RuntimeError(f'Failed to create {label}.v in container: {self.error_message}')
 
