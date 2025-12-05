@@ -1,8 +1,9 @@
 """
 VerilogGenerator component for v2chisel_batch refactoring.
 
-This component handles all Verilog generation operations from Chisel code,
-including baseline generation, modified generation, and file management.
+This component handles compilation of Chisel code and generation of Verilog files
+using the MCP profile system. It replaces hardcoded SBT commands with
+clean MCP profile-based compilation and Verilog generation.
 """
 
 from typing import Dict, List, Optional, Any
@@ -10,14 +11,17 @@ from typing import Dict, List, Optional, Any
 
 class VerilogGenerator:
     """
-    Handles Verilog generation from Chisel code.
+    Handles Chisel compilation and Verilog generation using MCP profiles.
 
     This component is responsible for:
-    1. Generating Verilog from pristine Chisel code (baseline)
-    2. Generating Verilog from modified Chisel code
-    3. Managing different generation commands and fallbacks
+    1. Compiling Chisel code using MCP profile system
+    2. Generating Verilog from Chisel in a single step (MCP compile API does both)
+    3. Providing a clean, reusable interface for Verilog generation throughout the pipeline
     4. Finding and backing up generated Verilog files
-    5. Handling permissions and build directory management
+    5. Verifying Verilog output exists in expected locations
+
+    The MCP 'compile' API runs the full 'runMain' command which both compiles
+    Chisel code AND generates Verilog in a single operation.
     """
 
     def __init__(self, builder, debug: bool = True):
@@ -30,6 +34,107 @@ class VerilogGenerator:
         """
         self.builder = builder
         self.debug = debug
+
+    def generate_verilog(self, cpu_profile: str) -> Dict[str, Any]:
+        """
+        Compile Chisel code AND generate Verilog using MCP profile system.
+
+        This method replaces both traditional 'sbt compile' and 'sbt runMain' steps.
+        The MCP compile API handles both compilation and Verilog generation in one call.
+
+        Args:
+            cpu_profile: MCP profile name (e.g., 'singlecyclecpu_d', 'pipelined_d', 'dualissue_d')
+
+        Returns:
+            Dict with:
+                - success: bool indicating if compilation succeeded
+                - output: stdout from compilation
+                - error: error message if failed
+                - compilation_method: method used for compilation
+                - profile: profile name used
+
+        Examples:
+            >>> verilog_gen = VerilogGenerator(builder)
+            >>> result = verilog_gen.generate_verilog('pipelined_d')
+            >>> if result['success']:
+            >>>     print('Compilation and Verilog generation successful!')
+        """
+        if self.debug:
+            print(f'🏗️  [VERILOG_GEN] Compiling Chisel and generating Verilog using MCP profile: {cpu_profile}')
+
+        try:
+            # Use MCP profile system - this handles BOTH compilation AND Verilog generation!
+            exit_code, stdout, stderr = self.builder.run_api(exact_name=cpu_profile, command_name='compile')
+
+            if exit_code == 0:
+                if self.debug:
+                    print('✅ [VERILOG_GEN] Successfully compiled Chisel and generated Verilog')
+                return {
+                    'success': True,
+                    'output': stdout,
+                    'compilation_method': f'mcp_profile_{cpu_profile}',
+                    'profile': cpu_profile,
+                }
+            else:
+                error_msg = f'MCP compile failed for {cpu_profile}: {stderr}'
+                if self.debug:
+                    print(f'❌ [VERILOG_GEN] {error_msg}')
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'compilation_method': f'mcp_profile_{cpu_profile}_failed',
+                    'stderr': stderr,
+                }
+
+        except Exception as e:
+            error_msg = f'MCP compilation exception: {str(e)}'
+            if self.debug:
+                print(f'❌ [VERILOG_GEN] {error_msg}')
+            return {'success': False, 'error': error_msg, 'compilation_method': 'mcp_exception'}
+
+    def verify_verilog_output(self, cpu_profile: str) -> Dict[str, Any]:
+        """
+        Verify that Verilog output files exist in the expected build directory.
+
+        Args:
+            cpu_profile: MCP profile name used for compilation
+
+        Returns:
+            Dict with verification results including file count and paths
+        """
+        try:
+            # Map profile to build directory
+            profile_to_build_dir = {
+                'singlecyclecpu_d': 'build_singlecyclecpu_d',
+                'pipelined_d': 'build_pipelined_d',
+                'dualissue_d': 'build_dualissue_d',
+            }
+
+            build_dir = profile_to_build_dir.get(cpu_profile, 'build_singlecyclecpu_d')
+            build_path = f'/code/workspace/build/{build_dir}'
+
+            if self.debug:
+                print(f'🔍 [VERILOG_GEN] Verifying Verilog output in {build_path}')
+
+            # Check if build directory exists and has .sv files
+            exit_code, stdout, stderr = self.builder.run_cmd(f'find {build_path} -name "*.sv" -type f')
+
+            if exit_code == 0 and stdout.strip():
+                verilog_files = stdout.strip().split('\n')
+                if self.debug:
+                    print(f'✅ [VERILOG_GEN] Found {len(verilog_files)} Verilog files in {build_path}')
+
+                return {'success': True, 'file_count': len(verilog_files), 'files': verilog_files, 'build_dir': build_path}
+            else:
+                if self.debug:
+                    print(f'⚠️  [VERILOG_GEN] No Verilog files found in {build_path}')
+                return {'success': False, 'error': 'No Verilog files found', 'build_dir': build_path}
+
+        except Exception as e:
+            error_msg = f'Verification failed: {str(e)}'
+            if self.debug:
+                print(f'❌ [VERILOG_GEN] {error_msg}')
+            return {'success': False, 'error': error_msg}
 
     def generate_fresh_baseline_verilog(self, docker_container: Optional[str] = None) -> Dict[str, Any]:
         """
