@@ -325,17 +325,16 @@ endmodule
     build_dir = os.environ.get('HAGENT_BUILD_DIR')
     cache_dir = os.environ.get('HAGENT_CACHE_DIR')
 
-    home_dir = os.path.expanduser('~')
     if not repo_dir:
-        repo_dir = os.path.join(home_dir, 'hagent_test_repo')
+        repo_dir = os.path.join('output', 'hagent_test_repo')
         os.makedirs(repo_dir, exist_ok=True)
         os.environ['HAGENT_REPO_DIR'] = repo_dir
     if not build_dir:
-        build_dir = os.path.join(home_dir, 'hagent_test_build')
+        build_dir = os.path.join('output', 'hagent_test_build')
         os.makedirs(build_dir, exist_ok=True)
         os.environ['HAGENT_BUILD_DIR'] = build_dir
     if not cache_dir:
-        cache_dir = os.path.join(home_dir, 'hagent_test_cache')
+        cache_dir = os.path.join('output', 'hagent_test_cache')
         os.makedirs(cache_dir, exist_ok=True)
         os.environ['HAGENT_CACHE_DIR'] = cache_dir
 
