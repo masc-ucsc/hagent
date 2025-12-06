@@ -64,8 +64,14 @@ class TestRunner:
 
         runner.cleanup()
 
-    def test_docker_mode_initialization(self):
+    def test_docker_mode_initialization(self, request):
         """Test Case 2: Docker mode with image specification."""
+        # Skip if running in forked mode (Python 3.13 fork + Docker client network calls = segfault)
+        import pytest
+
+        if hasattr(request.config, 'option') and hasattr(request.config.option, 'forked') and request.config.option.forked:
+            pytest.skip('Test incompatible with --forked due to Python 3.13 Docker client fork safety issues')
+
         # Use PathManager.configured() to switch to docker mode
         with PathManager.configured(
             docker_image='mascucsc/hagent-simplechisel:2025.11',
@@ -82,8 +88,14 @@ class TestRunner:
 
             runner.cleanup()
 
-    def test_docker_mode_without_image_fails(self):
+    def test_docker_mode_without_image_fails(self, request):
         """Test Case 3: Docker mode picks image from PathManager when not explicitly provided."""
+        # Skip if running in forked mode (Python 3.13 fork + Docker client network calls = segfault)
+        import pytest
+
+        if hasattr(request.config, 'option') and hasattr(request.config.option, 'forked') and request.config.option.forked:
+            pytest.skip('Test incompatible with --forked due to Python 3.13 Docker client fork safety issues')
+
         # Use PathManager.configured() to enable docker mode
         with PathManager.configured(
             docker_image='some-image:tag',

@@ -8,7 +8,7 @@ from hagent.core.llm_wrap import LLM_wrap
 from hagent.inou.path_manager import PathManager
 
 
-def test_llm_wrap_caching():
+def test_llm_wrap_caching(tmp_path, request):
     """
     Test LLM_wrap with consistent parameters.
 
@@ -22,6 +22,10 @@ def test_llm_wrap_caching():
     import pytest
     import litellm
 
+    # Skip if running in forked mode (Python 3.13 fork + network calls = segfault)
+    if hasattr(request.config, 'option') and hasattr(request.config.option, 'forked') and request.config.option.forked:
+        pytest.skip('Test incompatible with --forked due to Python 3.13 network call fork safety issues')
+
     # Skip test if OpenAI API key is not set
     if not os.environ.get('OPENAI_API_KEY'):
         pytest.skip('OPENAI_API_KEY not set')
@@ -29,11 +33,11 @@ def test_llm_wrap_caching():
     if os.environ.get('HAGENT_SKIP_LLM_TESTS'):
         pytest.skip('LLM tests skipped via HAGENT_SKIP_LLM_TESTS')
 
-    # Provide minimal PathManager configuration for local mode
+    # Provide minimal PathManager configuration for local mode with unique directory
     with PathManager.configured(
-        repo_dir='/tmp',
-        build_dir='/tmp',
-        cache_dir='output/test_llm_wrap',
+        repo_dir=str(tmp_path),
+        build_dir=str(tmp_path),
+        cache_dir=str(tmp_path / 'cache'),
     ):
         # Use existing configuration file for caching test.
         conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
@@ -58,7 +62,7 @@ def test_llm_wrap_caching():
         assert jokes1[0].endswith(jokes2[0]), f'{jokes1} vs {jokes2}'
 
 
-def test_llm_wrap_n_diff():
+def test_llm_wrap_n_diff(tmp_path):
     import litellm
     import pytest
 
@@ -67,9 +71,9 @@ def test_llm_wrap_n_diff():
         pytest.skip('OPENAI_API_KEY not set')
 
     with PathManager.configured(
-        repo_dir='/tmp',
-        build_dir='/tmp',
-        cache_dir='output/test_llm_wrap',
+        repo_dir=str(tmp_path),
+        build_dir=str(tmp_path),
+        cache_dir=str(tmp_path / 'cache'),
     ):
         conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
@@ -94,13 +98,13 @@ def test_llm_wrap_n_diff():
         litellm.cache = cache
 
 
-def test_bad_config_file_nonexistent():
+def test_bad_config_file_nonexistent(tmp_path):
     # Test with a non-existent configuration file.
     non_existent_file = '/non/existent/conf.yaml'
     with PathManager.configured(
-        repo_dir='/tmp',
-        build_dir='/tmp',
-        cache_dir='output/test_llm_wrap',
+        repo_dir=str(tmp_path),
+        build_dir=str(tmp_path),
+        cache_dir=str(tmp_path / 'cache'),
     ):
         lw = LLM_wrap('test_bad_config', non_existent_file, 'test_bad_config.log')
         assert 'unable to read conf_file' in lw.last_error
@@ -111,14 +115,14 @@ def test_bad_config_file_nonexistent():
         assert result == []
 
 
-def test_bad_prompt():
+def test_bad_prompt(tmp_path):
     # Test with a non-existent configuration file.
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
     with PathManager.configured(
-        repo_dir='/tmp',
-        build_dir='/tmp',
-        cache_dir='output/test_llm_wrap',
+        repo_dir=str(tmp_path),
+        build_dir=str(tmp_path),
+        cache_dir=str(tmp_path / 'cache'),
     ):
         lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
@@ -128,28 +132,28 @@ def test_bad_prompt():
         assert result == []
 
 
-def test_bad_config_file_bad_yaml():
+def test_bad_config_file_bad_yaml(tmp_path):
     # Create a temporary file with invalid YAML content.
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp:
         tmp.write('invalid: [yaml, : :')
-        tmp_path = tmp.name
+        tmp_yaml = tmp.name
     try:
         with PathManager.configured(
-            repo_dir='/tmp',
-            build_dir='/tmp',
-            cache_dir='output/test_llm_wrap',
+            repo_dir=str(tmp_path),
+            build_dir=str(tmp_path),
+            cache_dir=str(tmp_path / 'cache'),
         ):
-            lw = LLM_wrap('test_bad_yaml', tmp_path, 'test_bad_yaml.log')
+            lw = LLM_wrap('test_bad_yaml', tmp_yaml, 'test_bad_yaml.log')
             assert 'specify llm section' in lw.last_error
 
             result = lw._inference({}, 'some_prompt', n=1)
             assert result == []
             assert 'specify llm section' in lw.last_error
     finally:
-        os.unlink(tmp_path)
+        os.unlink(tmp_yaml)
 
 
-def test_missing_env_var(monkeypatch):
+def test_missing_env_var(tmp_path, monkeypatch):
     # Test environment variable validation by removing all common LLM provider keys
     env_vars_to_remove = [
         'AWS_ACCESS_KEY_ID',
@@ -173,9 +177,9 @@ def test_missing_env_var(monkeypatch):
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
     with PathManager.configured(
-        repo_dir='/tmp',
-        build_dir='/tmp',
-        cache_dir='output/test_llm_wrap',
+        repo_dir=str(tmp_path),
+        build_dir=str(tmp_path),
+        cache_dir=str(tmp_path / 'cache'),
     ):
         lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
@@ -185,7 +189,7 @@ def test_missing_env_var(monkeypatch):
         assert 'environment' in lw.last_error.lower()
 
 
-def test_hagent_llm_model_override(monkeypatch):
+def test_hagent_llm_model_override(tmp_path, monkeypatch):
     # Test that HAGENT_LLM_MODEL environment variable overrides the config file model
     conf_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'llm_wrap_conf1.yaml')
 
@@ -194,9 +198,9 @@ def test_hagent_llm_model_override(monkeypatch):
     monkeypatch.setenv('HAGENT_LLM_MODEL', fake_model)
 
     with PathManager.configured(
-        repo_dir='/tmp',
-        build_dir='/tmp',
-        cache_dir='output/test_llm_wrap',
+        repo_dir=str(tmp_path),
+        build_dir=str(tmp_path),
+        cache_dir=str(tmp_path / 'cache'),
     ):
         lw = LLM_wrap(name='test_caching', log_file='test_llm_model_override.log', conf_file=conf_file)
 
@@ -209,7 +213,7 @@ def test_hagent_llm_model_override(monkeypatch):
         assert 'environment keys not set for fakeprovider/fake-model' in lw.last_error
 
 
-def test_openai_model():
+def test_openai_model(tmp_path):
     import pytest
     import litellm
 
@@ -238,9 +242,9 @@ def test_openai_model():
     complete_config = {'llm': llm_config, **prompt_config}
 
     with PathManager.configured(
-        repo_dir='/tmp',
-        build_dir='/tmp',
-        cache_dir='output/test_llm_wrap',
+        repo_dir=str(tmp_path),
+        build_dir=str(tmp_path),
+        cache_dir=str(tmp_path / 'cache'),
     ):
         try:
             lw = LLM_wrap(

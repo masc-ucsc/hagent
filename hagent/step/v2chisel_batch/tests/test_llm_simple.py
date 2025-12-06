@@ -11,10 +11,16 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from hagent.core.llm_wrap import LLM_wrap
+from hagent.inou.path_manager import PathManager
 
 
-def test_llm_simple():
+def test_llm_simple(tmp_path, request):
     """Test LLM with simple configuration"""
+
+    # Skip if running in forked mode (Python 3.13 fork + network calls = segfault)
+    # Check if pytest-forked plugin is active
+    if hasattr(request.config, 'option') and hasattr(request.config.option, 'forked') and request.config.option.forked:
+        pytest.skip('Test incompatible with --forked due to Python 3.13 network call fork safety issues')
 
     # Skip if no LLM API key available
     if not os.environ.get('FIREWORKS_AI_API_KEY') and not os.environ.get('OPENAI_API_KEY'):
@@ -26,36 +32,50 @@ def test_llm_simple():
     print(f'Using config file: {conf_file}')
     print(f'Config file exists: {os.path.exists(conf_file)}')
 
-    # Create LLM_wrap
-    lw = LLM_wrap(name='v2chisel_batch', log_file='test_llm_simple.log', conf_file=conf_file)
+    # Configure PathManager for test isolation
+    with PathManager.configured(
+        repo_dir=str(tmp_path),
+        build_dir=str(tmp_path),
+        cache_dir=str(tmp_path / 'cache'),
+    ):
+        # Create LLM_wrap
+        lw = LLM_wrap(name='v2chisel_batch', log_file='test_llm_simple.log', conf_file=conf_file)
 
-    if lw.last_error:
-        print(f'LLM_wrap error: {lw.last_error}')
-        return False
-
-    print('LLM_wrap created successfully')
-    print(f'Config keys: {list(lw.config.keys())}')
-
-    # Test simple inference
-    template_data = {
-        'verilog_diff': '--- a/test.sv\n+++ b/test.sv\n@@ -1,1 +1,1 @@\n-assign a = b;\n+assign a = ~b;',
-        'chisel_hints': '// Simple test hint\nio.a := io.b',
-    }
-
-    try:
-        response_list = lw.inference(template_data, prompt_index='prompt_initial', n=1)
-        if response_list and len(response_list) > 0:
-            print(f'✅ LLM response received: {len(response_list[0])} characters')
-            print(f'Response preview: {response_list[0][:100]}...')
-            return True
-        else:
-            print('❌ LLM returned empty response')
+        if lw.last_error:
+            print(f'LLM_wrap error: {lw.last_error}')
             return False
-    except Exception as e:
-        print(f'❌ LLM call failed: {e}')
-        return False
+
+        print('LLM_wrap created successfully')
+        print(f'Config keys: {list(lw.config.keys())}')
+
+        # Test simple inference
+        template_data = {
+            'verilog_diff': '--- a/test.sv\n+++ b/test.sv\n@@ -1,1 +1,1 @@\n-assign a = b;\n+assign a = ~b;',
+            'chisel_hints': '// Simple test hint\nio.a := io.b',
+        }
+
+        try:
+            response_list = lw.inference(template_data, prompt_index='prompt_initial', n=1)
+            if response_list and len(response_list) > 0:
+                print(f'✅ LLM response received: {len(response_list[0])} characters')
+                print(f'Response preview: {response_list[0][:100]}...')
+                return True
+            else:
+                print('❌ LLM returned empty response')
+                return False
+        except Exception as e:
+            print(f'❌ LLM call failed: {e}')
+            return False
 
 
 if __name__ == '__main__':
-    success = test_llm_simple()
+    import tempfile
+    from unittest.mock import MagicMock
+
+    # Create a mock request object for standalone execution
+    mock_request = MagicMock()
+    mock_request.config.option.forked = False
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        success = test_llm_simple(Path(tmpdir), mock_request)
     exit(0 if success else 1)

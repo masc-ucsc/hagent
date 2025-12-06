@@ -6,7 +6,6 @@ environment variable injection, and workspace validation.
 """
 
 import os
-import subprocess
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
@@ -49,59 +48,33 @@ def container_manager_with_cleanup():
             print(f'Warning: Failed to cleanup container manager: {e}')
 
 
-@pytest.fixture(scope='session')
-def setup_local_directory():
+@pytest.fixture(scope='function')
+def setup_local_directory(tmp_path):
     """
-    Setup ./output/local directory structure for testing.
-    Creates the directory structure if it doesn't exist:
-    - ./output/local/repo (with simplechisel git clone)
-    - ./output/local/build (empty directory)
-    - ./output/local/cache (empty directory)
+    Setup unique test directory structure for each test.
+    Creates a temporary directory structure:
+    - <tmp_path>/repo (minimal test directory)
+    - <tmp_path>/build (empty directory)
+    - <tmp_path>/cache (empty directory)
     """
-    local_dir = Path('./output/local')
-    repo_dir = local_dir / 'repo'
-    build_dir = local_dir / 'build'
-    cache_dir = local_dir / 'cache'
+    # Use tmp_path for test isolation
+    repo_dir = tmp_path / 'repo'
+    build_dir = tmp_path / 'build'
+    cache_dir = tmp_path / 'cache'
 
-    # Create local directory if it doesn't exist
-    if not local_dir.exists():
-        print(f'Creating {local_dir} directory...')
-        local_dir.mkdir(parents=True, exist_ok=True)
+    # Create directories
+    repo_dir.mkdir(exist_ok=True)
+    build_dir.mkdir(exist_ok=True)
+    cache_dir.mkdir(exist_ok=True)
 
-    # Setup repo directory with git clone if it doesn't exist or is empty
-    if not repo_dir.exists() or not any(repo_dir.iterdir()):
-        print(f'Setting up {repo_dir} with simplechisel repository... WARNING. THIS CAN CREATE A RACY CONDITION')
-
-        # Clone the repository
-        try:
-            subprocess.run(
-                ['git', 'clone', 'https://github.com/masc-ucsc/simplechisel.git', str(repo_dir)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            print(f'Successfully cloned simplechisel to {repo_dir}')
-        except subprocess.CalledProcessError as e:
-            print(f'Warning: Failed to clone repository: {e}')
-            # Create a basic directory structure as fallback
-            repo_dir.mkdir(exist_ok=True)
-            (repo_dir / 'README.md').write_text('# Test Repository\n')
-
-    # Create build directory
-    if not build_dir.exists():
-        print(f'Creating {build_dir} directory...')
-        build_dir.mkdir(exist_ok=True)
-
-    # Create cache directory
-    if not cache_dir.exists():
-        print(f'Creating {cache_dir} directory...')
-        cache_dir.mkdir(exist_ok=True)
+    # Create minimal test file in repo
+    (repo_dir / 'README.md').write_text('# Test Repository\n')
 
     # Create additional test directories
-    (local_dir / 'extra').mkdir(exist_ok=True)
-    (local_dir / 'test_path').mkdir(exist_ok=True)
+    (tmp_path / 'extra').mkdir(exist_ok=True)
+    (tmp_path / 'test_path').mkdir(exist_ok=True)
 
-    return {'local_dir': local_dir, 'repo_dir': repo_dir, 'build_dir': build_dir, 'cache_dir': cache_dir}
+    return {'local_dir': tmp_path, 'repo_dir': repo_dir, 'build_dir': build_dir, 'cache_dir': cache_dir}
 
 
 class TestContainerManager:

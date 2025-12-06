@@ -19,17 +19,19 @@ from hagent.inou.runner import Runner
 
 
 @pytest.fixture(scope='function', autouse=True)
-def setup_hagent_environment():
+def setup_hagent_environment(request):
     """Setup HAGENT environment for Docker mode tests using PathManager.configured()."""
     import hagent.inou.container_manager as cm
 
     # Reset container state before setting new environment
     cm._docker_workspace_validated = False
 
-    # Use local directories that Docker can easily mount
-    repo_dir = os.path.abspath('./output/test_executor_yosys_synthesis')
-    build_dir = os.path.abspath('./output/test_executor_yosys_synthesis/build')
-    cache_dir = os.path.abspath('./output/test_executor_yosys_synthesis/cache')
+    # Use unique directory for each test to avoid parallel test conflicts
+    test_name = request.node.name
+    base_dir = os.path.abspath(f'./output/test_executor_yosys_synthesis/{test_name}')
+    repo_dir = os.path.join(base_dir, 'repo')
+    build_dir = os.path.join(base_dir, 'build')
+    cache_dir = os.path.join(base_dir, 'cache')
 
     # Create directories if they don't exist
     os.makedirs(repo_dir, exist_ok=True)
