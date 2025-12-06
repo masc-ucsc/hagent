@@ -62,9 +62,13 @@ def test_llm_wrap_caching(tmp_path, request):
         assert jokes1[0].endswith(jokes2[0]), f'{jokes1} vs {jokes2}'
 
 
-def test_llm_wrap_n_diff(tmp_path):
+def test_llm_wrap_n_diff(tmp_path, request):
     import litellm
     import pytest
+
+    # Skip if running in forked mode (Python 3.13 fork + network calls = segfault)
+    if hasattr(request.config, 'option') and hasattr(request.config.option, 'forked') and request.config.option.forked:
+        pytest.skip('Test incompatible with --forked due to Python 3.13 network call fork safety issues')
 
     # Skip test if OpenAI API key is not set
     if not os.environ.get('OPENAI_API_KEY'):
@@ -213,9 +217,13 @@ def test_hagent_llm_model_override(tmp_path, monkeypatch):
         assert 'environment keys not set for fakeprovider/fake-model' in lw.last_error
 
 
-def test_openai_model(tmp_path):
+def test_openai_model(tmp_path, request):
     import pytest
     import litellm
+
+    # Skip if running in forked mode (Python 3.13 fork + network calls = segfault)
+    if hasattr(request.config, 'option') and hasattr(request.config.option, 'forked') and request.config.option.forked:
+        pytest.skip('Test incompatible with --forked due to Python 3.13 network call fork safety issues')
 
     # Skip test if OPENAI_API_KEY is not set
     if not os.environ.get('OPENAI_API_KEY'):
