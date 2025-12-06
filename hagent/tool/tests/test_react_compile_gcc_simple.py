@@ -14,6 +14,7 @@ from typing import List
 from hagent.tool.react import React, Memory_shot
 from hagent.tool.compile import Diagnostic
 from hagent.core.llm_wrap import LLM_wrap
+from hagent.inou.path_manager import PathManager
 
 
 def extract_errors(gcc_output: str) -> list:
@@ -192,15 +193,20 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: Memory_sh
     return current_code
 
 
-def test_react_with_memory():
+def test_react_with_memory(tmp_path):
     """Test React with a database file."""
+    # Configure PathManager for test isolation
+    with PathManager.configured(
+        repo_dir=str(tmp_path),
+        build_dir=str(tmp_path),
+        cache_dir=str(tmp_path / 'cache'),
+    ):
+        react_tool = React()
+        setup_success = react_tool.setup(db_path=str(tmp_path / 'react_db'), learn=True, max_iterations=3)
+        assert setup_success, f'React setup failed: {react_tool.error_message}'
 
-    react_tool = React()
-    setup_success = react_tool.setup(db_path=tempfile.mkdtemp(), learn=True, max_iterations=3)
-    assert setup_success, f'React setup failed: {react_tool.error_message}'
-
-    # A C++ snippet with a missing semicolon
-    faulty_code = r"""
+        # A C++ snippet with a missing semicolon
+        faulty_code = r"""
 #include <iostream>
 
 int main() {
@@ -209,29 +215,35 @@ return 0;
 }
 """
 
-    # Run the React cycle with the provided callbacks
-    fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
+        # Run the React cycle with the provided callbacks
+        fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
 
-    # Check results
-    assert fixed_code, 'Failed to fix the code'
-    assert ';' in fixed_code, 'Semicolon not added to the fixed code'
+        # Check results
+        assert fixed_code, 'Failed to fix the code'
+        assert ';' in fixed_code, 'Semicolon not added to the fixed code'
 
-    # Check the log
-    log = react_tool.get_log()
-    assert len(log) > 0, 'Log should contain entries'
+        # Check the log
+        log = react_tool.get_log()
+        assert len(log) > 0, 'Log should contain entries'
 
-    print('Test with DB passed!')
+        print('Test with DB passed!')
 
 
-def test_react_without_memory():
+def test_react_without_memory(tmp_path):
     """Test React without a database file."""
-    # Initialize React without a DB file
-    react_tool = React()
-    setup_success = react_tool.setup(learn=False, max_iterations=3, comment_prefix='//')
-    assert setup_success, f'React setup failed: {react_tool.error_message}'
+    # Configure PathManager for test isolation
+    with PathManager.configured(
+        repo_dir=str(tmp_path),
+        build_dir=str(tmp_path),
+        cache_dir=str(tmp_path / 'cache'),
+    ):
+        # Initialize React without a DB file
+        react_tool = React()
+        setup_success = react_tool.setup(learn=False, max_iterations=3, comment_prefix='//')
+        assert setup_success, f'React setup failed: {react_tool.error_message}'
 
-    # A C++ snippet with a missing semicolon
-    faulty_code = r"""
+        # A C++ snippet with a missing semicolon
+        faulty_code = r"""
 #include <iostream>
 
 int main() {
@@ -240,14 +252,14 @@ int main() {
 }
 """
 
-    # Run the React cycle with the provided callbacks
-    fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
+        # Run the React cycle with the provided callbacks
+        fixed_code = react_tool.react_cycle(faulty_code, check_callback_cpp, fix_callback_cpp)
 
-    # Check results
-    assert fixed_code, 'Failed to fix the code'
-    assert ';' in fixed_code, 'Semicolon not added to the fixed code'
+        # Check results
+        assert fixed_code, 'Failed to fix the code'
+        assert ';' in fixed_code, 'Semicolon not added to the fixed code'
 
-    print('Test without DB passed!')
+        print('Test without DB passed!')
 
 
 if __name__ == '__main__':

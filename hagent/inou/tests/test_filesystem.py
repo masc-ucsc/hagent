@@ -12,7 +12,6 @@ Tests all FileSystem APIs in both execution modes to ensure consistency:
 - resolve_path()
 """
 
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -31,53 +30,37 @@ def isolate_path_manager():
         yield
 
 
-@pytest.fixture(scope='session')
-def setup_test_directory():
+@pytest.fixture(scope='function')
+def setup_test_directory(tmp_path):
     """
-    Setup test directory structure for both local and Docker testing.
-    Creates: ./setup_run/test_filesystem_XXX/repo, /build, /cache, /logs
-    Uses setup_mcp.sh for simplechisel project.
+    Setup unique test directory structure for each test.
+    Creates temporary directories: repo, build, cache, logs
     """
-    test_base = Path('./setup_run/test_filesystem')
-    test_base.mkdir(parents=True, exist_ok=True)
-
-    # Setup using the setup_mcp.sh script for simplechisel
-    script_path = Path('./scripts/setup_mcp.sh').resolve()
-    if script_path.exists():
-        print(f'Setting up test directory using {script_path}...')
-        try:
-            subprocess.run(
-                [str(script_path), 'simplechisel', str(test_base)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            print(f'Successfully set up test directory at {test_base}')
-        except subprocess.CalledProcessError as e:
-            print(f'Warning: setup_mcp.sh failed: {e}\nstdout: {e.stdout}\nstderr: {e.stderr}')
-            # Create minimal structure as fallback
-            for subdir in ['repo', 'build', 'cache', 'logs']:
-                (test_base / subdir).mkdir(exist_ok=True)
-    else:
-        print(f'Warning: setup_mcp.sh not found at {script_path}')
-        # Create minimal structure
-        for subdir in ['repo', 'build', 'cache', 'logs']:
-            (test_base / subdir).mkdir(exist_ok=True)
+    # Create minimal structure in tmp_path for test isolation
+    for subdir in ['repo', 'build', 'cache', 'logs']:
+        (tmp_path / subdir).mkdir(exist_ok=True)
 
     # Return absolute paths for Docker mounting to work correctly
     return {
-        'base': test_base.resolve(),
-        'repo': (test_base / 'repo').resolve(),
-        'build': (test_base / 'build').resolve(),
-        'cache': (test_base / 'cache').resolve(),
-        'logs': (test_base / 'logs').resolve(),
+        'base': tmp_path.resolve(),
+        'repo': (tmp_path / 'repo').resolve(),
+        'build': (tmp_path / 'build').resolve(),
+        'cache': (tmp_path / 'cache').resolve(),
+        'logs': (tmp_path / 'logs').resolve(),
     }
 
 
 @pytest.fixture
 def local_filesystem(setup_test_directory):
     """Create a local filesystem instance for testing."""
-    return FileSystemLocal()
+    # Use PathManager.configured() for test isolation
+    test_dirs = setup_test_directory
+    with PathManager.configured(
+        repo_dir=str(test_dirs['repo']),
+        build_dir=str(test_dirs['build']),
+        cache_dir=str(test_dirs['cache']),
+    ):
+        return FileSystemLocal()
 
 
 @pytest.fixture
