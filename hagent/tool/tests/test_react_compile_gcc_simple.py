@@ -193,8 +193,14 @@ def fix_callback_cpp(current_code: str, diag: Diagnostic, fix_example: Memory_sh
     return current_code
 
 
-def test_react_with_memory(tmp_path):
+def test_react_with_memory(tmp_path, request):
     """Test React with a database file."""
+    import pytest
+
+    # Skip if running in forked mode (Python 3.13 fork + network calls = segfault)
+    if hasattr(request.config, 'option') and hasattr(request.config.option, 'forked') and request.config.option.forked:
+        pytest.skip('Test incompatible with --forked due to Python 3.13 network call fork safety issues')
+
     # Configure PathManager for test isolation
     with PathManager.configured(
         repo_dir=str(tmp_path),
