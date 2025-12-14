@@ -81,6 +81,12 @@ class V2chisel_batch(Step):
         # Update input_data with any runtime data
         self.input_data.update(data)
 
+        # Setup Builder (initialize filesystem and load hagent.yaml configuration)
+        if not self.builder.setup():
+            error_msg = f'Builder setup failed: {self.builder.get_error()}'
+            print(f'❌ {error_msg}')
+            return {'success': False, 'error': error_msg}
+
         # Initialize components now that we have input_data
         self.debug = self.input_data.get('debug', True)
         self.baseline_verilog_generator = BaselineVerilogGenerator(self.builder, debug=self.debug)
@@ -317,7 +323,7 @@ class V2chisel_batch(Step):
 
         # Generate hints using HintsGeneratorV2 (3 strategies combined)
         print('🔍 Generating hints using multi-strategy approach...')
-        hints_result = self._generate_hints_for_bug(unified_diff, bug_description)
+        hints_result = self._generate_hints_for_bug(unified_diff, bug_description, bug_file)
 
         if not hints_result['success']:
             print(f'❌ Hints generation failed: {hints_result.get("error", "Unknown error")}')
@@ -375,6 +381,12 @@ class V2chisel_batch(Step):
         print(f'   Tokens: {llm_result.get("tokens", 0)}')
 
         chisel_diff = llm_result.get('chisel_diff', '')
+
+        # DEBUG: Print the generated Chisel diff
+        print('\n📝 [DEBUG] Generated Chisel diff:')
+        print('=' * 80)
+        print(chisel_diff)
+        print('=' * 80)
         report.mark_llm_success(generated_diff=chisel_diff)
         total_llm_cost = llm_result.get('cost', 0)
         total_llm_tokens = llm_result.get('tokens', 0)
@@ -941,7 +953,7 @@ class V2chisel_batch(Step):
             'dac_metrics': report.get_dac_report_dict(),
         }
 
-    def _generate_hints_for_bug(self, verilog_diff, bug_description):
+    def _generate_hints_for_bug(self, verilog_diff, bug_description, bug_file='unknown'):
         """
         Generate Chisel hints from Verilog diff using multi-strategy approach.
 
@@ -953,6 +965,7 @@ class V2chisel_batch(Step):
         Args:
             verilog_diff: Unified diff of Verilog changes
             bug_description: Description of the bug
+            bug_file: Verilog file name (e.g., 'Control.sv')
 
         Returns:
             Dict with success status, hints, and metadata
@@ -961,22 +974,65 @@ class V2chisel_batch(Step):
             if self.debug:
                 print('🔍 [HINTS] Running multi-strategy hints generation...')
 
-            # Call HintsGeneratorV2 to run all 3 strategies
-            hints_result = self.hints_generator_v2.generate_hints_v2(verilog_diff=verilog_diff, bug_description=bug_description)
+            # Import BugInfo for constructing bug_info object
+            from hagent.step.v2chisel_batch.components.bug_info import BugInfo
+
+            # Create BugInfo object expected by HintsGeneratorV2
+            bug_entry = {
+                'file': bug_file,
+                'unified_diff': verilog_diff,
+                'description': bug_description,
+            }
+            bug_info = BugInfo(bug_entry, 0)
+
+            # Get all Chisel files from the repository (using Builder's filesystem)
+            # For now, use a simple pattern to find Scala files
+            all_files = []
+            try:
+                # Use Builder to find Scala files in the repository
+                exit_code, stdout, stderr = self.builder.run_cmd(
+                    'find /code/workspace/repo/src/main/scala -name "*.scala" -type f 2>/dev/null || find . -name "*.scala" -type f 2>/dev/null || true'
+                )
+                if exit_code == 0 and stdout:
+                    raw_files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
+                    # Prepend docker: prefix for SpanIndex to use Builder for file reading
+                    # Format: docker:container_name:path
+                    for f in raw_files:
+                        all_files.append(f'docker:hagent:{f}')
+            except Exception as e:
+                if self.debug:
+                    print(f'⚠️  Could not find Scala files: {e}')
+
+            if self.debug:
+                print(f'   Found {len(all_files)} Scala files')
+
+            # Call HintsGeneratorV2.find_hints() with proper parameters
+            hints_result = self.hints_generator_v2.find_hints(
+                bug_info=bug_info,
+                all_files=all_files,
+                docker_container='hagent',  # Builder handles docker
+            )
 
             if hints_result.get('success'):
                 if self.debug:
                     print('✅ [HINTS] Multi-strategy hints generation successful')
                     print(f'   Combined hints length: {len(hints_result.get("hints", ""))} chars')
 
+                # Extract file paths from hints result
+                # HintsGeneratorV2 returns hits with file information
+                chisel_files = []
+                if hints_result.get('hits'):
+                    for hit in hints_result['hits']:
+                        if hasattr(hit, 'file_path'):
+                            chisel_files.append(hit.file_path)
+                        elif isinstance(hit, dict) and 'file_path' in hit:
+                            chisel_files.append(hit['file_path'])
+
                 return {
                     'success': True,
                     'hints': hints_result.get('hints', ''),
-                    'chisel_files_found': hints_result.get('chisel_files_found', []),
-                    'strategy_1_hints': hints_result.get('strategy_1_hints', ''),
-                    'strategy_2_hints': hints_result.get('strategy_2_hints', ''),
-                    'strategy_3_hints': hints_result.get('strategy_3_hints', ''),
-                    'confidence': hints_result.get('confidence', 0.0),
+                    'chisel_files_found': chisel_files,
+                    'source': hints_result.get('source', 'unknown'),
                 }
             else:
                 error_msg = hints_result.get('error', 'Unknown error in hints generation')
@@ -988,6 +1044,9 @@ class V2chisel_batch(Step):
             error_msg = f'Exception during hints generation: {str(e)}'
             if self.debug:
                 print(f'❌ [HINTS] {error_msg}')
+                import traceback
+
+                traceback.print_exc()
             return {'success': False, 'error': error_msg}
 
     def _generate_chisel_diff_with_llm(self, verilog_diff, chisel_hints, bug_description):
@@ -1184,14 +1243,9 @@ class V2chisel_batch(Step):
                 print(f'   Bug file: {bug_file}')
                 print(f'   CPU profile: {cpu_profile}')
 
-            # Map profile to Verilog files
-            profile_to_verilog = {
-                'singlecyclecpu_d': 'SingleCycleCPU.sv',
-                'pipelined_d': 'PipelinedCPU.sv',
-                'dualissue_d': 'PipelinedDualIssueCPU.sv',
-            }
-
-            verilog_filename = profile_to_verilog.get(cpu_profile, 'SingleCycleCPU.sv')
+            # Use the bug file directly instead of mapping to top-level CPU file
+            # The bug_file already contains the specific Verilog file (e.g., Control.sv, ALU.sv)
+            verilog_filename = bug_file
 
             # Paths to golden and modified Verilog
             golden_dir = golden_result.get('golden_directory', '/code/workspace/repo/lec_golden')
@@ -1213,6 +1267,11 @@ class V2chisel_batch(Step):
             print(f'🎯 [LEC] Comparing module: {module_name}')
             print(f'   Golden (correct): {golden_file}')
             print(f'   Modified (from LLM): {modified_file}')
+            print(f'   Module to compare: {module_name}')
+            print(f'\n📝 [DEBUG] LEC will compare:')
+            print(f'   Gold file: {golden_file}')
+            print(f'   Gate file: {modified_file}')
+            print(f'   Target module: {module_name}')
 
             # Run LEC using Equiv_check
             # This will print the exact command and files involved
