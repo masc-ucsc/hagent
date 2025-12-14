@@ -49,7 +49,9 @@ class ChiselDiffGenerator:
             return True
 
         try:
-            self.llm_wrap = LLM_wrap(self.llm_name, self.llm_config_file)
+            # LLM_wrap requires: name, conf_file, log_file
+            log_file = 'v2chisel_batch_llm.log'
+            self.llm_wrap = LLM_wrap(self.llm_name, self.llm_config_file, log_file)
 
             if self.llm_wrap.last_error:
                 if self.debug:
