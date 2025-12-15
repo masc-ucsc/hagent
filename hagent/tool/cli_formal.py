@@ -336,7 +336,7 @@ def main():
     )
     ap.add_argument(
         '--jasper-bin',
-        default='/mada/software/cadence/JASPER24/bin/jg',
+        default='<cadence jasper_bin path>',
         help='Path to Jasper binary.',
     )
     ap.add_argument('--run-jg', action='store_true', help='Run JasperGold FPV automatically.')
