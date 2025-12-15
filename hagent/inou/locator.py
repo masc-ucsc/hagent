@@ -442,7 +442,8 @@ class Locator:
 
         if cmd_info:
             base_command = cmd_info['command']
-            cwd = cmd_info['cwd']
+            cwd_var = cmd_info['cwd'].lstrip('$')  # Remove leading $ if present
+            cwd = os.environ.get(cwd_var, cmd_info['cwd'])  # Fallback to original if not found
 
             # Substitute template variables like {{top}} and {{top_synth}} with defaults from API options
             # Get the API definition to access option defaults
@@ -1018,6 +1019,10 @@ class Locator:
             self._debug_print('No hierarchy cache available')
             return []
 
+        # Detect flat netlist:only one top-level module, no sub-modules in hierarchy
+        non_metadata_keys = [k for k in hierarchy.keys() if k != '_metadata']
+        is_flat_netlist = len(non_metadata_keys) == 1 and all('.' not in k for k in non_metadata_keys)
+
         # Extract variable name from hierarchical path (last component)
         parts = hier_path.split('.')
         var_name = parts[-1] if parts else hier_path
@@ -1026,6 +1031,55 @@ class Locator:
         # e.g., "top.cpu.alu.result" → "top.cpu.alu"
         module_path = '.'.join(parts[:-1]) if len(parts) > 1 else ''
         self._debug_print(f'Extracted variable={var_name}, module_path={module_path}')
+
+        # Special handling for flat netlists with hierarchical signals
+        if is_flat_netlist and len(parts) > 2:
+            self._debug_print(f'Detected flat netlist with hierarchical signal: {hier_path}')
+            # In flat netlists, hierarchical signals use escaped identifiers
+            # Example: PipelinedCPU.mem_wb_ctrl.reg_wb_ctrl_toreg
+            #   → search for: \mem_wb_ctrl.reg_wb_ctrl_toreg (escaped identifier)
+
+            # Get the netlist file from the single hierarchy entry
+            top_module_key = non_metadata_keys[0]
+            netlist_file_info = hierarchy[top_module_key]
+            netlist_file = netlist_file_info.get('file', '')
+
+            if netlist_file:
+                # Construct hierarchical signal name (remove top module)
+                hierarchical_signal = '.'.join(parts[1:])  # e.g., "mem_wb_ctrl.reg_wb_ctrl_toreg"
+                self._debug_print(f'Searching for escaped identifier: \\{hierarchical_signal}')
+
+                # Search for escaped identifier: \mem_wb_ctrl.reg_wb_ctrl_toreg
+                # Pattern: backslash + hierarchical_name + whitespace
+                import re as re_module
+
+                escaped_pattern = rf'\\{re_module.escape(hierarchical_signal)}\s'
+
+                # Read netlist file and search
+                netlist_path = Path(self.builder.runner.path_manager.build_dir) / netlist_file
+                locations = []
+                try:
+                    content = self.builder.filesystem.read_text(str(netlist_path))
+                    if content:
+                        lines = content.splitlines()
+                        for i, line in enumerate(lines, 1):
+                            if re_module.search(escaped_pattern, line):
+                                locations.append(
+                                    SourceLocation(
+                                        file_path=str(netlist_path),
+                                        module_name=netlist_file_info.get('module', ''),
+                                        line_start=i,
+                                        line_end=i,
+                                        confidence=1.0,
+                                        representation=target_type,
+                                    )
+                                )
+                        if locations:
+                            self._debug_print(f'Found {len(locations)} match(es) for escaped identifier')
+                except Exception as e:
+                    self._debug_print(f'Error reading netlist file {netlist_path}: {e}')
+
+                return locations
 
         # Try to find matching hierarchy entries
         matching_entries = []
