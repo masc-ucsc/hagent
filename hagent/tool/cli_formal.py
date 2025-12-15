@@ -11,6 +11,16 @@ Automated Formal Verification Pipeline:
   4. Optional JasperGold FPV run
   5. Result summary (table + CSV)
   6. Optional LLM-based CEX failure root-cause analysis
+
+Design vs. SVA target:
+  --top     : design / elaboration top (e.g. cva6)
+  --sva-top : module for which spec/properties/SVA wrappers are generated
+              (defaults to --top, can be submodule like load_unit)
+
+Filelist:
+  --filelist : optional plain text file with one HDL path per line.
+               If given, gen_dep_tcl_and_sva uses it instead of auto
+               dependency discovery.
 """
 
 import os
@@ -83,11 +93,21 @@ PRIVATE_COV_SUMMARIZER = _load_private_cov_summarizer()
 
 
 def run_uv(cmd: List[str], cwd: Path | None = None):
-    """Run a Python module or script inside the uv virtual environment."""
-    cmd_str = ' '.join(cmd)
-    console.print(f'[cyan]→[/cyan] [white]uv run {cmd_str}[/white]')
-    subprocess.run(['uv', 'run', *cmd], check=True, cwd=cwd)
+    """Run a Python module or script with the *current* Python interpreter.
 
+    Important:
+    - cli_formal.py itself is often launched via `uv run --python <version> ...`
+    - Nested `uv run` causes interpreter mismatches (cp314 vs cp313).
+    - Here we reuse `sys.executable` and strip any leading 'python'/'python3'
+      from the command list.
+    """
+    # If the first arg is 'python' or 'python3', drop it; we'll use sys.executable.
+    if cmd and cmd[0] in ('python', 'python3'):
+        cmd = cmd[1:]
+
+    cmd_str = ' '.join(cmd)
+    console.print(f'[cyan]→[/cyan] [white]{sys.executable} {cmd_str}[/white]')
+    subprocess.run([sys.executable, *cmd], check=True, cwd=cwd)
 
 # -----------------------------------------------------------------------------
 # JasperGold log parsing utilities
@@ -197,18 +217,6 @@ def parse_jg_log_detailed(log_path: Path) -> Dict:
 
     # ------------------------------------------------------------------
     # 2) Fallback: parse SUMMARY block if no RESULTS lines were found
-    #    Example:
-    #    ==============================================================
-    #    SUMMARY
-    #    ==============================================================
-    #       Properties Considered              : 11
-    #             assertions                   : 3
-    #              - proven                    : 1 (33.3333%)
-    #              - cex                       : 2 (66.6667%)
-    #             covers                       : 8
-    #              - unreachable               : 3 (37.5%)
-    #              - covered                   : 5 (62.5%)
-    #    determined
     # ------------------------------------------------------------------
     def _parse_from_summary_block(text: str) -> Optional[Dict[str, Any]]:
         last_block = None
@@ -308,11 +316,29 @@ def main():
     ap = argparse.ArgumentParser(description='Formal Agent - FPV Pipeline')
     ap.add_argument('--slang', required=True, help='Path to slang binary or wrapper.')
     ap.add_argument('--rtl', required=True, help='RTL source directory.')
-    ap.add_argument('--top', required=True, help='Top module name.')
+    ap.add_argument('--top', required=True, help='Design top module name (e.g. cva6).')
+    ap.add_argument(
+        '--sva-top',
+        help=(
+            'Module to generate spec/properties/SVA for. '
+            'Defaults to --top (can be submodule, e.g. load_unit).'
+        ),
+    )
     ap.add_argument('--out', required=True, help='Output directory for results.')
     ap.add_argument('-I', '--include', nargs='*', default=[], help='Include directories.')
     ap.add_argument('-D', '--defines', nargs='*', default=[], help='Verilog defines.')
-    ap.add_argument('--jasper-bin', default='/mada/software/cadence/JASPER24/bin/jg', help='Path to Jasper binary.')
+    ap.add_argument(
+        '--filelist',
+        help=(
+            'Optional plain text HDL filelist (one file per line) for Jasper. '
+            'If provided, passed through to gen_dep_tcl_and_sva.'
+        ),
+    )
+    ap.add_argument(
+        '--jasper-bin',
+        default='/mada/software/cadence/JASPER24/bin/jg',
+        help='Path to Jasper binary.',
+    )
     ap.add_argument('--run-jg', action='store_true', help='Run JasperGold FPV automatically.')
     args = ap.parse_args()
 
@@ -327,6 +353,9 @@ def main():
     ensure_dir(fpv_dir)
     ensure_dir(fpv_dir / 'sva')
 
+    # SVA target module (spec/properties/bind). Defaults to design top.
+    sva_top = args.sva_top or args.top
+
     # YAML config detection
     root = repo_root()
     spec_yaml = root / 'hagent' / 'hagent' / 'step' / 'sva_gen' / 'spec_prompt.yaml'
@@ -334,7 +363,7 @@ def main():
     if not spec_yaml.exists() or not prop_yaml.exists():
         raise SystemExit(f'[❌] Missing YAML configs: {spec_yaml}, {prop_yaml}')
 
-    # --- 🔍 Detect clock/reset for top module ---
+    # --- 🔍 Detect clock/reset for design top module ---
     cr_result = detect_clk_rst_for_top(rtl_dir, args.top)
     if len(cr_result) == 3:
         clk, rst, rst_expr = cr_result
@@ -344,10 +373,15 @@ def main():
     else:
         raise ValueError(f'Unexpected return from detect_clk_rst_for_top: {cr_result}')
 
+    console.print(
+        f'[cyan]ℹ Design top:[/cyan] {args.top}   '
+        f'[cyan]ℹ SVA target:[/cyan] {sva_top}'
+    )
+
     # --- Pipeline steps ---
     steps = [
         (
-            '🔧 Generating formal scenarios',
+            f'🔧 Generating formal scenarios (spec) for module {sva_top}',
             [
                 'python3',
                 '-m',
@@ -359,24 +393,23 @@ def main():
                 '--rtl',
                 str(rtl_dir),
                 '--top',
-                args.top,
+                sva_top,
                 '--out',
                 str(fpv_dir),
                 '--llm-conf',
                 str(spec_yaml),
-                # "--refine"
             ],
         ),
         (
-            '🔒 Generating formal properties (assert/assume/cover)',
+            f'🔒 Generating formal properties (assert/assume/cover) for module {sva_top}',
             [
                 'python3',
                 '-m',
                 'hagent.tool.tests.cli_property_builder',
                 '--spec-md',
-                str(fpv_dir / f'{args.top}_spec.md'),
+                str(fpv_dir / f'{sva_top}_spec.md'),
                 '--csv',
-                str(fpv_dir / f'{args.top}_spec.csv'),
+                str(fpv_dir / f'{sva_top}_spec.csv'),
                 '--rtl',
                 str(rtl_dir),
                 '--out',
@@ -396,9 +429,9 @@ def main():
                 '--top',
                 args.top,
                 '--out',
-                str(fpv_dir / 'FPV.tcl'),
+                str(fpv_dir),  # <-- directory, NOT fpv_dir / "FPV.tcl"
                 '--prop-include',
-                'properties.sv',
+                str(fpv_dir / 'properties.sv'),  # <-- absolute path to generated properties
                 '--clock-name',
                 clk,
                 '--reset-expr',
@@ -409,16 +442,23 @@ def main():
                 '64',
             ],
         ),
+
     ]
 
-    # Add include and define flags
-    msg, gen_cmd = steps[2]
+    # Add SVA target module to gen_dep_tcl_and_sva if different from top
+    msg_gen, gen_cmd = steps[2]
     gen_cmd = list(gen_cmd)
+    if sva_top != args.top:
+        gen_cmd += ['--sva-top', sva_top]
+
+    # Add include, define, and filelist flags
     for inc in args.include:
         gen_cmd += ['--extra-inc', os.path.expanduser(inc)]
     for d in args.defines:
         gen_cmd += ['--defines', d]
-    steps[2] = (msg, gen_cmd)
+    if args.filelist:
+        gen_cmd += ['--filelist', os.path.expanduser(args.filelist)]
+    steps[2] = (msg_gen, gen_cmd)
 
     # --- Run pipeline ---
     with Progress(SpinnerColumn(), TextColumn('[progress.description]{task.description}')) as progress:
@@ -437,11 +477,13 @@ def main():
 
     # --- Optional JasperGold run ---
     if args.run_jg:
-        console.print('\n[bold yellow]⚙ Running Formal Tool: JasperGold FPV...[/bold yellow]')
+        console.print(
+            '\n[bold yellow]⚙ Running Formal Tool: JasperGold FPV '
+            f'(top={args.top}, sva_top={sva_top})...[/bold yellow]'
+        )
         try:
             run_uv(
                 [
-                    # args.jasper_bin, "-batch", "-allow_unsupported_OS", "-cov", "-tcl", "FPV.tcl"
                     args.jasper_bin,
                     '-batch',
                     '-allow_unsupported_OS',
@@ -462,7 +504,10 @@ def main():
             'FAIL': jg_summary.get('assertions', {}).get('cex', 0),
             'UNREACHABLE': jg_summary.get('covers', {}).get('unreachable', 0),
             'COVER': jg_summary.get('covers', {}).get('covered', 0),
-            'UNKNOWN': (jg_summary.get('assertions', {}).get('unknown', 0) + jg_summary.get('covers', {}).get('unknown', 0)),
+            'UNKNOWN': (
+                jg_summary.get('assertions', {}).get('unknown', 0)
+                + jg_summary.get('covers', {}).get('unknown', 0)
+            ),
         }
         write_summary(fpv_dir, counts)
 
@@ -484,7 +529,11 @@ def main():
             )
 
     console.print('\n[bold green]✅ FORMAL AGENT COMPLETED SUCCESSFULLY![/bold green]')
-    console.print(f'All results in: [bold yellow]{fpv_dir}[/bold yellow]\n')
+    console.print(
+        f'Design top: [bold cyan]{args.top}[/bold cyan]   '
+        f'SVA target: [bold magenta]{sva_top}[/bold magenta]\n'
+        f'All results in: [bold yellow]{fpv_dir}[/bold yellow]\n'
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -495,3 +544,4 @@ if __name__ == '__main__':
         console.print(f'[red]❌ Fatal Error:[/red] {e}')
         sys.exit(1)
     sys.exit(0)
+

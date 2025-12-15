@@ -4,14 +4,24 @@
 Generate:
   1) FPV.tcl using the private Jasper TCL writer.
   2) Minimal SVA wrapper and bind:
-       <out_dir>/sva/<top>_prop.sv
-       <out_dir>/sva/<top>_bind.sv
+       <out_dir>/sva/<sva_top>_prop.sv
+       <out_dir>/sva/<sva_top>_bind.sv
 
-The public hagent repo does NOT embed any Jasper TCL logic.
-All TCL generation must come from the private writer.
+Modes:
 
-Expected private writer:
-  from JG.fpv_tcl_writer import write_jasper_tcl
+  • Auto mode (default, no --filelist):
+      - Use hdl_utils.build_filelist_for_top() to discover package + RTL files
+        for the design top.
+  • Filelist mode (when --filelist is given):
+      - Read HDL file paths from a user-supplied text file (one path per line).
+      - Do NOT run dependency discovery; assume filelist is complete.
+
+Design vs SVA module:
+
+  --top     : design top module name (used for clock/reset detection and
+              Jasper 'elaborate -top <top>')
+  --sva-top : module to generate *_prop.sv and *_bind.sv for.
+              Defaults to --top (can be a submodule).
 """
 
 import re
@@ -287,7 +297,7 @@ def emit_prop_and_bind_for_module(
       <out_root>/sva/<mod_name>_prop.sv
       <out_root>/sva/<mod_name>_bind.sv
 
-    New strategy:
+    Strategy:
       - Use ONLY the module header (port list) to build wrapper ports.
       - Do NOT mine the body for regs/enums/locals (too error-prone).
       - All ports are turned into 'input' (Jasper-friendly for SVA wrapper).
@@ -466,7 +476,7 @@ def order_packages_by_dependency(pkg_files):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', required=True, help='RTL source root (recursive)')
-    ap.add_argument('--top', required=True, help='Top module name')
+    ap.add_argument('--top', required=True, help='Design top module name')
     ap.add_argument('--out', required=True, help='Output Tcl path, e.g. out/FPV.tcl')
     ap.add_argument(
         '--skip-dirs',
@@ -491,12 +501,27 @@ def main():
     ap.add_argument(
         '--all-sva',
         action='store_true',
-        help='Generate prop+bind for all modules in the filelist (not just top)',
+        help='Generate prop+bind for all modules in the filelist (not just one module)',
+    )
+    ap.add_argument(
+        '--sva-top',
+        help=(
+            'Module name for which to generate *_prop.sv and *_bind.sv. '
+            'Defaults to --top if not set (can be a submodule).'
+        ),
     )
     ap.add_argument(
         '--prop-include',
         default='properties.sv',
         help='File to include inside *_prop.sv (e.g. "properties.sv")',
+    )
+    ap.add_argument(
+        '--filelist',
+        help=(
+            'Optional plain-text HDL file list (one file path per line). '
+            'If provided, dependencies are NOT auto-discovered and this list '
+            'is used as-is.'
+        ),
     )
     ap.add_argument('--clock-name', help='Override detected clock name')
     ap.add_argument('--reset-expr', help='Override detected reset expression')
@@ -516,42 +541,84 @@ def main():
     if not src_root.exists():
         raise SystemExit(f'ERROR: source root not found: {src_root}')
 
+    sva_top = args.sva_top or args.top
+
     # User-provided include dirs (e.g. .../core/include, .../core/pmp/include)
     user_incdirs = [Path(p).resolve() for p in args.extra_inc]
 
     console.print(f'[cyan]📁 Scanning HDL in {src_root}[/cyan]')
-
-    # Build ordered filelist for the top, including all required packages.
-    # This is where riscv_pkg.sv (or riscv.sv) gets pulled in automatically.
-    pkg_files, rtl_files, missing_pkgs = build_filelist_for_top(
-        rtl_root=src_root,
-        top_name=args.top,
-        include_dirs=user_incdirs,
+    console.print(
+        f'[cyan]ℹ Design top:[/cyan] {args.top}   '
+        f'[cyan]ℹ SVA target:[/cyan] {sva_top}'
     )
 
-    if missing_pkgs:
-        console.print('[yellow]⚠ WARNING: Some packages could not be resolved: ' + ', '.join(sorted(missing_pkgs)) + '[/yellow]')
+    # -------------------------
+    # Filelist vs auto dependency mode
+    # -------------------------
+    if args.filelist:
+        filelist_path = Path(args.filelist).resolve()
+        if not filelist_path.is_file():
+            raise SystemExit(f'ERROR: filelist not found: {filelist_path}')
 
-    #    files_out = pkg_files + rtl_files
-    # IMPORTANT: ensure packages are ordered so that providers come
-    # before users (e.g. riscv_pkg, config_pkg before ariane_pkg).
-    pkg_files = order_packages_by_dependency(pkg_files)
+        console.print(f'[green]✔ Using user-provided filelist:[/green] {filelist_path}')
 
-    files_out = pkg_files + rtl_files
+        files_out: list[Path] = []
+        with filelist_path.open() as fl:
+            for raw in fl:
+                line = raw.strip()
+                if not line or line.startswith('#'):
+                    continue
+                p = Path(line)
+                if not p.is_absolute():
+                    p = (src_root / p).resolve()
+                else:
+                    p = p.resolve()
+                if not p.exists():
+                    console.print(f'[yellow]⚠ File from filelist does not exist:[/yellow] {p}')
+                    continue
+                files_out.append(p)
+
+        pkg_files: list[Path] = []
+        rtl_files: list[Path] = files_out
+        missing_pkgs = set()
+    else:
+        # Build ordered filelist for the top, including all required packages.
+        pkg_files, rtl_files, missing_pkgs = build_filelist_for_top(
+            rtl_root=src_root,
+            top_name=args.top,
+            include_dirs=user_incdirs,
+        )
+
+        if missing_pkgs:
+            console.print(
+                '[yellow]⚠ WARNING: Some packages could not be resolved: '
+                + ', '.join(sorted(missing_pkgs))
+                + '[/yellow]'
+            )
+
+        # Ensure packages are ordered so that providers come before users
+        pkg_files = order_packages_by_dependency(pkg_files)
+        files_out = pkg_files + rtl_files
 
     # incdirs passed to Jasper (the private writer will turn these into +incdir)
     incdirs_out = list(user_incdirs)
 
-    # build a simple module -> file map from the whole tree (for SVA)
+    # -------------------------
+    # Build module → file map (restricted to files_out)
+    # -------------------------
     all_files = load_sv_tree(src_root)
+    file_set = {p.resolve() for p in files_out}
+
     modules = {}
     for path, sv in all_files.items():
+        if path.resolve() not in file_set:
+            continue
         # declared_units might include modules/interfaces/programs/packages;
         # we only really care about modules, but harmless if we index others.
         for unit in sv.declared_units():
             modules.setdefault(unit, path)
 
-    # Detect clock/reset (only for top)
+    # Detect clock/reset (only for design top)
     clk_name, rst_name, rst_expr = detect_clk_rst_for_top(src_root, args.top)
     if args.clock_name:
         clk_name = args.clock_name
@@ -567,7 +634,6 @@ def main():
 
     if args.all_sva:
         # Consider all modules that live in the files in our filelist.
-        file_set = {p.resolve() for p in files_out}
         reachable_mods = sorted(name for name, mpath in modules.items() if mpath.resolve() in file_set)
         for mn in reachable_mods:
             src_file = modules[mn]
@@ -575,11 +641,12 @@ def main():
             if prop_p and bind_p:
                 sva_paths.extend([prop_p, bind_p])
     else:
-        # Only generate for the top
-        top_src = modules.get(args.top)
-        if top_src is None:
-            raise SystemExit(f"ERROR: top module '{args.top}' not found under {src_root}")
-        prop_p, bind_p = emit_prop_and_bind_for_module(args.top, top_src, out_root, args.prop_include)
+        # Only generate for requested sva_top (or design top if not given)
+        target_mod = sva_top
+        target_src = modules.get(target_mod)
+        if target_src is None:
+            raise SystemExit(f"ERROR: module '{target_mod}' not found in provided HDL files.")
+        prop_p, bind_p = emit_prop_and_bind_for_module(target_mod, target_src, out_root, args.prop_include)
         if prop_p and bind_p:
             sva_paths.extend([prop_p, bind_p])
 
@@ -591,7 +658,7 @@ def main():
     write_jasper_tcl(
         out_path=out_tcl_path,
         output_dir=out_root,
-        module_name=args.top,
+        module_name=args.top,   # design/elaboration top
         files=final_files,
         incdirs=incdirs_out,
         defines=args.defines,
@@ -605,6 +672,12 @@ def main():
     )
 
     console.print('[bold green]✔ DONE:[/bold green] SVA + FPV.tcl generated')
+    console.print(
+        f'   Design top : [cyan]{args.top}[/cyan]\n'
+        f'   SVA target : [magenta]{sva_top}[/magenta]\n'
+        f'   Filelist   : '
+        + ('[cyan]user-provided[/cyan]' if args.filelist else '[cyan]auto-discovered[/cyan]')
+    )
 
 
 if __name__ == '__main__':
@@ -613,3 +686,4 @@ if __name__ == '__main__':
     except Exception as e:
         console.print(f'[red]❌ Fatal Error:[/red] {e}')
         sys.exit(1)
+

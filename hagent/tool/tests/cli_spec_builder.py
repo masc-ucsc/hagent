@@ -10,6 +10,7 @@ Features:
   - Generates Markdown + CSV specs via LLM (mandatory).
   - Supports single or multi-top execution.
   - Optional YAML config to preload arguments.
+  - Optional design_top (distinct from spec top) and HDL filelist.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import glob
 import yaml
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from hagent.tool.spec_builder import SpecBuilder
 
@@ -69,26 +70,40 @@ def _sanitize_incdirs(dirs: List[str]) -> List[str]:
     return out
 
 
+def _resolve_filelist(path: Optional[str]) -> Optional[Path]:
+    if not path:
+        return None
+    p = Path(os.path.expanduser(path))
+    return p
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Core runner
 # ──────────────────────────────────────────────────────────────────────────────
 def _run_one_top(args: argparse.Namespace, top: str) -> Dict[str, Any]:
-    """Run SpecBuilder for a single top."""
+    """Run SpecBuilder for a single spec top."""
     out_dir = Path(args.out).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # design_top: if user provided one, keep it; otherwise for multi-mode we
+    # treat each discovered top as both design_top and spec top.
+    design_top = args.design_top or top
+    filelist_path = _resolve_filelist(args.filelist)
 
     builder = SpecBuilder(
         slang_bin=Path(args.slang).resolve(),
         rtl_dir=Path(args.rtl).resolve(),
         top=top,
+        design_top=design_top,
         out_dir=out_dir,
         llm_conf=Path(args.llm_conf).resolve(),
         include_dirs=[Path(i).resolve() for i in (args.include or [])],
         defines=args.defines or [],
         disable_analysis=not args.no_disable_analysis,
+        filelist=filelist_path,
     )
 
-    print(f'\n[⚙️] Building spec for top module: {top}')
+    print(f'\n[⚙️] Building spec for top module: {top} (design_top={design_top})')
     try:
         builder.run()
         return {'ok': True, 'top': top}
@@ -99,7 +114,7 @@ def _run_one_top(args: argparse.Namespace, top: str) -> Dict[str, Any]:
 
 
 def run_single(args: argparse.Namespace) -> int:
-    """Run spec build for a single top module."""
+    """Run spec build for a single spec top module."""
     if not args.top:
         print('[❌] --top is required in single mode')
         return 2
@@ -109,7 +124,7 @@ def run_single(args: argparse.Namespace) -> int:
 
 
 def run_multi(args: argparse.Namespace) -> int:
-    """Run spec build for all discovered top modules."""
+    """Run spec build for all discovered tops (each as its own design/spec top)."""
     tops = list_candidate_tops(args.rtl)
     if not tops:
         print(f'[❌] No RTL tops found in: {args.rtl}')
@@ -135,7 +150,9 @@ def run_multi(args: argparse.Namespace) -> int:
 # CLI Entrypoint
 # ──────────────────────────────────────────────────────────────────────────────
 def main() -> int:
-    parser = argparse.ArgumentParser(description='CLI wrapper around SpecBuilder (LLM-driven RTL spec generator)')
+    parser = argparse.ArgumentParser(
+        description='CLI wrapper around SpecBuilder (LLM-driven RTL spec generator)'
+    )
     parser.add_argument(
         '--mode',
         choices=['single', 'multi'],
@@ -144,7 +161,15 @@ def main() -> int:
     )
     parser.add_argument('--slang', required=True, help='Path to slang binary')
     parser.add_argument('--rtl', required=True, help='Path to RTL directory')
-    parser.add_argument('--top', help='Top module name (required for single mode)')
+    parser.add_argument(
+        '--top',
+        help='Spec top module name (required for single mode). For multi mode, tops are inferred.',
+    )
+    parser.add_argument(
+        '--design-top',
+        help='Design top module used for clock/reset detection and dependency closure '
+        '(defaults to spec top when omitted).',
+    )
     parser.add_argument('--include', '-I', nargs='*', default=[], help='Include directories')
     parser.add_argument(
         '--defines',
@@ -163,6 +188,11 @@ def main() -> int:
         '--no-disable-analysis',
         action='store_true',
         help='Enable full analysis in Slang',
+    )
+    parser.add_argument(
+        '--filelist',
+        help='Optional HDL filelist (one path per line). If provided, SpecBuilder '
+        'uses only these files and does not run dependency discovery.',
     )
     parser.add_argument(
         '-f',
@@ -187,6 +217,9 @@ def main() -> int:
         return 2
 
     if args.mode == 'single':
+        if not args.top:
+            print('[❌] --top is required in single mode')
+            return 2
         return run_single(args)
     else:
         return run_multi(args)
@@ -194,3 +227,4 @@ def main() -> int:
 
 if __name__ == '__main__':
     raise SystemExit(main())
+

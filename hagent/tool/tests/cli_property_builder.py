@@ -4,6 +4,10 @@
 cli_property_builder.py
 -----------------------
 Command-line interface to run PropertyBuilder with LLM configuration.
+
+Supports:
+  - Spec Markdown + CSV (per module)
+  - Optional design_top override for clock/reset detection
 """
 
 import os
@@ -14,11 +18,17 @@ from hagent.tool.property_builder import PropertyBuilder
 
 def main():
     parser = argparse.ArgumentParser(description='CLI for SVA property generation using LLM.')
-    parser.add_argument('--spec-md', required=True, help='Path to Markdown spec')
-    parser.add_argument('--csv', required=True, help='Path to CSV spec')
+    parser.add_argument('--spec-md', required=True, help='Path to Markdown spec (e.g. load_unit_spec.md)')
+    parser.add_argument('--csv', required=True, help='Path to CSV spec (e.g. load_unit_spec.csv)')
     parser.add_argument('--rtl', required=True, help='RTL directory')
     parser.add_argument('--out', required=True, help='Output directory')
     parser.add_argument('--llm-conf', required=True, help='YAML LLM configuration file')
+    parser.add_argument(
+        '--design-top',
+        help='Optional design top module name used to detect clock/reset. '
+             'If omitted, clk/rst are detected from the module inferred '
+             'from --spec-md (<name>_spec.* -> <name>).',
+    )
     args = parser.parse_args()
 
     # Basic path checks
@@ -35,6 +45,7 @@ def main():
         rtl_dir=args.rtl,
         out_dir=args.out,
         llm_conf=args.llm_conf,
+        design_top=args.design_top,
     )
 
     out = builder.generate_properties()
@@ -46,3 +57,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
