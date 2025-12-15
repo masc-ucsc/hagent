@@ -22,23 +22,23 @@ class TimingAnalysis(OptPipeStepBase):
     def setup(self):
         super().setup()
 
-    def _run_impl(self, data: Dict):
+    def run(self, data: Dict) -> Dict:
         # Parse input dictionary into typed configuration
-        config = PipelineConfig.from_dict(data)
+        self.config = PipelineConfig.from_dict(data)
 
-        self.prepare_environment(config, self.step_name)
+        self.prepare_environment(self.config, self.step_name)
         assert self.runner is not None
 
         # Access configuration via typed fields
-        synth_file = config.populated_file_paths.synth_file
+        synth_file = self.config.populated_file_paths.synth_file
         if not synth_file:
             self.error('Synthesis netlist file not populated from previous step results')
 
-        top_module = config.benchmark.top_module
-        sdc_file = config.tools.sdc_file
+        top_module = self.config.benchmark.top_module
+        sdc_file = self.config.tools.sdc_file
 
-        liberty_file = config.tools.liberty_file
-        opensta_path = config.tools.opensta_path
+        liberty_file = self.config.tools.liberty_file
+        opensta_path = self.config.tools.opensta_path
 
         if not top_module or not liberty_file or not opensta_path:
             self.error('Missing required configuration: top_module, liberty_file, or opensta_path')
@@ -75,6 +75,8 @@ report_checks -path_delay max > {timing_report_file}
         ret, report_content, err = self.runner.run_cmd(f'cat {timing_report_file}', quiet=True)
         self.step_results['timing_report'] = {'ret': ret, 'content': report_content, 'stderr': err}
 
+        self.config.populated_file_paths.timing_report_file = timing_report_file
+
         # Parse timing results
         arrival_time = None
         slack = None
@@ -105,7 +107,7 @@ report_checks -path_delay max > {timing_report_file}
         with open(debug_log, 'w') as f:
             f.write('Step 05 - Timing Analysis with OpenSTA\n')
             f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
-            f.write(f'Benchmark: {config.benchmark.name}\n')
+            f.write(f'Benchmark: {self.config.benchmark.name}\n')
             f.write(f'Top Module: {top_module}\n')
             f.write(f'Synth File: {synth_file}\n')
             f.write(f'Liberty File: {liberty_file}\n')
@@ -115,19 +117,9 @@ report_checks -path_delay max > {timing_report_file}
             f.write(f'Slack: {slack} ns\n')
             f.write(f'Frequency: {frequency} MHz\n')
 
-        # Store timing report and TCL script locally for debugging
-        if report_content:
-            timing_report_local = f'{self.step_debug_dir}/timing_report.rpt'
-            with open(timing_report_local, 'w') as f:
-                f.write(report_content)
-
-        tcl_local = f'{self.step_debug_dir}/run_sta.tcl'
-        with open(tcl_local, 'w') as f:
-            f.write(tcl_content)
-
         # Update metrics in config
-        config.metrics.original_slack = slack
-        config.metrics.original_frequency = frequency
+        self.config.metrics.original_slack = slack
+        self.config.metrics.original_frequency = frequency
 
         # Store execution time and results
         self.step_results['execution_time'] = time.time() - self.start_time
@@ -135,10 +127,10 @@ report_checks -path_delay max > {timing_report_file}
 
         # Save step results to file and store reference in config
         results_file = self.save_step_results()
-        config.step_results[self.step_name] = {'results_file': results_file}
+        self.config.step_results[self.step_name] = {'results_file': results_file}
 
         # Convert back to dict for pipeline compatibility
-        return config.to_dict()
+        return self.config.to_dict()
 
 
 if __name__ == '__main__':

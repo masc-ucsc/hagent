@@ -21,16 +21,16 @@ class CreateTop(OptPipeStepBase):
     def setup(self):
         super().setup()
 
-    def _run_impl(self, data: Dict):
+    def run(self, data: Dict) -> Dict:
         # Parse input dictionary into typed configuration
-        config = PipelineConfig.from_dict(data)
+        self.config = PipelineConfig.from_dict(data)
 
-        self.prepare_environment(config, self.step_name)
+        self.prepare_environment(self.config, self.step_name)
         assert self.runner is not None
 
         # Access configuration via typed fields
-        top_module = config.benchmark.top_module
-        yosys_cmd = config.tools.yosys_cmd
+        top_module = self.config.benchmark.top_module
+        yosys_cmd = self.config.tools.yosys_cmd
 
         if not top_module:
             self.error('RTL top module not specified in config')
@@ -42,7 +42,7 @@ class CreateTop(OptPipeStepBase):
         # Create top module file using Yosys
         rtl_selected_top_file = os.path.join(rtl_selected_top_path, f'{top_module}.v')
         yosys_script = f"""
-            read_verilog -sv -defer {config.populated_file_paths.rtl_real_src_dir}/*;
+            read_verilog -sv -defer {self.config.populated_file_paths.rtl_real_src_dir}/*;
             hierarchy -top {top_module};
             write_verilog {rtl_selected_top_file};
         """
@@ -78,9 +78,9 @@ class CreateTop(OptPipeStepBase):
         with open(debug_log, 'w') as f:
             f.write('Step 02 - Create Top Module\n')
             f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
-            f.write(f'Benchmark: {config.benchmark.name}\n')
+            f.write(f'Benchmark: {self.config.benchmark.name}\n')
             f.write(f'Top Module: {top_module}\n')
-            f.write(f'RTL Real Source Directory: {config.populated_file_paths.rtl_real_src_dir}\n')
+            f.write(f'RTL Real Source Directory: {self.config.populated_file_paths.rtl_real_src_dir}\n')
             f.write(f'Output File: {rtl_selected_top_file}\n')
             f.write(f'Yosys Command: {yosys_cmd}\n')
             f.write(f'Yosys Return Code: {self.step_results["yosys_execution"]["ret"]}\n')
@@ -90,7 +90,7 @@ class CreateTop(OptPipeStepBase):
                 f.write(f'Error: {self.step_results["yosys_execution"]["stderr"]}\n')
 
         # Update populated file paths in config
-        config.populated_file_paths.rtl_selected_top_path = rtl_selected_top_path
+        self.config.populated_file_paths.rtl_selected_top_path = rtl_selected_top_path
 
         # Store execution time and results
         self.step_results['execution_time'] = time.time() - self.start_time
@@ -98,10 +98,10 @@ class CreateTop(OptPipeStepBase):
 
         # Save step results to file and store reference in config
         results_file = self.save_step_results()
-        config.step_results[self.step_name] = {'results_file': results_file}
+        self.config.step_results[self.step_name] = {'results_file': results_file}
 
         # Convert back to dict for pipeline compatibility
-        return config.to_dict()
+        return self.config.to_dict()
 
 
 if __name__ == '__main__':

@@ -18,25 +18,25 @@ class CompareTiming(OptPipeStepBase):
     def setup(self):
         super().setup()
 
-    def _run_impl(self, data: Dict):
+    def run(self, data: Dict) -> Dict:
         # Parse input dictionary into typed configuration
-        config = PipelineConfig.from_dict(data)
+        self.config = PipelineConfig.from_dict(data)
 
-        self.prepare_environment(config, self.step_name)
+        self.prepare_environment(self.config, self.step_name)
         assert self.runner is not None
 
         # Access configuration via typed fields
-        top_module = config.benchmark.top_module
-        liberty_file = config.tools.liberty_file
-        yosys_cmd = config.tools.yosys_cmd
-        opensta_path = config.tools.opensta_path
-        rtl_modules_dir = config.populated_file_paths.rtl_path
-        optimization_results = config.metrics.modules_optimized
+        top_module = self.config.benchmark.top_module
+        liberty_file = self.config.tools.liberty_file
+        yosys_cmd = self.config.tools.yosys_cmd
+        opensta_path = self.config.tools.opensta_path
+        rtl_modules_dir = self.config.populated_file_paths.rtl_path
+        optimization_results = self.config.metrics.modules_optimized
 
         self.logger.info('Preparing optimized design for timing comparison')
 
         # Get rtl_optimized directory from step_07
-        rtl_optimized_dir = config.populated_file_paths.optimized_dir
+        rtl_optimized_dir = self.config.populated_file_paths.optimized_dir
         if not rtl_optimized_dir or not os.path.exists(rtl_optimized_dir):
             self.error('Previous step did not produce rtl_optimized directory')
 
@@ -110,7 +110,7 @@ class CompareTiming(OptPipeStepBase):
 
         # Run timing analysis on optimized design
         optimized_timing_report = os.path.join(self.work_dir, 'timing_report_optimized.rpt')
-        sdc_file = config.tools.sdc_file
+        sdc_file = self.config.tools.sdc_file
 
         tcl_content = f"""
 read_liberty {liberty_file}
@@ -148,14 +148,14 @@ exit
                 optimized_frequency = 1000.0 / optimized_arrival_time
 
         # Calculate improvements
-        original_slack = config.metrics.original_slack
-        original_frequency = config.metrics.original_frequency
+        original_slack = self.config.metrics.original_slack
+        original_frequency = self.config.metrics.original_frequency
 
         # Get original arrival time from step_05 results
         original_arrival_time = None
-        if 'step_05_timing_analysis' in config.step_results:
+        if 'step_05_timing_analysis' in self.config.step_results:
             step_05_results = self.load_step_results_from_path(
-                config.step_results['step_05_timing_analysis']['results_file']
+                self.config.step_results['step_05_timing_analysis']['results_file']
             )
             timing_metrics = step_05_results.get('timing_metrics', {})
             original_arrival_time = timing_metrics.get('arrival_time')
@@ -178,7 +178,7 @@ exit
         with open(debug_log, 'w') as f:
             f.write('Step 08 - Compare Timing (Optimized vs Original)\n')
             f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
-            f.write(f'Benchmark: {config.benchmark.name}\n')
+            f.write(f'Benchmark: {self.config.benchmark.name}\n')
             f.write(f'Optimized Modules Found: {len(optimized_files_found)}\n\n')
 
             f.write('ORIGINAL TIMING:\n')
@@ -212,12 +212,12 @@ exit
                 f.write(report_content)
 
         # Update populated file paths
-        config.populated_file_paths.optimized_dir = optimized_rtl_dir
+        self.config.populated_file_paths.optimized_dir = optimized_rtl_dir
 
         # Update final metrics
-        config.metrics.end_time = time.time()
-        if config.metrics.start_time:
-            config.metrics.total_execution_time = config.metrics.end_time - config.metrics.start_time
+        self.config.metrics.end_time = time.time()
+        if self.config.metrics.start_time:
+            self.config.metrics.total_execution_time = self.config.metrics.end_time - self.config.metrics.start_time
 
         self.step_results['timing_comparison'] = {
             'original': {'arrival_time': original_arrival_time, 'slack': original_slack, 'frequency': original_frequency},
@@ -235,10 +235,10 @@ exit
 
         # Save step results to file and store reference in config
         results_file = self.save_step_results()
-        config.step_results[self.step_name] = {'results_file': results_file}
+        self.config.step_results[self.step_name] = {'results_file': results_file}
 
         # Convert back to dict for pipeline compatibility
-        return config.to_dict()
+        return self.config.to_dict()
 
 
 if __name__ == '__main__':

@@ -20,21 +20,21 @@ class Synthesize(OptPipeStepBase):
     def setup(self):
         super().setup()
 
-    def _run_impl(self, data: Dict):
+    def run(self, data: Dict) -> Dict:
         # Parse input dictionary into typed configuration
-        config = PipelineConfig.from_dict(data)
+        self.config = PipelineConfig.from_dict(data)
 
-        self.prepare_environment(config, self.step_name)
+        self.prepare_environment(self.config, self.step_name)
         assert self.runner is not None
 
         # Access configuration via typed fields
-        top_module_file = config.populated_file_paths.rtl_selected_top_file
+        top_module_file = self.config.populated_file_paths.rtl_selected_top_file
         if not top_module_file:
             self.error('Top module file not populated from previous step results')
 
-        top_module = config.benchmark.top_module
-        liberty_file = config.tools.liberty_file
-        yosys_cmd = config.tools.yosys_cmd
+        top_module = self.config.benchmark.top_module
+        liberty_file = self.config.tools.liberty_file
+        yosys_cmd = self.config.tools.yosys_cmd
 
         if not top_module or not liberty_file:
             self.error('Missing required configuration: top_module, or liberty_file')
@@ -92,7 +92,7 @@ class Synthesize(OptPipeStepBase):
         with open(debug_log, 'w') as f:
             f.write('Step 04 - Synthesize Original Design\n')
             f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
-            f.write(f'Benchmark: {config.benchmark.name}\n')
+            f.write(f'Benchmark: {self.config.benchmark.name}\n')
             f.write(f'Top Module: {top_module}\n')
             f.write(f'Input File: {top_module_file}\n')
             f.write(f'Output File: {synth_file}\n')
@@ -116,8 +116,8 @@ class Synthesize(OptPipeStepBase):
                 f.write(self.step_results['yosys_synthesis']['stderr'])
 
         # Update populated file paths in config
-        config.populated_file_paths.synth_dir = synth_dir
-        config.populated_file_paths.synth_file = synth_file
+        self.config.populated_file_paths.synth_dir = synth_dir
+        self.config.populated_file_paths.synth_file = synth_file
 
         # Store execution time and results
         self.step_results['execution_time'] = time.time() - self.start_time
@@ -125,10 +125,10 @@ class Synthesize(OptPipeStepBase):
 
         # Save step results to file and store reference in config
         results_file = self.save_step_results()
-        config.step_results[self.step_name] = {'results_file': results_file}
+        self.config.step_results[self.step_name] = {'results_file': results_file}
 
         # Convert back to dict for pipeline compatibility
-        return config.to_dict()
+        return self.config.to_dict()
 
 
 if __name__ == '__main__':

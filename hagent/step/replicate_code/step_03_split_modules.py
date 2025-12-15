@@ -20,21 +20,21 @@ class SplitModules(OptPipeStepBase):
     def setup(self):
         super().setup()
 
-    def _run_impl(self, data: Dict):
+    def run(self, data: Dict) -> Dict:
         # Parse input dictionary into typed configuration
-        config = PipelineConfig.from_dict(data)
+        self.config = PipelineConfig.from_dict(data)
 
-        self.prepare_environment(config, self.step_name)
+        self.prepare_environment(self.config, self.step_name)
         assert self.runner is not None
 
         # Access configuration via typed fields
-        top_module_path = config.populated_file_paths.rtl_selected_top_path
+        top_module_path = self.config.populated_file_paths.rtl_selected_top_path
         if not top_module_path or not os.path.isdir(top_module_path):
             self.error(f'Top module directory not found: {top_module_path}')
 
-        top_module_file = f'{top_module_path}/{config.benchmark.top_module}.v'
-        config.populated_file_paths.rtl_selected_top_file = top_module_file
-        livehd_path = config.tools.livehd_path
+        top_module_file = f'{top_module_path}/{self.config.benchmark.top_module}.v'
+        self.config.populated_file_paths.rtl_selected_top_file = top_module_file
+        livehd_path = self.config.tools.livehd_path
 
         # Create rtl_modules directory
         rtl_modules_path = os.path.join(self.work_dir, 'rtl_modules')
@@ -90,7 +90,7 @@ class SplitModules(OptPipeStepBase):
         with open(debug_log, 'w') as f:
             f.write('Step 03 - Split Modules with LiveHD\n')
             f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
-            f.write(f'Benchmark: {config.benchmark.name}\n')
+            f.write(f'Benchmark: {self.config.benchmark.name}\n')
             f.write(f'Input File: {top_module_file}\n')
             f.write(f'Output Directory: {rtl_modules_path}\n')
             f.write(f'LiveHD Path: {livehd_path}\n')
@@ -100,7 +100,7 @@ class SplitModules(OptPipeStepBase):
             f.write(f'Module Files: {split_modules}\n')
 
         # Update populated file paths in config
-        config.populated_file_paths.rtl_path = rtl_modules_path
+        self.config.populated_file_paths.rtl_path = rtl_modules_path
 
         # Store execution time and results
         self.step_results['execution_time'] = time.time() - self.start_time
@@ -109,10 +109,10 @@ class SplitModules(OptPipeStepBase):
 
         # Save step results to file and store reference in config
         results_file = self.save_step_results()
-        config.step_results[self.step_name] = {'results_file': results_file}
+        self.config.step_results[self.step_name] = {'results_file': results_file}
 
         # Convert back to dict for pipeline compatibility
-        return config.to_dict()
+        return self.config.to_dict()
 
 
 if __name__ == '__main__':

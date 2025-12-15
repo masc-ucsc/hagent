@@ -6,6 +6,8 @@ benchmark:
   name: "PipelineDino"
   top_module: "PipelinedCPU"
   design_type: "CPU"
+  profile_name: "pipelined_d"
+  hagent_config_path: "/mada/users/jxie84/tmp/potato3/repo/hagent.yaml"
 
 # Docker configuration
 # docker:
@@ -29,7 +31,6 @@ tools:
 local_storage:
   cache_dir: "~/hagent/cache/"
   output_dir: "~/hagent/cache/pipeline_results"
-  input_yamls_dir: "~/hagent/hagent/step/replicate_code/tests/input_yamls"
 
 # Optimization configuration
 optimization:

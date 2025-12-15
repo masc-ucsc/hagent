@@ -19,18 +19,18 @@ class ExtractRTL(OptPipeStepBase):
 
     def setup(self):
         super().setup()
-        # Runner setup will be done in _run_impl() after loading config
+        # Runner setup will be done in run() after loading config
 
-    def _run_impl(self, data: Dict):
+    def run(self, data: Dict) -> Dict:
         # Parse input dictionary into typed configuration
-        config = PipelineConfig.from_dict(data)
+        self.config = PipelineConfig.from_dict(data)
 
-        self.prepare_environment(config, self.step_name)
+        self.prepare_environment(self.config, self.step_name)
         assert self.runner is not None  # to get rid of linting errors when invoking `self.runner.run_cmd` below
 
         # Access configuration via typed fields
-        rtl_source_file_path = config.source_file_paths.rtl_source_file_path
-        chisel_path = config.source_file_paths.chisel_path
+        rtl_source_file_path = self.config.source_file_paths.rtl_source_file_path
+        chisel_path = self.config.source_file_paths.chisel_path
 
         if not rtl_source_file_path:
             self.error('RTL source code directory not specified in config')
@@ -80,17 +80,17 @@ class ExtractRTL(OptPipeStepBase):
         with open(debug_log, 'w') as f:
             f.write('Step 01 - Extract RTL\n')
             f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
-            f.write(f'Benchmark: {config.benchmark.name}\n')
-            f.write(f'Top Module: {config.benchmark.top_module}\n')
-            f.write(f'Docker Image: {config.docker.image if config.docker else "Not specified"}\n')
+            f.write(f'Benchmark: {self.config.benchmark.name}\n')
+            f.write(f'Top Module: {self.config.benchmark.top_module}\n')
+            f.write(f'Docker Image: {self.config.docker.image if self.config.docker else "Not specified"}\n')
             f.write(f'RTL Real Source Directory: {rtl_real_src_dir}\n')
             f.write(f'Chisel Path: {chisel_path or "Not specified"}\n')
             f.write(f'RTL Files Found: {len(rtl_source_files)}\n')
             f.write(f'Files: {rtl_source_files}\n')
 
-        # Update populated file paths in config
-        config.populated_file_paths.rtl_real_src_dir = rtl_real_src_dir
-        config.populated_file_paths.chisel_files = self.step_results['chisel_discovery']['files_found']
+        # Update populated file paths in the working directory in config
+        self.config.populated_file_paths.rtl_real_src_dir = rtl_real_src_dir
+        self.config.populated_file_paths.chisel_files = self.step_results['chisel_discovery']['files_found']
 
         # Store execution time and results
         self.step_results['execution_time'] = time.time() - self.start_time
@@ -98,16 +98,16 @@ class ExtractRTL(OptPipeStepBase):
 
         # Save step results to file and store reference in config
         results_file = self.save_step_results()
-        config.step_results[self.step_name] = {'results_file': results_file}
+        self.config.step_results[self.step_name] = {'results_file': results_file}
 
         # Initialize metrics if not present
-        if not config.metrics.start_time:
-            config.metrics.start_time = self.start_time
-        if not config.metrics.end_time:
-            config.metrics.end_time = time.time()
+        if not self.config.metrics.start_time:
+            self.config.metrics.start_time = self.start_time
+        if not self.config.metrics.end_time:
+            self.config.metrics.end_time = time.time()
 
         # Convert back to dict for pipeline compatibility
-        return config.to_dict()
+        return self.config.to_dict()
 
 
 if __name__ == '__main__':

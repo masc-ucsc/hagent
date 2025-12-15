@@ -202,15 +202,15 @@ exit
         self.logger.info(f'Best variant for {module_name}: arrival_time = {best_time:.2f} ns')
         return best_variant, best_time
 
-    def _run_impl(self, data: Dict):
+    def run(self, data: Dict) -> Dict:
         # Parse input dictionary into typed configuration
-        config = PipelineConfig.from_dict(data)
+        self.config = PipelineConfig.from_dict(data)
 
-        self.prepare_environment(config, self.step_name)
+        self.prepare_environment(self.config, self.step_name)
 
         # Get configuration via typed fields
-        # Note: generated_input_yamls are populated by step06 in config.populated_file_paths
-        generated_input_yamls = config.populated_file_paths.generated_input_yamls
+        # Note: generated_input_yamls are populated by step06 in self.config.populated_file_paths
+        generated_input_yamls = self.config.populated_file_paths.generated_input_yamls
         results_dir = os.path.join(self.work_dir, "generated_yamls")
         self._prepare_dir(results_dir)
 
@@ -301,7 +301,7 @@ exit
 
                             # Run timing analysis to select best variant
                             best_variant_code, best_variant_timing = self._select_best_variant(
-                                module_name, variants, config, module_results_dir
+                                module_name, variants, self.config, module_results_dir
                             )
 
                             if best_variant_code:
@@ -392,7 +392,7 @@ exit
         with open(debug_log, 'w') as f:
             f.write('Step 07 - Optimize Modules with Hagent\n')
             f.write(f'Execution Time: {time.time() - self.start_time:.2f}s\n')
-            f.write(f'Benchmark: {config.benchmark.name}\n')
+            f.write(f'Benchmark: {self.config.benchmark.name}\n')
             f.write(f'Modules Processed: {len(optimization_results)}\n')
             f.write(f'Successful Optimizations: {successful_optimizations}\n')
             f.write(f'Failed Optimizations: {failed_optimizations}\n')
@@ -421,10 +421,10 @@ exit
         }
 
         # Update metrics in config
-        config.metrics.modules_optimized = optimization_results
+        self.config.metrics.modules_optimized = optimization_results
 
         # Store rtl_optimized directory in populated_file_paths for step_08
-        config.populated_file_paths.optimized_dir = rtl_optimized_dir
+        self.config.populated_file_paths.optimized_dir = rtl_optimized_dir
 
         # Store execution time and results
         self.step_results['execution_time'] = time.time() - self.start_time
@@ -432,10 +432,10 @@ exit
 
         # Save step results to file and store reference in config
         results_file = self.save_step_results()
-        config.step_results[self.step_name] = {'results_file': results_file}
+        self.config.step_results[self.step_name] = {'results_file': results_file}
 
         # Convert back to dict for pipeline compatibility
-        return config.to_dict()
+        return self.config.to_dict()
 
 
 if __name__ == '__main__':
