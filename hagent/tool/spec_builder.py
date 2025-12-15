@@ -6,14 +6,16 @@ spec_builder.py
 End-to-end RTL → Spec (Markdown + CSV) generator.
 
 Pipeline:
-  1) Use hdl_utils to collect RTL and resolve dependencies for the top module
-  2) Run Slang to dump AST JSON
+  1) Collect RTL:
+       - Either from a user-supplied filelist (one file per line), OR
+       - Using hdl_utils-style discovery + dependency closure from design top.
+  2) Run Slang to dump AST JSON for the *spec top* module
   3) Parse AST to extract:
-       - Ports (I/O only)
-       - Parameters
+       - Ports (I/O only) of the spec top
+       - Parameters (of the spec top)
        - FSM case blocks (source spans + RTL excerpts)
        - Logic blocks (always/if/assign snapshots for context)
-  4) Detect clock/reset for the *top* via clk_rst_utils
+  4) Detect clock/reset for the *design top* via clk_rst_utils
   5) Build context JSON and invoke LLM_wrap (MANDATORY) with spec_prompt.yaml:
        - doc_sections           -> prose sections for .md
        - interface_table        -> ports table for .md
@@ -22,6 +24,20 @@ Pipeline:
        - sva_row_list_csv       -> I/O-only CSV for property generation
   6) Write outputs to: <out_dir>/{top}_ast.json, {top}_logic_blocks.json,
                        {top}_spec.md, {top}_spec.csv
+
+Terminology:
+
+  top        : "spec top" — the module we are documenting (and later generating CSV for).
+  design_top : optional, the real design top used for clk/rst detection and
+               dependency closure. Defaults to `top` if not provided.
+
+Typical usage for submodules:
+
+  Design top: cva6
+  Spec top  : load_unit
+
+  - Use design_top='cva6' for clock/reset and file dependencies
+  - Use top='load_unit' so Markdown/CSV focus on load_unit interface + behavior
 """
 
 from __future__ import annotations
@@ -40,7 +56,7 @@ try:
     from rich.console import Console
 
     console = Console()
-except Exception:
+except Exception:  # pragma: no cover
 
     class _Dummy:
         def print(self, *a, **k):
@@ -55,13 +71,13 @@ from hagent.core.llm_wrap import LLM_wrap
 from hagent.core.llm_template import LLM_template
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Utilities: clk/rst (required), hdl_utils (preferred; with fallback)
+# Utilities: clk/rst (required)
 # ──────────────────────────────────────────────────────────────────────────────
 from hagent.tool.utils.clk_rst_utils import detect_clk_rst_for_top
 
 try:
     _HAS_HDL_UTILS = True
-except Exception:
+except Exception:  # pragma: no cover
     _HAS_HDL_UTILS = False
 
 
@@ -120,7 +136,7 @@ def _data_type_from_decl(n: Dict[str, Any]) -> Optional[str]:
 
 def extract_ports_from_ast(module_ast: Dict[str, Any]) -> List[Dict[str, str]]:
     """
-    Extract *declared* top-level ports from AST (I/O only).
+    Extract *declared* top-level ports from AST (I/O only) of the spec top.
     """
     ports: List[Dict[str, str]] = []
 
@@ -186,7 +202,14 @@ def extract_parameters_from_ast(module_ast: Dict[str, Any]) -> List[Dict[str, st
     def add_param(name, ptype, default):
         if not name:
             return
-        params.append({'name': name, 'type': ptype or '-', 'default': default if default not in (None, '') else '-', 'desc': '-'})
+        params.append(
+            {
+                'name': name,
+                'type': ptype or '-',
+                'default': default if default not in (None, '') else '-',
+                'desc': '-',
+            }
+        )
 
     def walk(n):
         if isinstance(n, dict):
@@ -225,7 +248,7 @@ def _src_info(n: Dict[str, Any]) -> Dict[str, Any]:
 
 def extract_logic_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dict[str, Any]]:
     """
-    Collect compact logic blocks (always/if/assign) with short code excerpts for LLM context.
+    Collect compact logic blocks (always/if/assign/case) with short code excerpts for LLM context.
     """
     blocks: List[Dict[str, Any]] = []
 
@@ -335,7 +358,9 @@ def parse_case_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dict[s
                 }
 
                 if block['source_file'] and block['line_start'] and block['line_end']:
-                    block['rtl_code'] = extract_rtl_fn(block['source_file'], int(block['line_start']), int(block['line_end']))
+                    block['rtl_code'] = extract_rtl_fn(
+                        block['source_file'], int(block['line_start']), int(block['line_end'])
+                    )
                 else:
                     block['rtl_code'] = ''
 
@@ -385,19 +410,49 @@ class SpecBuilder:
         include_dirs: Optional[List[Path]] = None,
         defines: Optional[List[str]] = None,
         disable_analysis: bool = True,
+        design_top: Optional[str] = None,
+        filelist: Optional[Path] = None,
     ):
+        """
+        Parameters
+        ----------
+        slang_bin : Path
+            Slang binary.
+        rtl_dir : Path
+            RTL root directory.
+        top : str
+            Spec top (module we are documenting & generating CSV for).
+        out_dir : Path
+            Output directory for spec artifacts.
+        llm_conf : Path
+            spec_prompt.yaml
+        include_dirs : list[Path]
+            Extra include dirs for Slang.
+        defines : list[str]
+            Slang defines.
+        disable_analysis : bool
+            If True, pass --disable-analysis to Slang.
+        design_top : str | None
+            Design top used for clk/rst detection and dependency closure.
+            Defaults to `top` if not provided.
+        filelist : Path | None
+            Optional HDL filelist (one file path per line). If provided,
+            dependency discovery is skipped and only these files are given to Slang.
+        """
         self.slang_bin = slang_bin
         self.rtl_dir = rtl_dir
-        self.top = top
+        self.top = top  # spec top
+        self.design_top = design_top or top
         self.out_dir = out_dir
         self.llm_conf = llm_conf
         self.include_dirs = include_dirs or []
         self.defines = defines or []
         self.disable_analysis = disable_analysis
+        self.filelist = filelist
 
         _ensure_dir(self.out_dir)
 
-        # Outputs
+        # Outputs base on *spec top*
         self.out_json = self.out_dir / f'{self.top}_ast.json'
         self.out_md = self.out_dir / f'{self.top}_spec.md'
         self.out_csv = self.out_dir / f'{self.top}_spec.csv'
@@ -419,37 +474,83 @@ class SpecBuilder:
                 console.print(f"[red]❌ Required prompt '{req}' missing in: {self.llm_conf}[/red]")
                 raise SystemExit(2)
 
-        # clock/reset (from top module)
-        self.clk, self.rst, self.rst_expr = detect_clk_rst_for_top(self.rtl_dir, self.top)
+        # clock/reset (from design top)
+        self.clk, self.rst, self.rst_expr = detect_clk_rst_for_top(self.rtl_dir, self.design_top)
 
     # ──────────────────────────────────────────────────────────────────────
     # RTL collection & Slang
     # ──────────────────────────────────────────────────────────────────────
     def _collect_rtl_files(self) -> List[Path]:
+        """
+        Fallback RTL discovery when no explicit filelist is provided.
+        """
         try:
-            from hagent.tool.utils.hdl_utils import find_sv_files
+            from hagent.tool.utils.hdl_utils import find_sv_files  # type: ignore[attr-defined]
 
             files = find_sv_files(self.rtl_dir, skip_dirs=set())
             return sorted([Path(f) for f in files])
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             console.print(f'[yellow]⚠ find_sv_files failed; falling back. ({e})[/yellow]')
             return [p for p in self.rtl_dir.rglob('*') if p.suffix in {'.sv', '.svh', '.v', '.vh'}]
 
+    def _files_from_filelist(self) -> List[Path]:
+        """
+        Read files from a user-provided filelist (one path per line).
+        Relative paths are resolved relative to rtl_dir.
+        """
+        if self.filelist is None:
+            return []
+        fl = self.filelist
+        if not fl.exists():
+            console.print(f'[red]❌ Filelist not found: {fl}[/red]')
+            raise SystemExit(2)
+
+        console.print(f'[cyan]• Using HDL filelist:[/cyan] {fl}')
+        out: List[Path] = []
+        for raw in fl.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith('#'):
+                continue
+            p = Path(line)
+            if not p.is_absolute():
+                p = (self.rtl_dir / p).resolve()
+            else:
+                p = p.resolve()
+            if not p.exists():
+                console.print(f'[yellow]⚠ File from filelist does not exist:[/yellow] {p}')
+                continue
+            out.append(p)
+        if not out:
+            console.print(f'[red]❌ No valid RTL files after reading filelist: {fl}[/red]')
+            raise SystemExit(2)
+        return out
+
     def _resolve_required(self, all_rtl: List[Path]) -> List[Path]:
+        """
+        If hdl_utils has richer dependency analysis, use it;
+        otherwise just return all_rtl.
+        """
         try:
-            from hagent.tool.utils.hdl_utils import index_modules_packages, compute_transitive_closure
+            from hagent.tool.utils.hdl_utils import (  # type: ignore[attr-defined]
+                index_modules_packages,
+                compute_transitive_closure,
+            )
 
             modules, packages = index_modules_packages(all_rtl)
-            if self.top not in modules:
-                console.print(f"[red]❌ Top module '{self.top}' not found in RTL files[/red]")
+            root_top = self.design_top or self.top
+            if root_top not in modules:
+                console.print(
+                    f"[red]❌ Design top '{root_top}' not found in RTL files "
+                    f"(spec top = '{self.top}').[/red]"
+                )
                 raise SystemExit(2)
 
             files_out, incdirs, _reachable = compute_transitive_closure(
-                self.top, modules, packages, self.rtl_dir, self.include_dirs
+                root_top, modules, packages, self.rtl_dir, self.include_dirs
             )
             self._incdirs_resolved = incdirs
             return files_out
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             console.print(f'[yellow]⚠ compute_transitive_closure failed; falling back. ({e})[/yellow]')
             return all_rtl
 
@@ -457,7 +558,7 @@ class SpecBuilder:
         cmd = [
             str(self.slang_bin),
             '--top',
-            self.top,
+            self.top,  # spec top
             '--ast-json',
             str(self.out_json),
             '--ast-json-source-info',
@@ -477,10 +578,12 @@ class SpecBuilder:
         console.print('  ' + ' '.join(cmd))
         res = subprocess.run(cmd)
         if res.returncode != 0 or not self.out_json.exists():
-            console.print(f'[red]❌ Slang failed (code={res.returncode}); AST not produced: {self.out_json}[/red]')
-            # raise SystemExit(2)
-            # continue
-        console.print(f'[green]✔ AST written:[/green] {self.out_json}')
+            console.print(
+                f'[red]❌ Slang failed (code={res.returncode}); '
+                f'AST not produced: {self.out_json}[/red]'
+            )
+        else:
+            console.print(f'[green]✔ AST written:[/green] {self.out_json}')
 
     # ──────────────────────────────────────────────────────────────────────
     # AST reading and top node search
@@ -489,6 +592,9 @@ class SpecBuilder:
         return json.loads(self.out_json.read_text(encoding='utf-8'))
 
     def _find_top_module(self, ast: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Locate the AST node for the *spec top* (self.top) inside the design.
+        """
         def rec(node):
             if isinstance(node, dict):
                 if node.get('kind') == 'Module' and node.get('name') == self.top:
@@ -516,7 +622,7 @@ class SpecBuilder:
         try:
             lines = Path(path).read_text(encoding='utf-8', errors='ignore').splitlines()
             return '\n'.join(lines[max(0, ls - 1) : max(0, le)])
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             return f'// Error extracting RTL: {e}'
 
     # ──────────────────────────────────────────────────────────────────────
@@ -535,7 +641,7 @@ class SpecBuilder:
                 except Exception:
                     return ''
             return ''
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             console.print(f"[red]❌ LLM '{prompt_index}' failed: {e}[/red]")
             return ''
 
@@ -543,23 +649,27 @@ class SpecBuilder:
     # Build context and generate artifacts
     # ──────────────────────────────────────────────────────────────────────
     def run(self) -> None:
-        # 1) Collect and resolve RTL
-        console.print('[cyan]• Collecting RTL files[/cyan]')
-        all_rtl = self._collect_rtl_files()
-        if not all_rtl:
-            console.print(f'[red]❌ No RTL files found under: {self.rtl_dir}[/red]')
-            raise SystemExit(2)
-        req_files = self._resolve_required(all_rtl)
-        console.print(f'[green]✔ Required files:[/green] {len(req_files)}')
+        # 1) Collect / resolve RTL
+        if self.filelist is not None:
+            req_files = self._files_from_filelist()
+        else:
+            console.print('[cyan]• Collecting RTL files[/cyan]')
+            all_rtl = self._collect_rtl_files()
+            if not all_rtl:
+                console.print(f'[red]❌ No RTL files found under: {self.rtl_dir}[/red]')
+                raise SystemExit(2)
+            req_files = self._resolve_required(all_rtl)
+
+        console.print(f'[green]✔ Required files for Slang:[/green] {len(req_files)}')
 
         # 2) Slang → AST
         self._run_slang(req_files)
 
-        # 3) Parse AST
+        # 3) Parse AST for the spec top
         ast = self._read_ast()
         top_ast = self._find_top_module(ast)
         if not top_ast:
-            console.print(f"[red]❌ Top module '{self.top}' not found in AST.[/red]")
+            console.print(f"[red]❌ Spec top module '{self.top}' not found in AST.[/red]")
             raise SystemExit(2)
 
         ports = extract_ports_from_ast(top_ast)
@@ -580,8 +690,11 @@ class SpecBuilder:
                 'rtl_excerpt': (b.get('rtl_code') or '')[:4000],
             }
 
+        allowed_signals = [p['name'] for p in ports]
+
         ctx = {
             'top_module': self.top,
+            'design_top': self.design_top,
             'clock': self.clk,
             'reset': self.rst,
             'reset_expr': self.rst_expr,
@@ -591,8 +704,9 @@ class SpecBuilder:
             # IMPORTANT: give some logic to LLM so spec/CSV reflect RTL behavior
             'logic_blocks': logic[:200],
             'csv_head': CSV_HEADER,
+            'allowed_signals': allowed_signals,
             'notes': [
-                "CSV must use only top-level input/output signals from 'ports'.",
+                "CSV must use only input/output signals from 'ports' (interface of the spec top).",
                 'Avoid internal regs/wires.',
                 'Expressions must be valid SystemVerilog.',
             ],
@@ -619,7 +733,7 @@ class SpecBuilder:
                 md_parts.append('### Parameters\n\n' + md_pa.strip())
 
         if fsms:
-            md_parts.append(f'## FSM Specification for Top Module: {self.top}\n')
+            md_parts.append(f'## FSM Specification for Module: {self.top}\n')
             for blk in fsms:
                 console.print(f'[cyan]• LLM: fsm_specification ({blk.get("expr_symbol")})[/cyan]')
                 fsm_json = {
@@ -642,13 +756,16 @@ class SpecBuilder:
                 if md_fsm.strip():
                     md_parts.append(md_fsm.strip())
 
-        md_text = '\n\n'.join([p for p in md_parts if p.strip()]) or f'## FSM Specification for Top Module: {self.top}\n'
+        md_text = '\n\n'.join([p for p in md_parts if p.strip()]) or f'## FSM Specification for Module: {self.top}\n'
         _write_text(self.out_md, md_text)
         console.print(f'[green]✔ Spec Markdown:[/green] {self.out_md}')
 
         # 7) Generate CSV (I/O only) via LLM
         console.print('[cyan]• LLM: sva_row_list_csv[/cyan]')
-        csv_raw = self._llm('sva_row_list_csv', {'context_json': json.dumps(ctx, ensure_ascii=False)}).strip()
+        csv_raw = self._llm(
+            'sva_row_list_csv',
+            {'context_json': json.dumps(ctx, ensure_ascii=False)},
+        ).strip()
 
         if not csv_raw:
             console.print('[red]❌ LLM produced empty CSV text.[/red]')
@@ -675,12 +792,24 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description='LLM-driven RTL Spec Builder (Markdown + CSV)')
     p.add_argument('--slang', required=True, help='Path to slang binary')
     p.add_argument('--rtl', required=True, help='RTL directory')
-    p.add_argument('--top', required=True, help='Top module name')
+    p.add_argument('--top', required=True, help='Spec top module name')
+    p.add_argument(
+        '--design-top',
+        help='Design top module name for clk/rst + dependency closure (defaults to --top)',
+    )
     p.add_argument('--out', required=True, help='Output directory')
     p.add_argument('--llm-conf', required=True, help='YAML prompt config (spec_prompt.yaml)')
     p.add_argument('--include', action='append', default=[], help='Additional include dirs (-I)')
     p.add_argument('--define', action='append', default=[], help='Slang defines (e.g., FOO=1)')
-    p.add_argument('--no-disable-analysis', action='store_true', help='Enable Slang analysis (default: disabled)')
+    p.add_argument(
+        '--filelist',
+        help='Optional HDL filelist (one path per line). If provided, dependency discovery is skipped.',
+    )
+    p.add_argument(
+        '--no-disable-analysis',
+        action='store_true',
+        help='Enable Slang analysis (default: disabled)',
+    )
     return p.parse_args()
 
 
@@ -691,11 +820,13 @@ def main() -> int:
             slang_bin=Path(args.slang).resolve(),
             rtl_dir=Path(args.rtl).resolve(),
             top=args.top,
+            design_top=args.design_top,
             out_dir=Path(args.out).resolve(),
             llm_conf=Path(args.llm_conf).resolve(),
             include_dirs=[Path(d).resolve() for d in (args.include or [])],
             defines=args.define or [],
             disable_analysis=not args.no_disable_analysis,
+            filelist=Path(args.filelist).resolve() if args.filelist else None,
         )
         builder.run()
         return 0
@@ -708,3 +839,4 @@ def main() -> int:
 
 if __name__ == '__main__':
     raise SystemExit(main())
+

@@ -7,8 +7,18 @@ Generate SystemVerilog properties (assert/assume/cover) using LLM.
 
 Key behavior:
   - One LLM call **per CSV row**.
-  - Use clock/reset from clk_rst_utils.
-  - Give the LLM the Markdown spec + CSV row + allowed top-level signals.
+  - Use clock/reset from clk_rst_utils:
+        * If a design_top is provided, detect clk/rst from design_top.
+        * Otherwise, detect clk/rst from the spec top (module name inferred
+          from spec_md:  <module>_spec.md).
+  - Ports / allowed signals are taken from the *spec module* (submodule),
+    not from the design top. This keeps properties local to the module
+    being specified (e.g. load_unit).
+  - Give the LLM:
+      * Markdown spec
+      * CSV row
+      * allowed top-level signals for the spec module
+      * clock/reset names
   - Post-process the SVA to:
       * replace bad '1'b1 |-> ...' with proper CSV `pre` when possible
       * replace '... |-> 1'b1' with CSV `post` when possible
@@ -31,7 +41,7 @@ except Exception:
 
 
 # -----------------------------------------------------------------------------
-# Simple RTL-based top port extraction
+# Simple RTL-based spec-top port extraction
 # -----------------------------------------------------------------------------
 def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
     """
@@ -40,11 +50,13 @@ def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
     E.g. for:
       module Sync_FIFO( clk, rst, buf_in, buf_out, wr_en, rd_en, buf_empty, buf_full, fifo_counter );
     returns:
-      ['clk', 'rst', 'buf_in', 'buf_out', 'wr_en', 'rd_en', 'buf_empty', 'buf_full', 'fifo_counter']
+      ['clk', 'rst', 'buf_in', 'buf_out', 'wr_en', 'rd_en',
+       'buf_empty', 'buf_full', 'fifo_counter']
     """
     rtl_dir_path = Path(rtl_dir)
+
     mod_re = re.compile(
-        rf'\bmodule\s+{re.escape(top)}\s*\((?P<ports>.*?)\)\s*;',
+        rf'\bmodule\s+{re.escape(top)}\b[^(]*\((?P<ports>.*?)\)\s*;',
         re.DOTALL | re.MULTILINE,
     )
 
@@ -98,7 +110,27 @@ class PropertyBuilder:
         rtl_dir: str,
         out_dir: str,
         llm_conf: Optional[str],
+        design_top: Optional[str] = None,
     ):
+        """
+        Parameters
+        ----------
+        spec_md : str
+            Path to Markdown spec (e.g. out/load_unit_spec.md).
+            The spec-top module is inferred from the filename stem
+            before '_spec', e.g. 'load_unit_spec' -> 'load_unit'.
+        csv_path : str
+            Path to CSV spec (same module as spec_md).
+        rtl_dir : str
+            RTL root directory (for clk/rst detection and port discovery).
+        out_dir : str
+            Output directory (properties.sv).
+        llm_conf : str | None
+            YAML configuration for LLM.
+        design_top : str | None
+            Optional design top used to detect clk/rst. If None, we
+            detect clk/rst from the spec top module inferred from spec_md.
+        """
         self.spec_md = os.path.abspath(spec_md)
         self.csv_path = os.path.abspath(csv_path)
         self.rtl_dir = os.path.abspath(rtl_dir)
@@ -106,6 +138,7 @@ class PropertyBuilder:
         os.makedirs(self.out_dir, exist_ok=True)
 
         self.llm_conf = os.path.abspath(llm_conf) if llm_conf else None
+        self.design_top = design_top
 
         if not LLM_wrap or not self.llm_conf:
             print('[❌] LLM_wrap not available or llm_conf missing.')
@@ -147,10 +180,20 @@ class PropertyBuilder:
 
     # ------------------------------------------------------------------
     def _find_clk_rst(self):
-        top_module = Path(self.spec_md).stem.split('_spec')[0]
-        clk, rst, _ = detect_clk_rst_for_top(Path(self.rtl_dir), top_module)
-        print(f'[INFO] Clock={clk}, Reset={rst}')
-        return clk, rst, top_module
+        """
+        Return (clk, rst, spec_top_module_name).
+
+        - spec_top_module_name is inferred from spec_md: <name>_spec.md -> <name>.
+        - clk/rst are detected via detect_clk_rst_for_top:
+            * If design_top is provided, we detect clk/rst from design_top.
+            * Otherwise, we detect clk/rst from spec_top_module_name.
+        """
+        spec_top = Path(self.spec_md).stem.split('_spec')[0]
+        clk_top = self.design_top or spec_top
+
+        clk, rst, _ = detect_clk_rst_for_top(Path(self.rtl_dir), clk_top)
+        print(f'[INFO] Clock={clk}, Reset={rst} (detected from top="{clk_top}")')
+        return clk, rst, spec_top
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -195,7 +238,6 @@ class PropertyBuilder:
             # allow simple numeric/token-like symbols (e.g. BUF_SIZE)
             if re.match(r'^[A-Z0-9_]+$', t):
                 continue
-            # allow 'd, 'h width spec etc (but those are not identifiers)
             # any other unknown identifier is suspicious
             if t not in ports:
                 return False
@@ -301,7 +343,7 @@ class PropertyBuilder:
     # ------------------------------------------------------------------
     def generate_properties(self) -> str:
         """
-        Main entry: read CSV + Markdown, detect ports, call LLM per row,
+        Main entry: read CSV + Markdown, detect clk/rst + ports, call LLM per row,
         repair trivial pre/post, drop useless properties, and write properties.sv.
         """
 
@@ -309,13 +351,13 @@ class PropertyBuilder:
             print('[❌] LLM is not initialized; cannot generate properties.')
             return ''
 
-        clk, rst, top_module = self._find_clk_rst()
+        clk, rst, spec_top_module = self._find_clk_rst()
         rows = self._read_csv_rows()
         md = self._read_markdown()
 
-        # Detect top-level ports directly from RTL
-        ports = detect_top_ports_from_rtl(self.rtl_dir, top_module)
-        print(f'[INFO] Top ports detected from RTL: {ports}')
+        # Detect top-level ports from RTL for the *spec module*.
+        ports = detect_top_ports_from_rtl(self.rtl_dir, spec_top_module)
+        print(f'[INFO] Spec-top ports detected from RTL ({spec_top_module}): {ports}')
 
         # Fallback: if RTL detection fails, at least add clk/rst so prompt isn't empty
         if not ports:
@@ -376,6 +418,12 @@ if __name__ == '__main__':
     p.add_argument('--rtl', required=True)
     p.add_argument('--out', required=True)
     p.add_argument('--llm-conf', required=True)
+    p.add_argument(
+        '--design-top',
+        help='Optional design top module name to use for clk/rst detection. '
+             'If omitted, clk/rst are detected from the spec top inferred '
+             'from --spec-md.',
+    )
     args = p.parse_args()
 
     pb = PropertyBuilder(
@@ -384,5 +432,7 @@ if __name__ == '__main__':
         rtl_dir=args.rtl,
         out_dir=args.out,
         llm_conf=args.llm_conf,
+        design_top=args.design_top,
     )
     pb.generate_properties()
+
