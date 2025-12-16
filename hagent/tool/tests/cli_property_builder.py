@@ -26,8 +26,8 @@ def main():
     parser.add_argument(
         '--design-top',
         help='Optional design top module name used to detect clock/reset. '
-             'If omitted, clk/rst are detected from the module inferred '
-             'from --spec-md (<name>_spec.* -> <name>).',
+        'If omitted, clk/rst are detected from the module inferred '
+        'from --spec-md (<name>_spec.* -> <name>).',
     )
     args = parser.parse_args()
 
@@ -57,4 +57,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

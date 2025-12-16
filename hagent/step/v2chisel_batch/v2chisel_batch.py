@@ -1268,7 +1268,7 @@ class V2chisel_batch(Step):
             print(f'   Golden (correct): {golden_file}')
             print(f'   Modified (from LLM): {modified_file}')
             print(f'   Module to compare: {module_name}')
-            print(f'\n📝 [DEBUG] LEC will compare:')
+            print('\n📝 [DEBUG] LEC will compare:')
             print(f'   Gold file: {golden_file}')
             print(f'   Gate file: {modified_file}')
             print(f'   Target module: {module_name}')

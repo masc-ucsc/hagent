@@ -358,9 +358,7 @@ def parse_case_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dict[s
                 }
 
                 if block['source_file'] and block['line_start'] and block['line_end']:
-                    block['rtl_code'] = extract_rtl_fn(
-                        block['source_file'], int(block['line_start']), int(block['line_end'])
-                    )
+                    block['rtl_code'] = extract_rtl_fn(block['source_file'], int(block['line_start']), int(block['line_end']))
                 else:
                     block['rtl_code'] = ''
 
@@ -539,10 +537,7 @@ class SpecBuilder:
             modules, packages = index_modules_packages(all_rtl)
             root_top = self.design_top or self.top
             if root_top not in modules:
-                console.print(
-                    f"[red]❌ Design top '{root_top}' not found in RTL files "
-                    f"(spec top = '{self.top}').[/red]"
-                )
+                console.print(f"[red]❌ Design top '{root_top}' not found in RTL files (spec top = '{self.top}').[/red]")
                 raise SystemExit(2)
 
             files_out, incdirs, _reachable = compute_transitive_closure(
@@ -578,10 +573,7 @@ class SpecBuilder:
         console.print('  ' + ' '.join(cmd))
         res = subprocess.run(cmd)
         if res.returncode != 0 or not self.out_json.exists():
-            console.print(
-                f'[red]❌ Slang failed (code={res.returncode}); '
-                f'AST not produced: {self.out_json}[/red]'
-            )
+            console.print(f'[red]❌ Slang failed (code={res.returncode}); AST not produced: {self.out_json}[/red]')
         else:
             console.print(f'[green]✔ AST written:[/green] {self.out_json}')
 
@@ -595,6 +587,7 @@ class SpecBuilder:
         """
         Locate the AST node for the *spec top* (self.top) inside the design.
         """
+
         def rec(node):
             if isinstance(node, dict):
                 if node.get('kind') == 'Module' and node.get('name') == self.top:
@@ -839,4 +832,3 @@ def main() -> int:
 
 if __name__ == '__main__':
     raise SystemExit(main())
-

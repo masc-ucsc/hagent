@@ -421,8 +421,8 @@ if __name__ == '__main__':
     p.add_argument(
         '--design-top',
         help='Optional design top module name to use for clk/rst detection. '
-             'If omitted, clk/rst are detected from the spec top inferred '
-             'from --spec-md.',
+        'If omitted, clk/rst are detected from the spec top inferred '
+        'from --spec-md.',
     )
     args = p.parse_args()
 
@@ -435,4 +435,3 @@ if __name__ == '__main__':
         design_top=args.design_top,
     )
     pb.generate_properties()
-
