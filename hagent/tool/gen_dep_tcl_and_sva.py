@@ -505,10 +505,7 @@ def main():
     )
     ap.add_argument(
         '--sva-top',
-        help=(
-            'Module name for which to generate *_prop.sv and *_bind.sv. '
-            'Defaults to --top if not set (can be a submodule).'
-        ),
+        help=('Module name for which to generate *_prop.sv and *_bind.sv. Defaults to --top if not set (can be a submodule).'),
     )
     ap.add_argument(
         '--prop-include',
@@ -547,10 +544,7 @@ def main():
     user_incdirs = [Path(p).resolve() for p in args.extra_inc]
 
     console.print(f'[cyan]📁 Scanning HDL in {src_root}[/cyan]')
-    console.print(
-        f'[cyan]ℹ Design top:[/cyan] {args.top}   '
-        f'[cyan]ℹ SVA target:[/cyan] {sva_top}'
-    )
+    console.print(f'[cyan]ℹ Design top:[/cyan] {args.top}   [cyan]ℹ SVA target:[/cyan] {sva_top}')
 
     # -------------------------
     # Filelist vs auto dependency mode
@@ -591,9 +585,7 @@ def main():
 
         if missing_pkgs:
             console.print(
-                '[yellow]⚠ WARNING: Some packages could not be resolved: '
-                + ', '.join(sorted(missing_pkgs))
-                + '[/yellow]'
+                '[yellow]⚠ WARNING: Some packages could not be resolved: ' + ', '.join(sorted(missing_pkgs)) + '[/yellow]'
             )
 
         # Ensure packages are ordered so that providers come before users
@@ -658,7 +650,7 @@ def main():
     write_jasper_tcl(
         out_path=out_tcl_path,
         output_dir=out_root,
-        module_name=args.top,   # design/elaboration top
+        module_name=args.top,  # design/elaboration top
         files=final_files,
         incdirs=incdirs_out,
         defines=args.defines,
@@ -675,8 +667,7 @@ def main():
     console.print(
         f'   Design top : [cyan]{args.top}[/cyan]\n'
         f'   SVA target : [magenta]{sva_top}[/magenta]\n'
-        f'   Filelist   : '
-        + ('[cyan]user-provided[/cyan]' if args.filelist else '[cyan]auto-discovered[/cyan]')
+        f'   Filelist   : ' + ('[cyan]user-provided[/cyan]' if args.filelist else '[cyan]auto-discovered[/cyan]')
     )
 
 
@@ -686,4 +677,3 @@ if __name__ == '__main__':
     except Exception as e:
         console.print(f'[red]❌ Fatal Error:[/red] {e}')
         sys.exit(1)
-

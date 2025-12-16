@@ -109,6 +109,7 @@ def run_uv(cmd: List[str], cwd: Path | None = None):
     console.print(f'[cyan]→[/cyan] [white]{sys.executable} {cmd_str}[/white]')
     subprocess.run([sys.executable, *cmd], check=True, cwd=cwd)
 
+
 # -----------------------------------------------------------------------------
 # JasperGold log parsing utilities
 # -----------------------------------------------------------------------------
@@ -319,10 +320,7 @@ def main():
     ap.add_argument('--top', required=True, help='Design top module name (e.g. cva6).')
     ap.add_argument(
         '--sva-top',
-        help=(
-            'Module to generate spec/properties/SVA for. '
-            'Defaults to --top (can be submodule, e.g. load_unit).'
-        ),
+        help=('Module to generate spec/properties/SVA for. Defaults to --top (can be submodule, e.g. load_unit).'),
     )
     ap.add_argument('--out', required=True, help='Output directory for results.')
     ap.add_argument('-I', '--include', nargs='*', default=[], help='Include directories.')
@@ -330,8 +328,7 @@ def main():
     ap.add_argument(
         '--filelist',
         help=(
-            'Optional plain text HDL filelist (one file per line) for Jasper. '
-            'If provided, passed through to gen_dep_tcl_and_sva.'
+            'Optional plain text HDL filelist (one file per line) for Jasper. If provided, passed through to gen_dep_tcl_and_sva.'
         ),
     )
     ap.add_argument(
@@ -373,10 +370,7 @@ def main():
     else:
         raise ValueError(f'Unexpected return from detect_clk_rst_for_top: {cr_result}')
 
-    console.print(
-        f'[cyan]ℹ Design top:[/cyan] {args.top}   '
-        f'[cyan]ℹ SVA target:[/cyan] {sva_top}'
-    )
+    console.print(f'[cyan]ℹ Design top:[/cyan] {args.top}   [cyan]ℹ SVA target:[/cyan] {sva_top}')
 
     # --- Pipeline steps ---
     steps = [
@@ -442,7 +436,6 @@ def main():
                 '64',
             ],
         ),
-
     ]
 
     # Add SVA target module to gen_dep_tcl_and_sva if different from top
@@ -478,8 +471,7 @@ def main():
     # --- Optional JasperGold run ---
     if args.run_jg:
         console.print(
-            '\n[bold yellow]⚙ Running Formal Tool: JasperGold FPV '
-            f'(top={args.top}, sva_top={sva_top})...[/bold yellow]'
+            f'\n[bold yellow]⚙ Running Formal Tool: JasperGold FPV (top={args.top}, sva_top={sva_top})...[/bold yellow]'
         )
         try:
             run_uv(
@@ -504,10 +496,7 @@ def main():
             'FAIL': jg_summary.get('assertions', {}).get('cex', 0),
             'UNREACHABLE': jg_summary.get('covers', {}).get('unreachable', 0),
             'COVER': jg_summary.get('covers', {}).get('covered', 0),
-            'UNKNOWN': (
-                jg_summary.get('assertions', {}).get('unknown', 0)
-                + jg_summary.get('covers', {}).get('unknown', 0)
-            ),
+            'UNKNOWN': (jg_summary.get('assertions', {}).get('unknown', 0) + jg_summary.get('covers', {}).get('unknown', 0)),
         }
         write_summary(fpv_dir, counts)
 
@@ -544,4 +533,3 @@ if __name__ == '__main__':
         console.print(f'[red]❌ Fatal Error:[/red] {e}')
         sys.exit(1)
     sys.exit(0)
-

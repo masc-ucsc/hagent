@@ -150,9 +150,7 @@ def run_multi(args: argparse.Namespace) -> int:
 # CLI Entrypoint
 # ──────────────────────────────────────────────────────────────────────────────
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description='CLI wrapper around SpecBuilder (LLM-driven RTL spec generator)'
-    )
+    parser = argparse.ArgumentParser(description='CLI wrapper around SpecBuilder (LLM-driven RTL spec generator)')
     parser.add_argument(
         '--mode',
         choices=['single', 'multi'],
@@ -167,8 +165,7 @@ def main() -> int:
     )
     parser.add_argument(
         '--design-top',
-        help='Design top module used for clock/reset detection and dependency closure '
-        '(defaults to spec top when omitted).',
+        help='Design top module used for clock/reset detection and dependency closure (defaults to spec top when omitted).',
     )
     parser.add_argument('--include', '-I', nargs='*', default=[], help='Include directories')
     parser.add_argument(
@@ -227,4 +224,3 @@ def main() -> int:
 
 if __name__ == '__main__':
     raise SystemExit(main())
-
