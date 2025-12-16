@@ -246,4 +246,23 @@ export HAGENT_REPO_DIR=/path/to/your/project
 uv run python hagent/step/trivial/trivial.py input.yaml -o output.yaml
 ```
 
+### Manual Docker Debugging with `scripts/docker_args.sh`
+
+For debugging and experimentation, you can manually start a container using the same arguments that `Runner.py` would use. The `scripts/docker_args.sh` script reads the `HAGENT_*` environment variables and prints a `docker run` command with the correct mounts:
+
+```bash
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.11
+export HAGENT_REPO_DIR=/path/to/your/git/repository
+export HAGENT_BUILD_DIR=/path/to/your/build/directory
+export HAGENT_CACHE_DIR=/path/to/your/cache/directory
+
+# Preview the docker command that matches Runner.py
+./scripts/docker_args.sh
+
+# Open an interactive shell in the container with the same mounts
+$(./scripts/docker_args.sh) /bin/bash
+```
+
+This is useful to quickly inspect the container environment, verify mounts, or reproduce issues interactively while using the exact same Docker layout as normal HAgent runs.
+
 The container management system eliminates the need for manual Docker commands while providing the benefits of isolated, reproducible execution environments.
