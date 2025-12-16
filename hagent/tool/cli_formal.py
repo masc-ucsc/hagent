@@ -425,7 +425,7 @@ def main():
                 '--out',
                 str(fpv_dir / 'FPV.tcl'),   # ✅ IMPORTANT: include filename
                 '--prop-include',
-                str(fpv_dir / 'properties.sv'),  # or just 'properties.sv' if you prefer
+                str(fpv_dir / 'sva' / 'properties.sv'),  # or just 'properties.sv' if you prefer
                 '--clock-name',
                 clk,
                 '--reset-expr',
