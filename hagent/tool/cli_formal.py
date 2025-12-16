@@ -423,9 +423,9 @@ def main():
                 '--top',
                 args.top,
                 '--out',
-                str(fpv_dir),  # <-- directory, NOT fpv_dir / "FPV.tcl"
+                str(fpv_dir / 'FPV.tcl'),   # ✅ IMPORTANT: include filename
                 '--prop-include',
-                str(fpv_dir / 'properties.sv'),  # <-- absolute path to generated properties
+                str(fpv_dir / 'properties.sv'),  # or just 'properties.sv' if you prefer
                 '--clock-name',
                 clk,
                 '--reset-expr',
@@ -474,15 +474,19 @@ def main():
             f'\n[bold yellow]⚙ Running Formal Tool: JasperGold FPV (top={args.top}, sva_top={sva_top})...[/bold yellow]'
         )
         try:
-            run_uv(
+            console.print(
+                f'[cyan]→[/cyan] [white]{args.jasper_bin} -allow_unsupported_OS -tcl FPV.tcl -batch[/white]'
+            )
+            subprocess.run(
                 [
                     args.jasper_bin,
-                    '-batch',
                     '-allow_unsupported_OS',
                     '-tcl',
                     'FPV.tcl',
+                    '-batch',
                 ],
                 cwd=fpv_dir,
+                check=True,
             )
         except subprocess.CalledProcessError as e:
             console.print(f'[red]⚠ Jasper exited with code {e.returncode}[/red]')
