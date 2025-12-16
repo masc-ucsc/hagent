@@ -2,19 +2,28 @@
 # -*- coding: utf-8 -*-
 """
 Generate:
-  1) FPV.tcl using the private Jasper TCL writer.
+  1) FPV.tcl using a private JasperGold TCL writer.
   2) Minimal SVA wrapper and bind:
-       <out_dir>/sva/<sva_top>_prop.sv
-       <out_dir>/sva/<sva_top>_bind.sv
+       <out_root>/sva/<sva_top>_prop.sv
+       <out_root>/sva/<sva_top>_bind.sv
 
 Modes:
 
   • Auto mode (default, no --filelist):
       - Use hdl_utils.build_filelist_for_top() to discover package + RTL files
         for the design top.
+
   • Filelist mode (when --filelist is given):
       - Read HDL file paths from a user-supplied text file (one path per line).
-      - Do NOT run dependency discovery; assume filelist is complete.
+      - Supports common Synopsys-style constructs:
+          // comments
+          #  comments
+          +incdir+<path>
+          -incdir+<path>
+          -f <other_filelist>
+          -F <other_filelist>
+      - Environment variables like $VAR or ${VAR} in paths are expanded.
+      - Dependencies are NOT auto-discovered; the filelist is assumed complete.
 
 Design vs SVA module:
 
@@ -25,17 +34,16 @@ Design vs SVA module:
 """
 
 import re
+import os
 import sys
 import argparse
 from pathlib import Path
 from rich.console import Console
 
-# New HDL utils that do package resolution (riscv_pkg, etc.)
 from hagent.tool.utils.hdl_utils import (
     load_sv_tree,
     build_filelist_for_top,
 )
-
 from hagent.tool.utils.clk_rst_utils import detect_clk_rst_for_top
 
 console = Console()
@@ -70,28 +78,26 @@ def strip_comments(text: str) -> str:
 # -----------------------------------------------------------------------------
 def _load_private_tcl_writer():
     """
-    Load the JasperGold TCL writer from the private repo.
+    Load the JasperGold TCL writer from a private repo that must be on PYTHONPATH.
 
-    There is intentionally NO fallback in the public repo.
-    If the private writer is missing, this tool errors out.
+    There is intentionally NO public fallback. If the private writer is missing,
+    this tool errors out.
     """
     try:
-        # This must live ONLY in hagent-private (PYTHONPATH must include it)
-        from JG.fpv_tcl_writer import write_jasper_tcl
+        from JG.fpv_tcl_writer import write_jasper_tcl  # type: ignore[import]
 
-        console.print('[green]✔ Using hagent-private Jasper TCL writer[/green]')
+        console.print('[green]✔ Using private JasperGold TCL writer[/green]')
         return write_jasper_tcl
     except Exception as e:
         console.print('[red]✖ ERROR: Private TCL writer not found.[/red]')
-        console.print('    Expected: [bold]hagent_private.JG.fpv_tcl_writer.write_jasper_tcl[/bold]')
-        console.print("    Make sure 'hagent-private' is on PYTHONPATH before running this tool.")
+        console.print('    Expected: [bold]JG.fpv_tcl_writer.write_jasper_tcl[/bold]')
+        console.print("    Make sure your private Jasper utilities are on PYTHONPATH.")
         console.print(f'    Import error: {e}')
         sys.exit(1)
 
 
-# single global instance
+# Single global instance
 write_jasper_tcl = _load_private_tcl_writer()
-
 
 # -----------------------------------------------------------------------------
 #  Port / declaration helpers
@@ -116,8 +122,7 @@ def extract_last_identifier(token: str) -> str | None:
     token = token.strip()
     if not token:
         return None
-    # strip inline // comments if any slipped through
-    token = re.split(r'//', token, 1)[0]
+    token = re.split(r'//', token, maxsplit=1)[0]
     m = _ID_RE.search(token)
     return m.group(1) if m else None
 
@@ -133,8 +138,8 @@ def header_port_names(port_body: str) -> list[str]:
     ports: list[str] = []
     buf: list[str] = []
 
-    depth_paren = 0  # for safety if someone nests ()
-    depth_brack = 0  # to ignore commas inside [..]
+    depth_paren = 0
+    depth_brack = 0
 
     for ch in text:
         if ch == '(':
@@ -158,7 +163,6 @@ def header_port_names(port_body: str) -> list[str]:
         else:
             buf.append(ch)
 
-    # last token
     token = ''.join(buf).strip()
     if token:
         name = extract_last_identifier(token)
@@ -180,16 +184,14 @@ def parse_io_decls_from_body(body: str) -> dict[str, str]:
     body_nc = strip_comments(body)
     io_map: dict[str, str] = {}
 
-    # Match "input ... ;", "output ... ;", "inout ... ;" including across newlines
     io_re = re.compile(r'\b(input|output|inout)\b(?P<rest>[^;]*);', re.MULTILINE)
 
     for m in io_re.finditer(body_nc):
         direction = m.group(1)
         rest = m.group('rest')
-        # Split by comma at this declaration level
         names = [x.strip() for x in rest.split(',') if x.strip()]
 
-        last_prefix = ''  # e.g. "[7:0]" to propagate to "b" in "input [7:0] a, b;"
+        last_prefix = ''
 
         for n in names:
             raw_decl = f'{direction} {n}'
@@ -205,8 +207,6 @@ def parse_io_decls_from_body(body: str) -> dict[str, str]:
             prefix_tokens = tokens[1:-1]
             prefix = ' '.join(prefix_tokens)
 
-            # If this signal has no width/type prefix but a previous sibling did,
-            # propagate that prefix (e.g., width) to this signal.
             if not prefix and last_prefix:
                 decl = ' '.join([tokens[0], last_prefix, base_token]).strip()
                 tokens = decl.split()
@@ -214,7 +214,6 @@ def parse_io_decls_from_body(body: str) -> dict[str, str]:
             else:
                 last_prefix = prefix
 
-            # Compute base name (strip any array indexes)
             base = re.sub(r'\[.*?\]', '', base_token).strip()
             if base:
                 io_map[base] = decl
@@ -263,12 +262,11 @@ def generate_bind(dut_name, params_text, port_decls):
             continue
 
         # Strip direction / types so we don't accidentally pick 'input' etc.
-        # Then:  match "<name> [optional unpacked dims]  (at end of string)"
         m_name = re.search(r'([A-Za-z_]\w*)\s*(\[[^\]]*\]\s*)*$', d)
         if not m_name:
             continue
 
-        name = m_name.group(1)  # e.g. 'clk', 'fifo_counter', 'buf_mem'
+        name = m_name.group(1)
         sigs.append(name)
 
     assoc = ', '.join(f'.{s}({s})' for s in sigs)
@@ -276,9 +274,6 @@ def generate_bind(dut_name, params_text, port_decls):
     params_inst = ''
     if params_text:
         # Get the parameter *names*, even with package types or 'parameter type'
-        # e.g. 'parameter config_pkg::cva6_cfg_t CVA6Cfg = ...'
-        #      'parameter type dcache_req_i_t = logic'
-        #      'parameter integer DWIDTH = 32'
         pnames = re.findall(r'\bparameter\b[^=]*\b(\w+)\s*(?==)', params_text)
         if pnames:
             params_inst = '#(' + ', '.join(f'.{p}({p})' for p in pnames) + ')'
@@ -314,8 +309,8 @@ def emit_prop_and_bind_for_module(
         return None, None
 
     dut_name = m.group('name')
-    params_text = m.group('params') or ''  # full "#( ... )" text
-    port_body = m.group('port_body') or ''  # text inside "( ... )"
+    params_text = m.group('params') or ''
+    port_body = m.group('port_body') or ''
 
     # ------------------------------------------------------------------
     # 1) Split header port list into individual declarations
@@ -324,8 +319,8 @@ def emit_prop_and_bind_for_module(
     text_ports = strip_comments(port_body)
     buf: list[str] = []
 
-    depth_paren = 0  # for safety
-    depth_brack = 0  # ignore commas inside [..]
+    depth_paren = 0
+    depth_brack = 0
 
     for ch in text_ports:
         if ch == '(':
@@ -347,7 +342,6 @@ def emit_prop_and_bind_for_module(
         else:
             buf.append(ch)
 
-    # last token
     token = ''.join(buf).strip()
     if token:
         ports_raw.append(token)
@@ -363,14 +357,10 @@ def emit_prop_and_bind_for_module(
         if not tok:
             continue
 
-        # Ensure there is a direction keyword
         if not re.search(r'\b(input|output|inout)\b', tok):
             tok = 'input ' + tok
 
-        # Normalize: make everything 'input', strip net types
         decl = clean_decl_to_input(tok)
-
-        # Extract the signal name (last identifier)
         name = extract_last_identifier(decl)
         if not name:
             continue
@@ -378,7 +368,6 @@ def emit_prop_and_bind_for_module(
             continue
         seen.add(name)
 
-        # Make sure it starts with 'input'
         if not decl.startswith('input'):
             decl = 'input ' + decl
 
@@ -388,9 +377,6 @@ def emit_prop_and_bind_for_module(
         console.print(f'[red]⚠ No ports found for module {dut_name} in {src_file}[/red]')
         return None, None
 
-    # ------------------------------------------------------------------
-    # 3) Emit wrapper and bind files
-    # ------------------------------------------------------------------
     sva_dir = out_root / 'sva'
     sva_dir.mkdir(parents=True, exist_ok=True)
     prop_path = sva_dir / f'{mod_name}_prop.sv'
@@ -410,7 +396,7 @@ def emit_prop_and_bind_for_module(
 def order_packages_by_dependency(pkg_files):
     """
     Reorder package files so that packages providing symbols appear
-    before packages that *use* them (e.g. riscv_pkg, config_pkg before ariane_pkg).
+    before packages that *use* them (e.g. A_pkg before B_pkg that imports A_pkg).
 
     Heuristic:
       - For each file, detect 'package <name>;' it defines.
@@ -420,7 +406,6 @@ def order_packages_by_dependency(pkg_files):
     if len(pkg_files) <= 1:
         return pkg_files
 
-    # Read all texts once
     texts = {}
     for f in pkg_files:
         try:
@@ -428,7 +413,6 @@ def order_packages_by_dependency(pkg_files):
         except Exception:
             texts[f] = ''
 
-    # Map: package-name -> file that defines it
     pkg_name_to_file = {}
     file_to_pkg_name = {}
     for f, txt in texts.items():
@@ -438,19 +422,16 @@ def order_packages_by_dependency(pkg_files):
             pkg_name_to_file[name] = f
             file_to_pkg_name[f] = name
 
-    # Map: file -> set of package names it uses (via <name>::)
     file_uses = {f: set() for f in pkg_files}
     pkg_names = list(pkg_name_to_file.keys())
     for f, txt in texts.items():
         for pname in pkg_names:
-            # look for 'pname::' usage
             if re.search(r'\b' + re.escape(pname) + r'\s*::', txt):
                 file_uses[f].add(pname)
 
     ordered = pkg_files[:]
     changed = True
 
-    # Bubble until no dependency violations remain
     while changed:
         changed = False
         for i, f in enumerate(list(ordered)):
@@ -462,12 +443,94 @@ def order_packages_by_dependency(pkg_files):
                 if dep_file not in ordered:
                     continue
                 j = ordered.index(dep_file)
-                # If the dependency appears AFTER the user, swap them
                 if j > i:
                     ordered[i], ordered[j] = ordered[j], ordered[i]
                     changed = True
 
     return ordered
+
+
+# -----------------------------------------------------------------------------
+#  Filelist parsing (generic)
+# -----------------------------------------------------------------------------
+def _parse_filelist(
+    filelist_path: Path,
+    base_dir: Path,
+    incdirs_out: set[Path],
+    visited: set[Path],
+) -> list[Path]:
+    """Parse a Synopsys-style HDL filelist into a list of HDL files.
+
+    Supports:
+      - // and # comments
+      - +incdir+<dir> and -incdir+<dir>
+      - -f <other_filelist> and -F <other_filelist> (recursive)
+      - Environment variable expansion ($VAR, ${VAR})
+    """
+    filelist_path = filelist_path.resolve()
+    if filelist_path in visited:
+        console.print(f'[yellow]⚠ Skipping already-processed filelist:[/yellow] {filelist_path}')
+        return []
+
+    visited.add(filelist_path)
+
+    files: list[Path] = []
+    try:
+        lines = filelist_path.read_text().splitlines()
+    except Exception as e:
+        raise SystemExit(f'ERROR: cannot read filelist {filelist_path}: {e}')
+
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+
+        # comments
+        if line.startswith('//') or line.startswith('#'):
+            continue
+
+        # handle +incdir+ / -incdir+
+        if line.startswith('+incdir+') or line.startswith('-incdir+'):
+            # split on the first occurrence of 'incdir+'
+            if '+incdir+' in line:
+                _, dir_part = line.split('+incdir+', 1)
+            else:
+                dir_part = line[len('-incdir+') :]
+            dir_part = dir_part.strip()
+            dir_expanded = os.path.expandvars(dir_part)
+            d = Path(dir_expanded)
+            if not d.is_absolute():
+                d = (base_dir / d).resolve()
+            if d.exists():
+                incdirs_out.add(d)
+            else:
+                console.print(f'[yellow]⚠ Include dir from filelist does not exist:[/yellow] {d}')
+            continue
+
+        # nested filelists: -f path or -F path
+        if line.startswith('-f ') or line.startswith('-F '):
+            nested = line[3:].strip()
+            nested = os.path.expandvars(nested)
+            nested_path = Path(nested)
+            if not nested_path.is_absolute():
+                nested_path = (base_dir / nested_path).resolve()
+            if not nested_path.exists():
+                console.print(f'[yellow]⚠ Nested filelist not found:[/yellow] {nested_path}')
+                continue
+            files.extend(_parse_filelist(nested_path, nested_path.parent, incdirs_out, visited))
+            continue
+
+        # Everything else: treat as HDL source file
+        expanded = os.path.expandvars(line)
+        p = Path(expanded)
+        if not p.is_absolute():
+            p = (base_dir / p).resolve()
+        if not p.exists():
+            console.print(f'[yellow]⚠ File from filelist does not exist:[/yellow] {p}')
+            continue
+        files.append(p)
+
+    return files
 
 
 # -----------------------------------------------------------------------------
@@ -482,7 +545,7 @@ def main():
         '--skip-dirs',
         nargs='*',
         default=['.git', 'build', 'out', 'tb'],
-        help='(unused now) kept for CLI compatibility',
+        help='(reserved for future use)',
     )
     ap.add_argument(
         '--extra-inc',
@@ -505,7 +568,7 @@ def main():
     )
     ap.add_argument(
         '--sva-top',
-        help=('Module name for which to generate *_prop.sv and *_bind.sv. Defaults to --top if not set (can be a submodule).'),
+        help='Module name for which to generate *_prop.sv and *_bind.sv. Defaults to --top if not set (can be a submodule).',
     )
     ap.add_argument(
         '--prop-include',
@@ -540,8 +603,9 @@ def main():
 
     sva_top = args.sva_top or args.top
 
-    # User-provided include dirs (e.g. .../core/include, .../core/pmp/include)
+    # User-provided include dirs (e.g. .../include)
     user_incdirs = [Path(p).resolve() for p in args.extra_inc]
+    incdirs_out: set[Path] = set(user_incdirs)
 
     console.print(f'[cyan]📁 Scanning HDL in {src_root}[/cyan]')
     console.print(f'[cyan]ℹ Design top:[/cyan] {args.top}   [cyan]ℹ SVA target:[/cyan] {sva_top}')
@@ -556,27 +620,18 @@ def main():
 
         console.print(f'[green]✔ Using user-provided filelist:[/green] {filelist_path}')
 
-        files_out: list[Path] = []
-        with filelist_path.open() as fl:
-            for raw in fl:
-                line = raw.strip()
-                if not line or line.startswith('#'):
-                    continue
-                p = Path(line)
-                if not p.is_absolute():
-                    p = (src_root / p).resolve()
-                else:
-                    p = p.resolve()
-                if not p.exists():
-                    console.print(f'[yellow]⚠ File from filelist does not exist:[/yellow] {p}')
-                    continue
-                files_out.append(p)
+        files_out = _parse_filelist(
+            filelist_path=filelist_path,
+            base_dir=filelist_path.parent,
+            incdirs_out=incdirs_out,
+            visited=set(),
+        )
 
         pkg_files: list[Path] = []
         rtl_files: list[Path] = files_out
-        missing_pkgs = set()
+        missing_pkgs: set[str] = set()
     else:
-        # Build ordered filelist for the top, including all required packages.
+        # Build ordered filelist for the top, including required packages.
         pkg_files, rtl_files, missing_pkgs = build_filelist_for_top(
             rtl_root=src_root,
             top_name=args.top,
@@ -585,15 +640,16 @@ def main():
 
         if missing_pkgs:
             console.print(
-                '[yellow]⚠ WARNING: Some packages could not be resolved: ' + ', '.join(sorted(missing_pkgs)) + '[/yellow]'
+                '[yellow]⚠ WARNING: Some packages could not be resolved: '
+                + ', '.join(sorted(missing_pkgs))
+                + '[/yellow]'
             )
 
-        # Ensure packages are ordered so that providers come before users
         pkg_files = order_packages_by_dependency(pkg_files)
         files_out = pkg_files + rtl_files
 
-    # incdirs passed to Jasper (the private writer will turn these into +incdir)
-    incdirs_out = list(user_incdirs)
+    # Final incdirs passed to Jasper (private writer will convert to +incdir)
+    incdirs_list = sorted({d.resolve() for d in incdirs_out})
 
     # -------------------------
     # Build module → file map (restricted to files_out)
@@ -601,12 +657,10 @@ def main():
     all_files = load_sv_tree(src_root)
     file_set = {p.resolve() for p in files_out}
 
-    modules = {}
+    modules: dict[str, Path] = {}
     for path, sv in all_files.items():
         if path.resolve() not in file_set:
             continue
-        # declared_units might include modules/interfaces/programs/packages;
-        # we only really care about modules, but harmless if we index others.
         for unit in sv.declared_units():
             modules.setdefault(unit, path)
 
@@ -617,28 +671,35 @@ def main():
     if args.reset_expr:
         rst_expr = args.reset_expr
 
-    console.print(f'[green]✔ Top module clock={clk_name}, reset={rst_name} (expression: {rst_expr})[/green]')
+    console.print(
+        f'[green]✔ Top module clock={clk_name}, reset={rst_name} '
+        f'(expression: {rst_expr})[/green]'
+    )
 
     # -------------------------
     # SVA generation
     # -------------------------
-    sva_paths = []
+    sva_paths: list[Path] = []
 
     if args.all_sva:
-        # Consider all modules that live in the files in our filelist.
-        reachable_mods = sorted(name for name, mpath in modules.items() if mpath.resolve() in file_set)
+        reachable_mods = sorted(
+            name for name, mpath in modules.items() if mpath.resolve() in file_set
+        )
         for mn in reachable_mods:
             src_file = modules[mn]
-            prop_p, bind_p = emit_prop_and_bind_for_module(mn, src_file, out_root, args.prop_include)
+            prop_p, bind_p = emit_prop_and_bind_for_module(
+                mn, src_file, out_root, args.prop_include
+            )
             if prop_p and bind_p:
                 sva_paths.extend([prop_p, bind_p])
     else:
-        # Only generate for requested sva_top (or design top if not given)
         target_mod = sva_top
         target_src = modules.get(target_mod)
         if target_src is None:
             raise SystemExit(f"ERROR: module '{target_mod}' not found in provided HDL files.")
-        prop_p, bind_p = emit_prop_and_bind_for_module(target_mod, target_src, out_root, args.prop_include)
+        prop_p, bind_p = emit_prop_and_bind_for_module(
+            target_mod, target_src, out_root, args.prop_include
+        )
         if prop_p and bind_p:
             sva_paths.extend([prop_p, bind_p])
 
@@ -652,14 +713,13 @@ def main():
         output_dir=out_root,
         module_name=args.top,  # design/elaboration top
         files=final_files,
-        incdirs=incdirs_out,
+        incdirs=incdirs_list,
         defines=args.defines,
         clock_name=clk_name,
         reset_expr=rst_expr,
         prove_time=args.prove_time,
         proofgrid_jobs=args.proofgrid_jobs,
-        # Treat user-provided extra include dirs also as -y library dirs
-        lib_dirs=user_incdirs,
+        lib_dirs=list(incdirs_list),  # treat include dirs also as -y library dirs
         lib_files=None,
     )
 
@@ -667,7 +727,8 @@ def main():
     console.print(
         f'   Design top : [cyan]{args.top}[/cyan]\n'
         f'   SVA target : [magenta]{sva_top}[/magenta]\n'
-        f'   Filelist   : ' + ('[cyan]user-provided[/cyan]' if args.filelist else '[cyan]auto-discovered[/cyan]')
+        f'   Filelist   : '
+        + ('[cyan]user-provided[/cyan]' if args.filelist else '[cyan]auto-discovered[/cyan]')
     )
 
 
@@ -677,3 +738,4 @@ if __name__ == '__main__':
     except Exception as e:
         console.print(f'[red]❌ Fatal Error:[/red] {e}')
         sys.exit(1)
+
