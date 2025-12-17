@@ -323,6 +323,11 @@ def get_mcp_schema(config_path: Optional[str] = None) -> Dict[str, Any]:
                     'description': 'Enable debug mode: print commands and use verbose output',
                     'default': False,
                 },
+                'options': {
+                    'type': 'object',
+                    'description': 'Optional key-value pairs for API-specific options (e.g., {"top_synth": "--top-synthesis ALU"})',
+                    'additionalProperties': {'type': 'string'},
+                },
             },
             'required': [],
         },
@@ -398,6 +403,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
         profile_query = params.get('profile')
         api_name = params.get('api')
         dry_run = params.get('dry_run', False)
+        options = params.get('options', {})
 
         # If no API specified, this might be a listing request
         if not api_name:
@@ -483,6 +489,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
                         command_name=api_name,
                         dry_run=True,
                         quiet=True,
+                        options=options,
                     )
                     if dry_exit_code == 0 and dry_stdout:
                         logging.debug(f'[DEBUG] Command to execute:\n{dry_stdout}')
@@ -496,6 +503,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
                 command_name=api_name,
                 dry_run=dry_run,
                 quiet=quiet,
+                options=options,
             )
 
             # If exact name failed and we have a profile parameter, try as title query
@@ -511,6 +519,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
                                 command_name=api_name,
                                 dry_run=True,
                                 quiet=True,
+                                options=options,
                             )
                             if dry_exit_code == 0 and dry_stdout:
                                 logging.debug(f'[DEBUG] Command to execute:\n{dry_stdout}')
@@ -523,6 +532,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
                     command_name=api_name,
                     dry_run=dry_run,
                     quiet=quiet,
+                    options=options,
                 )
 
             # Check if command failed and add formatted error information
@@ -604,6 +614,14 @@ def create_argument_parser():
 
     parser.add_argument('--dry-run', '-n', action='store_true', help='Show what would be executed without running')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode: print commands and use verbose output')
+    parser.add_argument(
+        '--option',
+        '-o',
+        action='append',
+        dest='options',
+        metavar='KEY=VALUE',
+        help='API option in KEY=VALUE format (can be specified multiple times)',
+    )
     parser.add_argument('extra_args', nargs=argparse.REMAINDER, help='Extra arguments to pass to the command (after --)')
 
     return parser
@@ -632,6 +650,16 @@ def main():
         os.environ['HAGENT_CONFIG_PATH'] = args.config
 
     try:
+        # Parse options from CLI format (KEY=VALUE strings) to dict
+        options_dict = {}
+        if hasattr(args, 'options') and args.options:
+            for opt_str in args.options:
+                if '=' not in opt_str:
+                    print(f'Error: Invalid option format "{opt_str}". Expected KEY=VALUE', file=sys.stderr)
+                    return 1
+                key, value = opt_str.split('=', 1)
+                options_dict[key.strip()] = value.strip()
+
         # Convert CLI args to MCP params format
         params = {
             'name': args.name,
@@ -639,6 +667,7 @@ def main():
             'api': args.api,
             'dry_run': args.dry_run if hasattr(args, 'dry_run') else False,
             'debug': args.debug if hasattr(args, 'debug') else False,
+            'options': options_dict,
         }
 
         # Handle list operations (no API specified)
