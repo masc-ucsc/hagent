@@ -1,6 +1,6 @@
 """Integration tests for hagent.inou.locator with real Docker environment.
 
-These tests use the mascucsc/hagent-simplechisel:2025.11 Docker image to test
+These tests use the mascucsc/hagent-simplechisel:2025.12 Docker image to test
 the full Locator workflow with actual Chisel compilation and slang-hier integration.
 """
 
@@ -62,7 +62,7 @@ def docker_env():
 
         # Use PathManager.configured() for clean test isolation
         with PathManager.configured(
-            docker_image='mascucsc/hagent-simplechisel:2025.11',
+            docker_image='mascucsc/hagent-simplechisel:2025.12',
             repo_dir=str(repo_dir),
             build_dir=str(build_dir),
             cache_dir=str(cache_dir),

@@ -80,7 +80,7 @@ Can we provide test_replicate_code and test_equiv_checker_docker to see which fu
 
 mada4:
 
- docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2025.11
+ docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2025.12
 
  fix hagent.yaml so that it can run synth.rb
 
