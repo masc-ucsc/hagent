@@ -74,16 +74,16 @@ class TestRunner:
 
         # Use PathManager.configured() to switch to docker mode
         with PathManager.configured(
-            docker_image='mascucsc/hagent-simplechisel:2025.11',
+            docker_image='mascucsc/hagent-simplechisel:2025.12',
             repo_dir=str(self.repo_dir),
             build_dir=str(self.build_dir),
             cache_dir=str(self.cache_dir),
         ):
-            runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.11')
+            runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.12')
 
             assert runner.is_docker_mode()
             assert not runner.is_local_mode()
-            assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.11'
+            assert runner.docker_image == 'mascucsc/hagent-simplechisel:2025.12'
             assert runner.container_manager is not None
 
             runner.cleanup()

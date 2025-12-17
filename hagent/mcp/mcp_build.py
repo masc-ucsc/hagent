@@ -240,7 +240,7 @@ def get_mcp_schema(config_path: Optional[str] = None) -> Dict[str, Any]:
                     with redirect_stdout(captured_output), redirect_stderr(captured_errors):
                         profiles = builder.get_all_profiles()
                         # Get description from builder while it's still available
-                        profiles_description = builder.list_profiles()
+                        profiles_description = _list_profiles_with_options(builder)
                         # Remove leading newline for schema description
                         if profiles_description and profiles_description.startswith('\n'):
                             profiles_description = profiles_description[1:]
@@ -329,6 +329,52 @@ def get_mcp_schema(config_path: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
+def _list_profiles_with_options(builder) -> str:
+    """
+    List all profiles with enhanced API option information.
+
+    Args:
+        builder: Builder instance with loaded configuration
+
+    Returns:
+        Formatted string with profile, API, and option details
+    """
+    if not builder.has_config:
+        return '\nNo hagent.yaml configuration found.'
+
+    profiles = builder.get_all_profiles()
+    output_lines = ['\nAvailable profiles:']
+
+    for p in profiles:
+        output_lines.append(f'\nname: {p.get("name", "<unnamed>")}')
+        output_lines.append(f'  title: {builder.profile_title(p) or "N/A"}')
+        output_lines.append('  APIs:')
+
+        for api in p.get('apis', []):
+            api_name = api.get('name', '<unnamed>')
+            api_desc = api.get('description', '')
+            output_lines.append(f'    - {api_name}: {api_desc}')
+
+            # Add option information if available
+            options = api.get('options', [])
+            if options:
+                output_lines.append('      Options:')
+                for opt in options:
+                    opt_name = opt.get('name', '<unnamed>')
+                    opt_desc = opt.get('description', '')
+                    opt_default = opt.get('default', '')
+
+                    # Format the option line
+                    opt_line = f'        * {opt_name}'
+                    if opt_desc:
+                        opt_line += f': {opt_desc}'
+                    if opt_default:
+                        opt_line += f' (default: "{opt_default}")'
+                    output_lines.append(opt_line)
+
+    return '\n'.join(output_lines)
+
+
 def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
     """
     MCP execution entry point for HAgent build command.
@@ -389,7 +435,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 # List all profiles
                 try:
-                    profiles_output = builder.list_profiles()
+                    profiles_output = _list_profiles_with_options(builder)
                     return {
                         'success': True,
                         'exit_code': 0,

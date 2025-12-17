@@ -32,12 +32,12 @@ def reset_path_manager_state():
 
 def test_builder_uses_environment_mode_by_default(monkeypatch):
     """Builder should respect HAGENT_DOCKER when no docker override is provided."""
-    monkeypatch.setenv('HAGENT_DOCKER', 'mascucsc/hagent-builder:2025.11')
+    monkeypatch.setenv('HAGENT_DOCKER', 'mascucsc/hagent-builder:2025.12')
 
     builder = Builder()
     try:
         assert builder.runner.is_docker_mode()
-        assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-builder:2025.11'
+        assert os.environ['HAGENT_DOCKER'] == 'mascucsc/hagent-builder:2025.12'
     finally:
         builder.cleanup()
 
