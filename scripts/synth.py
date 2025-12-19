@@ -5,7 +5,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -15,6 +14,28 @@ def find_top_name(slang_args):
         if arg == '--top' and i + 1 < len(slang_args):
             return slang_args[i + 1]
     return None
+
+
+def _check_tool_available(tool_name):
+    """Check if a tool is available in PATH"""
+    if subprocess.run(['which', tool_name], capture_output=True).returncode != 0:
+        print(f'error: {tool_name} tool is not in the path', file=sys.stderr)
+        sys.exit(1)
+
+
+def _run_tool_with_script(tool_cmd, script_content, script_path, log_path, phase_name):
+    """Execute a tool with a script and capture output to log"""
+    # Write script
+    with open(script_path, 'w') as f:
+        f.write(script_content)
+
+    # Execute with logging
+    with open(log_path, 'w') as log:
+        subprocess.run(tool_cmd, stdout=log, stderr=subprocess.STDOUT, check=True)
+
+    # Report completion
+    print(f'{phase_name} complete', file=sys.stderr)
+    print(f'Log: {log_path}', file=sys.stderr)
 
 
 def filter_args_and_patch_filelists(slang_args, exclude_patterns):
@@ -140,28 +161,28 @@ def find_liberty_file(tech_dir):
 def print_dry_run(args, slang_args, synth_top, elaborate_top):
     """Print command line arguments without executing"""
     print('=== Dry Run Mode ===')
+    print(f'Output directory: {args.output_dir}')
+    print(f'Elaboration method: {args.elab_method}')
 
-    # Display run modes
-    run_modes = []
-    if args.run_synth:
-        run_modes.append('Synthesis')
-    if args.run_elab:
-        run_modes.append('Elaboration')
-    if args.run_sta:
-        run_modes.append('STA')
-    print(f'Run modes: {", ".join(run_modes)}')
+    # Determine which phases will run
+    no_run_flags = not (args.run_elab or args.run_synth or args.run_sta)
+    run_elab = no_run_flags or args.run_elab or args.run_synth
+    run_synth = no_run_flags or args.run_synth
+    run_sta = no_run_flags or args.run_sta
 
-    if args.run_synth:
-        if args.sv2v:
-            print('Synthesis flow: sv2v-to-yosys (direct)')
-        elif args.no_sv2v:
-            print('Synthesis flow: read_slang only (no fallback)')
-        else:
-            print('Synthesis flow: read_slang with sv2v fallback')
-    elif args.run_elab:
-        print('Elaboration flow: read_slang with yosys opt only')
+    # Display phases
+    phases = []
+    if not args.skip_elab and run_elab:
+        phases.append('Elaboration → elab.v')
+    elif args.skip_elab:
+        phases.append('(Skip elaboration, reuse elab.v)')
+    if run_synth:
+        phases.append('Synthesis → synth.v')
+    if run_sta:
+        phases.append('STA')
+    print(f'Phases: {" → ".join(phases)}')
+
     print(f'Liberty file: {args.liberty}')
-    print(f'Output netlist: {args.netlist}')
     print(f'Elaboration top: {elaborate_top}')
     print(f'Synthesis top: {synth_top}')
     if args.exclude:
@@ -171,15 +192,13 @@ def print_dry_run(args, slang_args, synth_top, elaborate_top):
     warnings = []
 
     # Check liberty file
-    if not Path(args.liberty).exists():
+    if args.liberty and not Path(args.liberty).exists():
         warnings.append(f'Liberty file not found: {args.liberty}')
 
     # Check source files from slang_args
     for arg in slang_args:
-        # Skip flags and their arguments
         if arg.startswith('-'):
             continue
-        # Check if it looks like a file path (has extension or exists)
         if '.' in arg or Path(arg).exists():
             if not Path(arg).exists():
                 warnings.append(f'Source file not found: {arg}')
@@ -197,22 +216,21 @@ def print_dry_run(args, slang_args, synth_top, elaborate_top):
 
     print(f'\nSlang arguments: {slang_cmd}')
 
-    if args.run_synth:
-        print(f'\nYosys script would be written to: {synth_top}_yosys.tcl')
-        print(f'Command: yosys -m slang -c {synth_top}_yosys.tcl')
-        netlist_path = Path(args.netlist)
-        stdout_log = netlist_path.parent / f'{netlist_path.stem}_yosys.stdout'
-        print(f'Output log would be written to: {stdout_log}')
-    elif args.run_elab:
-        print(f'\nYosys elaboration script would be written to: {synth_top}_yosys_elab.tcl')
-        print(f'Command: yosys -m slang -c {synth_top}_yosys_elab.tcl')
-        netlist_path = Path(args.netlist)
-        stdout_log = netlist_path.parent / f'{netlist_path.stem}_yosys_elab.stdout'
-        print(f'Output log would be written to: {stdout_log}')
+    output_dir = Path(args.output_dir)
+    if run_elab:
+        print(f'\nElaboration script: {output_dir / "elab.tcl"}')
+        print(f'Elaboration output: {output_dir / "elab.v"}')
+        print(f'Elaboration log: {output_dir / "elab.log"}')
 
-    if args.run_sta:
-        print(f'\nSTA script would be written to: {synth_top}_opensta.tcl')
-        print(f'Command: sta {synth_top}_opensta.tcl')
+    if run_synth:
+        print(f'\nSynthesis script: {output_dir / "synth.tcl"}')
+        print(f'Synthesis output: {output_dir / "synth.v"}')
+        print(f'Synthesis log: {output_dir / "synth.log"}')
+
+    if run_sta:
+        print(f'\nSTA script: {output_dir / "sta.tcl"}')
+        print(f'STA log: {output_dir / "sta.log"}')
+        print(f'STA command: sta {output_dir / "sta.tcl"}')
 
 
 def main():
@@ -222,40 +240,54 @@ def main():
 
     parser = argparse.ArgumentParser(
         description='Run yosys synthesis with slang frontend',
-        epilog='All other arguments are passed to read_slang command. Example: synth.py --netlist out.v --top cpu input.sv',
+        epilog='All other arguments are passed to read_slang command. Example: synth.py -o build/ --top cpu input.sv',
     )
     parser.add_argument('--liberty', help='Liberty file path')
     parser.add_argument('--tech-dir', help='Technology directory path (defaults to HAGENT_TECH_DIR env var)')
-    parser.add_argument('--netlist', default='netlist.v', help='Output netlist file path (default: netlist.v)')
-    parser.add_argument('--run-sta', action='store_true', help='Run STA analysis (can be combined with --run-synth)')
-    parser.add_argument('--run-synth', action='store_true', help='Run synthesis (always regenerates netlist)')
+    parser.add_argument(
+        '--output-dir',
+        '-o',
+        required=True,
+        help='Output directory for elab.v and synth.v (replaces --netlist)',
+    )
     parser.add_argument(
         '--run-elab',
         action='store_true',
-        help='Run elaboration only (stops after yosys opt, cannot be combined with --run-synth or --run-sta)',
+        help='Only run elaboration (create elab.v only, disables default synth+STA)',
+    )
+    parser.add_argument(
+        '--run-synth',
+        action='store_true',
+        help='Run elaboration + synthesis (create elab.v + synth.v, disables default STA)',
+    )
+    parser.add_argument(
+        '--run-sta',
+        action='store_true',
+        help='Run STA on synth.v (use alone to run only STA without elab/synth)',
+    )
+    parser.add_argument(
+        '--skip-elab',
+        action='store_true',
+        help='Skip elaboration if elab.v exists and is up-to-date (useful for fast iteration)',
+    )
+    parser.add_argument(
+        '--elab-method',
+        choices=['auto', 'slang', 'sv2v'],
+        default='auto',
+        help='Elaboration method: auto (try slang, fallback to sv2v), slang (read_slang only), sv2v (sv2v only)',
     )
     parser.add_argument('--exclude', action='append', help='Exclude files matching regex pattern (can be used multiple times)')
     parser.add_argument('--top-synthesis', help='Top module for synthesis (when different from elaboration top in --top)')
     parser.add_argument('--dry-run', action='store_true', help='Show command line arguments without executing')
-    parser.add_argument('--sv2v', action='store_true', help='Use sv2v-to-yosys flow directly, skipping read_slang')
-    parser.add_argument('--no-sv2v', action='store_true', help='Do not fall back to sv2v if read_slang fails')
 
     # Parse known args to separate our args from slang args
     args, slang_args = parser.parse_known_args()
 
-    # Validate mutually exclusive flags
-    if args.sv2v and args.no_sv2v:
-        print('error: --sv2v and --no-sv2v cannot be used together', file=sys.stderr)
-        sys.exit(1)
-
-    # Validate --run-elab cannot be combined with --run-synth or --run-sta
-    if args.run_elab and (args.run_synth or args.run_sta):
-        print('error: --run-elab cannot be combined with --run-synth or --run-sta', file=sys.stderr)
-        sys.exit(1)
-
-    # If no run mode specified, default to synthesis
-    if not (args.run_sta or args.run_synth or args.run_elab):
-        args.run_synth = True
+    # Create output directory and store standard paths
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    args.elab_path = output_dir / 'elab.v'
+    args.netlist_path = output_dir / 'synth.v'
 
     # Check if --top was in the original arguments but not in slang_args
     # This happens when --top appears before other arguments
@@ -321,150 +353,25 @@ def main():
     if args.dry_run:
         print_dry_run(args, slang_args, synth_top, elaborate_top)
     else:
-        # Execute requested operations in order: synth/elab first, then STA
-        if args.run_synth:
-            run_synthesis(args, slang_args, synth_top)
-        elif args.run_elab:
+        # Determine which phases to run
+        # Default: all phases (elab + synth + STA) if no --run-* flags specified
+        no_run_flags = not (args.run_elab or args.run_synth or args.run_sta)
+
+        should_run_elab = no_run_flags or args.run_elab or args.run_synth
+        should_run_synth = no_run_flags or args.run_synth
+        should_run_sta = no_run_flags or args.run_sta
+
+        # Phase 1: Elaborate (unless --skip-elab and elab.v exists)
+        if should_run_elab and not (args.skip_elab and args.elab_path.exists()):
             run_elaboration(args, slang_args, synth_top)
 
-        if args.run_sta:
-            run_sta(args, slang_args, synth_top)
+        # Phase 2: Synthesize if requested
+        if should_run_synth:
+            run_synthesis(args, synth_top)
 
-
-def needs_recompilation(slang_args, netlist_path):
-    """Check if netlist is older than any source file"""
-    if not Path(netlist_path).exists():
-        return True
-
-    netlist_mtime = Path(netlist_path).stat().st_mtime
-
-    # Extract source files from slang args (files without -- prefix)
-    for arg in slang_args:
-        if not arg.startswith('-') and Path(arg).exists():
-            if Path(arg).stat().st_mtime > netlist_mtime:
-                return True
-
-    return False
-
-
-def _generate_yosys_hierarchy_script(slang_cmd, top_name, liberty_path, netlist_path):
-    """Generate Yosys TCL script for synthesis with hierarchy handling"""
-    # Create unique temp file path for module list
-    temp_fd, temp_path = tempfile.mkstemp(suffix='_yosys_modules.txt')
-    os.close(temp_fd)  # Close the file descriptor, we'll let yosys write to it
-
-    return f"""yosys read_slang {slang_cmd}
-yosys tee -q -o {temp_path} ls
-set fp [open "{temp_path}" r]
-set mods [read $fp]
-close $fp
-file delete {temp_path}
-set lines [split $mods "\\n"]
-set top_module ""
-set candidates [list]
-set rejected [list]
-
-# Collect all matching candidates
-foreach line $lines {{
-    set trimmed [string trim $line]
-    if {{$trimmed ne "" && [string first "{top_name}" $trimmed] >= 0 && [string first "modules:" $trimmed] < 0 && [string first "memories:" $trimmed] < 0 && [string first "processes:" $trimmed] < 0}} {{
-        lappend candidates $trimmed
-    }}
-}}
-
-# Prioritize: prefer modules matching the pattern exactly up to '$'
-# This ensures "ALU" matches "\\ALU$..." but not "\\ALUControl$..."
-foreach candidate $candidates {{
-    # Remove leading backslash if present
-    set clean_name [string trimleft $candidate "\\\\"]
-    # Check if it matches: starts with top_name AND followed by '$' (or exact match)
-    set matched 0
-    if {{$clean_name eq "{top_name}"}} {{
-        set matched 1
-    }} elseif {{[string first "{top_name}\\$" $clean_name] == 0}} {{
-        set matched 1
-    }}
-
-    if {{$matched}} {{
-        if {{$top_module eq ""}} {{
-            set top_module $candidate
-        }} else {{
-            lappend rejected $candidate
-        }}
-    }} else {{
-        lappend rejected $candidate
-    }}
-}}
-
-# If no prioritized match, take the first candidate
-if {{$top_module eq "" && [llength $candidates] > 0}} {{
-    set top_module [lindex $candidates 0]
-    set rejected [lrange $candidates 1 end]
-}}
-
-if {{$top_module eq ""}} {{
-    error "Could not find module matching '{top_name}'"
-}}
-
-puts "Selected module: $top_module"
-puts stderr "info: Selected module: $top_module"
-if {{[llength $rejected] > 0}} {{
-    puts "Rejected candidates:"
-    puts stderr "info: Rejected [llength $rejected] candidate(s)"
-    foreach rej $rejected {{
-        puts "  - $rej"
-    }}
-}}
-yosys hierarchy -top $top_module
-yosys flatten
-yosys chformal -remove
-yosys opt
-yosys synth
-yosys dfflibmap -liberty {liberty_path}
-yosys printattrs
-yosys stat
-yosys abc -liberty {liberty_path} -dff -keepff -g aig
-yosys stat
-if {{$top_module ne "{top_name}"}} {{
-    puts "Renaming module $top_module to {top_name}"
-    yosys rename $top_module {top_name}
-}}
-yosys write_verilog -simple-lhs {netlist_path}
-"""
-
-
-def _generate_yosys_simple_script(slang_cmd, top_name, liberty_path, netlist_path):
-    """Generate simple Yosys TCL script for synthesis without hierarchy"""
-    return f"""yosys read_slang {slang_cmd}
-yosys hierarchy -top {top_name}
-yosys flatten {top_name}
-yosys chformal -remove
-yosys opt
-yosys synth -top {top_name}
-yosys dfflibmap -liberty {liberty_path}
-yosys printattrs
-yosys stat
-yosys abc -liberty {liberty_path} -dff -keepff -g aig
-yosys stat
-yosys write_verilog -simple-lhs {netlist_path}
-"""
-
-
-def _generate_yosys_sv2v_script(tmp_dir, top_name, liberty_path, netlist_path):
-    """Generate Yosys TCL script for sv2v fallback synthesis"""
-    return f"""yosys read_verilog -sv {tmp_dir}/*.v
-yosys hierarchy -top {top_name}
-yosys flatten {top_name}
-yosys chformal -remove
-yosys opt
-yosys synth -top {top_name}
-yosys dfflibmap -liberty {liberty_path}
-yosys printattrs
-yosys stat
-yosys abc -liberty {liberty_path} -dff -keepff -g aig
-yosys stat
-yosys write_verilog -simple-lhs {netlist_path}
-"""
+        # Phase 3: STA if requested
+        if should_run_sta:
+            run_sta(args, synth_top)
 
 
 def _generate_yosys_elaboration_script(slang_cmd, top_name, netlist_path):
@@ -478,18 +385,16 @@ yosys write_verilog -simple-lhs {netlist_path}
 """
 
 
-def _generate_yosys_elaboration_hierarchy_script(slang_cmd, top_name, netlist_path):
+def _generate_yosys_elaboration_hierarchy_script(slang_cmd, top_name, netlist_path, output_dir):
     """Generate Yosys TCL script for elaboration with hierarchy handling (stops after opt)"""
-    # Create unique temp file path for module list
-    temp_fd, temp_path = tempfile.mkstemp(suffix='_yosys_modules.txt')
-    os.close(temp_fd)  # Close the file descriptor, we'll let yosys write to it
+    # Use output directory for hierarchy file
+    hierarchy_file = output_dir / 'hierarchy.txt'
 
     return f"""yosys read_slang {slang_cmd}
-yosys tee -q -o {temp_path} ls
-set fp [open "{temp_path}" r]
+yosys tee -q -o {hierarchy_file} ls
+set fp [open "{hierarchy_file}" r]
 set mods [read $fp]
 close $fp
-file delete {temp_path}
 set lines [split $mods "\\n"]
 set top_module ""
 set candidates [list]
@@ -559,158 +464,122 @@ yosys write_verilog -simple-lhs {netlist_path}
 
 
 def run_elaboration(args, slang_args, top_name):
-    """Run elaboration only (stops after yosys opt without synthesis)"""
-    # Create parent directories for netlist output if they don't exist
-    netlist_path = Path(args.netlist)
-    if not netlist_path.parent.exists():
-        netlist_path.parent.mkdir(parents=True, exist_ok=True)
+    """Run elaboration phase (produces elab.v)"""
+    _check_tool_available('yosys')
 
-    # Check if yosys is available
-    if subprocess.run(['which', 'yosys'], capture_output=True).returncode != 0:
-        print('error: synth.py yosys tool is not in the path', file=sys.stderr)
-        sys.exit(1)
+    # Determine elaboration method
+    if args.elab_method == 'sv2v':
+        _elaborate_with_sv2v(args, slang_args, top_name)
+    elif args.elab_method == 'slang':
+        _elaborate_with_readslang(args, slang_args, top_name)
+    else:  # auto
+        try:
+            _elaborate_with_readslang(args, slang_args, top_name)
+        except subprocess.CalledProcessError as e:
+            print(f'read_slang failed: {e}, falling back to sv2v', file=sys.stderr)
+            _elaborate_with_sv2v(args, slang_args, top_name)
 
-    # Check if yosys-slang module is available
+
+def _elaborate_with_readslang(args, slang_args, top_name):
+    """Elaborate using read_slang"""
+    output_dir = Path(args.output_dir)
+    elab_path = args.elab_path
+
+    # Check yosys-slang module
     result = subprocess.run(['yosys', '-m', 'slang', '-p', 'help read_slang'], capture_output=True, text=True)
     if result.returncode != 0:
-        print('error: synth.py yosys-slang module is not installed', file=sys.stderr)
+        print('error: yosys-slang module is not installed', file=sys.stderr)
         sys.exit(1)
 
-    # Determine if we need --keep-hierarchy
+    # Determine if we need hierarchy handling
     elaborate_top = find_top_name(slang_args)
     needs_hierarchy = elaborate_top != top_name
 
-    # Build slang command arguments with synthesis define
-    # Note: slang_args already contains --top for elaboration
+    # Build slang command
     keep_hierarchy_flag = '--keep-hierarchy' if needs_hierarchy else ''
     slang_cmd = f'-DSYNTHESIS {keep_hierarchy_flag} {" ".join(slang_args)}'.strip()
 
-    # Generate Yosys elaboration script using appropriate template
+    # Generate script
     if needs_hierarchy:
-        yosys_template = _generate_yosys_elaboration_hierarchy_script(slang_cmd, top_name, args.netlist)
+        script = _generate_yosys_elaboration_hierarchy_script(slang_cmd, top_name, elab_path, output_dir)
     else:
-        yosys_template = _generate_yosys_elaboration_script(slang_cmd, top_name, args.netlist)
+        script = _generate_yosys_elaboration_script(slang_cmd, top_name, elab_path)
 
-    # Write the script to {top}_yosys_elab.tcl
-    yosys_script_name = f'{top_name}_yosys_elab.tcl'
-    with open(yosys_script_name, 'w') as f:
-        f.write(yosys_template)
-
-    # Determine stdout log file path based on netlist path
-    stdout_log = netlist_path.parent / f'{netlist_path.stem}_yosys_elab.stdout'
-
-    # Run yosys with elaboration script
-    try:
-        with open(stdout_log, 'w') as log_file:
-            subprocess.run(
-                ['yosys', '-m', 'slang', '-c', yosys_script_name], stdout=log_file, stderr=subprocess.STDOUT, check=True
-            )
-        print(f'Elaboration output written to {stdout_log}', file=sys.stderr)
-    except subprocess.CalledProcessError as e:
-        print(f'error: elaboration failed: {e}', file=sys.stderr)
-        sys.exit(1)
+    # Execute
+    _run_tool_with_script(
+        ['yosys', '-m', 'slang', '-c', str(output_dir / 'elab.tcl')],
+        script,
+        output_dir / 'elab.tcl',
+        output_dir / 'elab.log',
+        f'Elaboration: {elab_path}',
+    )
 
 
-def run_sv2v_synthesis(args, slang_args, top_name, stdout_log):
-    """Run synthesis using sv2v-to-yosys flow"""
-    # Convert SystemVerilog to Verilog and store all converted plain-Verilog files in a temporary directory for Yosys synthesis
-    filtered_args = [a for a in slang_args if a.endswith(('.sv', '.v'))]
-    tmp_dir = tempfile.mkdtemp(prefix='tmp_', dir=os.getcwd())
+def _elaborate_with_sv2v(args, slang_args, top_name):
+    """Elaborate using sv2v"""
+    output_dir = Path(args.output_dir)
+    elab_path = args.elab_path
 
-    sv2v_cmd = ['sv2v', '-DSYNTHESIS', '-EAlways'] + filtered_args + ['-w' + str(tmp_dir)]
-    print('running:', ' '.join(sv2v_cmd))
+    # Run sv2v
+    sv_files = [a for a in slang_args if a.endswith(('.sv', '.v'))]
+    tmp_dir = output_dir / 'sv2v_tmp'
+    tmp_dir.mkdir(exist_ok=True)
+
+    sv2v_cmd = ['sv2v', '-DSYNTHESIS', '-EAlways'] + sv_files + ['-w', str(tmp_dir)]
+    print(f'Running sv2v: {" ".join(sv2v_cmd)}', file=sys.stderr)
     subprocess.run(sv2v_cmd, check=True)
 
-    # Generate sv2v fallback Yosys script
-    yosys_sv2v_script = _generate_yosys_sv2v_script(tmp_dir, top_name, args.liberty, args.netlist)
+    # Elaborate with read_verilog
+    script = f"""yosys read_verilog -sv {tmp_dir}/*.v
+yosys hierarchy -top {top_name}
+yosys flatten {top_name}
+yosys chformal -remove
+yosys opt
+yosys write_verilog -simple-lhs {elab_path}
+"""
 
-    fallback_tcl = f'{top_name}_yosys_sv2v.tcl'
-    with open(fallback_tcl, 'w') as f:
-        f.write(yosys_sv2v_script)
+    # Execute
+    _run_tool_with_script(
+        ['yosys', '-c', str(output_dir / 'elab.tcl')],
+        script,
+        output_dir / 'elab.tcl',
+        output_dir / 'elab.log',
+        f'Elaboration (sv2v): {elab_path}',
+    )
 
-    with open(stdout_log, 'a') as log_file:
-        subprocess.run(['yosys', '-c', fallback_tcl], stdout=log_file, stderr=subprocess.STDOUT, check=True)
 
-    print(f'sv2v-yosys flow completed, output written to {stdout_log}', file=sys.stderr)
+def run_synthesis(args, top_name):
+    """Run synthesis phase (reads elab.v, produces synth.v)"""
+    output_dir = Path(args.output_dir)
+    elab_path = args.elab_path
+    netlist_path = args.netlist_path
 
-
-def run_synthesis(args, slang_args, top_name):
-    # Create parent directories for netlist output if they don't exist
-    netlist_path = Path(args.netlist)
-    if not netlist_path.parent.exists():
-        netlist_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Check if yosys is available (skip in dry-run mode)
-    if not args.dry_run:
-        if subprocess.run(['which', 'yosys'], capture_output=True).returncode != 0:
-            print('error: synth.py yosys tool is not in the path', file=sys.stderr)
-            sys.exit(1)
-
-        # Check if yosys-slang module is available
-        result = subprocess.run(['yosys', '-m', 'slang', '-p', 'help read_slang'], capture_output=True, text=True)
-        if result.returncode != 0:
-            print('error: synth.py yosys-slang module is not installed', file=sys.stderr)
-            sys.exit(1)
-
-    # Determine if we need --keep-hierarchy
-    elaborate_top = find_top_name(slang_args)
-    needs_hierarchy = elaborate_top != top_name
-
-    # Build slang command arguments with synthesis define
-    # Note: slang_args already contains --top for elaboration
-    keep_hierarchy_flag = '--keep-hierarchy' if needs_hierarchy else ''
-    slang_cmd = f'-DSYNTHESIS {keep_hierarchy_flag} {" ".join(slang_args)}'.strip()
-
-    # Generate Yosys script using appropriate template
-    if needs_hierarchy:
-        yosys_template = _generate_yosys_hierarchy_script(slang_cmd, top_name, args.liberty, args.netlist)
-    else:
-        yosys_template = _generate_yosys_simple_script(slang_cmd, top_name, args.liberty, args.netlist)
-
-    # Write the modified content to {top}_yosys.tcl
-    yosys_script_name = f'{top_name}_yosys.tcl'
-    with open(yosys_script_name, 'w') as f:
-        f.write(yosys_template)
-
-    # Determine stdout log file path based on netlist path
-    netlist_path = Path(args.netlist)
-    stdout_log = netlist_path.parent / f'{netlist_path.stem}_yosys.stdout'
-
-    # If --sv2v flag is set, skip read_slang and use sv2v directly
-    if args.sv2v:
-        try:
-            run_sv2v_synthesis(args, slang_args, top_name, stdout_log)
-        except subprocess.CalledProcessError as e:
-            print(f'error: sv2v-yosys flow failed: {e}', file=sys.stderr)
-            sys.exit(1)
-        return
-
-    # Try read_slang flow first
-    slang_success = False
-    try:
-        with open(stdout_log, 'w') as log_file:
-            subprocess.run(
-                ['yosys', '-m', 'slang', '-c', yosys_script_name], stdout=log_file, stderr=subprocess.STDOUT, check=True
-            )
-        print(f'Yosys output written to {stdout_log}', file=sys.stderr)
-        slang_success = True
-    except subprocess.CalledProcessError as e:
-        if args.no_sv2v:
-            print(f'error: slang-yosys flow failed: {e}', file=sys.stderr)
-            sys.exit(1)
-        else:
-            print(f'warning: slang-yosys flow failed: {e}, falling back to sv2v', file=sys.stderr)
-
-    # If slang succeeded, we're done
-    if slang_success:
-        return
-
-    # Fall back to sv2v flow
-    try:
-        run_sv2v_synthesis(args, slang_args, top_name, stdout_log)
-    except subprocess.CalledProcessError as e:
-        print(f'error: sv2v-yosys flow also failed: {e}', file=sys.stderr)
+    # Verify elab.v exists
+    if not elab_path.exists():
+        print(f'error: Elaboration file not found: {elab_path}', file=sys.stderr)
+        print('hint: Run elaboration first (without --skip-elab)', file=sys.stderr)
         sys.exit(1)
+
+    # Generate synthesis script
+    script = f"""yosys read_verilog -sv {elab_path}
+yosys hierarchy -top {top_name}
+yosys synth -top {top_name}
+yosys dfflibmap -liberty {args.liberty}
+yosys printattrs
+yosys stat
+yosys abc -liberty {args.liberty} -dff -keepff -g aig
+yosys stat
+yosys write_verilog -simple-lhs {netlist_path}
+"""
+
+    # Execute
+    _run_tool_with_script(
+        ['yosys', '-c', str(output_dir / 'synth.tcl')],
+        script,
+        output_dir / 'synth.tcl',
+        output_dir / 'synth.log',
+        f'Synthesis: {netlist_path}',
+    )
 
 
 def find_clock_signal(netlist_path):
@@ -747,29 +616,29 @@ def find_clock_signal(netlist_path):
     return None
 
 
-def run_sta(args, slang_args, top_name):
-    # Check if sta is available
-    if subprocess.run(['which', 'sta'], capture_output=True).returncode != 0:
-        print('error: synth.py sta tool is not in the path', file=sys.stderr)
-        sys.exit(1)
+def run_sta(args, top_name):
+    """Run STA on synthesized design"""
+    output_dir = Path(args.output_dir)
+    netlist_path = args.netlist_path
 
-    # Check if netlist exists
-    if not Path(args.netlist).exists():
-        print(f'error: netlist not found: {args.netlist}', file=sys.stderr)
-        print('hint: run with --run-synth --run-sta to generate netlist and run STA', file=sys.stderr)
+    _check_tool_available('sta')
+
+    # Check if synth.v exists
+    if not netlist_path.exists():
+        print(f'error: Synthesized design not found: {netlist_path}', file=sys.stderr)
+        print('hint: Run synthesis first with --run-synth or default mode', file=sys.stderr)
         sys.exit(1)
 
     # Find clock signal
-    clock_signal = find_clock_signal(args.netlist)
+    clock_signal = find_clock_signal(str(netlist_path))
 
     # Check if VCD file exists (assume same directory as netlist)
-    netlist_path = Path(args.netlist)
     vcd_path = netlist_path.parent / f'{netlist_path.stem}.vcd'
     vcd_exists = vcd_path.exists()
 
     # Build STA script dynamically
     sta_script = f"""read_liberty {args.liberty}
-read_verilog {args.netlist}
+read_verilog {netlist_path}
 link_design {top_name}
 """
 
@@ -791,16 +660,18 @@ report_power
 exit
 """
 
-    # Write the modified content to {top}_opensta.tcl
-    sta_script_name = f'{top_name}_opensta.tcl'
-    with open(sta_script_name, 'w') as f:
-        f.write(sta_script)
-
-    # Run sta with the modified script
+    # Execute
     try:
-        subprocess.run(['sta', sta_script_name], check=True)
+        _run_tool_with_script(
+            ['sta', str(output_dir / 'sta.tcl')],
+            sta_script,
+            output_dir / 'sta.tcl',
+            output_dir / 'sta.log',
+            'STA',
+        )
     except subprocess.CalledProcessError as e:
-        print(f'Error running sta: {e}', file=sys.stderr)
+        print(f'Error running STA: {e}', file=sys.stderr)
+        print(f'See log: {output_dir / "sta.log"}', file=sys.stderr)
         sys.exit(1)
 
 
