@@ -233,6 +233,21 @@ def print_dry_run(args, slang_args, synth_top, elaborate_top):
         print(f'STA command: sta {output_dir / "sta.tcl"}')
 
 
+def _ensure_output_dir(path):
+    output_dir = Path(path)
+    if output_dir.exists():
+        if not output_dir.is_dir():
+            print(f'error: output path exists but is not a directory: {output_dir}', file=sys.stderr)
+            sys.exit(1)
+        return output_dir
+    try:
+        output_dir.mkdir(parents=True, exist_ok=False)
+    except OSError as exc:
+        print(f'error: unable to create output directory {output_dir}: {exc}', file=sys.stderr)
+        sys.exit(1)
+    return output_dir
+
+
 def main():
     # Show help if no arguments provided
     if len(sys.argv) == 1:
@@ -284,8 +299,7 @@ def main():
     args, slang_args = parser.parse_known_args()
 
     # Create output directory and store standard paths
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = _ensure_output_dir(args.output_dir)
     args.elab_path = output_dir / 'elab.v'
     args.netlist_path = output_dir / 'synth.v'
 
