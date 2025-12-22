@@ -5,49 +5,25 @@ spec_builder.py
 ---------------
 End-to-end RTL → Spec (Markdown + CSV) generator.
 
-Pipeline:
-  1) Collect RTL:
-       - Either from a user-supplied filelist (one file per line), OR
-       - Using hdl_utils-style discovery + dependency closure from design top.
-  2) Run Slang to dump AST JSON for the *spec top* module
-  3) Parse AST to extract:
-       - Ports (I/O only) of the spec top
-       - Parameters (of the spec top)
-       - FSM case blocks (source spans + RTL excerpts)
-       - Logic blocks (always/if/assign snapshots for context)
-  4) Detect clock/reset for the *design top* via clk_rst_utils
-  5) Build context JSON and invoke LLM_wrap (MANDATORY) with spec_prompt.yaml:
-       - doc_sections           -> prose sections for .md
-       - interface_table        -> ports table for .md
-       - parameter_table        -> params table for .md
-       - fsm_specification      -> per-FSM state writeups for .md
-       - sva_row_list_csv       -> I/O-only CSV for property generation
-  6) Write outputs to: <out_dir>/{top}_ast.json, {top}_logic_blocks.json,
-                       {top}_spec.md, {top}_spec.csv
-
-Terminology:
-
-  top        : "spec top" — the module we are documenting (and later generating CSV for).
-  design_top : optional, the real design top used for clk/rst detection and
-               dependency closure. Defaults to `top` if not provided.
-
-Typical usage for submodules:
-
-  Design top: cva6
-  Spec top  : load_unit
-
-  - Use design_top='cva6' for clock/reset and file dependencies
-  - Use top='load_unit' so Markdown/CSV focus on load_unit interface + behavior
+ADDED (2025):
+  - CSV "double-check" + repair feedback loop:
+      * validate identifiers in pre/post against RTL IO ports
+      * allow field-selects (req_port_o.data_req) if base port is valid
+      * validate 'signals' column is consistent with signals used in pre/post
+      * detect illegal nested temporal operators (## inside post expression)
+      * if invalid, call LLM (prompt_index='csv_repair') to rewrite CSV
+      * save broken CSV backup + validation JSON report for debugging
 """
 
 from __future__ import annotations
 import os
 import re
 import json
+import shlex
 import argparse
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple, Set
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Optional rich console for nice logs (safe if missing)
@@ -75,12 +51,6 @@ from hagent.core.llm_template import LLM_template
 # ──────────────────────────────────────────────────────────────────────────────
 from hagent.tool.utils.clk_rst_utils import detect_clk_rst_for_top
 
-try:
-    _HAS_HDL_UTILS = True
-except Exception:  # pragma: no cover
-    _HAS_HDL_UTILS = False
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -91,7 +61,25 @@ ASSIGN_KINDS = {'continuousassign'}
 IF_KINDS = {'if'}
 CASE_KINDS = {'case'}
 
+SV_SUFFIXES = {'.sv', '.svh', '.v', '.vh'}
 
+# SV keywords we don't want to treat as signal identifiers
+_SV_KEYWORDS = {
+    "and", "or", "not", "iff", "if", "else", "case", "endcase", "begin", "end",
+    "posedge", "negedge", "disable", "property", "endproperty", "assert", "assume",
+    "cover", "sequence", "endsequence", "module", "endmodule", "always", "always_ff",
+    "always_comb", "always_latch", "logic", "wire", "reg", "input", "output", "inout",
+    "localparam", "parameter", "typedef", "struct", "union", "enum", "packed", "signed",
+    "unsigned", "int", "integer", "bit", "byte", "shortint", "longint",
+    "true", "false",
+}
+
+# Allowed SVA/SystemVerilog $functions we permit in CSV expressions
+_ALLOWED_SVA_FUNCS = {"$rose", "$fell", "$stable", "$changed", "$past"}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File utilities
+# ──────────────────────────────────────────────────────────────────────────────
 def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
@@ -395,6 +383,412 @@ def parse_case_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dict[s
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Robust filelist parsing (CVA6-style manifests)
+# ──────────────────────────────────────────────────────────────────────────────
+_FILELIST_KNOWN_OPTIONS = {
+    "-F", "-f",
+    "-v",
+    "-y",
+    "+incdir+",
+    "-I",
+    "+define+",
+    "-D",
+}
+
+def _looks_like_comment_or_banner(line: str) -> bool:
+    s = line.strip()
+    if not s:
+        return True
+    if s.startswith("#") or s.startswith("//"):
+        return True
+    if s.startswith("/*") or s.startswith("*") or s.startswith("*/"):
+        return True
+    if s.startswith("/ ") and not any(ext in s for ext in (".sv", ".svh", ".v", ".vh", ".f", ".Flist", ".flist")):
+        return True
+    if s.startswith("/") and " " in s and not any(ext in s for ext in (".sv", ".svh", ".v", ".vh", ".f", ".Flist", ".flist")):
+        return True
+    return False
+
+
+def _expand_vars(s: str, rtl_dir: Path, filelist_path: Path) -> str:
+    if "CVA6_REPO_DIR" not in os.environ:
+        os.environ["CVA6_REPO_DIR"] = str(rtl_dir.parent.resolve())
+    return os.path.expandvars(s)
+
+
+def _is_unresolved_var_path(s: str) -> bool:
+    return ("${" in s) or ("$" in s and re.search(r"\$[A-Za-z_]\w*", s) is not None)
+
+
+def _norm_path_token(tok: str) -> str:
+    return tok.strip().strip('"').strip("'")
+
+
+def _tokenize_filelist_line(line: str) -> List[str]:
+    try:
+        return shlex.split(line, comments=False, posix=True)
+    except Exception:
+        return line.strip().split()
+
+
+def _parse_filelist(
+    filelist_path: Path,
+    rtl_dir: Path,
+    include_dirs: List[Path],
+    defines: List[str],
+    visited: Set[Path],
+) -> Tuple[List[Path], List[Path], List[str]]:
+    files: List[Path] = []
+    if filelist_path in visited:
+        return files, include_dirs, defines
+    visited.add(filelist_path)
+
+    if not filelist_path.exists():
+        console.print(f"[yellow]⚠ Nested filelist not found:[/yellow] {filelist_path}")
+        return files, include_dirs, defines
+
+    base_dir = filelist_path.parent.resolve()
+
+    for raw in filelist_path.read_text(errors="ignore").splitlines():
+        line = raw.strip()
+        if _looks_like_comment_or_banner(line):
+            continue
+
+        toks = _tokenize_filelist_line(line)
+        if not toks:
+            continue
+
+        i = 0
+        while i < len(toks):
+            t = _norm_path_token(toks[i])
+
+            if t.startswith("+incdir+"):
+                inc = t[len("+incdir+") :].strip()
+                inc = _expand_vars(inc, rtl_dir, filelist_path)
+                inc = _norm_path_token(inc)
+                if _is_unresolved_var_path(inc):
+                    console.print(f"[yellow]⚠ Skipping unresolved incdir:[/yellow] {t}")
+                else:
+                    ip = Path(inc)
+                    if not ip.is_absolute():
+                        ip = (rtl_dir / ip).resolve()
+                    else:
+                        ip = ip.resolve()
+                    if ip.exists() and ip.is_dir():
+                        include_dirs.append(ip)
+                i += 1
+                continue
+
+            if t == "-I" and (i + 1) < len(toks):
+                inc = _norm_path_token(toks[i + 1])
+                inc = _expand_vars(inc, rtl_dir, filelist_path)
+                if _is_unresolved_var_path(inc):
+                    console.print(f"[yellow]⚠ Skipping unresolved -I incdir:[/yellow] {inc}")
+                else:
+                    ip = Path(inc)
+                    if not ip.is_absolute():
+                        ip = (rtl_dir / ip).resolve()
+                    else:
+                        ip = ip.resolve()
+                    if ip.exists() and ip.is_dir():
+                        include_dirs.append(ip)
+                i += 2
+                continue
+
+            if t.startswith("+define+"):
+                d = t[len("+define+") :].strip()
+                d = _expand_vars(d, rtl_dir, filelist_path)
+                d = _norm_path_token(d)
+                if d:
+                    defines.append(d)
+                i += 1
+                continue
+
+            if t == "-D" and (i + 1) < len(toks):
+                d = _norm_path_token(toks[i + 1])
+                d = _expand_vars(d, rtl_dir, filelist_path)
+                d = _norm_path_token(d)
+                if d:
+                    defines.append(d)
+                i += 2
+                continue
+
+            if t in ("-F", "-f") and (i + 1) < len(toks):
+                nested = _norm_path_token(toks[i + 1])
+                nested = _expand_vars(nested, rtl_dir, filelist_path)
+                nested = _norm_path_token(nested)
+
+                if _is_unresolved_var_path(nested):
+                    console.print(f"[yellow]⚠ Skipping unresolved nested filelist:[/yellow] {nested}")
+                    i += 2
+                    continue
+
+                np = Path(nested)
+                if not np.is_absolute():
+                    np = (base_dir / np).resolve()
+                else:
+                    np = np.resolve()
+
+                sub_files, include_dirs, defines = _parse_filelist(np, rtl_dir, include_dirs, defines, visited)
+                files.extend(sub_files)
+                i += 2
+                continue
+
+            if t == "-y" and (i + 1) < len(toks):
+                i += 2
+                continue
+
+            if t == "-v" and (i + 1) < len(toks):
+                fp = _norm_path_token(toks[i + 1])
+                fp = _expand_vars(fp, rtl_dir, filelist_path)
+                fp = _norm_path_token(fp)
+                if _is_unresolved_var_path(fp):
+                    console.print(f"[yellow]⚠ Skipping unresolved -v file:[/yellow] {fp}")
+                else:
+                    p = Path(fp)
+                    if not p.is_absolute():
+                        p = (rtl_dir / p).resolve()
+                    else:
+                        p = p.resolve()
+                    if p.exists() and p.suffix.lower() in SV_SUFFIXES:
+                        files.append(p)
+                i += 2
+                continue
+
+            candidate = _expand_vars(t, rtl_dir, filelist_path)
+            candidate = _norm_path_token(candidate)
+
+            if _is_unresolved_var_path(candidate):
+                console.print(f"[yellow]⚠ Skipping unresolved token:[/yellow] {t}")
+                i += 1
+                continue
+
+            if candidate.startswith("-") or candidate.startswith("+"):
+                i += 1
+                continue
+
+            p = Path(candidate)
+            if not p.is_absolute():
+                p1 = (rtl_dir / p).resolve()
+                p2 = (base_dir / p).resolve()
+                p = p1 if p1.exists() else p2
+            else:
+                p = p.resolve()
+
+            if p.exists() and p.is_file() and p.suffix.lower() in SV_SUFFIXES:
+                files.append(p)
+
+            i += 1
+
+    return files, include_dirs, defines
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CSV validation + repair helpers (NEW)
+# ──────────────────────────────────────────────────────────────────────────────
+def _strip_code_fences(s: str) -> str:
+    if not s:
+        return ""
+    s = s.strip()
+    m = re.search(r"```(?:csv)?\s*([\s\S]*?)```", s, re.I)
+    if m:
+        return m.group(1).strip()
+    return s
+
+
+def _ensure_csv_header(csv_text: str) -> str:
+    csv_text = csv_text.strip()
+    if not csv_text:
+        return csv_text
+    lines = csv_text.splitlines()
+    first = (lines[0] if lines else "").strip().lower().replace(" ", "")
+    expected = ",".join(CSV_HEADER).lower().replace(" ", "")
+    if first != expected:
+        return ",".join(CSV_HEADER) + "\n" + csv_text
+    return csv_text
+
+
+def _split_csv_line(line: str) -> List[str]:
+    # We REQUIRE "no commas inside fields" by prompt rule, so split is safe.
+    return [c.strip() for c in line.rstrip("\n").split(",")]
+
+
+def _extract_dotted_and_plain_identifiers(expr: str) -> List[str]:
+    """
+    Extract possible identifiers from an SV expression.
+
+    Rules:
+      - capture dotted refs: foo.bar.baz
+      - capture plain refs: foo
+      - DO NOT capture $rose/$fell/... as identifiers
+      - ignore numbers/base literals ('0, 1'b0, 4'hF), and keywords
+    """
+    if not expr:
+        return []
+
+    # Remove strings to avoid accidental captures
+    expr2 = re.sub(r"\"[^\"]*\"", " ", expr)
+
+    # Temporarily remove allowed $functions so we don't treat their names as identifiers
+    for fn in _ALLOWED_SVA_FUNCS:
+        expr2 = expr2.replace(fn, " ")
+
+    # Capture dotted tokens first
+    dotted = re.findall(r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+\b", expr2)
+
+    # Then capture plain identifiers
+    plain = re.findall(r"\b[A-Za-z_]\w*\b", expr2)
+
+    # Filter out pieces of dotted from plain list (we want full dotted tokens)
+    dotted_set = set(dotted)
+    plain_filtered = []
+    for p in plain:
+        if p in dotted_set:
+            continue
+        # ignore keywords
+        if p.lower() in _SV_KEYWORDS:
+            continue
+        plain_filtered.append(p)
+
+    # Also filter dotted components that are actually keywords (rare)
+    dotted_filtered = []
+    for d in dotted:
+        if d.lower() in _SV_KEYWORDS:
+            continue
+        dotted_filtered.append(d)
+
+    # Remove base literal artifacts that can look like identifiers (e.g. 'b0' won't match anyway)
+    out = dotted_filtered + plain_filtered
+
+    # De-dup but preserve order
+    seen = set()
+    uniq = []
+    for x in out:
+        if x not in seen:
+            uniq.append(x)
+            seen.add(x)
+    return uniq
+
+
+def _base_port(tok: str) -> str:
+    # req_port_o.data_req -> req_port_o
+    return tok.split(".", 1)[0] if tok else tok
+
+
+def _detect_nested_temporal(post: str) -> bool:
+    """
+    Jasper error you hit was from something like:
+      ##[1:$] (wr_en && ##[1:$] rd_en)
+    i.e., multiple '##' tokens inside a single post field.
+    We flag that as invalid.
+    """
+    if not post:
+        return False
+    return post.count("##") > 1
+
+
+def validate_csv_text(csv_text: str, allowed_ports: List[str]) -> Dict[str, Any]:
+    """
+    Validate:
+      1) pre/post signal identifiers reference ONLY valid base ports
+      2) signals column matches used base ports (space separated)
+      3) post does not contain nested temporal operators
+      4) correct column count
+    """
+    allowed_set = set(allowed_ports)
+
+    report: Dict[str, Any] = {
+        "ok": True,
+        "errors": [],
+        "invalid_identifiers": [],
+        "signals_column_mismatches": [],
+        "bad_rows": [],
+        "nested_temporal": [],
+    }
+
+    csv_text = _ensure_csv_header(_strip_code_fences(csv_text))
+    lines = [ln for ln in csv_text.splitlines() if ln.strip()]
+    if not lines:
+        report["ok"] = False
+        report["errors"].append("empty_csv")
+        return report
+
+    # Header check
+    hdr = lines[0].strip().lower().replace(" ", "")
+    expected = ",".join(CSV_HEADER).lower().replace(" ", "")
+    if hdr != expected:
+        report["ok"] = False
+        report["errors"].append("bad_header")
+
+    # Validate rows
+    for idx in range(1, len(lines)):
+        line_no = idx + 1
+        cols = _split_csv_line(lines[idx])
+        if len(cols) != len(CSV_HEADER):
+            report["ok"] = False
+            report["bad_rows"].append({"line": line_no, "reason": "wrong_column_count", "cols": len(cols), "text": lines[idx]})
+            continue
+
+        row = dict(zip(CSV_HEADER, cols))
+        sid = row.get("sid", "").strip()
+
+        pre = row.get("pre", "").strip()
+        post = row.get("post", "").strip()
+        sigs_col = row.get("signals", "").strip()
+
+        # nested temporal check
+        if _detect_nested_temporal(post):
+            report["ok"] = False
+            report["nested_temporal"].append({"line": line_no, "sid": sid, "post": post})
+
+        used = _extract_dotted_and_plain_identifiers(pre) + _extract_dotted_and_plain_identifiers(post)
+        used_base_ports = []
+        invalid = []
+
+        for u in used:
+            # skip if it is clearly a local macro-ish keyword (unlikely)
+            if u.lower() in _SV_KEYWORDS:
+                continue
+            base = _base_port(u)
+            # Filter out accidental captures that are actually language tokens
+            if base.lower() in _SV_KEYWORDS:
+                continue
+            # Allow only if base is a real port
+            if base not in allowed_set:
+                invalid.append(u)
+            else:
+                used_base_ports.append(base)
+
+        if invalid:
+            report["ok"] = False
+            report["invalid_identifiers"].append(
+                {"line": line_no, "sid": sid, "invalid": sorted(set(invalid)), "pre": pre, "post": post}
+            )
+
+        # signals column match check (base ports)
+        sigs_list = [s for s in sigs_col.split() if s]
+        sigs_set = set(sigs_list)
+        used_set = set(used_base_ports)
+
+        # If expressions use no ports (e.g., "1"), we accept empty signals, but prompt expects correctness.
+        # We'll be conservative: if used_set is empty, don't flag mismatch.
+        if used_set:
+            if sigs_set != used_set:
+                report["ok"] = False
+                report["signals_column_mismatches"].append(
+                    {
+                        "line": line_no,
+                        "sid": sid,
+                        "expected": " ".join(sorted(used_set)),
+                        "got": sigs_col,
+                        "used_in_expr": sorted(used_set),
+                    }
+                )
+
+    return report
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Builder
 # ──────────────────────────────────────────────────────────────────────────────
 class SpecBuilder:
@@ -411,35 +805,9 @@ class SpecBuilder:
         design_top: Optional[str] = None,
         filelist: Optional[Path] = None,
     ):
-        """
-        Parameters
-        ----------
-        slang_bin : Path
-            Slang binary.
-        rtl_dir : Path
-            RTL root directory.
-        top : str
-            Spec top (module we are documenting & generating CSV for).
-        out_dir : Path
-            Output directory for spec artifacts.
-        llm_conf : Path
-            spec_prompt.yaml
-        include_dirs : list[Path]
-            Extra include dirs for Slang.
-        defines : list[str]
-            Slang defines.
-        disable_analysis : bool
-            If True, pass --disable-analysis to Slang.
-        design_top : str | None
-            Design top used for clk/rst detection and dependency closure.
-            Defaults to `top` if not provided.
-        filelist : Path | None
-            Optional HDL filelist (one file path per line). If provided,
-            dependency discovery is skipped and only these files are given to Slang.
-        """
         self.slang_bin = slang_bin
         self.rtl_dir = rtl_dir
-        self.top = top  # spec top
+        self.top = top
         self.design_top = design_top or top
         self.out_dir = out_dir
         self.llm_conf = llm_conf
@@ -450,13 +818,11 @@ class SpecBuilder:
 
         _ensure_dir(self.out_dir)
 
-        # Outputs base on *spec top*
         self.out_json = self.out_dir / f'{self.top}_ast.json'
         self.out_md = self.out_dir / f'{self.top}_spec.md'
         self.out_csv = self.out_dir / f'{self.top}_spec.csv'
         self.logic_snap = self.out_dir / f'{self.top}_logic_blocks.json'
 
-        # LLM is mandatory
         if not self.llm_conf.exists():
             console.print(f'[red]❌ LLM config not found: {self.llm_conf}[/red]')
             raise SystemExit(2)
@@ -466,7 +832,6 @@ class SpecBuilder:
         self.tmpl = LLM_template(str(self.llm_conf))
         self.template_dict = getattr(self.tmpl, 'template_dict', {}) or {}
 
-        # Minimal template guard
         for req in ('doc_sections', 'fsm_specification', 'sva_row_list_csv'):
             if not (self.template_dict.get('default', {}).get(req)):
                 console.print(f"[red]❌ Required prompt '{req}' missing in: {self.llm_conf}[/red]")
@@ -479,23 +844,15 @@ class SpecBuilder:
     # RTL collection & Slang
     # ──────────────────────────────────────────────────────────────────────
     def _collect_rtl_files(self) -> List[Path]:
-        """
-        Fallback RTL discovery when no explicit filelist is provided.
-        """
         try:
             from hagent.tool.utils.hdl_utils import find_sv_files  # type: ignore[attr-defined]
-
             files = find_sv_files(self.rtl_dir, skip_dirs=set())
             return sorted([Path(f) for f in files])
         except Exception as e:  # pragma: no cover
             console.print(f'[yellow]⚠ find_sv_files failed; falling back. ({e})[/yellow]')
-            return [p for p in self.rtl_dir.rglob('*') if p.suffix in {'.sv', '.svh', '.v', '.vh'}]
+            return [p for p in self.rtl_dir.rglob('*') if p.suffix in SV_SUFFIXES]
 
     def _files_from_filelist(self) -> List[Path]:
-        """
-        Read files from a user-provided filelist (one path per line).
-        Relative paths are resolved relative to rtl_dir.
-        """
         if self.filelist is None:
             return []
         fl = self.filelist
@@ -504,36 +861,56 @@ class SpecBuilder:
             raise SystemExit(2)
 
         console.print(f'[cyan]• Using HDL filelist:[/cyan] {fl}')
-        out: List[Path] = []
-        for raw in fl.read_text().splitlines():
-            line = raw.strip()
-            if not line or line.startswith('#'):
-                continue
-            p = Path(line)
-            if not p.is_absolute():
-                p = (self.rtl_dir / p).resolve()
-            else:
-                p = p.resolve()
-            if not p.exists():
-                console.print(f'[yellow]⚠ File from filelist does not exist:[/yellow] {p}')
-                continue
-            out.append(p)
-        if not out:
-            console.print(f'[red]❌ No valid RTL files after reading filelist: {fl}[/red]')
+
+        visited: Set[Path] = set()
+        files, incs, defs = _parse_filelist(
+            filelist_path=fl.resolve(),
+            rtl_dir=self.rtl_dir.resolve(),
+            include_dirs=list(self.include_dirs),
+            defines=list(self.defines),
+            visited=visited,
+        )
+
+        def _uniq_paths(xs: List[Path]) -> List[Path]:
+            out: List[Path] = []
+            seen = set()
+            for p in xs:
+                rp = str(p.resolve())
+                if rp not in seen:
+                    out.append(p)
+                    seen.add(rp)
+            return out
+
+        def _uniq_strs(xs: List[str]) -> List[str]:
+            out: List[str] = []
+            seen = set()
+            for s in xs:
+                if s not in seen:
+                    out.append(s)
+                    seen.add(s)
+            return out
+
+        self.include_dirs = _uniq_paths(incs)
+        self.defines = _uniq_strs(defs)
+
+        if not files:
+            console.print(f'[red]❌ No valid RTL files found in filelist after parsing: {fl}[/red]')
             raise SystemExit(2)
-        return out
+
+        console.print(f'[green]✔ Filelist parsed RTL files:[/green] {len(files)}')
+        if self.include_dirs:
+            console.print(f'[green]✔ Filelist include dirs:[/green] {len(self.include_dirs)}')
+        if self.defines:
+            console.print(f'[green]✔ Filelist defines:[/green] {len(self.defines)}')
+
+        return files
 
     def _resolve_required(self, all_rtl: List[Path]) -> List[Path]:
-        """
-        If hdl_utils has richer dependency analysis, use it;
-        otherwise just return all_rtl.
-        """
         try:
             from hagent.tool.utils.hdl_utils import (  # type: ignore[attr-defined]
                 index_modules_packages,
                 compute_transitive_closure,
             )
-
             modules, packages = index_modules_packages(all_rtl)
             root_top = self.design_top or self.top
             if root_top not in modules:
@@ -553,7 +930,7 @@ class SpecBuilder:
         cmd = [
             str(self.slang_bin),
             '--top',
-            self.top,  # spec top
+            self.top,
             '--ast-json',
             str(self.out_json),
             '--ast-json-source-info',
@@ -584,10 +961,6 @@ class SpecBuilder:
         return json.loads(self.out_json.read_text(encoding='utf-8'))
 
     def _find_top_module(self, ast: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Locate the AST node for the *spec top* (self.top) inside the design.
-        """
-
         def rec(node):
             if isinstance(node, dict):
                 if node.get('kind') == 'Module' and node.get('name') == self.top:
@@ -639,10 +1012,41 @@ class SpecBuilder:
             return ''
 
     # ──────────────────────────────────────────────────────────────────────
+    # NEW: CSV repair loop using LLM
+    # ──────────────────────────────────────────────────────────────────────
+    def _repair_csv_with_llm(self, csv_text: str, allowed_ports: List[str], report: Dict[str, Any]) -> str:
+        """
+        Uses prompt_index='csv_repair' if it exists in YAML.
+        If not present, returns original csv_text unchanged.
+        """
+        if not self.template_dict.get('default', {}).get('csv_repair'):
+            console.print("[yellow]⚠ No 'csv_repair' prompt found in spec_prompt.yaml; cannot LLM-repair CSV.[/yellow]")
+            return csv_text
+
+        payload = {
+            "top_module": self.top,
+            "allowed_ports_json": json.dumps(allowed_ports, ensure_ascii=False),
+            "csv_text": csv_text,
+            "validation_json": json.dumps(report, ensure_ascii=False),
+            "rules_json": json.dumps(
+                {
+                    "header": ",".join(CSV_HEADER),
+                    "allowed_sva_funcs": sorted(_ALLOWED_SVA_FUNCS),
+                    "allow_field_select": True,
+                    "no_nested_temporal": True,
+                    "signals_column_base_ports": True,
+                },
+                ensure_ascii=False,
+            ),
+        }
+        fixed = self._llm("csv_repair", payload)
+        fixed = _ensure_csv_header(_strip_code_fences(fixed))
+        return fixed
+
+    # ──────────────────────────────────────────────────────────────────────
     # Build context and generate artifacts
     # ──────────────────────────────────────────────────────────────────────
     def run(self) -> None:
-        # 1) Collect / resolve RTL
         if self.filelist is not None:
             req_files = self._files_from_filelist()
         else:
@@ -655,10 +1059,8 @@ class SpecBuilder:
 
         console.print(f'[green]✔ Required files for Slang:[/green] {len(req_files)}')
 
-        # 2) Slang → AST
         self._run_slang(req_files)
 
-        # 3) Parse AST for the spec top
         ast = self._read_ast()
         top_ast = self._find_top_module(ast)
         if not top_ast:
@@ -673,7 +1075,6 @@ class SpecBuilder:
         _write_json(self.logic_snap, logic)
         console.print(f'[green]✔ Logic snapshot:[/green] {self.logic_snap}')
 
-        # 4) High-level context for LLM
         def fsm_summary(b):
             return {
                 'expr_symbol': b.get('expr_symbol') or 'state',
@@ -683,7 +1084,7 @@ class SpecBuilder:
                 'rtl_excerpt': (b.get('rtl_code') or '')[:4000],
             }
 
-        allowed_signals = [p['name'] for p in ports]
+        allowed_ports = [p['name'] for p in ports]  # base ports only
 
         ctx = {
             'top_module': self.top,
@@ -694,14 +1095,15 @@ class SpecBuilder:
             'ports': ports,
             'params': params,
             'fsms': [fsm_summary(b) for b in fsms],
-            # IMPORTANT: give some logic to LLM so spec/CSV reflect RTL behavior
             'logic_blocks': logic[:200],
             'csv_head': CSV_HEADER,
-            'allowed_signals': allowed_signals,
+            'allowed_signals': allowed_ports,
             'notes': [
-                "CSV must use only input/output signals from 'ports' (interface of the spec top).",
-                'Avoid internal regs/wires.',
-                'Expressions must be valid SystemVerilog.',
+                "CSV pre/post may ONLY reference RTL IO ports from allowed_signals.",
+                "Field-selects are permitted ONLY if the base port exists (e.g., req_port_o.data_req).",
+                "signals column must list BASE PORTS only, space-separated, matching ports used in pre/post.",
+                "post must NOT contain nested temporal operators (no more than one '##' token).",
+                f"Allowed $functions: {', '.join(sorted(_ALLOWED_SVA_FUNCS))}",
             ],
         }
 
@@ -753,25 +1155,49 @@ class SpecBuilder:
         _write_text(self.out_md, md_text)
         console.print(f'[green]✔ Spec Markdown:[/green] {self.out_md}')
 
-        # 7) Generate CSV (I/O only) via LLM
+        # 7) Generate CSV via LLM
         console.print('[cyan]• LLM: sva_row_list_csv[/cyan]')
-        csv_raw = self._llm(
-            'sva_row_list_csv',
-            {'context_json': json.dumps(ctx, ensure_ascii=False)},
-        ).strip()
+        csv_raw = self._llm('sva_row_list_csv', {'context_json': json.dumps(ctx, ensure_ascii=False)}).strip()
+        csv_raw = _ensure_csv_header(_strip_code_fences(csv_raw))
 
-        if not csv_raw:
+        if not csv_raw.strip():
             console.print('[red]❌ LLM produced empty CSV text.[/red]')
             raise SystemExit(2)
 
-        m = re.search(r'```(?:csv)?\s*([\s\S]*?)```', csv_raw, re.I)
-        if m:
-            csv_raw = m.group(1).strip()
+        # NEW: validate + repair loop
+        report = validate_csv_text(csv_raw, allowed_ports)
+        report_path = self.out_dir / f"{self.top}_spec.csv.validation.json"
+        _write_json(report_path, report)
 
-        first_line = (csv_raw.splitlines() or [''])[0].strip().lower().replace(' ', '')
-        expected = ','.join(CSV_HEADER).lower().replace(' ', '')
-        if first_line != expected:
-            csv_raw = ','.join(CSV_HEADER) + '\n' + csv_raw
+        if not report.get("ok", False):
+            console.print("[yellow]⚠ CSV validation failed. Attempting repair...[/yellow]")
+            console.print(f"  invalid_identifiers rows: {len(report.get('invalid_identifiers', []))}")
+            console.print(f"  signals_column_mismatches: {len(report.get('signals_column_mismatches', []))}")
+            console.print(f"  bad_rows: {len(report.get('bad_rows', []))}")
+            console.print(f"  nested_temporal: {len(report.get('nested_temporal', []))}")
+
+            broken_path = self.out_dir / f"{self.top}_spec.csv.broken"
+            _write_text(broken_path, csv_raw)
+
+            repaired = csv_raw
+            max_attempts = 2
+            for attempt in range(1, max_attempts + 1):
+                repaired = self._repair_csv_with_llm(repaired, allowed_ports, report)
+                repaired = _ensure_csv_header(_strip_code_fences(repaired))
+                report = validate_csv_text(repaired, allowed_ports)
+                _write_json(report_path, report)
+                if report.get("ok", False):
+                    console.print(f"[green]✔ CSV repaired on attempt {attempt}.[/green] Broken backup saved to: {broken_path}")
+                    csv_raw = repaired
+                    break
+                else:
+                    console.print(f"[yellow]⚠ Repair attempt {attempt} still invalid.[/yellow]")
+
+            if not report.get("ok", False):
+                _write_text(self.out_csv, repaired)
+                console.print(f"[red]❌ CSV still invalid after repair attempts. Wrote latest to: {self.out_csv}[/red]")
+                console.print(f"[red]Validation report: {json.dumps(report, indent=2)}[/red]")
+                raise SystemExit(2)
 
         _write_text(self.out_csv, csv_raw)
         console.print(f'[green]✔ CSV spec:[/green] {self.out_csv}')
@@ -786,23 +1212,13 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument('--slang', required=True, help='Path to slang binary')
     p.add_argument('--rtl', required=True, help='RTL directory')
     p.add_argument('--top', required=True, help='Spec top module name')
-    p.add_argument(
-        '--design-top',
-        help='Design top module name for clk/rst + dependency closure (defaults to --top)',
-    )
+    p.add_argument('--design-top', help='Design top module name (defaults to --top)')
     p.add_argument('--out', required=True, help='Output directory')
     p.add_argument('--llm-conf', required=True, help='YAML prompt config (spec_prompt.yaml)')
     p.add_argument('--include', action='append', default=[], help='Additional include dirs (-I)')
     p.add_argument('--define', action='append', default=[], help='Slang defines (e.g., FOO=1)')
-    p.add_argument(
-        '--filelist',
-        help='Optional HDL filelist (one path per line). If provided, dependency discovery is skipped.',
-    )
-    p.add_argument(
-        '--no-disable-analysis',
-        action='store_true',
-        help='Enable Slang analysis (default: disabled)',
-    )
+    p.add_argument('--filelist', help='Optional HDL filelist. If provided, discovery is skipped.')
+    p.add_argument('--no-disable-analysis', action='store_true', help='Enable Slang analysis (default: disabled)')
     return p.parse_args()
 
 
