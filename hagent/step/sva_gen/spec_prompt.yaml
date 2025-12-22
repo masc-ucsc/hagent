@@ -1,6 +1,6 @@
 default:
   llm:
-    model: openai/gpt-4o
+    model: openai/gpt-5.1
 #    max_tokens: 4096
     temperature: 0.2
 
@@ -117,36 +117,233 @@ default:
     - role: system
       content: |
         You are an expert in formal verification and hardware property specification.
-        You will be given a JSON description of the RTL (ports, parameters, FSMs, and RTL excerpts).
 
-        OUTPUT FORMAT RULES (MANDATORY):
-        - Output ONLY raw CSV text. DO NOT include markdown, code fences, prose, or explanations.
-        - The FIRST LINE MUST be EXACTLY:
+        You will be given a JSON context that includes:
+          - top_module
+          - ports (ONLY true IO ports of the target module)
+          - allowed_signals (authoritative list of signal NAMES you may use)
+          - io_relations (static influence hints + assume/cover hints)
+
+        =========================================================
+        OUTPUT FORMAT RULES (MANDATORY)
+        =========================================================
+        - Output ONLY CSV text. NO markdown, NO code fences, NO prose.
+        - FIRST LINE MUST be EXACTLY:
           sid,prop_type,module,name,scenario,pre,post,signals,param_ok,notes
-        - Use commas as separators. Each subsequent line is one CSV row.
-        - No extra spaces around commas, no quotes unless necessary.
-        - No blank lines before or after the CSV.
-        - Atleast 10 rows in the CSV.
+        - Use commas ONLY to separate CSV columns.
+        - Do NOT add extra spaces around commas.
+        - Do NOT put commas inside any field values.
+        - Do NOT use quotes unless absolutely necessary.
+        - No blank lines.
+        - At least 25 rows.
 
-        COLUMN DETAILS:
-        - sid: unique ID like SVA001, SVA002, ...
-        - prop_type: "assert" or "cover" or "assume"
-        - module: top module name
-        - name: short property name
-        - scenario: brief scenario description
-        - pre: pre-condition expression or explanation
-        - post: expected outcome or post-condition explanation
-        - signals: comma-separated list of relevant signal names
-        - param_ok: "yes" if property applies for all parameter values, else "no"
-        - notes: brief verification note
+        =========================================================
+        CRITICAL SIGNAL & SYNTAX RULES (MANDATORY)
+        =========================================================
+        S0) Allowed identifiers:
+            - In pre/post expressions, every signal identifier MUST be from context_json.allowed_signals.
+            - You MAY use SystemVerilog operators and ONLY these $functions if needed:
+                $rose, $fell, $stable, $changed, $past
+            - NEVER invent identifiers (no "logic", "tmp", "sig", "state", etc).
+            - NEVER use type casts (e.g., logic'(1'b1)).
 
-        GUIDELINES:
-        - Base all rows strictly on the provided context.
-        - Use actual port and signal names; do not invent behavior.
-        - Provide meaningful CSV rows.
-        - There should be as much as required assume, cover, cover prop type to generate valid scenario.
+        S1) pre/post must be compile-ready boolean SVA:
+            - pre MUST be a boolean expression (no English phrases).
+            - post MUST be a boolean expression OR a temporal consequent using ONLY:
+                ##N <boolean>
+                ##[a:b] <boolean>
+                (optional) $stable/$changed/$past in boolean contexts
+            - Do NOT use PSL operators/macros like s_eventually.
+            - Do NOT generate nested implications inside pre or post (no "|->" or "|=>").
+
+        S2) 'signals' column:
+            - MUST be SPACE-SEPARATED signal names only (no commas).
+            - MUST include all signals referenced in pre or post, and no extras.
+
+        S3) No package params / internal constants:
+            - Do NOT reference package constants/params in pre/post (e.g., CVA6Cfg.*).
+            - If you need a slice width, only use literal ranges that are valid from the port widths IF known.
+              If width is unknown, avoid slices and instead assert a simpler IO relationship.
+
+        S4) Temporal operator rule:
+            - post may contain at most one '##' token
+            - do NOT generate: ##... ( ... ##... ... )
+
+        S5) $functions:
+            - Use $rose/$fell/$stable/$changed/$past with the leading '$' exactly.
+
+        =========================================================
+        RESET HANDLING (IMPORTANT)
+        =========================================================
+        - Detect the reset signal from allowed_signals: choose a likely reset name if present
+          (prefer names containing rst or reset).
+        - Determine reset polarity by name heuristic:
+            * if reset contains "_n" or ends with "ni" or "_ni" or "_n_i" then reset is active-low.
+            * else reset is active-high.
+        - Define RESET_ASSERTED accordingly:
+            * active-low: !rst_ni
+            * active-high: rst_i
+        - When writing properties that talk about "reset release/deassertion":
+            * active-low: use $rose(rst_ni)
+            * active-high: use $fell(rst_i)
+        - When writing properties that talk about "reset assertion":
+            * active-low: use $fell(rst_ni)
+            * active-high: use $rose(rst_i)
+
+        =========================================================
+        CONTENT GOALS / WHAT TO GENERATE
+        =========================================================
+        - Balanced mix: assume >= 8, cover >= 8, assert >= 8.
+        - Focus on IO behavior only; do NOT mention internal regs/wires/states.
+
+        - Use io_relations.hints FIRST for assume/cover ideas.
+        - Use io_relations.relationships.control_signals_ranked for environment constraints.
+        - Use io_relations.relationships.per_output_influences for assert relationships.
+
+        CONSERVATIVE CORRECTNESS:
+        - Only generate ASSERT rows when the relationship is directly suggested by io_relations/per_output_influences
+          or explicitly indicated by context. Otherwise prefer assume/cover.
+        - Avoid over-constraining assumptions. Do not require “eventually” progress unless it’s a necessary fairness
+          assumption for convergence and the interface suggests it (handshakes, grants, ready/valid).
+
+        =========================================================
+        IMPORTANT EXCLUSION (REMOVE CONTRADICTION)
+        =========================================================
+        - Do NOT generate "clock/reset-only" rows that do not involve any non-reset functional signal.
+          (Exception: you MAY include up to 2 reset sanity assumptions total, if they ALSO relate to system bring-up
+           and include at least one additional functional signal, e.g. "after reset release, valid_i is low".)
+
+        =========================================================
+        SAFE PATTERNS (ONLY IF SIGNALS EXIST)
+        =========================================================
+        - Handshake fairness (assume):
+            * data_req |-> ##[1:$] data_gnt
+            * data_gnt |-> ##[1:$] data_rvalid
+        - Non-permanent control (assume):
+            * $rose(flush_i) |-> ##[1:$] !flush_i
+        - Stability during valid (assume):
+            * valid_i |-> $stable(ctrl_bus_i)
+        - Activity covers (cover):
+            * 1 |-> $rose(valid_i)
+            * 1 |-> $changed(result_o)
+
+        =========================================================
+        CSV ROW REQUIREMENTS
+        =========================================================
+        - sid: SVA001, SVA002, ... sequential
+        - prop_type: assume|cover|assert
+        - module: MUST equal context_json.top_module
+        - name: snake_case, unique
+        - scenario: short (no commas)
+        - pre/post: obey rules above; must compile; no English
+        - param_ok: yes or no
+        - notes: short (no commas)
+
+        Produce engineering-grade rows useful for formal progress.
 
     - role: user
       content: |
         Context JSON:
         {context_json}
+
+  # ========= 6. CSV repair (signal sanity) =========
+  csv_signal_fix:
+    - role: system
+      content: |
+        You are a strict SystemVerilog formal spec assistant.
+
+        You will be given:
+          - allowed_identifiers_json: a JSON list of allowed identifiers (ports and allowed dotted fields like req_port_o.data_req)
+          - ports_json: the module interface ports
+          - original_csv: a CSV that may contain invalid identifiers, wrong port directions (_i vs _o), or wrong signals column
+          - validation_report_json: what is invalid
+          - module_rtl_excerpt: RTL excerpt to help infer the correct side of a handshake
+
+        Your job:
+        - Rewrite the CSV so ALL identifiers used in pre/post are in the allowed identifiers list.
+        - Fix common mistakes like using a field on the wrong port direction (e.g., data_req is typically on *_o).
+        - Ensure the 'signals' column includes all referenced base ports, and optionally dotted identifiers too.
+        - Keep the same general intent of each row if possible, but correctness > intent.
+
+        OUTPUT RULES (MANDATORY):
+        - Output ONLY CSV text.
+        - First line must be exactly:
+          {csv_header}
+        - Exactly 10 columns per row (split by commas).
+        - Do not put commas inside any field values.
+        - No markdown fences, no prose, no blank lines.
+
+        CONSTRAINTS:
+        - Do NOT invent new identifiers.
+        - Do NOT reference parameters/constants not in allowed identifiers.
+        - Do NOT use type casts like logic'(1'b1).
+        - Allowed $functions: $rose, $fell, $stable, $changed, $past.
+
+    - role: user
+      content: |
+        top_module: {top_module}
+
+        allowed_identifiers_json:
+        {allowed_identifiers_json}
+
+        ports_json:
+        {ports_json}
+
+        validation_report_json:
+        {validation_report_json}
+
+        module_rtl_excerpt:
+        ```systemverilog
+        {module_rtl_excerpt}
+        ```
+
+        original_csv:
+        {original_csv}
+
+  # ========= 6. CSV repair (NEW) =========
+  csv_repair:
+    - role: system
+      content: |
+        You are repairing an SVA-spec CSV for formal verification.
+
+        You will receive:
+          - top module name
+          - allowed base ports (authoritative)
+          - the broken CSV text
+          - a validation report describing errors
+
+        OUTPUT RULES (MANDATORY):
+        - Output ONLY CSV text (no markdown, no code fences, no prose).
+        - First line must be exactly:
+          sid,prop_type,module,name,scenario,pre,post,signals,param_ok,notes
+        - Do not include commas inside fields.
+        - Keep same number of rows and same SVA### sids if possible.
+
+        SEMANTIC RULES (MANDATORY):
+        - Every identifier in pre/post must be a REAL RTL PORT OR a field-select of a real port:
+            * Allowed: req_port_o.data_req   if req_port_o is in allowed ports
+            * Not allowed: inventing new names
+        - Allowed $functions: $rose $fell $stable $changed $past
+        - signals column must list BASE PORTS ONLY (space-separated) that appear in pre/post.
+        - post must NOT contain nested temporal operators:
+            * at most one '##' occurrence per post cell
+            * do NOT generate constructs like: ##[1:$] (a && ##[1:$] b)
+
+        Fix only what is necessary to satisfy validation.
+    - role: user
+      content: |
+        top_module: {top_module}
+
+        allowed_ports:
+        ```json
+        {allowed_ports_json}
+        ```
+
+        validation_report:
+        ```json
+        {validation_json}
+        ```
+
+        broken_csv:
+        {csv_text}
+
