@@ -7,6 +7,11 @@ Generate:
        <out_dir>/sva/<sva_top>_prop.sv
        <out_dir>/sva/<sva_top>_bind.sv
 
+IMPORTANT POLICY (public repo):
+  - This script MUST NOT inject or patch any Jasper-related TCL commands
+    (e.g., autoprove...). All Jasper TCL content and policy lives ONLY in the
+    private writer: JG.fpv_tcl_writer.write_jasper_tcl.
+
 Modes:
 
   • Auto mode (default, no --filelist):
@@ -18,7 +23,7 @@ Modes:
       - Treat the user filelist as authoritative and reference it via:
             -F <user_filelist>
       - Generate SVA wrapper/bind as usual.
-      - Call private write_jasper_tcl() unchanged.
+      - Call private write_jasper_tcl().
       - Immediately overwrite <out_dir>/files.vc to contain:
             header lines
             +incdir+<out_dir>/sva
@@ -90,7 +95,7 @@ def _load_private_tcl_writer():
         return write_jasper_tcl
     except Exception as e:
         console.print('[red]✖ ERROR: Private TCL writer not found.[/red]')
-        console.print('    Expected: [bold]hagent-private.JG.fpv_tcl_writer.write_jasper_tcl[/bold]')
+        console.print('    Expected: [bold]hagent-private/JG/fpv_tcl_writer.py (module: JG.fpv_tcl_writer)[/bold]')
         console.print("    Make sure 'hagent-private' is on PYTHONPATH before running this tool.")
         console.print(f'    Import error: {e}')
         sys.exit(1)
@@ -292,44 +297,6 @@ def order_packages_by_dependency(pkg_files):
                     changed = True
     return ordered
 
-def patch_autoprove_to_only_sva_module(tcl_path: Path, sva_module: str, enable: bool = True):
-    """
-    Replace 'autoprove -all' with:
-        autoprove -property {*<sva_module>*} -regexp
-
-    If enable=False, do nothing.
-    """
-    if not enable:
-        return
-
-    tcl_path = tcl_path.resolve()
-    if not tcl_path.is_file():
-        console.print(f"[yellow]⚠ Cannot patch autoprove; TCL not found:[/yellow] {tcl_path}")
-        return
-
-    text = tcl_path.read_text(errors="ignore").splitlines()
-
-    new_lines = []
-    replaced = False
-    for line in text:
-        # replace only the first matching autoprove -all (exact-ish)
-        if (not replaced) and re.match(r'^\s*autoprove\s+-all\s*$', line):
-            new_lines.append(f"autoprove -property {{.*{sva_module}_prop.*}} -regexp")
-            replaced = True
-        else:
-            new_lines.append(line)
-
-    if not replaced:
-        console.print(
-            f"[yellow]⚠ Did not find 'autoprove -all' in {tcl_path}. "
-            f"Nothing patched.[/yellow]"
-        )
-        return
-
-    tcl_path.write_text("\n".join(new_lines) + "\n")
-    console.print(
-        f"[green]✔[/green] Patched autoprove to only run properties matching '*{sva_module}*' in [bold]{tcl_path}[/bold]"
-    )
 
 # -----------------------------------------------------------------------------
 #  files.vc overwrite (FILELIST MODE ONLY)
@@ -409,7 +376,7 @@ def main():
     )
     ap.add_argument(
         '--sva-top',
-        help=('Module name for which to generate *_prop.sv and *_bind.sv. '
+        help=('Module name for which to generate *_prop.sv and *_bind.sv for. '
               'Defaults to --top if not set (can be a submodule).'),
     )
     ap.add_argument(
@@ -556,6 +523,7 @@ def main():
 
     # -------------------------
     # TCL generation via private writer ONLY
+    # (NO patching/injection of Jasper commands in this public script)
     # -------------------------
     write_jasper_tcl(
         out_path=out_tcl_path,
@@ -570,15 +538,7 @@ def main():
         proofgrid_jobs=args.proofgrid_jobs,
         lib_dirs=incdirs_out,
         lib_files=None,
-    )
-
-    # If we generated SVA only for a specific module (normal flow),
-    # patch autoprove to only run assertions for that SVA module.
-    # If you are using --all-sva (auto mode), keep autoprove -all.
-    patch_autoprove_to_only_sva_module(
-        tcl_path=out_tcl_path,
-        sva_module=sva_top,
-        enable=(not args.all_sva),
+        sva_module=sva_top,  # pass target module to private writer (it decides TCL behavior)
     )
 
     # -------------------------
