@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Formal Agent
-Author: Divya Kohli (2025)
+Formal Agent (Divya Kohli 2025) - MODIFIED
 
-Automated Formal Verification Pipeline:
-  1. Spec Builder CLI
-  2. Property Builder CLI
-  3. gen_dep_tcl_and_sva
-  4. Optional JasperGold FPV run
-  5. Result summary (table + CSV)
-
-NO NEW CLI ARGS.
-- No --props-csv input required.
-- SpecBuilder generates <sva_top>_props.csv internally (and still writes <sva_top>_spec.csv).
+Changes:
+  - Add --scope-path and forward to spec builder.
+  - Fix private coverage summarizer discovery:
+      * supports repo_root()/hagent-private AND repo_root().parent/hagent-private
+      * supports env var HAGENT_PRIVATE_DIR if set
+  - After Jasper run, also run summarize_formal_coverage.py as a command.
 """
 
 import os
@@ -49,31 +44,53 @@ def ensure_dir(p: Path):
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]  # hagent/tool/cli_formal.py → repo-ish
+    return Path(__file__).resolve().parents[2]
+
+
+def _find_private_repo_dir() -> Optional[Path]:
+    # 1) explicit env var
+    env = os.environ.get("HAGENT_PRIVATE_DIR", "").strip()
+    if env:
+        p = Path(os.path.expanduser(env)).resolve()
+        if p.exists():
+            return p
+
+    # 2) common layouts
+    root = repo_root()
+    cand1 = (root / "hagent-private").resolve()          # inside repo
+    cand2 = (root.parent / "hagent-private").resolve()   # sibling
+    for c in [cand1, cand2]:
+        if c.exists():
+            return c
+    return None
 
 
 def _load_private_cov_summarizer():
-    root = repo_root()
-    priv_script = root / "hagent-private" / "JG" / "summarize_formal_coverage.py"
+    priv = _find_private_repo_dir()
+    if priv is None:
+        return None, None
+
+    priv_script = priv / "JG" / "summarize_formal_coverage.py"
     if not priv_script.exists():
-        return None
+        return None, priv_script
+
     try:
         spec = importlib.util.spec_from_file_location("hagent_private_summarize_formal_coverage", priv_script)
         if spec is None or spec.loader is None:
             console.print("[yellow]⚠ Could not create spec for private coverage summarizer.[/yellow]")
-            return None
+            return None, priv_script
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         summarize_fn = getattr(module, "summarize_coverage_html", None)
         if summarize_fn is None:
             console.print("[yellow]⚠ Private coverage summarizer has no 'summarize_coverage_html' function.[/yellow]")
-        return summarize_fn
+        return summarize_fn, priv_script
     except Exception as e:
         console.print(f"[yellow]⚠ Could not import private coverage summarizer:[/yellow] {e}")
-        return None
+        return None, priv_script
 
 
-PRIVATE_COV_SUMMARIZER = _load_private_cov_summarizer()
+PRIVATE_COV_SUMMARIZER, PRIVATE_COV_SCRIPT = _load_private_cov_summarizer()
 
 
 def run_uv(cmd: List[str], cwd: Path | None = None):
@@ -185,6 +202,7 @@ def main():
     ap.add_argument("--rtl", required=True, help="RTL source directory.")
     ap.add_argument("--top", required=True, help="Design top module name (e.g. cva6).")
     ap.add_argument("--sva-top", help="Module to generate spec/properties/SVA for. Defaults to --top.")
+    ap.add_argument("--scope-path", help="Optional Slang hierarchical scope path (e.g. cva6.ex_stage_i.lsu_i.i_load_unit).")
     ap.add_argument("--out", required=True, help="Output directory for results.")
     ap.add_argument("-I", "--include", nargs="*", default=[], help="Include directories.")
     ap.add_argument("-D", "--defines", nargs="*", default=[], help="Verilog defines.")
@@ -206,7 +224,6 @@ def main():
 
     sva_top = args.sva_top or args.top
 
-    # YAML config detection
     root = repo_root()
     spec_yaml = root / "hagent" / "step" / "sva_gen" / "spec_prompt.yaml"
     prop_yaml = root / "hagent" / "step" / "sva_gen" / "property_prompt.yaml"
@@ -215,14 +232,14 @@ def main():
 
     # Detect clock/reset for design top
     cr_result = detect_clk_rst_for_top(rtl_dir, args.top)
-    if len(cr_result) == 3:
-        clk, rst, rst_expr = cr_result
-    elif len(cr_result) == 4:
-        clk, rst, rst_expr, _active_low = cr_result
+    if isinstance(cr_result, (list, tuple)) and len(cr_result) >= 3:
+        clk, rst, rst_expr = cr_result[0], cr_result[1], cr_result[2]
     else:
         raise ValueError(f"Unexpected return from detect_clk_rst_for_top: {cr_result}")
 
     console.print(f"[cyan]ℹ Design top:[/cyan] {args.top}   [cyan]ℹ SVA target:[/cyan] {sva_top}")
+    if args.scope_path:
+        console.print(f"[cyan]ℹ Using --scope-path:[/cyan] {args.scope_path}")
 
     steps = [
         (
@@ -240,7 +257,7 @@ def main():
                 "--top",
                 sva_top,
                 "--design-top",
-                args.top,  # important: compile design top if filelist provided
+                args.top,
                 "--out",
                 str(fpv_dir),
                 "--llm-conf",
@@ -263,6 +280,8 @@ def main():
                 str(fpv_dir),
                 "--llm-conf",
                 str(prop_yaml),
+                "--design-top",
+                args.top,   # keep clk/rst consistent with design top
             ],
         ),
         (
@@ -291,9 +310,11 @@ def main():
         ),
     ]
 
-    # pass include/defines/filelist into spec step and gen_dep step
+    # pass include/defines/filelist/scope into spec step
     msg0, cmd0 = steps[0]
     cmd0 = list(cmd0)
+    if args.scope_path:
+        cmd0 += ["--scope-path", args.scope_path]
     if args.filelist:
         cmd0 += ["--filelist", os.path.expanduser(args.filelist)]
     for inc in args.include:
@@ -302,6 +323,7 @@ def main():
         cmd0 += ["--defines", d]
     steps[0] = (msg0, cmd0)
 
+    # pass include/defines/filelist into gen_dep step
     msg2, cmd2 = steps[2]
     cmd2 = list(cmd2)
     if sva_top != args.top:
@@ -314,7 +336,6 @@ def main():
         cmd2 += ["--filelist", os.path.expanduser(args.filelist)]
     steps[2] = (msg2, cmd2)
 
-    # run pipeline
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}")) as progress:
         for idx, (msg, cmd) in enumerate(steps, 1):
             progress.add_task(description=f"[cyan]{msg}...", total=None)
@@ -322,7 +343,7 @@ def main():
             run_uv(cmd, cwd=Path.cwd())
             console.print(f"[green]✔[/green] {msg} completed.\n")
 
-    # move generated property file
+    # move generated property file into sva/
     prop_src = fpv_dir / "properties.sv"
     if not prop_src.exists():
         raise SystemExit("[❌] properties.sv not found after property builder.")
@@ -338,29 +359,17 @@ def main():
         jg_cmd_list = [args.jasper_bin, "-allow_unsupported_OS", "-tcl", "FPV.tcl", "-batch"]
         console.print(f"[cyan]→[/cyan] [white]{' '.join(jg_cmd_list)}[/white]")
 
-        # Log files (recommended)
         jg_stdout = fpv_dir / "jg.stdout.log"
         jg_stderr = fpv_dir / "jg.stderr.log"
 
         try:
             console.print(f"[cyan]→[/cyan] [white]stdout:[/white] {jg_stdout}")
             console.print(f"[cyan]→[/cyan] [white]stderr:[/white] {jg_stderr}")
-
             with open(jg_stdout, "w") as fo, open(jg_stderr, "w") as fe:
-                subprocess.run(
-                    jg_cmd_list,
-                    cwd=fpv_dir,
-                    stdout=fo,
-                    stderr=fe,
-                    check=True
-                )
-
+                subprocess.run(jg_cmd_list, cwd=fpv_dir, stdout=fo, stderr=fe, check=True)
         except subprocess.CalledProcessError as e:
             console.print(f"[red]⚠ Jasper exited with code {e.returncode}[/red]")
-            # If you want to stop on failure, uncomment:
-            # raise
 
-        # ---- Everything below is unchanged from your script ----
         jg_log = fpv_dir / "jgproject" / "jg.log"
         jg_summary = parse_jg_log_detailed(jg_log)
         print_jg_summary(jg_summary)
@@ -378,16 +387,35 @@ def main():
         write_summary(fpv_dir, counts)
 
         cov_html = fpv_dir / "formal_coverage.html"
+
+        # 1) Try imported function (fast path)
         if PRIVATE_COV_SUMMARIZER is not None:
             if cov_html.exists():
                 try:
                     out_cov_txt = PRIVATE_COV_SUMMARIZER(cov_html, console=console)
                     console.print(f"[green]✔ Formal coverage summary written to[/green] {out_cov_txt}")
                 except Exception as e:
-                    console.print(f"[yellow]⚠ Private coverage summary failed:[/yellow] {e}")
+                    console.print(f"[yellow]⚠ Private coverage summary failed (import path):[/yellow] {e}")
             else:
                 console.print(f"[yellow]⚠ formal_coverage.html not found in[/yellow] {fpv_dir}")
+        else:
+            if PRIVATE_COV_SCRIPT is not None:
+                console.print(f"[yellow]⚠ Private summarizer import unavailable. Script candidate was:[/yellow] {PRIVATE_COV_SCRIPT}")
+            else:
+                console.print("[yellow]⚠ Private summarizer not found (no hagent-private located).[/yellow]")
 
+        # 2) Also run the private script as a command if it exists (requested)
+        if PRIVATE_COV_SCRIPT is not None and PRIVATE_COV_SCRIPT.exists() and cov_html.exists():
+            try:
+                console.print("[cyan]→[/cyan] [white]Running private coverage summarizer CLI[/white]")
+                subprocess.run(
+                    [sys.executable, str(PRIVATE_COV_SCRIPT), "--html", str(cov_html)],
+                    cwd=PRIVATE_COV_SCRIPT.parent,
+                    check=True,
+                )
+                console.print("[green]✔[/green] Coverage summarizer CLI completed.")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Coverage summarizer CLI failed:[/yellow] {e}")
 
     console.print("\n[bold green]✅ FORMAL AGENT COMPLETED SUCCESSFULLY![/bold green]")
     console.print(
