@@ -1,69 +1,65 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-spec_builder.py
----------------
-End-to-end RTL → Spec (Markdown + CSV) generator.
+hagent/tool/spec_builder.py
+---------------------------
 
-ADDED (2025):
-  - CSV "double-check" + repair feedback loop:
-      * validate identifiers in pre/post against RTL IO ports
-      * allow field-selects (req_port_o.data_req) if base port is valid
-      * validate 'signals' column is consistent with signals used in pre/post
-      * detect illegal nested temporal operators (## inside post expression)
-      * if invalid, call LLM (prompt_index='csv_repair') to rewrite CSV
-      * save broken CSV backup + validation JSON report for debugging
+Scoped-AST + IO-relations spec builder that matches hagent/step/sva_gen/spec_prompt.yaml.
+
+Key additions:
+- --scope-path: run Slang with --top <design_top> and --ast-json-scope <hier_path>
+  => fixes typedef/member access issues and restricts AST to the chosen instance.
+- --discover-scope-module: run a full AST once and discover instance paths matching a module name.
+- Builds io_relations expected by your sva_row_list_csv prompt:
+    io_relations:
+      hints:
+      relationships:
+        control_signals_ranked:
+        per_output_influences:
+- Intermediate IR artifacts:
+    <top>_ports.json
+    <top>_assignments.jsonl
+    <top>_io_relations.json
+    <top>_io_influence.csv
+    <top>_logic_blocks.json
+- CSV validation + repair using the existing 'csv_repair' prompt.
 """
 
 from __future__ import annotations
+
 import os
 import re
+import csv
 import json
-import shlex
+import glob
 import argparse
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Set
+from typing import Any, Dict, List, Optional, Tuple, Set, Iterable
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Optional rich console for nice logs (safe if missing)
+# Optional rich console
 # ──────────────────────────────────────────────────────────────────────────────
 try:
     from rich.console import Console
-
     console = Console()
 except Exception:  # pragma: no cover
-
     class _Dummy:
         def print(self, *a, **k):
             print(*a)
-
     console = _Dummy()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Mandatory LLM + templates
+# Mandatory LLM + templates (your existing infra)
 # ──────────────────────────────────────────────────────────────────────────────
 from hagent.core.llm_wrap import LLM_wrap
 from hagent.core.llm_template import LLM_template
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Utilities: clk/rst (required)
-# ──────────────────────────────────────────────────────────────────────────────
 from hagent.tool.utils.clk_rst_utils import detect_clk_rst_for_top
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────────────────────────────────────
 CSV_HEADER = ['sid', 'prop_type', 'module', 'name', 'scenario', 'pre', 'post', 'signals', 'param_ok', 'notes']
-
-ALWAYS_KINDS = {'always', 'alwayscomb', 'alwaysff', 'always_latch', 'proceduralblock'}
-ASSIGN_KINDS = {'continuousassign'}
-IF_KINDS = {'if'}
-CASE_KINDS = {'case'}
-
 SV_SUFFIXES = {'.sv', '.svh', '.v', '.vh'}
 
-# SV keywords we don't want to treat as signal identifiers
 _SV_KEYWORDS = {
     "and", "or", "not", "iff", "if", "else", "case", "endcase", "begin", "end",
     "posedge", "negedge", "disable", "property", "endproperty", "assert", "assume",
@@ -71,520 +67,651 @@ _SV_KEYWORDS = {
     "always_comb", "always_latch", "logic", "wire", "reg", "input", "output", "inout",
     "localparam", "parameter", "typedef", "struct", "union", "enum", "packed", "signed",
     "unsigned", "int", "integer", "bit", "byte", "shortint", "longint",
-    "true", "false",
+    "true", "false", "default"
 }
-
-# Allowed SVA/SystemVerilog $functions we permit in CSV expressions
 _ALLOWED_SVA_FUNCS = {"$rose", "$fell", "$stable", "$changed", "$past"}
 
+
 # ──────────────────────────────────────────────────────────────────────────────
-# File utilities
+# File utils
 # ──────────────────────────────────────────────────────────────────────────────
 def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
-
 def _write_text(path: Path, text: str) -> None:
     path.write_text(text if text.endswith('\n') else (text + '\n'), encoding='utf-8')
-
 
 def _write_json(path: Path, obj: Any) -> None:
     path.write_text(json.dumps(obj, indent=2), encoding='utf-8')
 
+def _write_jsonl(path: Path, rows: Iterable[Dict[str, Any]]) -> None:
+    with path.open("w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+def _basename(p: Optional[str]) -> str:
+    return os.path.basename(p) if p else ""
+
 
 # ──────────────────────────────────────────────────────────────────────────────
-# AST Parsers
+# AST helpers (robust)
 # ──────────────────────────────────────────────────────────────────────────────
-def _packed_range_from_node(n: Dict[str, Any]) -> Optional[str]:
-    rng = n.get('packed_range') or n.get('range') or n.get('dimensions')
-    if isinstance(rng, str):
-        return rng
-    if isinstance(rng, dict):
-        left = rng.get('left')
-        r = rng.get('right')
-        if left is not None and r is not None:
-            return f'[{left}:{r}]'
-    return None
-
-
-def _data_type_from_decl(n: Dict[str, Any]) -> Optional[str]:
-    base = n.get('data_type') or n.get('type') or n.get('decl_type')
-    if isinstance(base, dict):
-        bt = base.get('name') or base.get('type') or base.get('kind')
-        rng = _packed_range_from_node(base) or _packed_range_from_node(n) or ''
-        return f'{rng + " " if rng else ""}{bt or "logic"}'.strip()
-    if isinstance(base, str):
-        rng = _packed_range_from_node(n) or ''
-        return f'{rng + " " if rng else ""}{base}'.strip()
-    rng = _packed_range_from_node(n) or ''
-    if rng:
-        return f'{rng} logic'
-    return None
-
-
-def extract_ports_from_ast(module_ast: Dict[str, Any]) -> List[Dict[str, str]]:
-    """
-    Extract *declared* top-level ports from AST (I/O only) of the spec top.
-    """
-    ports: List[Dict[str, str]] = []
-
-    def norm_dir(d):
-        if not d:
-            return '-'
-        d = str(d).lower()
-        if 'inout' in d:
-            return 'Inout'
-        if 'input' in d or d == 'in':
-            return 'In'
-        if 'output' in d or d == 'out':
-            return 'Out'
-        return '-'
-
-    def add_port(name, direction, dtype):
-        if not name:
-            return
-        ports.append({'name': name, 'dir': norm_dir(direction), 'type': dtype or '-', 'desc': '-'})
-
-    def walk(n):
-        if isinstance(n, dict):
-            k = n.get('kind', '')
-            if k.lower().startswith('port'):
-                name = n.get('name') or n.get('symbol')
-                direction = n.get('direction') or n.get('dir')
-                dtype = _data_type_from_decl(n)
-
-                decl = n.get('decl') or n.get('declared') or n.get('declaration') or {}
-                if (not name) and isinstance(decl, dict):
-                    name = decl.get('name') or decl.get('symbol')
-                    dtype = dtype or _data_type_from_decl(decl)
-                    direction = direction or decl.get('direction')
-
-                if name:
-                    add_port(name, direction, dtype)
-
-            for v in n.values():
-                walk(v)
-        elif isinstance(n, list):
-            for it in n:
-                walk(it)
-
-    walk(module_ast)
-
-    uniq: List[Dict[str, str]] = []
-    seen = set()
-    for p in ports:
-        if p['name'] not in seen:
-            uniq.append(p)
-            seen.add(p['name'])
-    return uniq
-
-
-def extract_parameters_from_ast(module_ast: Dict[str, Any]) -> List[Dict[str, str]]:
-    params: List[Dict[str, str]] = []
-
-    def render_expr(e):
-        if isinstance(e, dict):
-            return e.get('text') or e.get('value') or e.get('literal') or e.get('name')
-        return str(e) if e is not None else None
-
-    def add_param(name, ptype, default):
-        if not name:
-            return
-        params.append(
-            {
-                'name': name,
-                'type': ptype or '-',
-                'default': default if default not in (None, '') else '-',
-                'desc': '-',
-            }
-        )
-
-    def walk(n):
-        if isinstance(n, dict):
-            k = n.get('kind', '').lower()
-            if 'parameter' in k:
-                name = n.get('name') or n.get('symbol')
-                dt = n.get('data_type') or n.get('type')
-                ptype = dt.get('name') if isinstance(dt, dict) else (dt if isinstance(dt, str) else None)
-                default = render_expr(n.get('initializer') or n.get('value') or n.get('init'))
-                if name:
-                    add_param(name, ptype, default)
-            for v in n.values():
-                walk(v)
-        elif isinstance(n, list):
-            for it in n:
-                walk(it)
-
-    walk(module_ast)
-
-    uniq: List[Dict[str, str]] = []
-    seen = set()
-    for p in params:
-        if p['name'] not in seen:
-            uniq.append(p)
-            seen.add(p['name'])
-    return uniq
-
+def _is_invalid_node(n: Any) -> bool:
+    return isinstance(n, dict) and (n.get("kind") == "Invalid" or n.get("type") == "<error>")
 
 def _src_info(n: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'file': n.get('source_file_start') or n.get('source_file'),
         'ls': n.get('source_line_start') or n.get('source_line'),
         'le': n.get('source_line_end') or n.get('source_line'),
+        'cs': n.get('source_column_start') or n.get('source_column'),
+        'ce': n.get('source_column_end') or n.get('source_column'),
+    }
+
+def _extract_rtl_excerpt(path: str, ls: int, le: int, max_chars: int = 8000) -> str:
+    try:
+        lines = Path(path).read_text(encoding='utf-8', errors='ignore').splitlines()
+        text = "\n".join(lines[max(0, ls-1): max(0, le)])
+        return text[:max_chars]
+    except Exception as e:  # pragma: no cover
+        return f"// Error extracting RTL excerpt: {e}"
+
+def _member_name_field(member_field: Any) -> Optional[str]:
+    if member_field is None:
+        return None
+    if isinstance(member_field, str):
+        parts = member_field.strip().split()
+        return parts[-1] if parts else None
+    return str(member_field)
+
+def _expr_text(n: Any) -> str:
+    if n is None:
+        return ""
+    if _is_invalid_node(n):
+        return "/*INVALID*/"
+    if isinstance(n, str):
+        return n
+    if isinstance(n, (int, float, bool)):
+        return str(n)
+    if isinstance(n, list):
+        return ", ".join(_expr_text(x) for x in n)
+    if not isinstance(n, dict):
+        return str(n)
+
+    if isinstance(n.get("text"), str) and n["text"].strip():
+        return n["text"].strip()
+    if isinstance(n.get("value"), str) and n["value"].strip():
+        return n["value"].strip()
+    if isinstance(n.get("constant"), str) and n["constant"].strip():
+        return n["constant"].strip()
+
+    k = n.get("kind")
+
+    if k == "NamedValue":
+        sym = n.get("symbol") or n.get("name")
+        if isinstance(sym, str):
+            return sym.strip().split()[-1]
+        return str(sym) if sym is not None else "<?>"
+
+    if k == "MemberAccess":
+        base = _expr_text(n.get("value"))
+        mem = _member_name_field(n.get("member")) or "<?>"
+        return f"{base}.{mem}"
+
+    if k == "ElementSelect":
+        base = _expr_text(n.get("value"))
+        sel = _expr_text(n.get("selector"))
+        return f"{base}[{sel}]"
+
+    if k == "RangeSelect":
+        base = _expr_text(n.get("value"))
+        left = _expr_text(n.get("left"))
+        right = _expr_text(n.get("right"))
+        return f"{base}[{left}:{right}]"
+
+    if k == "Concatenation":
+        ops = n.get("operands") or []
+        return "{" + ", ".join(_expr_text(x) for x in ops) + "}"
+
+    if k == "UnaryOp":
+        op = n.get("op") or ""
+        operand = _expr_text(n.get("operand"))
+        opmap = {"LogicalNot": "!", "BitwiseNot": "~", "UnaryPlus": "+", "UnaryMinus": "-"}
+        return f"{opmap.get(op, op)}{operand}"
+
+    if k == "BinaryOp":
+        op = n.get("op") or ""
+        left = _expr_text(n.get("left"))
+        right = _expr_text(n.get("right"))
+        opmap = {
+            "LogicalAnd": "&&", "LogicalOr": "||",
+            "BitwiseAnd": "&", "BitwiseOr": "|", "BitwiseXor": "^",
+            "Equality": "==", "Inequality": "!=",
+            "GreaterThan": ">", "GreaterThanEqual": ">=",
+            "LessThan": "<", "LessThanEqual": "<=",
+            "Add": "+", "Subtract": "-", "Multiply": "*", "Divide": "/", "Modulo": "%",
+            "LogicalShiftLeft": "<<", "LogicalShiftRight": ">>", "ArithmeticShiftRight": ">>>",
+        }
+        svop = opmap.get(op, op)
+        return f"({left} {svop} {right})"
+
+    if k == "ConditionalOp":
+        conds = n.get("conditions") or []
+        if conds and isinstance(conds, list) and isinstance(conds[0], dict) and "expr" in conds[0]:
+            c = _expr_text(conds[0]["expr"])
+            t = _expr_text(n.get("left"))
+            f = _expr_text(n.get("right"))
+            return f"({c} ? {t} : {f})"
+        return "/*COND_OP*/"
+
+    if k == "Call":
+        sub = n.get("subroutine") or n.get("name") or "call"
+        args = n.get("arguments") or []
+        return f"{sub}(" + ", ".join(_expr_text(a) for a in args) + ")"
+
+    return f"/*{k or 'node'}*/"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Ports / params from SCOPED bodies
+# ──────────────────────────────────────────────────────────────────────────────
+def extract_ports_from_body(body: Dict[str, Any]) -> List[Dict[str, str]]:
+    ports: List[Dict[str, str]] = []
+
+    def norm_dir(d: Any) -> str:
+        if not d:
+            return '-'
+        s = str(d).lower()
+        if 'inout' in s:
+            return 'Inout'
+        if s in ('in', 'input'):
+            return 'In'
+        if s in ('out', 'output'):
+            return 'Out'
+        return '-'
+
+    members = body.get("members") or []
+    for m in members:
+        if not isinstance(m, dict):
+            continue
+        if m.get("kind") != "Port":
+            continue
+        name = m.get("name")
+        direction = norm_dir(m.get("direction"))
+        dtype = m.get("type") or "-"
+        if name:
+            ports.append({"name": name, "dir": direction, "type": str(dtype), "desc": "-"})
+
+    # Fallback walker if needed (older dumps)
+    if not ports:
+        def walk(n: Any) -> None:
+            if n is None or _is_invalid_node(n):
+                return
+            if isinstance(n, list):
+                for it in n:
+                    walk(it)
+                return
+            if not isinstance(n, dict):
+                return
+            k = (n.get("kind") or "").lower()
+            if "port" in k and n.get("name") and n.get("direction"):
+                ports.append({
+                    "name": n.get("name"),
+                    "dir": norm_dir(n.get("direction")),
+                    "type": str(n.get("type") or "-"),
+                    "desc": "-"
+                })
+            for v in n.values():
+                walk(v)
+        walk(body)
+
+    # de-dupe by name
+    out: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+    for p in ports:
+        if p["name"] in seen:
+            continue
+        seen.add(p["name"])
+        out.append(p)
+    return out
+
+def extract_parameters_from_body(body: Dict[str, Any]) -> List[Dict[str, str]]:
+    params: List[Dict[str, str]] = []
+    for m in (body.get("members") or []):
+        if not isinstance(m, dict):
+            continue
+        if m.get("kind") != "Parameter":
+            continue
+        name = m.get("name")
+        ptype = m.get("type") or "-"
+        default = m.get("value") or (m.get("initializer", {}) or {}).get("constant") or "-"
+        if name:
+            params.append({"name": name, "type": str(ptype), "default": str(default), "desc": "-"})
+    # de-dupe
+    out: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+    for p in params:
+        if p["name"] in seen:
+            continue
+        seen.add(p["name"])
+        out.append(p)
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Assignment extraction with guards (IO slicing base)
+# ──────────────────────────────────────────────────────────────────────────────
+@dataclass
+class AssignRecord:
+    assign_id: str
+    kind: str  # ContinuousAssign | AlwaysComb | AlwaysFF | Unknown
+    proc_kind: str
+    lhs_text: str
+    rhs_text: str
+    defs: List[str]
+    uses: List[str]
+    guards: List[str]
+    block_path: str
+    src_file: str
+    src_ls: int
+    src_le: int
+
+def _canonical_signal_ref(expr_node: Dict[str, Any]) -> Optional[str]:
+    if _is_invalid_node(expr_node):
+        return None
+    k = expr_node.get("kind")
+    if k == "NamedValue":
+        s = expr_node.get("symbol") or expr_node.get("name")
+        if isinstance(s, str):
+            return s.strip().split()[-1]
+        return None
+    if k == "MemberAccess":
+        base = _canonical_signal_ref(expr_node.get("value") or {})
+        mem = _member_name_field(expr_node.get("member")) or None
+        if base and mem:
+            return f"{base}.{mem}"
+        return base
+    if k == "ElementSelect":
+        base = _canonical_signal_ref(expr_node.get("value") or {})
+        sel = _expr_text(expr_node.get("selector"))
+        if base and sel:
+            return f"{base}[{sel}]"
+        return base
+    if k == "RangeSelect":
+        base = _canonical_signal_ref(expr_node.get("value") or {})
+        left = _expr_text(expr_node.get("left"))
+        right = _expr_text(expr_node.get("right"))
+        if base and left and right:
+            return f"{base}[{left}:{right}]"
+        return base
+    return None
+
+def _collect_signal_refs(expr: Any, out: Set[str]) -> None:
+    if expr is None or _is_invalid_node(expr):
+        return
+    if isinstance(expr, list):
+        for it in expr:
+            _collect_signal_refs(it, out)
+        return
+    if not isinstance(expr, dict):
+        return
+    k = expr.get("kind")
+    if k in ("NamedValue", "MemberAccess", "ElementSelect", "RangeSelect"):
+        ref = _canonical_signal_ref(expr)
+        if ref:
+            out.add(ref)
+    for v in expr.values():
+        _collect_signal_refs(v, out)
+
+def _collect_lhs_defs(lhs_expr: Any, out: Set[str]) -> None:
+    if lhs_expr is None or _is_invalid_node(lhs_expr):
+        return
+    if isinstance(lhs_expr, list):
+        for it in lhs_expr:
+            _collect_lhs_defs(it, out)
+        return
+    if not isinstance(lhs_expr, dict):
+        return
+    k = lhs_expr.get("kind")
+    if k in ("NamedValue", "MemberAccess", "ElementSelect", "RangeSelect"):
+        ref = _canonical_signal_ref(lhs_expr)
+        if ref:
+            out.add(ref)
+        return
+    if k == "Concatenation":
+        for op in lhs_expr.get("operands") or []:
+            _collect_lhs_defs(op, out)
+        return
+    for v in lhs_expr.values():
+        _collect_lhs_defs(v, out)
+
+def extract_assignments_with_guards(body: Dict[str, Any]) -> List[AssignRecord]:
+    records: List[AssignRecord] = []
+    assign_counter = 0
+
+    def new_id() -> str:
+        nonlocal assign_counter
+        assign_counter += 1
+        return f"A{assign_counter:05d}"
+
+    def visit_stmt(node: Any, guards: List[str], path: List[str], proc_kind: str, logical_kind: str) -> None:
+        if node is None or _is_invalid_node(node):
+            return
+        if isinstance(node, list):
+            for it in node:
+                visit_stmt(it, guards, path, proc_kind, logical_kind)
+            return
+        if not isinstance(node, dict):
+            return
+
+        k = node.get("kind", "")
+
+        if k == "ExpressionStatement":
+            visit_stmt(node.get("expr"), guards, path, proc_kind, logical_kind)
+            return
+
+        if k == "Assignment":
+            lhs = node.get("left")
+            rhs = node.get("right")
+            defs: Set[str] = set()
+            uses: Set[str] = set()
+            _collect_lhs_defs(lhs, defs)
+            _collect_signal_refs(rhs, uses)
+            src = _src_info(node)
+            records.append(
+                AssignRecord(
+                    assign_id=new_id(),
+                    kind=logical_kind,
+                    proc_kind=proc_kind,
+                    lhs_text=_expr_text(lhs),
+                    rhs_text=_expr_text(rhs),
+                    defs=sorted(defs),
+                    uses=sorted(uses),
+                    guards=list(guards),
+                    block_path="/".join(path) if path else "",
+                    src_file=src.get("file") or "",
+                    src_ls=int(src.get("ls") or 0),
+                    src_le=int(src.get("le") or 0),
+                )
+            )
+            return
+
+        if k == "Conditional":
+            conds = node.get("conditions") or []
+            cond_expr = None
+            if isinstance(conds, list) and conds:
+                c0 = conds[0]
+                if isinstance(c0, dict) and "expr" in c0:
+                    cond_expr = c0["expr"]
+            cond_txt = _expr_text(cond_expr) if cond_expr is not None else "/*cond*/"
+            visit_stmt(node.get("ifTrue"), guards + [cond_txt], path + ["if"], proc_kind, logical_kind)
+            if node.get("ifFalse") is not None:
+                visit_stmt(node.get("ifFalse"), guards + [f"!({cond_txt})"], path + ["else"], proc_kind, logical_kind)
+            return
+
+        if k == "Case":
+            expr_txt = _expr_text(node.get("expr"))
+            case_guard = f"case({expr_txt})"
+            for field in ("items", "cases", "body"):
+                if node.get(field) is not None:
+                    visit_stmt(node.get(field), guards + [case_guard], path + ["case"], proc_kind, logical_kind)
+            return
+
+        if k == "Block":
+            b = node.get("body")
+            if isinstance(b, dict) and b.get("kind") == "List":
+                visit_stmt(b.get("list") or [], guards, path, proc_kind, logical_kind)
+            else:
+                visit_stmt(b, guards, path, proc_kind, logical_kind)
+            return
+
+        # generic recursion
+        for v in node.values():
+            visit_stmt(v, guards, path, proc_kind, logical_kind)
+
+    def visit_member(m: Any) -> None:
+        if m is None or _is_invalid_node(m):
+            return
+        if isinstance(m, list):
+            for it in m:
+                visit_member(it)
+            return
+        if not isinstance(m, dict):
+            return
+
+        k = (m.get("kind") or "").lower()
+
+        if k == "continuousassign":
+            asn = m.get("assignment") or {}
+            visit_stmt(asn, guards=[], path=["assign"], proc_kind="", logical_kind="ContinuousAssign")
+            return
+
+        if k == "proceduralblock":
+            pk = str(m.get("procedureKind") or "")
+            logical_kind = "Unknown"
+            if pk.lower() == "alwayscomb":
+                logical_kind = "AlwaysComb"
+            elif pk.lower() == "alwaysff":
+                logical_kind = "AlwaysFF"
+            visit_stmt(m.get("body"), guards=[], path=[pk], proc_kind=pk, logical_kind=logical_kind)
+            return
+
+        for v in m.values():
+            visit_member(v)
+
+    visit_member(body.get("members") or [])
+    return records
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Logic blocks + FSM case blocks (for your existing LLM prompts)
+# ──────────────────────────────────────────────────────────────────────────────
+def extract_logic_blocks(body: Dict[str, Any]) -> List[Dict[str, Any]]:
+    blocks: List[Dict[str, Any]] = []
+    def add_block(kind: str, n: Dict[str, Any]) -> None:
+        src = _src_info(n)
+        f = src.get("file")
+        ls = int(src.get("ls") or 0)
+        le = int(src.get("le") or 0)
+        code = _extract_rtl_excerpt(f, ls, le) if f and ls and le else ""
+        blocks.append({"kind": kind, "where": src, "code": code})
+    def walk(n: Any) -> None:
+        if n is None or _is_invalid_node(n):
+            return
+        if isinstance(n, list):
+            for it in n:
+                walk(it)
+            return
+        if not isinstance(n, dict):
+            return
+        k = (n.get("kind") or "").lower()
+        if k == "proceduralblock":
+            add_block("always", n)
+        elif k == "conditional":
+            add_block("if", n)
+        elif k == "continuousassign":
+            add_block("assign", n)
+        elif k == "case":
+            add_block("case", n)
+        for v in n.values():
+            walk(v)
+    walk(body.get("members") or [])
+    return blocks
+
+def parse_case_blocks(body: Dict[str, Any]) -> List[Dict[str, Any]]:
+    case_blocks: List[Dict[str, Any]] = []
+    def walk(n: Any) -> None:
+        if n is None or _is_invalid_node(n):
+            return
+        if isinstance(n, list):
+            for it in n:
+                walk(it)
+            return
+        if not isinstance(n, dict):
+            return
+        if n.get("kind") == "Case":
+            src = _src_info(n)
+            case_blocks.append({
+                "expr_symbol": _expr_text(n.get("expr")) or "state",
+                "source_file": src.get("file") or "",
+                "line_start": int(src.get("ls") or 0),
+                "line_end": int(src.get("le") or 0),
+            })
+        for v in n.values():
+            walk(v)
+    walk(body.get("members") or [])
+    # de-dupe
+    seen = set()
+    out = []
+    for b in case_blocks:
+        key = (b["source_file"], b["line_start"], b["line_end"], b["expr_symbol"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(b)
+    out.sort(key=lambda x: (_basename(x["source_file"]), x["line_start"]))
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# IO relations builder (matches your prompt expectations)
+# ──────────────────────────────────────────────────────────────────────────────
+def _base_port(ref: str) -> str:
+    # strip member selects and indices
+    if not ref:
+        return ref
+    ref = ref.split(".", 1)[0]
+    ref = ref.split("[", 1)[0]
+    return ref
+
+def build_io_relations(
+    ports: List[Dict[str, str]],
+    assigns: List[AssignRecord],
+    max_depth: int = 6,
+) -> Dict[str, Any]:
+    """
+    Returns io_relations dict with:
+      - relationships.control_signals_ranked
+      - relationships.per_output_influences
+      - hints (basic suggestions; conservative)
+    """
+    port_dir: Dict[str, str] = {p["name"]: p["dir"] for p in ports}
+    inputs = {p["name"] for p in ports if p["dir"] in ("In", "Inout")}
+    outputs = {p["name"] for p in ports if p["dir"] in ("Out", "Inout")}
+
+    # def_map: base_signal -> defining assignments
+    def_map: Dict[str, List[AssignRecord]] = {}
+    for a in assigns:
+        for d in a.defs:
+            def_map.setdefault(_base_port(d), []).append(a)
+
+    # helper: backward slice to inputs
+    def slice_to_inputs(start_base: str) -> Set[str]:
+        found_inputs: Set[str] = set()
+        q: List[Tuple[str, int]] = [(start_base, 0)]
+        visited: Set[str] = {start_base}
+        while q:
+            sig, depth = q.pop(0)
+            if sig in inputs:
+                found_inputs.add(sig)
+                continue
+            if depth >= max_depth:
+                continue
+            for da in def_map.get(sig, []):
+                for u in da.uses:
+                    ub = _base_port(u)
+                    if ub not in visited:
+                        visited.add(ub)
+                        q.append((ub, depth + 1))
+        return found_inputs
+
+    per_output: List[Dict[str, Any]] = []
+
+    # Count control signal usage in guards (rank)
+    ctrl_score: Dict[str, int] = {}
+
+    for a in assigns:
+        used_bases = {_base_port(u) for u in a.uses}
+        guard_bases: Set[str] = set()
+        for g in a.guards:
+            # heuristic: pick tokens that look like identifiers in guard text
+            for tok in re.findall(r"\b[A-Za-z_]\w*\b", g or ""):
+                if tok in inputs:
+                    guard_bases.add(tok)
+        for gb in guard_bases:
+            ctrl_score[gb] = ctrl_score.get(gb, 0) + 2
+        # also small weight for direct RHS usage
+        for ub in used_bases:
+            if ub in inputs:
+                ctrl_score[ub] = ctrl_score.get(ub, 0) + 1
+
+        out_defs = sorted({d for d in a.defs if _base_port(d) in outputs})
+        if not out_defs:
+            continue
+
+        direct_inputs = sorted({b for b in used_bases if b in inputs})
+
+        # include transitive inputs via internal signals in RHS
+        trans_inputs: Set[str] = set(direct_inputs)
+        internal = [b for b in used_bases if b not in inputs and b not in outputs]
+        for intr in internal:
+            trans_inputs |= slice_to_inputs(intr)
+
+        guard_txt = " && ".join([g for g in a.guards if g and "/*INVALID*/" not in g]) if a.guards else ""
+
+        for od in out_defs:
+            per_output.append({
+                "output": _base_port(od),
+                "inputs": sorted(trans_inputs),
+                "direct_inputs": direct_inputs,
+                "guards": guard_txt,
+                "effect": f"{a.lhs_text} = {a.rhs_text}",
+                "src": f"{_basename(a.src_file)}:{a.src_ls}-{a.src_le}",
+                "block_kind": a.kind,
+                "block_path": a.block_path,
+            })
+
+    # de-dupe per_output influences
+    seen = set()
+    uniq: List[Dict[str, Any]] = []
+    for r in per_output:
+        key = (r["output"], r["effect"], r.get("guards",""))
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(r)
+
+    # ranked controls (only inputs)
+    ranked = sorted(ctrl_score.items(), key=lambda kv: (-kv[1], kv[0]))
+    control_signals_ranked = [k for k, _ in ranked][:30]
+
+    # very conservative hints (your prompt can use them, but it already has safe patterns)
+    hints = {
+        "assume": [],
+        "cover": [],
+        "assert": [],
+    }
+    # Example: if a signal name suggests flush or valid/ready, add a hint (still not a concrete property)
+    for s in control_signals_ranked[:10]:
+        low = s.lower()
+        if "flush" in low:
+            hints["assume"].append({"idea": "flush is a pulse not stuck-high", "signal": s})
+        if "valid" in low:
+            hints["cover"].append({"idea": "observe valid toggling", "signal": s})
+        if "ready" in low or "gnt" in low or "grant" in low:
+            hints["cover"].append({"idea": "observe handshake acceptance", "signal": s})
+
+    return {
+        "hints": hints,
+        "relationships": {
+            "control_signals_ranked": control_signals_ranked,
+            "per_output_influences": uniq,
+        }
     }
 
 
-def extract_logic_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dict[str, Any]]:
-    """
-    Collect compact logic blocks (always/if/assign/case) with short code excerpts for LLM context.
-    """
-    blocks: List[Dict[str, Any]] = []
-
-    def add_block(kind: str, n: dict):
-        info = _src_info(n)
-        if info['file'] and info['ls'] and info['le']:
-            code = extract_rtl_fn(info['file'], int(info['ls']), int(info['le']))
-        else:
-            code = ''
-        blocks.append(
-            {
-                'kind': kind,
-                'where': info,
-                'code': code[:8000],
-            }
-        )
-
-    def walk(n):
-        if isinstance(n, dict):
-            k = (n.get('kind') or '').lower()
-            if k in ALWAYS_KINDS:
-                add_block('always', n)
-            elif k in IF_KINDS:
-                add_block('if', n)
-            elif k in ASSIGN_KINDS:
-                add_block('assign', n)
-            elif k in CASE_KINDS:
-                add_block('case', n)
-
-            for v in n.values():
-                walk(v)
-        elif isinstance(n, list):
-            for it in n:
-                walk(it)
-
-    walk(module_ast)
-    return blocks
-
-
-def parse_case_blocks(module_ast: Dict[str, Any], extract_rtl_fn) -> List[Dict[str, Any]]:
-    """
-    Extract case statements with file/line spans and an RTL excerpt.
-    """
-    case_blocks: List[Dict[str, Any]] = []
-
-    def _collect_span(node):
-        src_file = None
-        min_ln = None
-        max_ln = None
-
-        def _visit(n):
-            nonlocal src_file, min_ln, max_ln
-            if isinstance(n, dict):
-                sf = n.get('source_file_start') or n.get('source_file')
-                ls = n.get('source_line_start') or n.get('source_line')
-                le = n.get('source_line_end') or n.get('source_line')
-                if sf and ls and le:
-                    if src_file is None:
-                        src_file = sf
-                    if src_file == sf:
-                        min_ln = ls if min_ln is None else min(min_ln, ls)
-                        max_ln = le if max_ln is None else max(max_ln, le)
-                for v in n.values():
-                    _visit(v)
-            elif isinstance(n, list):
-                for it in n:
-                    _visit(it)
-
-        _visit(node)
-        return src_file, min_ln, max_ln
-
-    def _find_expr_name(expr) -> Optional[str]:
-        def _walk(n):
-            if isinstance(n, dict):
-                if n.get('kind') in ('NamedValue', 'ArbitrarySymbol'):
-                    return n.get('symbol') or n.get('name')
-                for v in n.values():
-                    r = _walk(v)
-                    if r:
-                        return r
-            elif isinstance(n, list):
-                for it in n:
-                    r = _walk(it)
-                    if r:
-                        return r
-            return None
-
-        sym = expr.get('symbol')
-        return sym or _walk(expr) or expr.get('kind') or 'state'
-
-    def walk(n):
-        if isinstance(n, dict):
-            if n.get('kind') == 'Case':
-                expr = n.get('expr', {})
-                expr_sym = _find_expr_name(expr)
-
-                src = _src_info(n)
-                if not (src['file'] and src['ls'] and src['le']):
-                    sf, ls, le = _collect_span(n)
-                    src = {'file': sf, 'ls': ls, 'le': le}
-
-                block = {
-                    'expr_symbol': expr_sym,
-                    'source_file': src['file'],
-                    'line_start': src['ls'],
-                    'line_end': src['le'],
-                }
-
-                if block['source_file'] and block['line_start'] and block['line_end']:
-                    block['rtl_code'] = extract_rtl_fn(block['source_file'], int(block['line_start']), int(block['line_end']))
-                else:
-                    block['rtl_code'] = ''
-
-                case_blocks.append(block)
-
-            for v in n.values():
-                walk(v)
-        elif isinstance(n, list):
-            for it in n:
-                walk(it)
-
-    walk(module_ast)
-
-    seen = set()
-    uniq: List[Dict[str, Any]] = []
-    for b in case_blocks:
-        uid = (
-            os.path.basename(b.get('source_file') or 'n/a'),
-            int(b.get('line_start') or 0),
-            int(b.get('line_end') or 0),
-        )
-        if uid in seen:
-            continue
-        seen.add(uid)
-        uniq.append(b)
-
-    uniq.sort(
-        key=lambda x: (
-            os.path.basename(x.get('source_file') or ''),
-            int(x.get('line_start') or 0),
-        )
-    )
-    return uniq
-
-
 # ──────────────────────────────────────────────────────────────────────────────
-# Robust filelist parsing (CVA6-style manifests)
-# ──────────────────────────────────────────────────────────────────────────────
-_FILELIST_KNOWN_OPTIONS = {
-    "-F", "-f",
-    "-v",
-    "-y",
-    "+incdir+",
-    "-I",
-    "+define+",
-    "-D",
-}
-
-def _looks_like_comment_or_banner(line: str) -> bool:
-    s = line.strip()
-    if not s:
-        return True
-    if s.startswith("#") or s.startswith("//"):
-        return True
-    if s.startswith("/*") or s.startswith("*") or s.startswith("*/"):
-        return True
-    if s.startswith("/ ") and not any(ext in s for ext in (".sv", ".svh", ".v", ".vh", ".f", ".Flist", ".flist")):
-        return True
-    if s.startswith("/") and " " in s and not any(ext in s for ext in (".sv", ".svh", ".v", ".vh", ".f", ".Flist", ".flist")):
-        return True
-    return False
-
-
-def _expand_vars(s: str, rtl_dir: Path, filelist_path: Path) -> str:
-    if "CVA6_REPO_DIR" not in os.environ:
-        os.environ["CVA6_REPO_DIR"] = str(rtl_dir.parent.resolve())
-    return os.path.expandvars(s)
-
-
-def _is_unresolved_var_path(s: str) -> bool:
-    return ("${" in s) or ("$" in s and re.search(r"\$[A-Za-z_]\w*", s) is not None)
-
-
-def _norm_path_token(tok: str) -> str:
-    return tok.strip().strip('"').strip("'")
-
-
-def _tokenize_filelist_line(line: str) -> List[str]:
-    try:
-        return shlex.split(line, comments=False, posix=True)
-    except Exception:
-        return line.strip().split()
-
-
-def _parse_filelist(
-    filelist_path: Path,
-    rtl_dir: Path,
-    include_dirs: List[Path],
-    defines: List[str],
-    visited: Set[Path],
-) -> Tuple[List[Path], List[Path], List[str]]:
-    files: List[Path] = []
-    if filelist_path in visited:
-        return files, include_dirs, defines
-    visited.add(filelist_path)
-
-    if not filelist_path.exists():
-        console.print(f"[yellow]⚠ Nested filelist not found:[/yellow] {filelist_path}")
-        return files, include_dirs, defines
-
-    base_dir = filelist_path.parent.resolve()
-
-    for raw in filelist_path.read_text(errors="ignore").splitlines():
-        line = raw.strip()
-        if _looks_like_comment_or_banner(line):
-            continue
-
-        toks = _tokenize_filelist_line(line)
-        if not toks:
-            continue
-
-        i = 0
-        while i < len(toks):
-            t = _norm_path_token(toks[i])
-
-            if t.startswith("+incdir+"):
-                inc = t[len("+incdir+") :].strip()
-                inc = _expand_vars(inc, rtl_dir, filelist_path)
-                inc = _norm_path_token(inc)
-                if _is_unresolved_var_path(inc):
-                    console.print(f"[yellow]⚠ Skipping unresolved incdir:[/yellow] {t}")
-                else:
-                    ip = Path(inc)
-                    if not ip.is_absolute():
-                        ip = (rtl_dir / ip).resolve()
-                    else:
-                        ip = ip.resolve()
-                    if ip.exists() and ip.is_dir():
-                        include_dirs.append(ip)
-                i += 1
-                continue
-
-            if t == "-I" and (i + 1) < len(toks):
-                inc = _norm_path_token(toks[i + 1])
-                inc = _expand_vars(inc, rtl_dir, filelist_path)
-                if _is_unresolved_var_path(inc):
-                    console.print(f"[yellow]⚠ Skipping unresolved -I incdir:[/yellow] {inc}")
-                else:
-                    ip = Path(inc)
-                    if not ip.is_absolute():
-                        ip = (rtl_dir / ip).resolve()
-                    else:
-                        ip = ip.resolve()
-                    if ip.exists() and ip.is_dir():
-                        include_dirs.append(ip)
-                i += 2
-                continue
-
-            if t.startswith("+define+"):
-                d = t[len("+define+") :].strip()
-                d = _expand_vars(d, rtl_dir, filelist_path)
-                d = _norm_path_token(d)
-                if d:
-                    defines.append(d)
-                i += 1
-                continue
-
-            if t == "-D" and (i + 1) < len(toks):
-                d = _norm_path_token(toks[i + 1])
-                d = _expand_vars(d, rtl_dir, filelist_path)
-                d = _norm_path_token(d)
-                if d:
-                    defines.append(d)
-                i += 2
-                continue
-
-            if t in ("-F", "-f") and (i + 1) < len(toks):
-                nested = _norm_path_token(toks[i + 1])
-                nested = _expand_vars(nested, rtl_dir, filelist_path)
-                nested = _norm_path_token(nested)
-
-                if _is_unresolved_var_path(nested):
-                    console.print(f"[yellow]⚠ Skipping unresolved nested filelist:[/yellow] {nested}")
-                    i += 2
-                    continue
-
-                np = Path(nested)
-                if not np.is_absolute():
-                    np = (base_dir / np).resolve()
-                else:
-                    np = np.resolve()
-
-                sub_files, include_dirs, defines = _parse_filelist(np, rtl_dir, include_dirs, defines, visited)
-                files.extend(sub_files)
-                i += 2
-                continue
-
-            if t == "-y" and (i + 1) < len(toks):
-                i += 2
-                continue
-
-            if t == "-v" and (i + 1) < len(toks):
-                fp = _norm_path_token(toks[i + 1])
-                fp = _expand_vars(fp, rtl_dir, filelist_path)
-                fp = _norm_path_token(fp)
-                if _is_unresolved_var_path(fp):
-                    console.print(f"[yellow]⚠ Skipping unresolved -v file:[/yellow] {fp}")
-                else:
-                    p = Path(fp)
-                    if not p.is_absolute():
-                        p = (rtl_dir / p).resolve()
-                    else:
-                        p = p.resolve()
-                    if p.exists() and p.suffix.lower() in SV_SUFFIXES:
-                        files.append(p)
-                i += 2
-                continue
-
-            candidate = _expand_vars(t, rtl_dir, filelist_path)
-            candidate = _norm_path_token(candidate)
-
-            if _is_unresolved_var_path(candidate):
-                console.print(f"[yellow]⚠ Skipping unresolved token:[/yellow] {t}")
-                i += 1
-                continue
-
-            if candidate.startswith("-") or candidate.startswith("+"):
-                i += 1
-                continue
-
-            p = Path(candidate)
-            if not p.is_absolute():
-                p1 = (rtl_dir / p).resolve()
-                p2 = (base_dir / p).resolve()
-                p = p1 if p1.exists() else p2
-            else:
-                p = p.resolve()
-
-            if p.exists() and p.is_file() and p.suffix.lower() in SV_SUFFIXES:
-                files.append(p)
-
-            i += 1
-
-    return files, include_dirs, defines
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# CSV validation + repair helpers (NEW)
+# CSV validation + repair (uses your csv_repair prompt)
 # ──────────────────────────────────────────────────────────────────────────────
 def _strip_code_fences(s: str) -> str:
     if not s:
@@ -594,7 +721,6 @@ def _strip_code_fences(s: str) -> str:
     if m:
         return m.group(1).strip()
     return s
-
 
 def _ensure_csv_header(csv_text: str) -> str:
     csv_text = csv_text.strip()
@@ -607,60 +733,28 @@ def _ensure_csv_header(csv_text: str) -> str:
         return ",".join(CSV_HEADER) + "\n" + csv_text
     return csv_text
 
-
 def _split_csv_line(line: str) -> List[str]:
-    # We REQUIRE "no commas inside fields" by prompt rule, so split is safe.
     return [c.strip() for c in line.rstrip("\n").split(",")]
 
-
 def _extract_dotted_and_plain_identifiers(expr: str) -> List[str]:
-    """
-    Extract possible identifiers from an SV expression.
-
-    Rules:
-      - capture dotted refs: foo.bar.baz
-      - capture plain refs: foo
-      - DO NOT capture $rose/$fell/... as identifiers
-      - ignore numbers/base literals ('0, 1'b0, 4'hF), and keywords
-    """
     if not expr:
         return []
-
-    # Remove strings to avoid accidental captures
     expr2 = re.sub(r"\"[^\"]*\"", " ", expr)
-
-    # Temporarily remove allowed $functions so we don't treat their names as identifiers
     for fn in _ALLOWED_SVA_FUNCS:
         expr2 = expr2.replace(fn, " ")
-
-    # Capture dotted tokens first
     dotted = re.findall(r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+\b", expr2)
-
-    # Then capture plain identifiers
     plain = re.findall(r"\b[A-Za-z_]\w*\b", expr2)
-
-    # Filter out pieces of dotted from plain list (we want full dotted tokens)
     dotted_set = set(dotted)
-    plain_filtered = []
+    out: List[str] = []
+    for d in dotted:
+        if d.lower() not in _SV_KEYWORDS:
+            out.append(d)
     for p in plain:
         if p in dotted_set:
             continue
-        # ignore keywords
         if p.lower() in _SV_KEYWORDS:
             continue
-        plain_filtered.append(p)
-
-    # Also filter dotted components that are actually keywords (rare)
-    dotted_filtered = []
-    for d in dotted:
-        if d.lower() in _SV_KEYWORDS:
-            continue
-        dotted_filtered.append(d)
-
-    # Remove base literal artifacts that can look like identifiers (e.g. 'b0' won't match anyway)
-    out = dotted_filtered + plain_filtered
-
-    # De-dup but preserve order
+        out.append(p)
     seen = set()
     uniq = []
     for x in out:
@@ -669,34 +763,11 @@ def _extract_dotted_and_plain_identifiers(expr: str) -> List[str]:
             seen.add(x)
     return uniq
 
-
-def _base_port(tok: str) -> str:
-    # req_port_o.data_req -> req_port_o
-    return tok.split(".", 1)[0] if tok else tok
-
-
 def _detect_nested_temporal(post: str) -> bool:
-    """
-    Jasper error you hit was from something like:
-      ##[1:$] (wr_en && ##[1:$] rd_en)
-    i.e., multiple '##' tokens inside a single post field.
-    We flag that as invalid.
-    """
-    if not post:
-        return False
-    return post.count("##") > 1
-
+    return bool(post) and post.count("##") > 1
 
 def validate_csv_text(csv_text: str, allowed_ports: List[str]) -> Dict[str, Any]:
-    """
-    Validate:
-      1) pre/post signal identifiers reference ONLY valid base ports
-      2) signals column matches used base ports (space separated)
-      3) post does not contain nested temporal operators
-      4) correct column count
-    """
     allowed_set = set(allowed_ports)
-
     report: Dict[str, Any] = {
         "ok": True,
         "errors": [],
@@ -713,14 +784,12 @@ def validate_csv_text(csv_text: str, allowed_ports: List[str]) -> Dict[str, Any]
         report["errors"].append("empty_csv")
         return report
 
-    # Header check
     hdr = lines[0].strip().lower().replace(" ", "")
     expected = ",".join(CSV_HEADER).lower().replace(" ", "")
     if hdr != expected:
         report["ok"] = False
         report["errors"].append("bad_header")
 
-    # Validate rows
     for idx in range(1, len(lines)):
         line_no = idx + 1
         cols = _split_csv_line(lines[idx])
@@ -731,65 +800,104 @@ def validate_csv_text(csv_text: str, allowed_ports: List[str]) -> Dict[str, Any]
 
         row = dict(zip(CSV_HEADER, cols))
         sid = row.get("sid", "").strip()
-
         pre = row.get("pre", "").strip()
         post = row.get("post", "").strip()
         sigs_col = row.get("signals", "").strip()
 
-        # nested temporal check
         if _detect_nested_temporal(post):
             report["ok"] = False
             report["nested_temporal"].append({"line": line_no, "sid": sid, "post": post})
 
         used = _extract_dotted_and_plain_identifiers(pre) + _extract_dotted_and_plain_identifiers(post)
-        used_base_ports = []
-        invalid = []
 
+        used_base = []
+        invalid = []
         for u in used:
-            # skip if it is clearly a local macro-ish keyword (unlikely)
-            if u.lower() in _SV_KEYWORDS:
-                continue
             base = _base_port(u)
-            # Filter out accidental captures that are actually language tokens
             if base.lower() in _SV_KEYWORDS:
                 continue
-            # Allow only if base is a real port
             if base not in allowed_set:
                 invalid.append(u)
             else:
-                used_base_ports.append(base)
+                used_base.append(base)
 
         if invalid:
             report["ok"] = False
-            report["invalid_identifiers"].append(
-                {"line": line_no, "sid": sid, "invalid": sorted(set(invalid)), "pre": pre, "post": post}
-            )
+            report["invalid_identifiers"].append({"line": line_no, "sid": sid, "invalid": sorted(set(invalid)), "pre": pre, "post": post})
 
-        # signals column match check (base ports)
-        sigs_list = [s for s in sigs_col.split() if s]
-        sigs_set = set(sigs_list)
-        used_set = set(used_base_ports)
-
-        # If expressions use no ports (e.g., "1"), we accept empty signals, but prompt expects correctness.
-        # We'll be conservative: if used_set is empty, don't flag mismatch.
+        used_set = set(used_base)
         if used_set:
+            sigs_set = set([s for s in sigs_col.split() if s])
             if sigs_set != used_set:
                 report["ok"] = False
-                report["signals_column_mismatches"].append(
-                    {
-                        "line": line_no,
-                        "sid": sid,
-                        "expected": " ".join(sorted(used_set)),
-                        "got": sigs_col,
-                        "used_in_expr": sorted(used_set),
-                    }
-                )
+                report["signals_column_mismatches"].append({"line": line_no, "sid": sid, "expected": " ".join(sorted(used_set)), "got": sigs_col})
 
     return report
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Builder
+# Scope discovery (find instance paths for a module definition)
+# ──────────────────────────────────────────────────────────────────────────────
+def find_instance_paths(ast: Dict[str, Any], target_module: str) -> List[str]:
+    paths: List[str] = []
+
+    def match_def(defn: str) -> bool:
+        if not defn:
+            return False
+        return defn.endswith("." + target_module) or defn.endswith("work." + target_module) or defn.endswith("::" + target_module)
+
+    def walk(n: Any, stack: List[str]) -> None:
+        if n is None or _is_invalid_node(n):
+            return
+        if isinstance(n, list):
+            for it in n:
+                walk(it, stack)
+            return
+        if not isinstance(n, dict):
+            return
+
+        if n.get("kind") == "Instance":
+            inst_name = n.get("name") or ""
+            body = n.get("body") or {}
+            defn = body.get("definition") if isinstance(body, dict) else ""
+            new_stack = stack + [inst_name] if inst_name else stack
+
+            if match_def(defn):
+                paths.append(".".join(new_stack))
+
+            # descend into instance body
+            if isinstance(body, dict):
+                walk(body.get("members") or [], new_stack)
+
+            # also recurse other content
+            for v in n.values():
+                if v is body:
+                    continue
+                walk(v, new_stack)
+            return
+
+        for v in n.values():
+            walk(v, stack)
+
+    # Try common roots
+    if ast.get("kind") == "Instance":
+        walk(ast, [])
+    else:
+        design = ast.get("design") or {}
+        walk(design.get("members") or [], [])
+
+    # de-dupe keep order
+    seen = set()
+    uniq = []
+    for p in paths:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SpecBuilder
 # ──────────────────────────────────────────────────────────────────────────────
 class SpecBuilder:
     def __init__(
@@ -804,24 +912,40 @@ class SpecBuilder:
         disable_analysis: bool = True,
         design_top: Optional[str] = None,
         filelist: Optional[Path] = None,
+        scope_path: Optional[str] = None,
+        discover_scope_module: Optional[str] = None,
+        discover_only: bool = False,
     ):
         self.slang_bin = slang_bin
         self.rtl_dir = rtl_dir
-        self.top = top
-        self.design_top = design_top or top
+        self.top = top                      # spec target module name (load_unit)
+        self.design_top = design_top or top # design top (cva6)
         self.out_dir = out_dir
         self.llm_conf = llm_conf
         self.include_dirs = include_dirs or []
         self.defines = defines or []
         self.disable_analysis = disable_analysis
         self.filelist = filelist
+        self.scope_path = scope_path
+        self.discover_scope_module = discover_scope_module
+        self.discover_only = discover_only
 
         _ensure_dir(self.out_dir)
 
-        self.out_json = self.out_dir / f'{self.top}_ast.json'
+        # AST output (scoped vs full)
+        self.out_json = self.out_dir / (f"{self.top}_scoped_ast.json" if self.scope_path else f"{self.top}_ast.json")
+        self.full_ast_json = self.out_dir / f"{self.design_top}_full_ast.json"
+
+        # primary outputs
         self.out_md = self.out_dir / f'{self.top}_spec.md'
         self.out_csv = self.out_dir / f'{self.top}_spec.csv'
         self.logic_snap = self.out_dir / f'{self.top}_logic_blocks.json'
+
+        # IR outputs
+        self.ports_json = self.out_dir / f"{self.top}_ports.json"
+        self.assignments_jsonl = self.out_dir / f"{self.top}_assignments.jsonl"
+        self.io_relations_json = self.out_dir / f"{self.top}_io_relations.json"
+        self.io_influence_csv = self.out_dir / f"{self.top}_io_influence.csv"
 
         if not self.llm_conf.exists():
             console.print(f'[red]❌ LLM config not found: {self.llm_conf}[/red]')
@@ -832,168 +956,15 @@ class SpecBuilder:
         self.tmpl = LLM_template(str(self.llm_conf))
         self.template_dict = getattr(self.tmpl, 'template_dict', {}) or {}
 
+        # Required prompts in your YAML
         for req in ('doc_sections', 'fsm_specification', 'sva_row_list_csv'):
             if not (self.template_dict.get('default', {}).get(req)):
                 console.print(f"[red]❌ Required prompt '{req}' missing in: {self.llm_conf}[/red]")
                 raise SystemExit(2)
 
-        # clock/reset (from design top)
+        # clock/reset from design top
         self.clk, self.rst, self.rst_expr = detect_clk_rst_for_top(self.rtl_dir, self.design_top)
 
-    # ──────────────────────────────────────────────────────────────────────
-    # RTL collection & Slang
-    # ──────────────────────────────────────────────────────────────────────
-    def _collect_rtl_files(self) -> List[Path]:
-        try:
-            from hagent.tool.utils.hdl_utils import find_sv_files  # type: ignore[attr-defined]
-            files = find_sv_files(self.rtl_dir, skip_dirs=set())
-            return sorted([Path(f) for f in files])
-        except Exception as e:  # pragma: no cover
-            console.print(f'[yellow]⚠ find_sv_files failed; falling back. ({e})[/yellow]')
-            return [p for p in self.rtl_dir.rglob('*') if p.suffix in SV_SUFFIXES]
-
-    def _files_from_filelist(self) -> List[Path]:
-        if self.filelist is None:
-            return []
-        fl = self.filelist
-        if not fl.exists():
-            console.print(f'[red]❌ Filelist not found: {fl}[/red]')
-            raise SystemExit(2)
-
-        console.print(f'[cyan]• Using HDL filelist:[/cyan] {fl}')
-
-        visited: Set[Path] = set()
-        files, incs, defs = _parse_filelist(
-            filelist_path=fl.resolve(),
-            rtl_dir=self.rtl_dir.resolve(),
-            include_dirs=list(self.include_dirs),
-            defines=list(self.defines),
-            visited=visited,
-        )
-
-        def _uniq_paths(xs: List[Path]) -> List[Path]:
-            out: List[Path] = []
-            seen = set()
-            for p in xs:
-                rp = str(p.resolve())
-                if rp not in seen:
-                    out.append(p)
-                    seen.add(rp)
-            return out
-
-        def _uniq_strs(xs: List[str]) -> List[str]:
-            out: List[str] = []
-            seen = set()
-            for s in xs:
-                if s not in seen:
-                    out.append(s)
-                    seen.add(s)
-            return out
-
-        self.include_dirs = _uniq_paths(incs)
-        self.defines = _uniq_strs(defs)
-
-        if not files:
-            console.print(f'[red]❌ No valid RTL files found in filelist after parsing: {fl}[/red]')
-            raise SystemExit(2)
-
-        console.print(f'[green]✔ Filelist parsed RTL files:[/green] {len(files)}')
-        if self.include_dirs:
-            console.print(f'[green]✔ Filelist include dirs:[/green] {len(self.include_dirs)}')
-        if self.defines:
-            console.print(f'[green]✔ Filelist defines:[/green] {len(self.defines)}')
-
-        return files
-
-    def _resolve_required(self, all_rtl: List[Path]) -> List[Path]:
-        try:
-            from hagent.tool.utils.hdl_utils import (  # type: ignore[attr-defined]
-                index_modules_packages,
-                compute_transitive_closure,
-            )
-            modules, packages = index_modules_packages(all_rtl)
-            root_top = self.design_top or self.top
-            if root_top not in modules:
-                console.print(f"[red]❌ Design top '{root_top}' not found in RTL files (spec top = '{self.top}').[/red]")
-                raise SystemExit(2)
-
-            files_out, incdirs, _reachable = compute_transitive_closure(
-                root_top, modules, packages, self.rtl_dir, self.include_dirs
-            )
-            self._incdirs_resolved = incdirs
-            return files_out
-        except Exception as e:  # pragma: no cover
-            console.print(f'[yellow]⚠ compute_transitive_closure failed; falling back. ({e})[/yellow]')
-            return all_rtl
-
-    def _run_slang(self, req_files: List[Path]) -> None:
-        cmd = [
-            str(self.slang_bin),
-            '--top',
-            self.top,
-            '--ast-json',
-            str(self.out_json),
-            '--ast-json-source-info',
-            '--ignore-unknown-modules',
-            '--allow-use-before-declare',
-            '--diag-abs-paths',
-        ]
-        if self.disable_analysis:
-            cmd.append('--disable-analysis')
-        for inc in self.include_dirs:
-            cmd += ['-I', str(inc)]
-        for d in self.defines:
-            cmd.append(f'--define={d}')
-        cmd += [str(f) for f in req_files]
-
-        console.print('[cyan]• Running Slang to emit AST JSON[/cyan]')
-        console.print('  ' + ' '.join(cmd))
-        res = subprocess.run(cmd)
-        if res.returncode != 0 or not self.out_json.exists():
-            console.print(f'[red]❌ Slang failed (code={res.returncode}); AST not produced: {self.out_json}[/red]')
-        else:
-            console.print(f'[green]✔ AST written:[/green] {self.out_json}')
-
-    # ──────────────────────────────────────────────────────────────────────
-    # AST reading and top node search
-    # ──────────────────────────────────────────────────────────────────────
-    def _read_ast(self) -> Dict[str, Any]:
-        return json.loads(self.out_json.read_text(encoding='utf-8'))
-
-    def _find_top_module(self, ast: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        def rec(node):
-            if isinstance(node, dict):
-                if node.get('kind') == 'Module' and node.get('name') == self.top:
-                    return node
-                if node.get('kind') == 'Instance' and node.get('name') == self.top:
-                    return node.get('body')
-                for v in node.values():
-                    r = rec(v)
-                    if r:
-                        return r
-            elif isinstance(node, list):
-                for it in node:
-                    r = rec(it)
-                    if r:
-                        return r
-            return None
-
-        return rec(ast.get('design', {}).get('members', []))
-
-    # ──────────────────────────────────────────────────────────────────────
-    # File code extraction
-    # ──────────────────────────────────────────────────────────────────────
-    @staticmethod
-    def _extract_rtl(path: str, ls: int, le: int) -> str:
-        try:
-            lines = Path(path).read_text(encoding='utf-8', errors='ignore').splitlines()
-            return '\n'.join(lines[max(0, ls - 1) : max(0, le)])
-        except Exception as e:  # pragma: no cover
-            return f'// Error extracting RTL: {e}'
-
-    # ──────────────────────────────────────────────────────────────────────
-    # LLM call (guarded)
-    # ──────────────────────────────────────────────────────────────────────
     def _llm(self, prompt_index: str, payload: dict) -> str:
         try:
             out = self.llm.inference(payload, prompt_index=prompt_index, n=1)
@@ -1007,111 +978,246 @@ class SpecBuilder:
                 except Exception:
                     return ''
             return ''
-        except Exception as e:  # pragma: no cover
+        except Exception as e:
             console.print(f"[red]❌ LLM '{prompt_index}' failed: {e}[/red]")
             return ''
 
-    # ──────────────────────────────────────────────────────────────────────
-    # NEW: CSV repair loop using LLM
-    # ──────────────────────────────────────────────────────────────────────
     def _repair_csv_with_llm(self, csv_text: str, allowed_ports: List[str], report: Dict[str, Any]) -> str:
-        """
-        Uses prompt_index='csv_repair' if it exists in YAML.
-        If not present, returns original csv_text unchanged.
-        """
         if not self.template_dict.get('default', {}).get('csv_repair'):
-            console.print("[yellow]⚠ No 'csv_repair' prompt found in spec_prompt.yaml; cannot LLM-repair CSV.[/yellow]")
+            console.print("[yellow]⚠ No 'csv_repair' prompt found in YAML; cannot repair CSV.[/yellow]")
             return csv_text
-
         payload = {
             "top_module": self.top,
             "allowed_ports_json": json.dumps(allowed_ports, ensure_ascii=False),
             "csv_text": csv_text,
             "validation_json": json.dumps(report, ensure_ascii=False),
-            "rules_json": json.dumps(
-                {
-                    "header": ",".join(CSV_HEADER),
-                    "allowed_sva_funcs": sorted(_ALLOWED_SVA_FUNCS),
-                    "allow_field_select": True,
-                    "no_nested_temporal": True,
-                    "signals_column_base_ports": True,
-                },
-                ensure_ascii=False,
-            ),
         }
         fixed = self._llm("csv_repair", payload)
-        fixed = _ensure_csv_header(_strip_code_fences(fixed))
-        return fixed
+        return _ensure_csv_header(_strip_code_fences(fixed))
 
-    # ──────────────────────────────────────────────────────────────────────
-    # Build context and generate artifacts
-    # ──────────────────────────────────────────────────────────────────────
-    def run(self) -> None:
-        if self.filelist is not None:
-            req_files = self._files_from_filelist()
+    def _read_json(self, p: Path) -> Dict[str, Any]:
+        return json.loads(p.read_text(encoding="utf-8"))
+
+    def _run_slang(self, out_json: Path, full: bool) -> None:
+        """
+        If full=True: build full AST for design_top (no scope)
+        Else: if scope_path is set, build scoped AST for design_top + scope_path
+        """
+        top_for_slang = self.design_top if (full or self.scope_path) else self.top
+
+        cmd = [
+            str(self.slang_bin),
+            "--top", str(top_for_slang),
+            "--ast-json", str(out_json),
+            "--ast-json-source-info",
+            "--ignore-unknown-modules",
+            "--allow-use-before-declare",
+            "--diag-abs-paths",
+        ]
+        if self.disable_analysis:
+            cmd.append("--disable-analysis")
+
+        if (not full) and self.scope_path:
+            cmd += ["--ast-json-scope", self.scope_path]
+
+        for inc in self.include_dirs:
+            cmd += ["-I", str(inc)]
+        for d in self.defines:
+            cmd.append(f"--define={d}")
+
+        if self.filelist:
+            cmd += ["-f", str(self.filelist)]
         else:
-            console.print('[cyan]• Collecting RTL files[/cyan]')
-            all_rtl = self._collect_rtl_files()
-            if not all_rtl:
-                console.print(f'[red]❌ No RTL files found under: {self.rtl_dir}[/red]')
+            # fallback: enumerate RTL files
+            files = []
+            for p in self.rtl_dir.rglob("*"):
+                if p.suffix.lower() in SV_SUFFIXES and p.is_file():
+                    files.append(p)
+            if not files:
+                console.print(f"[red]❌ No RTL files found under: {self.rtl_dir}[/red]")
                 raise SystemExit(2)
-            req_files = self._resolve_required(all_rtl)
+            cmd += [str(f) for f in sorted(files)]
 
-        console.print(f'[green]✔ Required files for Slang:[/green] {len(req_files)}')
+        console.print("[cyan]• Running Slang to emit AST JSON[/cyan]")
+        console.print("  " + " ".join(cmd))
+        res = subprocess.run(cmd)
+        if res.returncode != 0 or not out_json.exists():
+            console.print(f"[red]❌ Slang failed (code={res.returncode}); AST not produced: {out_json}[/red]")
+            raise SystemExit(2)
+        console.print(f"[green]✔ AST written:[/green] {out_json}")
 
-        self._run_slang(req_files)
+    def _get_scoped_body(self, ast: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
+        """
+        In scoped runs, Slang often returns:
+          - root.kind == "Instance"  -> body is InstanceBody of the scoped instance
+        In other runs, it may wrap under design.members.
+        """
+        if isinstance(ast, dict) and ast.get("kind") == "Instance":
+            body = ast.get("body") or {}
+            inst = ast.get("name") or self.top
+            if not isinstance(body, dict):
+                raise SystemExit(2)
+            return body, inst
 
-        ast = self._read_ast()
-        top_ast = self._find_top_module(ast)
-        if not top_ast:
-            console.print(f"[red]❌ Spec top module '{self.top}' not found in AST.[/red]")
+        # fallback: search for instance whose definition matches target module
+        design = ast.get("design") or {}
+        members = design.get("members") or []
+        found_body = None
+        found_name = self.top
+
+        def rec(n: Any) -> None:
+            nonlocal found_body, found_name
+            if found_body is not None:
+                return
+            if n is None or _is_invalid_node(n):
+                return
+            if isinstance(n, list):
+                for it in n:
+                    rec(it)
+                return
+            if not isinstance(n, dict):
+                return
+            if n.get("kind") == "Instance":
+                b = n.get("body") or {}
+                defn = b.get("definition") if isinstance(b, dict) else ""
+                if defn and (defn.endswith("." + self.top) or defn.endswith("work." + self.top) or defn.endswith("::" + self.top)):
+                    found_body = b
+                    found_name = n.get("name") or self.top
+                    return
+                if isinstance(b, dict):
+                    rec(b.get("members") or [])
+            for v in n.values():
+                rec(v)
+
+        rec(members)
+        if found_body is None:
+            console.print(f"[red]❌ Could not locate target '{self.top}' in AST. Provide --scope-path or use discovery.[/red]")
+            raise SystemExit(2)
+        return found_body, found_name
+
+    def _write_ir_outputs(self, ports: List[Dict[str, str]], assigns: List[AssignRecord], io_rel: Dict[str, Any]) -> None:
+        _write_json(self.ports_json, ports)
+        console.print(f"[green]✔ ports.json:[/green] {self.ports_json}")
+
+        _write_jsonl(self.assignments_jsonl, [
+            {
+                "assign_id": a.assign_id,
+                "kind": a.kind,
+                "proc_kind": a.proc_kind,
+                "lhs": a.lhs_text,
+                "rhs": a.rhs_text,
+                "defs": a.defs,
+                "uses": a.uses,
+                "guards": a.guards,
+                "block_path": a.block_path,
+                "src_file": a.src_file,
+                "src_ls": a.src_ls,
+                "src_le": a.src_le,
+            }
+            for a in assigns
+        ])
+        console.print(f"[green]✔ assignments.jsonl:[/green] {self.assignments_jsonl}")
+
+        _write_json(self.io_relations_json, io_rel)
+        console.print(f"[green]✔ io_relations.json:[/green] {self.io_relations_json}")
+
+        # io influence CSV (flatten per_output_influences)
+        with self.io_influence_csv.open("w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["output", "inputs", "guards", "effect", "block_kind", "src"])
+            for r in (io_rel.get("relationships", {}).get("per_output_influences") or []):
+                w.writerow([
+                    r.get("output",""),
+                    " ".join(r.get("inputs") or []),
+                    r.get("guards",""),
+                    r.get("effect",""),
+                    r.get("block_kind",""),
+                    r.get("src",""),
+                ])
+        console.print(f"[green]✔ io_influence.csv:[/green] {self.io_influence_csv}")
+
+    def run(self) -> None:
+        # 0) optional scope discovery
+        if self.discover_scope_module:
+            console.print(f"[cyan]• Discovering scope paths for module:[/cyan] {self.discover_scope_module}")
+            self._run_slang(self.full_ast_json, full=True)
+            full_ast = self._read_json(self.full_ast_json)
+            paths = find_instance_paths(full_ast, self.discover_scope_module)
+            if not paths:
+                console.print(f"[red]❌ No instance paths found for module '{self.discover_scope_module}'.[/red]")
+                raise SystemExit(2)
+            console.print("[green]✔ Found scope paths:[/green]")
+            for p in paths:
+                console.print("  " + p)
+            if self.discover_only:
+                return
+            if not self.scope_path:
+                self.scope_path = paths[0]
+                console.print(f"[cyan]• Auto-selected scope:[/cyan] {self.scope_path}")
+
+            # update output filename for scoped ast
+            self.out_json = self.out_dir / f"{self.top}_scoped_ast.json"
+
+        # 1) produce scoped (or unscoped) AST
+        self._run_slang(self.out_json, full=False)
+
+        # 2) parse target body
+        ast = self._read_json(self.out_json)
+        body, inst_name = self._get_scoped_body(ast)
+
+        # 3) extract ports/params/logic/fsms/assignments
+        ports = extract_ports_from_body(body)
+        if not ports:
+            console.print("[red]❌ No ports extracted. Check --scope-path (or discovery results).[/red]")
             raise SystemExit(2)
 
-        ports = extract_ports_from_ast(top_ast)
-        params = extract_parameters_from_ast(top_ast)
-        fsms = parse_case_blocks(top_ast, self._extract_rtl)
-        logic = extract_logic_blocks(top_ast, self._extract_rtl)
+        params = extract_parameters_from_body(body)
+        assigns = extract_assignments_with_guards(body)
+        logic = extract_logic_blocks(body)
+        fsms = parse_case_blocks(body)
 
         _write_json(self.logic_snap, logic)
-        console.print(f'[green]✔ Logic snapshot:[/green] {self.logic_snap}')
+        console.print(f"[green]✔ logic_blocks.json:[/green] {self.logic_snap}")
 
-        def fsm_summary(b):
-            return {
-                'expr_symbol': b.get('expr_symbol') or 'state',
-                'source': os.path.basename(b.get('source_file') or ''),
-                'line_start': b.get('line_start'),
-                'line_end': b.get('line_end'),
-                'rtl_excerpt': (b.get('rtl_code') or '')[:4000],
-            }
+        io_relations = build_io_relations(ports, assigns, max_depth=6)
+        self._write_ir_outputs(ports, assigns, io_relations)
 
-        allowed_ports = [p['name'] for p in ports]  # base ports only
+        allowed_ports = [p["name"] for p in ports]
 
-        ctx = {
-            'top_module': self.top,
-            'design_top': self.design_top,
-            'clock': self.clk,
-            'reset': self.rst,
-            'reset_expr': self.rst_expr,
-            'ports': ports,
-            'params': params,
-            'fsms': [fsm_summary(b) for b in fsms],
-            'logic_blocks': logic[:200],
-            'csv_head': CSV_HEADER,
-            'allowed_signals': allowed_ports,
-            'notes': [
-                "CSV pre/post may ONLY reference RTL IO ports from allowed_signals.",
-                "Field-selects are permitted ONLY if the base port exists (e.g., req_port_o.data_req).",
-                "signals column must list BASE PORTS only, space-separated, matching ports used in pre/post.",
-                "post must NOT contain nested temporal operators (no more than one '##' token).",
-                f"Allowed $functions: {', '.join(sorted(_ALLOWED_SVA_FUNCS))}",
-            ],
+        # 4) prepare LLM context JSON (MATCHES YOUR PROMPT KEYS)
+        fsm_summaries: List[Dict[str, Any]] = []
+        for b in fsms:
+            rtl = ""
+            if b["source_file"] and b["line_start"] and b["line_end"]:
+                rtl = _extract_rtl_excerpt(b["source_file"], int(b["line_start"]), int(b["line_end"]), max_chars=4000)
+            fsm_summaries.append({
+                "expr_symbol": b["expr_symbol"],
+                "source": _basename(b["source_file"]),
+                "line_start": b["line_start"],
+                "line_end": b["line_end"],
+                "rtl_excerpt": rtl,
+            })
+
+        context = {
+            "top_module": self.top,
+            "design_top": self.design_top,
+            "instance_name": inst_name,
+            "scope_path": self.scope_path or "",
+            "clock": self.clk,
+            "reset": self.rst,
+            "reset_expr": self.rst_expr,
+            "ports": ports,
+            "allowed_signals": allowed_ports,
+            "params": params,
+            "io_relations": io_relations,     # <-- your sva_row_list_csv expects this
+            "fsms": fsm_summaries,
+            "logic_blocks": logic[:200],
         }
 
-        # 5) Generate Markdown
+        # 5) Markdown generation
         md_parts: List[str] = []
-
         console.print('[cyan]• LLM: doc_sections[/cyan]')
-        md_doc = self._llm('doc_sections', {'context_json': json.dumps(ctx, ensure_ascii=False)})
+        md_doc = self._llm('doc_sections', {'context_json': json.dumps(context, ensure_ascii=False)})
         if md_doc.strip():
             md_parts.append(md_doc.strip())
 
@@ -1129,12 +1235,12 @@ class SpecBuilder:
 
         if fsms:
             md_parts.append(f'## FSM Specification for Module: {self.top}\n')
-            for blk in fsms:
+            for blk in fsm_summaries:
                 console.print(f'[cyan]• LLM: fsm_specification ({blk.get("expr_symbol")})[/cyan]')
                 fsm_json = {
                     'module': self.top,
                     'expr_symbol': blk.get('expr_symbol') or 'state',
-                    'source_file': os.path.basename(blk.get('source_file') or ''),
+                    'source_file': blk.get('source'),
                     'line_start': blk.get('line_start'),
                     'line_end': blk.get('line_end'),
                     'states': [],
@@ -1145,53 +1251,43 @@ class SpecBuilder:
                     {
                         'module_name': self.top,
                         'fsm_json': json.dumps(fsm_json, ensure_ascii=False),
-                        'rtl_code': blk.get('rtl_code') or '',
+                        'rtl_code': blk.get('rtl_excerpt') or '',
                     },
                 )
                 if md_fsm.strip():
                     md_parts.append(md_fsm.strip())
 
-        md_text = '\n\n'.join([p for p in md_parts if p.strip()]) or f'## FSM Specification for Module: {self.top}\n'
+        md_text = '\n\n'.join([p for p in md_parts if p.strip()]) or f'## Spec for Module: {self.top}\n'
         _write_text(self.out_md, md_text)
         console.print(f'[green]✔ Spec Markdown:[/green] {self.out_md}')
 
-        # 7) Generate CSV via LLM
+        # 6) CSV generation + validate + repair
         console.print('[cyan]• LLM: sva_row_list_csv[/cyan]')
-        csv_raw = self._llm('sva_row_list_csv', {'context_json': json.dumps(ctx, ensure_ascii=False)}).strip()
+        csv_raw = self._llm('sva_row_list_csv', {'context_json': json.dumps(context, ensure_ascii=False)}).strip()
         csv_raw = _ensure_csv_header(_strip_code_fences(csv_raw))
-
         if not csv_raw.strip():
             console.print('[red]❌ LLM produced empty CSV text.[/red]')
             raise SystemExit(2)
 
-        # NEW: validate + repair loop
         report = validate_csv_text(csv_raw, allowed_ports)
         report_path = self.out_dir / f"{self.top}_spec.csv.validation.json"
         _write_json(report_path, report)
 
         if not report.get("ok", False):
             console.print("[yellow]⚠ CSV validation failed. Attempting repair...[/yellow]")
-            console.print(f"  invalid_identifiers rows: {len(report.get('invalid_identifiers', []))}")
-            console.print(f"  signals_column_mismatches: {len(report.get('signals_column_mismatches', []))}")
-            console.print(f"  bad_rows: {len(report.get('bad_rows', []))}")
-            console.print(f"  nested_temporal: {len(report.get('nested_temporal', []))}")
-
             broken_path = self.out_dir / f"{self.top}_spec.csv.broken"
             _write_text(broken_path, csv_raw)
 
             repaired = csv_raw
-            max_attempts = 2
-            for attempt in range(1, max_attempts + 1):
+            for attempt in range(1, 3):
                 repaired = self._repair_csv_with_llm(repaired, allowed_ports, report)
-                repaired = _ensure_csv_header(_strip_code_fences(repaired))
                 report = validate_csv_text(repaired, allowed_ports)
                 _write_json(report_path, report)
                 if report.get("ok", False):
-                    console.print(f"[green]✔ CSV repaired on attempt {attempt}.[/green] Broken backup saved to: {broken_path}")
+                    console.print(f"[green]✔ CSV repaired on attempt {attempt}.[/green] Broken backup: {broken_path}")
                     csv_raw = repaired
                     break
-                else:
-                    console.print(f"[yellow]⚠ Repair attempt {attempt} still invalid.[/yellow]")
+                console.print(f"[yellow]⚠ Repair attempt {attempt} still invalid.[/yellow]")
 
             if not report.get("ok", False):
                 _write_text(self.out_csv, repaired)
@@ -1202,49 +1298,3 @@ class SpecBuilder:
         _write_text(self.out_csv, csv_raw)
         console.print(f'[green]✔ CSV spec:[/green] {self.out_csv}')
         console.print('[bold green]✅ SPEC BUILDER COMPLETED[/bold green]')
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# CLI
-# ──────────────────────────────────────────────────────────────────────────────
-def _parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description='LLM-driven RTL Spec Builder (Markdown + CSV)')
-    p.add_argument('--slang', required=True, help='Path to slang binary')
-    p.add_argument('--rtl', required=True, help='RTL directory')
-    p.add_argument('--top', required=True, help='Spec top module name')
-    p.add_argument('--design-top', help='Design top module name (defaults to --top)')
-    p.add_argument('--out', required=True, help='Output directory')
-    p.add_argument('--llm-conf', required=True, help='YAML prompt config (spec_prompt.yaml)')
-    p.add_argument('--include', action='append', default=[], help='Additional include dirs (-I)')
-    p.add_argument('--define', action='append', default=[], help='Slang defines (e.g., FOO=1)')
-    p.add_argument('--filelist', help='Optional HDL filelist. If provided, discovery is skipped.')
-    p.add_argument('--no-disable-analysis', action='store_true', help='Enable Slang analysis (default: disabled)')
-    return p.parse_args()
-
-
-def main() -> int:
-    args = _parse_args()
-    try:
-        builder = SpecBuilder(
-            slang_bin=Path(args.slang).resolve(),
-            rtl_dir=Path(args.rtl).resolve(),
-            top=args.top,
-            design_top=args.design_top,
-            out_dir=Path(args.out).resolve(),
-            llm_conf=Path(args.llm_conf).resolve(),
-            include_dirs=[Path(d).resolve() for d in (args.include or [])],
-            defines=args.define or [],
-            disable_analysis=not args.no_disable_analysis,
-            filelist=Path(args.filelist).resolve() if args.filelist else None,
-        )
-        builder.run()
-        return 0
-    except SystemExit as se:
-        return int(se.code) if isinstance(se.code, int) else 2
-    except Exception as e:
-        console.print(f'[red]❌ Unhandled error: {e}[/red]')
-        return 2
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())
