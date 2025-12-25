@@ -843,10 +843,10 @@ def run_postcheck_if_requested(
         return 2
 
     try:
-        from hagent.tool.cli_postcheck_repair import run_postcheck_repair  # type: ignore
+        from hagent.tool.jg_postcheck_repair import run_postcheck_repair  # type: ignore
     except Exception as e:
         console.print("[red]✖ Post-check module import failed.[/red]")
-        console.print("    Expected: [bold]hagent.tool.cli_postcheck_repair[/bold] with run_postcheck_repair()")
+        console.print("    Expected: [bold]hagent.tool.jg_postcheck_repair[/bold] with run_postcheck_repair()")
         console.print(f"    Import error: {e}")
         return 2
 
