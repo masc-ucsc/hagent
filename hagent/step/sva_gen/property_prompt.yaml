@@ -7,7 +7,7 @@ default:
   sva_property_block:
     - role: system
       content: |
-        You generate exactly ONE SVA property for ONE CSV row.
+        You generate exactly ONE SystemVerilog property/cover directive for ONE CSV row.
 
         Inputs:
         - clock signal name: {clock}
@@ -25,66 +25,70 @@ default:
         =========================================================
 
         C0) Use ONLY allowed ports:
-            - In the final property expressions, every identifier MUST be either:
-              * a SystemVerilog built-in keyword/operator, OR
+            - Every identifier in any expression MUST be either:
+              * a SystemVerilog keyword/operator, OR
               * a system function ($rose, $fell, $stable, $changed, $past), OR
               * exactly one of the names in {allowed_signals}.
             - NEVER invent identifiers like "logic", "tmp", "sig", "state", etc.
             - NEVER use type casts like logic'(1'b1) or any cast syntax.
 
-        C1) Seed pre/post must be preserved when valid:
-            - If {pre} is non-empty and contains ONLY allowed identifiers + SV operators/functions,
-              then <FINAL_PRE> MUST equal {pre} OR a strengthening of it using && (and ONLY &&).
-            - If {post} is non-empty and contains ONLY allowed identifiers + SV operators/functions,
-              then <FINAL_POST> MUST equal {post} OR a strengthening/refinement of it.
-            - DO NOT replace a valid non-empty {pre} or {post} with 1'b1 or any placeholder.
+        C1) Implication-free pre/post:
+            - <FINAL_PRE> must NOT contain "|->" or "|=>".
+            - <FINAL_POST> must NOT contain "|->" or "|=>".
+            - If a seed contains an implication (e.g. seed post = "A |-> B"),
+              REPAIR it by moving "A" into <FINAL_PRE> using &&, and setting <FINAL_POST> to "B".
 
-        C2) No nested implications / no useless tautologies:
-            - <FINAL_PRE> must NOT contain "|->" or "|=>" inside it.
-            - <FINAL_POST> must NOT contain "|->" or "|=>" inside it.
+        C2) Seed preservation when valid:
+            - If seed {pre} is non-empty and does NOT contain any implication and contains ONLY allowed identifiers,
+              then <FINAL_PRE> MUST equal {pre} OR a strengthening using && only.
+            - If seed {post} is non-empty and does NOT contain any implication and contains ONLY allowed identifiers,
+              then <FINAL_POST> MUST equal {post} OR a strengthening/refinement of it.
+            - DO NOT replace a valid non-empty {pre}/{post} with 1'b1 or placeholders.
+
+        C3) NO "1 |-> ..." when pre is missing:
+            - If seed {pre} is empty, "1", or "1'b1", treat pre as MISSING.
+            - When pre is MISSING, DO NOT emit an implication.
+              Instead, emit a standalone property expression: (<FINAL_POST>);
+            - For cover with missing pre, it is fine to emit: cover property(@(...) ... (<FINAL_POST>));
+
+        C4) Temporal operators / sequence legality:
+            - Do NOT wrap a seed post that already has temporal operators (##, ##[a:b], [*], [->], throughout).
+            - If <FINAL_POST> contains '##' and also contains boolean operators like '|', '||', '&', '&&',
+              rewrite them to sequence operators: 'or' and 'and' respectively, so the expression is legal SVA.
+
+        C5) No useless tautologies:
             - Do NOT emit:
-                * 1'b1 |-> 1'b1
-                * A |-> A  (same expression both sides)
+                * 1'b1;
+                * 1'b1 |-> 1'b1;
+                * A |-> A;
                 * X |-> 1'b1 when seed post is non-empty valid
                 * 1'b1 |-> X when seed pre is non-empty valid
 
-        C3) Temporal operators:
-            - If seed post already contains a delay or repetition (##, ##[a:b], [*], [->], etc),
-              KEEP it; do not wrap it into another temporal operator unless strictly necessary.
-            - Prefer standard SVA forms (##[1:$]) over nonstandard macros/operators.
-            - Do NOT use "s_eventually" or any PSL-only operator.
-
-        C4) Reset gating (must be consistent):
+        C6) Reset gating (must be consistent):
             - Always use: @(posedge {clock})
             - Determine "reset asserted" expression (RST_ASSERTED) by heuristic:
                 * If reset name contains "_n" or ends with "ni" or "_ni" or "_n_i": RST_ASSERTED = !{reset}
                 * else: RST_ASSERTED = {reset}
             - Use: disable iff (RST_ASSERTED)
-            - EXCEPTION: if the scenario is explicitly about reset behavior, you may still keep disable iff (RST_ASSERTED)
-              but ensure pre/post still make sense.
 
-        C5) Identifier whitelist self-check (do this mentally before output):
-            - Extract all identifiers you used in <FINAL_PRE> and <FINAL_POST>.
-            - If ANY is not in {allowed_signals} and not a $system function, then you MUST rewrite to remove it.
+        C7) Identifier whitelist self-check:
+            - If ANY identifier used is not in {allowed_signals} and not a $system function, rewrite to remove it.
 
         =========================================================
-        WHAT TO GENERATE
-        =========================================================
-        - Use the row intent (name/scenario) + spec summary only to DISAMBIGUATE,
-          but do not invent new signals.
-        - Most rows in this flow are direct translations: if seed pre/post are valid, keep them.
-
-        =========================================================
-        OUTPUT (exactly one SVA block, no extra text)
+        OUTPUT (exactly one block, no extra text)
         =========================================================
         ```systemverilog
         // {sid}: {name}
         property {name};
           @(posedge {clock}) disable iff (RST_ASSERTED)
-            <FINAL_PRE> |-> <FINAL_POST>;
+            <BODY_EXPR>;
         endproperty
         {ptype}_{name}: {ptype} property({name});
         ```
+
+        Where:
+          - If pre is NOT missing: <BODY_EXPR> must be "<FINAL_PRE> |-> <FINAL_POST>"
+          - If pre IS missing: <BODY_EXPR> must be "<FINAL_POST>" (no implication)
 
     - role: user
       content: |

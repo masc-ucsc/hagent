@@ -37,7 +37,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set, Iterable
-
+from io import StringIO
 # ──────────────────────────────────────────────────────────────────────────────
 # Optional rich console
 # ──────────────────────────────────────────────────────────────────────────────
@@ -734,27 +734,81 @@ def _ensure_csv_header(csv_text: str) -> str:
     return csv_text
 
 def _split_csv_line(line: str) -> List[str]:
-    return [c.strip() for c in line.rstrip("\n").split(",")]
+    # Robust CSV parsing (handles quoted commas properly)
+    r = csv.reader(StringIO(line), skipinitialspace=True)
+    return [c.strip() for c in next(r, [])]
+
+def _strip_sv_numeric_literals(expr: str) -> str:
+    """
+    Remove SystemVerilog numeric literals so tokenization doesn't treat parts like
+    b0/hFF as identifiers.
+
+    Examples removed:
+      1'b0, 8'hFF, 16'd10, 4'sb1010, 'hFF, '0, '1, 'x, 'z
+    """
+    if not expr:
+        return expr
+
+    s = expr
+
+    # Sized literals: 8'hFF, 1'b0, 16'd10, 4'sb1010, etc.
+    s = re.sub(
+        r"\b\d+\s*'\s*[sS]?[bBoOdDhH][0-9a-fA-FxXzZ_]+\b",
+        " ",
+        s,
+    )
+
+    # Unsized base literals: 'hFF, 'b0, 'd10, etc.
+    s = re.sub(
+        r"(?<!\w)'\s*[sS]?[bBoOdDhH][0-9a-fA-FxXzZ_]+\b",
+        " ",
+        s,
+    )
+
+    # Unsized 1-bit literals: '0, '1, 'x, 'z
+    s = re.sub(
+        r"(?<!\w)'\s*[01xXzZ]\b",
+        " ",
+        s,
+    )
+
+    return s
 
 def _extract_dotted_and_plain_identifiers(expr: str) -> List[str]:
     if not expr:
         return []
+
+    # Remove quoted strings first (don’t parse identifiers inside them)
     expr2 = re.sub(r"\"[^\"]*\"", " ", expr)
+
+    # --- KEY FIX: strip SV numeric literals so we don't see b0/hFF/etc as "signals"
+    expr2 = _strip_sv_numeric_literals(expr2)
+
+    # Remove allowed SVA funcs so we don't treat them as identifiers
     for fn in _ALLOWED_SVA_FUNCS:
         expr2 = expr2.replace(fn, " ")
+
+    # Dotted refs first (struct/member chains)
     dotted = re.findall(r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+\b", expr2)
+
+    # Plain identifiers
     plain = re.findall(r"\b[A-Za-z_]\w*\b", expr2)
+
     dotted_set = set(dotted)
     out: List[str] = []
+
     for d in dotted:
         if d.lower() not in _SV_KEYWORDS:
             out.append(d)
+
     for p in plain:
         if p in dotted_set:
             continue
         if p.lower() in _SV_KEYWORDS:
             continue
         out.append(p)
+
+    # de-dupe preserve order
     seen = set()
     uniq = []
     for x in out:

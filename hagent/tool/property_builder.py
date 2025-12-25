@@ -5,11 +5,15 @@ property_builder.py
 -------------------
 Generate SystemVerilog properties (assert/assume/cover) from a CSV spec.
 
-FIXES (Dec 2025):
+FIXES (Dec 2025, updated):
   - Use AST-derived ports JSON (<spec_top>_ports.json) if available (authoritative).
   - Correctly allow $rose/$fell/$stable/$changed/$past in identifier checks.
   - Prevent nested temporal operators: do NOT wrap a post that already contains '##' with another '##[1:$]'.
   - Avoid generating trivial (1'b1) properties for assume/assert unless explicitly intended (cover can use 1).
+  - **NEW:** Do NOT generate "1 |-> ..." when CSV pre is empty/1; emit the post as a standalone property expr.
+  - **NEW:** Repair broken CSV rows that embed implications inside post (e.g. "A |-> B") by moving A into pre.
+  - **NEW:** If post contains temporal (##) and boolean mix with |/&/||/&&, rewrite to sequence operators "or/and"
+           to avoid syntax errors like "!valid_i | ##1 !valid_i".
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ except Exception:
 # Helpers
 # -----------------------------------------------------------------------------
 _ALLOWED_SVA_FUNCS = {"$stable", "$changed", "$past", "$rose", "$fell"}
+_IMP_OPS = ("|->", "|=>")
 
 
 def _strip_sv_comments(s: str) -> str:
@@ -122,8 +127,6 @@ def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
             if not toks:
                 continue
 
-            # Heuristic: skip direction/type keywords
-            # (avoid returning 'logic' or 'input' etc.)
             blacklist = {
                 "input", "output", "inout",
                 "wire", "logic", "reg",
@@ -131,7 +134,6 @@ def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
                 "parameter", "localparam",
                 "typedef", "struct", "union", "enum",
             }
-            # choose last identifier that isn't blacklisted
             name = None
             for t in reversed(toks):
                 if t.lower() in blacklist:
@@ -145,6 +147,50 @@ def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
             return ports
 
     return []
+
+
+def _is_trivial_true(expr: str) -> bool:
+    e = (expr or "").strip()
+    return e in {"1", "1'b1", "1'b01", "1'h1"}  # keep small set; conservative
+
+
+def _split_first_implication(expr: str) -> Optional[Tuple[str, str, str]]:
+    """
+    Split "A |-> B" or "A |=> B" at the first occurrence.
+    Returns (ante, op, cons) or None.
+    """
+    if not expr:
+        return None
+    for op in _IMP_OPS:
+        idx = expr.find(op)
+        if idx >= 0:
+            ante = expr[:idx].strip()
+            cons = expr[idx + len(op):].strip()
+            return ante, op, cons
+    return None
+
+
+def _rewrite_temporal_mix_to_sequence_ops(post: str) -> str:
+    """
+    If post contains temporal operator '##', then using boolean operators like
+    '|', '||', '&', '&&' often creates illegal syntax (boolean vs sequence).
+    In SVA, sequence OR/AND operators are 'or'/'and'. Convert spaced operators.
+    """
+    p = (post or "").strip()
+    if "##" not in p:
+        return p
+
+    # Do not touch implications (handled elsewhere)
+    if "|->" in p or "|=>" in p:
+        return p
+
+    # Replace logical/binary ops when they appear as separated tokens (with whitespace)
+    # This avoids messing with bit-slices, concatenations, etc.
+    p = re.sub(r"\s\|\|\s", " or ", p)
+    p = re.sub(r"\s\|\s", " or ", p)
+    p = re.sub(r"\s&&\s", " and ", p)
+    p = re.sub(r"\s&\s", " and ", p)
+    return p.strip()
 
 
 # -----------------------------------------------------------------------------
@@ -292,32 +338,29 @@ class PropertyBuilder:
             return False
 
         allowed_ids = set(ports) | {
-            "if", "else", "and", "or", "not", "posedge", "negedge", "disable", "iff",
-            "##",
-            # NOTE: these appear as "$rose" etc in source text
+            "if", "else", "and", "or", "not",
+            "posedge", "negedge", "disable", "iff",
+            # $funcs are in the raw text as "$rose", but regex sees "rose" too (handled below)
             *list(_ALLOWED_SVA_FUNCS),
         }
 
         for m in re.finditer(r"\b[A-Za-z_]\w*\b", expr):
             t = m.group(0)
 
-            # allow bare keyword-ish names
             if t in allowed_ids:
                 continue
 
-            # allow ALLCAPS-ish macros/params
             if re.match(r"^[A-Z0-9_]+$", t):
                 continue
 
             idx = m.start()
 
-            # Allow system functions like $rose/$fell/...:
-            # regex sees "rose" but in text it's "$rose"
+            # Allow system functions: "$rose" -> regex sees "rose" preceded by '$'
             if idx > 0 and expr[idx - 1] == "$":
                 if ("$" + t) in allowed_ids:
                     continue
 
-            # Allow field names (preceded by dot): lsu_ctrl_i.vaddr -> token "vaddr" preceded by '.'
+            # Allow field names after dot
             if idx > 0 and expr[idx - 1] == ".":
                 continue
 
@@ -368,6 +411,55 @@ class PropertyBuilder:
         return ("##" in p) or ("[*" in p) or ("[->" in p) or ("throughout" in p)
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _pre_is_missing(pre_raw: str, pre_norm: str) -> bool:
+        """
+        Treat empty / 1 / 1'b1 as "no real precondition".
+        """
+        if (pre_raw or "").strip() in {"", "1", "1'b1"}:
+            return True
+        return _is_trivial_true(pre_norm)
+
+    # ------------------------------------------------------------------
+    def _repair_pre_post_from_csv(self, pre_raw: str, post_raw: str, ports: List[str]) -> Tuple[str, str]:
+        """
+        Repair common CSV mistakes:
+          - implication inside post:  post == "A |-> B"  => move A into pre
+          - implication inside pre/post multiple times => iteratively lift antecedents into pre
+          - temporal + boolean mix in post: rewrite "|/&" to "or/and" when '##' exists
+        """
+        pre = self._normalize_csv_expr(pre_raw, ports)
+        post = self._normalize_csv_expr(post_raw, ports)
+
+        # Lift nested implications out of post
+        # Example: pre="dtlb_hit_i", post="dtlb_hit_i |-> $stable(dtlb_hit_i)"
+        # => pre becomes "dtlb_hit_i && dtlb_hit_i", post becomes "$stable(dtlb_hit_i)" (then we can simplify later)
+        while True:
+            spl = _split_first_implication(post)
+            if not spl:
+                break
+            ante, _op, cons = spl
+            if not ante or not cons:
+                break
+            if not pre.strip() or _is_trivial_true(pre.strip()):
+                pre = ante
+            else:
+                pre = f"({pre}) && ({ante})"
+            post = cons
+
+        # If implication exists in pre (shouldn't), drop it (safer than generating invalid SVA)
+        if "|->" in pre or "|=>" in pre:
+            # keep only antecedent part
+            spl = _split_first_implication(pre)
+            if spl:
+                pre = spl[0].strip()
+
+        # Rewrite temporal boolean mixes into proper sequence ops
+        post = _rewrite_temporal_mix_to_sequence_ops(post)
+
+        return pre.strip(), post.strip()
+
+    # ------------------------------------------------------------------
     def _rule_based_property_from_row(
         self,
         row: Dict[str, str],
@@ -384,34 +476,35 @@ class PropertyBuilder:
         pre_raw = row.get("pre", "")
         post_raw = row.get("post", "")
 
-        pre = self._normalize_csv_expr(pre_raw, ports)
-        post = self._normalize_csv_expr(post_raw, ports)
+        pre, post = self._repair_pre_post_from_csv(pre_raw, post_raw, ports)
 
-        pre = self._normalize_csv_expr(pre, ports)
-        post = self._normalize_csv_expr(post, ports)
-
+        # Identifier whitelist checks
         if pre and not self._expr_uses_only_ports(pre, ports):
             pre = ""
         if post and not self._expr_uses_only_ports(post, ports):
             post = ""
 
-        # Default pre
-        if not pre:
-            pre = "1'b1"
+        pre_missing = self._pre_is_missing(pre_raw, pre)
 
         # If post is empty: only keep for COVER (covering an event) or skip for assume/assert
         if not post:
             if ptype == "cover":
-                body = f"({pre})"
-                # allow "cover 1" but avoid meaningless assume/assert
+                if pre and not pre_missing:
+                    body = f"({pre})"
+                else:
+                    body = "1'b1"
             else:
                 return None
         else:
-            # IMPORTANT: do not create nested temporal
-            if (("eventually" in scenario) or ("not stuck" in scenario) or ("forever" in scenario)) and (not self._post_has_temporal(post)):
-                body = f"({pre}) |-> ##[1:$] ({post})"
+            # IMPORTANT: user request — if no real pre, do NOT emit "1 |-> ..."
+            if pre_missing:
+                body = f"({post})"
             else:
-                body = f"({pre}) |-> ({post})"
+                # Optional fairness wrapping only when we truly have pre and post lacks temporal
+                if (("eventually" in scenario) or ("not stuck" in scenario) or ("forever" in scenario)) and (not self._post_has_temporal(post)):
+                    body = f"({pre}) |-> ##[1:$] ({post})"
+                else:
+                    body = f"({pre}) |-> ({post})"
 
         # Drop tautologies for assume/assert
         flat = re.sub(r"\s+", "", body)
@@ -421,7 +514,14 @@ class PropertyBuilder:
             if "1'b1|->1'b1" in flat or "1|->1" in flat:
                 return None
 
-        return self._wrap_property(sid=sid, name=name, ptype=ptype, clk=clk, disable_cond=disable_cond, body_expr=body)
+        return self._wrap_property(
+            sid=sid,
+            name=name,
+            ptype=ptype,
+            clk=clk,
+            disable_cond=disable_cond,
+            body_expr=body,
+        )
 
     # ------------------------------------------------------------------
     def _call_llm_for_row(
@@ -436,11 +536,18 @@ class PropertyBuilder:
         if not self.llm:
             return ""
 
+        # IMPORTANT: Your current property_prompt.yaml ALWAYS outputs "<PRE> |-> <POST>".
+        # Since you explicitly do not want "1 |-> ..." when pre is empty, we skip LLM when pre is missing.
+        pre_raw = (row.get("pre", "") or "").strip()
+        if pre_raw in {"", "1", "1'b1"}:
+            return ""
+
         sid = row.get("sid", "")
         name = row.get("name", "")
         ptype = row.get("prop_type", "assert")
-        pre = row.get("pre", "")
-        post = row.get("post", "")
+
+        # Repair CSV mistakes BEFORE sending to LLM (prevents nested implications)
+        pre_fixed, post_fixed = self._repair_pre_post_from_csv(row.get("pre", ""), row.get("post", ""), ports)
 
         payload = {
             "clock": clk,
@@ -449,8 +556,8 @@ class PropertyBuilder:
             "sid": sid,
             "name": name,
             "ptype": ptype,
-            "pre": pre,
-            "post": post,
+            "pre": pre_fixed,
+            "post": post_fixed,
             "spec_markdown": md,
             "allowed_signals": ", ".join(sorted(set(ports))),
         }
@@ -502,11 +609,14 @@ class PropertyBuilder:
                 count=1,
             )
 
-        # Avoid nested temporal creation during "fixups"
-        # (do not rewrite post into something with extra ##)
-        # If property is tautological, drop it
+        # Reject tautologies
         flat = re.sub(r"\s+", "", sv)
         if "1|->1" in flat or "1'b1|->1'b1" in flat:
+            return None
+
+        # Also reject nested implications inside the property text (common when CSV was broken)
+        # (If present, fall back to rule-based which repairs pre/post.)
+        if sv.count("|->") > 1 or sv.count("|=>") > 1:
             return None
 
         return sv.strip()
