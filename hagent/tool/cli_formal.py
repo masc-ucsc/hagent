@@ -1,40 +1,66 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Formal Agent (Divya Kohli 2025) - MODIFIED
+cli_formal.py — Formal verification pipeline driver (merged).
 
-Changes:
-  - Add --scope-path and forward to spec builder.
-  - Fix private coverage summarizer discovery:
-      * supports repo_root()/hagent-private AND repo_root().parent/hagent-private
-      * supports env var HAGENT_PRIVATE_DIR if set
-  - After Jasper run, also run summarize_formal_coverage.py as a command.
+Stages (your requested behavior):
+
+Stage 1: spec builder (optional, default ON)
+Stage 2: property builder (optional, default ON)
+Stage 3: wrapper/bind + FPV.tcl + files.vc (default ON)
+Stage 4: run Jasper (only if --run-jg or --rerun-jg)
+Stage 5: summarize results into results_summary.csv (after Jasper)
+Stage 6: ALWAYS best-effort run private coverage summarizer (never fails run)
+Stage 7: optional postcheck repair (only if --postcheck ...)
+
+Feedback loop policy:
+  - We NEVER auto-run postcheck.
+  - We ONLY run the LLM "advisor" if Jasper output indicates ERROR/CEX/FAIL/UNKNOWN.
+  - Advisor prints a recommendation; user must re-run with --postcheck and choose max iters.
+  - Jasper re-run after postcheck happens ONLY if user sets --postcheck-rerun-jg (and apply is enabled).
 """
+
+from __future__ import annotations
 
 import os
 import re
 import sys
+import json
+import csv
 import shutil
 import subprocess
 import importlib.util
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Optional, List, Set, Dict, Any, Tuple
 
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from hagent.tool.utils.hdl_utils import load_sv_tree, build_filelist_for_top
 from hagent.tool.utils.clk_rst_utils import detect_clk_rst_for_top
 
 console = Console()
 
+# ---------------------------
+# Optional LLM advisor hook
+# ---------------------------
+try:
+    from hagent.core.llm_wrap import LLM_wrap  # type: ignore
+except Exception:
+    LLM_wrap = None
 
+
+# -----------------------------------------------------------------------------
+# Pretty UI helpers
+# -----------------------------------------------------------------------------
 def banner():
     console.print(
         "\n[bold cyan]───────────────────────────────────────────────[/bold cyan]\n"
-        "[bold yellow]        🚀 FORMAL AGENT 2025 🚀[/bold yellow]\n"
+        "[bold yellow]        🚀 FORMAL TOOL (cli_formal.py) 🚀[/bold yellow]\n"
         "[bold cyan]───────────────────────────────────────────────[/bold cyan]\n"
-        "[bold white]Automated Formal Verification Pipeline[/bold white]\n"
+        "[bold white]Spec → Props → FPV Collateral → Jasper → Feedback[/bold white]\n"
         "[bold cyan]───────────────────────────────────────────────[/bold cyan]\n"
     )
 
@@ -47,53 +73,11 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _find_private_repo_dir() -> Optional[Path]:
-    # 1) explicit env var
-    env = os.environ.get("HAGENT_PRIVATE_DIR", "").strip()
-    if env:
-        p = Path(os.path.expanduser(env)).resolve()
-        if p.exists():
-            return p
-
-    # 2) common layouts
-    root = repo_root()
-    cand1 = (root / "hagent-private").resolve()          # inside repo
-    cand2 = (root.parent / "hagent-private").resolve()   # sibling
-    for c in [cand1, cand2]:
-        if c.exists():
-            return c
-    return None
-
-
-def _load_private_cov_summarizer():
-    priv = _find_private_repo_dir()
-    if priv is None:
-        return None, None
-
-    priv_script = priv / "JG" / "summarize_formal_coverage.py"
-    if not priv_script.exists():
-        return None, priv_script
-
-    try:
-        spec = importlib.util.spec_from_file_location("hagent_private_summarize_formal_coverage", priv_script)
-        if spec is None or spec.loader is None:
-            console.print("[yellow]⚠ Could not create spec for private coverage summarizer.[/yellow]")
-            return None, priv_script
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        summarize_fn = getattr(module, "summarize_coverage_html", None)
-        if summarize_fn is None:
-            console.print("[yellow]⚠ Private coverage summarizer has no 'summarize_coverage_html' function.[/yellow]")
-        return summarize_fn, priv_script
-    except Exception as e:
-        console.print(f"[yellow]⚠ Could not import private coverage summarizer:[/yellow] {e}")
-        return None, priv_script
-
-
-PRIVATE_COV_SUMMARIZER, PRIVATE_COV_SCRIPT = _load_private_cov_summarizer()
-
-
-def run_uv(cmd: List[str], cwd: Path | None = None):
+def run_cmd(cmd: List[str], cwd: Optional[Path] = None):
+    """
+    Run a command using the *current* interpreter (works well under uv).
+    Prints the command in a consistent "tool-like" way.
+    """
     if cmd and cmd[0] in ("python", "python3"):
         cmd = cmd[1:]
     cmd_str = " ".join(cmd)
@@ -101,18 +85,472 @@ def run_uv(cmd: List[str], cwd: Path | None = None):
     subprocess.run([sys.executable, *cmd], check=True, cwd=cwd)
 
 
-def parse_jg_log_detailed(log_path: Path) -> Dict:
+# -----------------------------------------------------------------------------
+# File helpers
+# -----------------------------------------------------------------------------
+def _tail_text(p: Path, n_lines: int = 400) -> str:
+    if not p.exists():
+        return f"<missing: {p}>"
+    try:
+        lines = p.read_text(errors="ignore").splitlines()
+        return "\n".join(lines[-n_lines:])
+    except Exception as e:
+        return f"<failed to read {p}: {e}>"
+
+
+def _read_text(p: Path, max_bytes: int = 300_000) -> str:
+    if not p.exists():
+        return f"<missing: {p}>"
+    try:
+        b = p.read_bytes()
+        if len(b) > max_bytes:
+            b = b[-max_bytes:]
+        return b.decode("utf-8", errors="ignore")
+    except Exception as e:
+        return f"<failed to read {p}: {e}>"
+
+
+# -----------------------------------------------------------------------------
+# Private TCL writer loader (no fallback in public repo)
+# -----------------------------------------------------------------------------
+def _load_private_tcl_writer():
+    try:
+        from JG.fpv_tcl_writer import write_jasper_tcl  # type: ignore
+        console.print("[green]✔ Using private JasperGold TCL writer[/green]")
+        return write_jasper_tcl
+    except Exception as e:
+        console.print("[red]✖ ERROR: Private TCL writer not found.[/red]")
+        console.print("    Expected: [bold]JG.fpv_tcl_writer.write_jasper_tcl[/bold]")
+        console.print("    Make sure the private repo is on PYTHONPATH.")
+        console.print(f"    Import error: {e}")
+        raise SystemExit(1)
+
+
+write_jasper_tcl = _load_private_tcl_writer()
+
+
+# -----------------------------------------------------------------------------
+# Regex for ANSI-style module headers (fallback if ports.json not available)
+# -----------------------------------------------------------------------------
+HEADER_RE = re.compile(
+    r"\bmodule\s+(?P<name>\w+)\s*"
+    r"(?:import\s+.*?;\s*)*"
+    r"(?P<params>#\s*\((?P<param_body>.*?)\))?\s*"
+    r"\(\s*(?P<port_body>.*?)\)\s*;",
+    re.DOTALL | re.MULTILINE,
+)
+
+_COMMENT_RE = re.compile(r"//.*?$|/\*.*?\*/", re.DOTALL | re.MULTILINE)
+_ID_RE = re.compile(r"\b([\w$]+)\b(?!.*\b[\w$]+\b)")
+
+
+def strip_comments(text: str) -> str:
+    return re.sub(_COMMENT_RE, "", text)
+
+
+def clean_decl_to_input(decl: str) -> str:
+    decl = re.sub(r"//.*?$", "", decl, flags=re.M)
+    decl = re.sub(r"/\*.*?\*/", "", decl, flags=re.S)
+    decl = re.sub(r"\s+", " ", decl).strip().rstrip(",")
+    decl = re.sub(r"\b(output|inout)\b", "input", decl)
+    decl = re.sub(r"\binput\b", "input", decl)
+    decl = re.sub(r"\b(wire|reg|logic|var|signed|unsigned)\b", "", decl)
+    return re.sub(r"\s+", " ", decl).strip()
+
+
+def extract_last_identifier(token: str) -> Optional[str]:
+    token = token.strip()
+    if not token:
+        return None
+    token = re.split(r"//", token, maxsplit=1)[0]
+    m = _ID_RE.search(token)
+    return m.group(1) if m else None
+
+
+def find_module_header(text: str, mod_name: str):
+    for m in HEADER_RE.finditer(text):
+        if m.group("name") == mod_name:
+            return m
+    return None
+
+
+# -----------------------------------------------------------------------------
+# ports.json / scoped_ast.json support (preferred)
+# -----------------------------------------------------------------------------
+def _fix_logic_width_syntax(t: str) -> str:
+    return re.sub(r"\b(logic|bit|byte|int|shortint|longint|integer)\s*\[", r"\1 [", t)
+
+
+def load_known_type_params_from_scoped_ast(scoped_ast_json: Path) -> Set[str]:
+    try:
+        data = json.loads(scoped_ast_json.read_text())
+        members = data.get("body", {}).get("members", [])
+        tp: Set[str] = set()
+        for m in members:
+            if m.get("kind") == "TypeParameter" and m.get("isPort"):
+                n = m.get("name")
+                if n:
+                    tp.add(n)
+        return tp
+    except Exception as e:
+        console.print(f"[yellow]⚠ Could not parse scoped_ast.json: {scoped_ast_json} ({e})[/yellow]")
+        return set()
+
+
+def build_params_text_from_scoped_ast(scoped_ast_json: Path) -> str:
+    try:
+        data = json.loads(scoped_ast_json.read_text())
+        members = data.get("body", {}).get("members", [])
+        value_params = []
+        type_params = []
+
+        for m in members:
+            if m.get("isPort") and m.get("kind") == "Parameter":
+                ptype = (m.get("type") or "int").strip()
+                pname = (m.get("name") or "").strip()
+                if pname:
+                    value_params.append((ptype, pname))
+            if m.get("isPort") and m.get("kind") == "TypeParameter":
+                pname = (m.get("name") or "").strip()
+                if pname:
+                    type_params.append(pname)
+
+        if not value_params and not type_params:
+            return ""
+
+        lines = ["#("]
+        first = True
+        for ptype, pname in value_params:
+            comma = "," if not first else ""
+            lines.append(f"    {comma}parameter {ptype} {pname}")
+            first = False
+        for pname in type_params:
+            comma = "," if not first else ""
+            lines.append(f"    {comma}parameter type {pname}")
+            first = False
+        lines.append(")")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def normalize_sv_type(type_str: str, sva_top: str, known_type_params: Set[str]) -> str:
+    if not type_str or type_str.strip() in ("-", ""):
+        return "logic"
+
+    t = _fix_logic_width_syntax(type_str.strip())
+    if "::" in t:
+        return t
+
+    m = re.match(r"^(?P<mod>[A-Za-z_]\w*)\.(?P<name>[A-Za-z_]\w*)$", t)
+    if m and m.group("mod") == sva_top:
+        inner = m.group("name")
+        if inner in known_type_params:
+            return inner
+        return inner
+    return t
+
+
+def port_decls_from_ports_json(ports_json: Path, sva_top: str, known_type_params: Set[str]) -> List[str]:
+    data = json.loads(ports_json.read_text())
+    decls: List[str] = []
+    seen: Set[str] = set()
+
+    for p in data:
+        name = (p.get("name") or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        t = normalize_sv_type(p.get("type") or "logic", sva_top=sva_top, known_type_params=known_type_params)
+        decls.append(f"input {t} {name}")
+    return decls
+
+
+# -----------------------------------------------------------------------------
+# SVA wrapper + bind generation
+# -----------------------------------------------------------------------------
+def generate_prop_module_min(dut_name: str, params_text: str, port_decls: List[str], include_file: str) -> str:
+    header_params = f" {params_text} " if params_text else ""
+    port_lines = ",\n    ".join(port_decls)
+
+    lines: List[str] = []
+    lines.append(f"module {dut_name}_prop{header_params}(\n    {port_lines}\n);\n")
+    lines.append("// Auto-generated property wrapper. Connect DUT ports as inputs.\n")
+    if include_file:
+        lines.append(f'`include "{include_file}"\n')
+    lines.append("endmodule\n")
+    return "".join(lines)
+
+
+def generate_bind(dut_name: str, params_text: str, port_decls: List[str], bind_target: Optional[str]) -> str:
+    bind_scope = bind_target or dut_name
+    sigs: List[str] = []
+
+    for decl in port_decls:
+        d = decl.strip().rstrip(",")
+        if not d:
+            continue
+        m_name = re.search(r"([A-Za-z_]\w*)\s*(\[[^\]]*\]\s*)*$", d)
+        if not m_name:
+            continue
+        sigs.append(m_name.group(1))
+
+    assoc = ", ".join(f".{s}({s})" for s in sigs)
+
+    params_inst = ""
+    if params_text:
+        pnames = re.findall(r"\bparameter\b(?:\s+type)?(?:\s+[\w:$.]+\s+)?\b(\w+)\b\s*(?==|,|\))", params_text)
+        pnames = [p for p in pnames if p not in ("parameter", "type")]
+        if pnames:
+            params_inst = "#(" + ", ".join(f".{p}({p})" for p in pnames) + ")"
+
+    return f"bind {bind_scope} {dut_name}_prop {params_inst} i_{dut_name}_prop ( {assoc} );\n"
+
+
+def emit_prop_and_bind_for_module(
+    mod_name: str,
+    src_file: Path,
+    fpv_dir: Path,
+    include_file: str,
+    bind_scope: Optional[str],
+    ports_json: Optional[Path],
+    scoped_ast_json: Optional[Path],
+):
+    try:
+        text = src_file.read_text(errors="ignore")
+    except Exception as e:
+        console.print(f"[red]⚠ Cannot read {src_file}: {e}[/red]")
+        return None, None
+
+    m = find_module_header(text, mod_name)
+    params_text = ""
+    port_decls: List[str] = []
+
+    known_type_params: Set[str] = set()
+    if scoped_ast_json and scoped_ast_json.is_file():
+        known_type_params = load_known_type_params_from_scoped_ast(scoped_ast_json)
+
+    if m:
+        dut_name = m.group("name")
+        params_text = m.group("params") or ""
+        port_body = m.group("port_body") or ""
+    else:
+        dut_name = mod_name
+        console.print(f"[yellow]⚠ Could not parse module header for {mod_name}; trying scoped_ast fallback.[/yellow]")
+        params_text = build_params_text_from_scoped_ast(scoped_ast_json) if scoped_ast_json and scoped_ast_json.is_file() else ""
+        port_body = ""
+
+    if ports_json and ports_json.is_file():
+        console.print(f"[cyan]✔ Using ports.json for wrapper ports:[/cyan] {ports_json}")
+        port_decls = port_decls_from_ports_json(ports_json, sva_top=mod_name, known_type_params=known_type_params)
+    else:
+        if not m:
+            console.print("[red]⚠ No ports.json and no parsable module header; cannot emit wrapper.[/red]")
+            return None, None
+
+        ports_raw: List[str] = []
+        text_ports = strip_comments(port_body)
+        buf: List[str] = []
+        depth_paren = 0
+        depth_brack = 0
+
+        for ch in text_ports:
+            if ch == "(":
+                depth_paren += 1
+            elif ch == ")":
+                depth_paren = max(0, depth_paren - 1)
+            elif ch == "[":
+                depth_brack += 1
+            elif ch == "]":
+                depth_brack = max(0, depth_brack - 1)
+
+            if ch == "," and depth_paren == 0 and depth_brack == 0:
+                token = "".join(buf).strip()
+                if token:
+                    ports_raw.append(token)
+                buf = []
+            else:
+                buf.append(ch)
+
+        token = "".join(buf).strip()
+        if token:
+            ports_raw.append(token)
+
+        seen: Set[str] = set()
+        for tok in ports_raw:
+            tok = tok.strip()
+            if not tok:
+                continue
+            if not re.search(r"\b(input|output|inout)\b", tok):
+                tok = "input " + tok
+            decl = clean_decl_to_input(tok)
+            name = extract_last_identifier(decl)
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            if not decl.startswith("input"):
+                decl = "input " + decl
+            port_decls.append(decl)
+
+    if not port_decls:
+        console.print(f"[red]⚠ No ports found for module {dut_name} in {src_file}[/red]")
+        return None, None
+
+    sva_dir = fpv_dir / "sva"
+    ensure_dir(sva_dir)
+
+    prop_path = sva_dir / f"{mod_name}_prop.sv"
+    bind_path = sva_dir / f"{mod_name}_bind.sv"
+
+    prop_sv = generate_prop_module_min(dut_name, params_text, port_decls, include_file)
+    bind_sv = generate_bind(dut_name, params_text, port_decls, bind_scope)
+
+    prop_path.write_text(prop_sv, encoding="utf-8")
+    bind_path.write_text(bind_sv, encoding="utf-8")
+
+    console.print(f"[green]✔[/green] Wrote wrapper: {prop_path}")
+    console.print(f"[green]✔[/green] Wrote bind   : {bind_path}")
+    return prop_path, bind_path
+
+
+# -----------------------------------------------------------------------------
+# Package ordering (auto mode only)
+# -----------------------------------------------------------------------------
+def order_packages_by_dependency(pkg_files):
+    if len(pkg_files) <= 1:
+        return pkg_files
+
+    texts = {}
+    for f in pkg_files:
+        try:
+            texts[f] = f.read_text(errors="ignore")
+        except Exception:
+            texts[f] = ""
+
+    pkg_name_to_file = {}
+    for f, txt in texts.items():
+        m = re.search(r"\bpackage\s+([A-Za-z_]\w*)", txt)
+        if m:
+            pkg_name_to_file[m.group(1)] = f
+
+    file_uses = {f: set() for f in pkg_files}
+    pkg_names = list(pkg_name_to_file.keys())
+    for f, txt in texts.items():
+        for pname in pkg_names:
+            if re.search(r"\b" + re.escape(pname) + r"\s*::", txt):
+                file_uses[f].add(pname)
+
+    ordered = pkg_files[:]
+    changed = True
+    while changed:
+        changed = False
+        for i, f in enumerate(list(ordered)):
+            for pname in file_uses.get(f, set()):
+                dep_file = pkg_name_to_file.get(pname)
+                if not dep_file or dep_file not in ordered:
+                    continue
+                j = ordered.index(dep_file)
+                if j > i:
+                    ordered[i], ordered[j] = ordered[j], ordered[i]
+                    changed = True
+    return ordered
+
+
+# -----------------------------------------------------------------------------
+# files.vc overwrite (filelist mode only)
+# -----------------------------------------------------------------------------
+def overwrite_files_vc_for_user_filelist(
+    vc_path: Path,
+    user_filelist: Path,
+    fpv_dir: Path,
+    sva_files: List[Path],
+    defines: Optional[List[str]] = None,
+):
+    vc_path = vc_path.resolve()
+    user_filelist = user_filelist.resolve()
+    sva_dir = (fpv_dir / "sva").resolve()
+
+    lines: List[str] = [
+        "+libext+.v",
+        "+libext+.sv",
+        "+libext+.svh",
+        "+librescan",
+    ]
+
+    for d in (defines or []):
+        d = (d or "").strip()
+        if d:
+            lines.append(f"+define+{d}")
+
+    lines.append(f"+incdir+{sva_dir}")
+    lines.append(f"-F {user_filelist}")
+
+    for f in sva_files:
+        lines.append(str(Path(f).resolve()))
+
+    vc_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    console.print(f"[green]✔[/green] Overwrote files.vc (filelist mode): [bold]{vc_path}[/bold]")
+
+
+# -----------------------------------------------------------------------------
+# Jasper runner (only if asked)
+# -----------------------------------------------------------------------------
+def run_jasper(fpv_dir: Path, jasper_bin: str) -> Tuple[bool, Optional[int]]:
+    """
+    Runs Jasper and writes logs:
+      jg.stdout.log / jg.stderr.log
+
+    Returns:
+      (success, exit_code)
+    """
+    fpv_dir = fpv_dir.resolve()
+    if not (fpv_dir / "FPV.tcl").exists():
+        console.print(f"[red]✖ Missing FPV.tcl in {fpv_dir}[/red]")
+        return False, None
+
+    cmd = [jasper_bin, "-allow_unsupported_OS", "-tcl", "FPV.tcl", "-batch"]
+    console.print(Panel.fit(
+        f"[bold]Running Jasper[/bold]\n"
+        f"[cyan]cwd:[/cyan] {fpv_dir}\n"
+        f"[cyan]cmd:[/cyan] {' '.join(cmd)}",
+        title="JasperGold", border_style="cyan"
+    ))
+
+    out_log = fpv_dir / "jg.stdout.log"
+    err_log = fpv_dir / "jg.stderr.log"
+    try:
+        with out_log.open("w") as fo, err_log.open("w") as fe:
+            subprocess.run(cmd, cwd=fpv_dir, stdout=fo, stderr=fe, check=True)
+        console.print("[green]✔ Jasper finished successfully.[/green]")
+        console.print(f"[green]✔[/green] Logs: {out_log} , {err_log}")
+        return True, 0
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]✖ Jasper failed (exit={e.returncode}).[/red]")
+        console.print(f"[red]✖[/red] Check logs: {out_log} , {err_log}")
+        return False, e.returncode
+    except FileNotFoundError:
+        console.print(f"[red]✖ Jasper binary not found: {jasper_bin}[/red]")
+        return False, None
+
+
+# -----------------------------------------------------------------------------
+# Jasper log parsing + results_summary.csv
+# -----------------------------------------------------------------------------
+def parse_jg_log_detailed(log_path: Path) -> Dict[str, Any]:
     if not log_path.exists():
-        console.print(f"[yellow]⚠ Jasper log not found:[/yellow] {log_path}")
-        return {}
+        return {
+            "properties_considered": 0,
+            "assertions_total": 0,
+            "covers_total": 0,
+            "assertions": {},
+            "covers": {},
+        }
 
     text = log_path.read_text(errors="ignore")
     from collections import Counter
 
     line_re = re.compile(r"\[(\d+)\]\s+(.+?)\s{2,}(\w+)\s", re.M)
-    rows = []
-    for m in line_re.finditer(text):
-        rows.append((int(m.group(1)), m.group(2).rstrip(), m.group(3).lower()))
+    rows = [(int(m.group(1)), m.group(2).rstrip(), m.group(3).lower()) for m in line_re.finditer(text)]
 
     result_dict: Dict[str, Any] = {
         "properties_considered": 0,
@@ -121,66 +559,57 @@ def parse_jg_log_detailed(log_path: Path) -> Dict:
         "assertions": {},
         "covers": {},
     }
-
-    if rows:
-        a_counts: Counter[str] = Counter()
-        c_counts: Counter[str] = Counter()
-
-        for _idx, full_name, res in rows:
-            if (":witness" in full_name) or (":precondition" in full_name) or (".cover_" in full_name) or full_name.startswith("cover_"):
-                section = "covers"
-            elif (".assert_" in full_name) or full_name.startswith("assert_") or (".assume_" in full_name) or full_name.startswith("assume_"):
-                section = "assertions"
-            else:
-                section = "assertions"
-
-            if res in ("proven", "valid"):
-                key = "proven"
-            elif res in ("cex", "falsified", "fail"):
-                key = "cex"
-            elif res in ("covered",):
-                key = "covered"
-            elif res in ("unreachable",):
-                key = "unreachable"
-            elif res in ("unknown", "inconclusive", "undetermined"):
-                key = "unknown"
-            else:
-                key = res
-
-            if section == "assertions":
-                a_counts[key] += 1
-            else:
-                c_counts[key] += 1
-
-        result_dict["properties_considered"] = len(rows)
-        result_dict["assertions_total"] = sum(a_counts.values())
-        result_dict["covers_total"] = sum(c_counts.values())
-        result_dict["assertions"] = dict(a_counts)
-        result_dict["covers"] = dict(c_counts)
+    if not rows:
         return result_dict
 
-    return {}
+    a_counts: Counter[str] = Counter()
+    c_counts: Counter[str] = Counter()
+
+    for _idx, full_name, res in rows:
+        if (":witness" in full_name) or (":precondition" in full_name) or (".cover_" in full_name) or full_name.startswith("cover_"):
+            section = "covers"
+        elif (".assert_" in full_name) or full_name.startswith("assert_") or (".assume_" in full_name) or full_name.startswith("assume_"):
+            section = "assertions"
+        else:
+            section = "assertions"
+
+        if res in ("proven", "valid"):
+            key = "proven"
+        elif res in ("cex", "falsified", "fail"):
+            key = "cex"
+        elif res in ("covered",):
+            key = "covered"
+        elif res in ("unreachable",):
+            key = "unreachable"
+        elif res in ("unknown", "inconclusive", "undetermined"):
+            key = "unknown"
+        else:
+            key = res
+
+        if section == "assertions":
+            a_counts[key] += 1
+        else:
+            c_counts[key] += 1
+
+    result_dict["properties_considered"] = len(rows)
+    result_dict["assertions_total"] = sum(a_counts.values())
+    result_dict["covers_total"] = sum(c_counts.values())
+    result_dict["assertions"] = dict(a_counts)
+    result_dict["covers"] = dict(c_counts)
+    return result_dict
 
 
-def print_jg_summary(summary: Dict):
-    if not summary:
-        return
-    console.print("\n[bold green]" + "=" * 61 + "[/bold green]")
-    console.print("[bold yellow]SUMMARY[/bold yellow]")
-    console.print("[bold green]" + "=" * 61 + "[/bold green]")
-    console.print(f"Properties Considered : {summary.get('properties_considered', 0)}")
-    console.print(f"  Assertions          : {summary.get('assertions_total', 0)}")
-    for k, v in summary.get("assertions", {}).items():
-        console.print(f"    - {k:<30}: {v}")
-    console.print(f"  Covers              : {summary.get('covers_total', 0)}")
-    for k, v in summary.get("covers", {}).items():
-        console.print(f"    - {k:<30}: {v}")
-    console.print("[green]determined[/green]")
+def write_results_summary(fpv_dir: Path, jg_summary: Dict[str, Any]) -> Dict[str, int]:
+    counts = {
+        "PROVEN": int(jg_summary.get("assertions", {}).get("proven", 0)),
+        "FAIL": int(jg_summary.get("assertions", {}).get("cex", 0)),
+        "UNREACHABLE": int(jg_summary.get("covers", {}).get("unreachable", 0)),
+        "COVER": int(jg_summary.get("covers", {}).get("covered", 0)),
+        "UNKNOWN": int(jg_summary.get("assertions", {}).get("unknown", 0)) + int(jg_summary.get("covers", {}).get("unknown", 0)),
+    }
 
-
-def write_summary(out_dir: Path, counts: Dict[str, int]):
-    csv_path = out_dir / "results_summary.csv"
-    with csv_path.open("w") as f:
+    csv_path = fpv_dir / "results_summary.csv"
+    with csv_path.open("w", encoding="utf-8") as f:
         f.write("status,count\n")
         for k, v in counts.items():
             f.write(f"{k},{v}\n")
@@ -192,243 +621,649 @@ def write_summary(out_dir: Path, counts: Dict[str, int]):
         col = "green" if k == "PROVEN" else "red" if k == "FAIL" else "yellow"
         table.add_row(k, f"[{col}]{v}[/{col}]")
     console.print(table)
+    console.print(f"[green]✔[/green] Wrote {csv_path}")
+    return counts
 
 
-def main():
+# -----------------------------------------------------------------------------
+# Stage 6: ALWAYS best-effort private coverage summarizer (never fails)
+# -----------------------------------------------------------------------------
+def _find_private_repo_dir() -> Optional[Path]:
+    env = os.environ.get("HAGENT_PRIVATE_DIR", "").strip()
+    if env:
+        p = Path(os.path.expanduser(env)).resolve()
+        if p.exists():
+            return p
+
+    root = repo_root()
+    cand1 = (root / "hagent-private").resolve()
+    cand2 = (root.parent / "hagent-private").resolve()
+    for c in (cand1, cand2):
+        if c.exists():
+            return c
+    return None
+
+
+def try_run_private_coverage_summarizer(fpv_dir: Path):
+    """
+    ALWAYS attempted after Jasper run. Best-effort only:
+      - if private repo not found, prints a warning and continues
+      - if HTML not found, prints a warning and continues
+      - never raises an exception
+    """
+    cov_html = fpv_dir / "formal_coverage.html"
+    if not cov_html.exists():
+        console.print(f"[yellow]⚠ formal_coverage.html not found in {fpv_dir} (coverage summary skipped).[/yellow]")
+        return
+
+    priv = _find_private_repo_dir()
+    if priv is None:
+        console.print("[yellow]⚠ hagent-private not found (set HAGENT_PRIVATE_DIR to enable coverage summary).[/yellow]")
+        return
+
+    priv_script = priv / "JG" / "summarize_formal_coverage.py"
+    if not priv_script.exists():
+        console.print(f"[yellow]⚠ Private summarizer script missing: {priv_script}[/yellow]")
+        return
+
+    summarize_fn = None
+    try:
+        spec = importlib.util.spec_from_file_location("hagent_private_summarize_formal_coverage", priv_script)
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            summarize_fn = getattr(module, "summarize_coverage_html", None)
+    except Exception as e:
+        console.print(f"[yellow]⚠ Private coverage summarizer import failed: {e}[/yellow]")
+
+    if summarize_fn is not None:
+        try:
+            out_txt = summarize_fn(cov_html, console=console)
+            console.print(f"[green]✔[/green] Coverage summary written to {out_txt}")
+            return
+        except Exception as e:
+            console.print(f"[yellow]⚠ Private coverage summary (import path) failed: {e}[/yellow]")
+
+    try:
+        console.print("[cyan]→[/cyan] [white]Running private coverage summarizer CLI[/white]")
+        subprocess.run([sys.executable, str(priv_script), "--html", str(cov_html)], cwd=priv_script.parent, check=True)
+        console.print("[green]✔[/green] Coverage summarizer CLI completed.")
+    except Exception as e:
+        console.print(f"[yellow]⚠ Coverage summarizer CLI failed: {e}[/yellow]")
+
+
+# -----------------------------------------------------------------------------
+# Advisor trigger: run ONLY if Jasper showed ERROR/CEX/FAIL/UNKNOWN
+# -----------------------------------------------------------------------------
+_ADVISOR_ERROR_PATTERNS = [
+    r"\bERROR\b",
+    r"\bfatal\b",
+    r"\bFATAL\b",
+    r"\bcex\b",
+    r"\bCEX\b",
+    r"\bfalsified\b",
+    r"\bFAIL\b",
+    r"\bunknown\b",
+    r"\binconclusive\b",
+]
+
+
+def _looks_bad(stdout_text: str, stderr_text: str, counts: Dict[str, int], jasper_ok: bool) -> Tuple[bool, str]:
+    """
+    Conservative: if any of these indicate trouble, we trigger advisor.
+    """
+    if not jasper_ok:
+        return True, "Jasper exit non-zero"
+
+    if counts.get("FAIL", 0) > 0:
+        return True, f"FAIL={counts.get('FAIL', 0)}"
+    if counts.get("UNKNOWN", 0) > 0:
+        return True, f"UNKNOWN={counts.get('UNKNOWN', 0)}"
+
+    joined = (stdout_text or "") + "\n" + (stderr_text or "")
+    for pat in _ADVISOR_ERROR_PATTERNS:
+        if re.search(pat, joined, flags=re.IGNORECASE):
+            return True, f"matched '{pat}' in logs"
+
+    return False, "no error/cex/unknown detected"
+
+
+def run_llm_advisor_if_needed(
+    fpv_dir: Path,
+    sva_top: str,
+    scope_path: str,
+    advisor_llm_conf: Optional[Path],
+    jasper_ok: bool,
+    jasper_exit: Optional[int],
+    counts: Dict[str, int],
+) -> None:
+    """
+    Runs only if trouble detected AND advisor config available.
+    Never triggers postcheck automatically; prints recommendation only.
+    """
+    stdout_tail = _tail_text(fpv_dir / "jg.stdout.log", 500)
+    stderr_tail = _tail_text(fpv_dir / "jg.stderr.log", 500)
+
+    need, reason = _looks_bad(stdout_tail, stderr_tail, counts, jasper_ok)
+    if not need:
+        console.print("[green]✔ Advisor check: logs look clean (no CEX/ERROR/UNKNOWN).[/green]")
+        return
+
+    console.print(Panel.fit(
+        f"[bold]Advisor triggered[/bold]\n"
+        f"[cyan]Reason:[/cyan] {reason}\n"
+        f"[cyan]Jasper ok:[/cyan] {jasper_ok}   [cyan]exit:[/cyan] {jasper_exit}\n"
+        f"[cyan]Summary:[/cyan] FAIL={counts.get('FAIL',0)} UNKNOWN={counts.get('UNKNOWN',0)}",
+        title="LLM ADVISOR", border_style="yellow"
+    ))
+
+    if LLM_wrap is None:
+        console.print("[yellow]⚠ LLM_wrap not available; cannot run advisor. (Install/enable hagent.core.llm_wrap)[/yellow]")
+        return
+
+    if advisor_llm_conf is None or not advisor_llm_conf.exists():
+        console.print("[yellow]⚠ Advisor LLM conf missing. Provide --advisor-llm-conf <yaml> to enable recommendations.[/yellow]")
+        return
+
+    payload = {
+        "sva_top": sva_top,
+        "scope_path": scope_path or "-",
+        "jasper_ok": jasper_ok,
+        "jasper_exit_code": jasper_exit,
+        "results_summary_csv": _read_text(fpv_dir / "results_summary.csv"),
+        "jg_stdout_tail": stdout_tail,
+        "jg_stderr_tail": stderr_tail,
+        "jg_log_tail": _tail_text(fpv_dir / "jgproject" / "jg.log", 500),
+        "coverage_summary_txt": _read_text(fpv_dir / "formal_coverage_summary.txt"),
+        "notes": (
+            "Task: decide if user should run postcheck repair. "
+            "Return a short recommendation and suggested command flags. "
+            "DO NOT claim you ran postcheck."
+        ),
+    }
+
+    llm = LLM_wrap(
+        name="default",
+        conf_file=str(advisor_llm_conf),
+        log_file=str(fpv_dir / "jg_advisor_llm.log"),
+    )
+
+    try:
+        res = llm.inference(payload, prompt_index="jg_advisor_recommendation", n=1)
+    except Exception as e:
+        console.print(f"[yellow]⚠ Advisor inference failed: {e}[/yellow]")
+        return
+
+    text = ""
+    if isinstance(res, list) and res:
+        text = str(res[0])
+    else:
+        text = str(res or "")
+
+    text = text.strip()
+    console.print(Panel.fit(text if text else "(empty advisor output)", title="Advisor Recommendation", border_style="yellow"))
+
+    console.print(
+        "[bold cyan]Next step (manual):[/bold cyan]\n"
+        "If you agree with the recommendation, re-run with:\n"
+        "  --postcheck --postcheck-llm-conf <...> --postcheck-max-iters <N> --postcheck-apply\n"
+        "Optionally add:\n"
+        "  --postcheck-rerun-jg --jasper-bin <...>\n"
+        "[yellow]Note:[/yellow] postcheck will NOT run unless you explicitly request it."
+    )
+
+
+# -----------------------------------------------------------------------------
+# Post-check repair integration (opt-in; separate module)
+# -----------------------------------------------------------------------------
+def run_postcheck_if_requested(
+    enabled: bool,
+    fpv_dir: Path,
+    sva_top: str,
+    scope_path: str,
+    llm_conf: Optional[Path],
+    apply_patch: bool,
+    rerun_jg_after: bool,
+    jasper_bin: str,
+    max_iters: int,
+    tail_lines: int,
+) -> int:
+    if not enabled:
+        return 0
+
+    if llm_conf is None:
+        console.print("[red]✖ --postcheck requested but --postcheck-llm-conf is missing.[/red]")
+        return 2
+    if not llm_conf.exists():
+        console.print(f"[red]✖ --postcheck-llm-conf not found: {llm_conf}[/red]")
+        return 2
+
+    if rerun_jg_after and not apply_patch:
+        console.print("[red]✖ --postcheck-rerun-jg requires --postcheck-apply (no point rerunning without applying fixes).[/red]")
+        return 2
+
+    try:
+        from hagent.tool.cli_postcheck_repair import run_postcheck_repair  # type: ignore
+    except Exception as e:
+        console.print("[red]✖ Post-check module import failed.[/red]")
+        console.print("    Expected: [bold]hagent.tool.cli_postcheck_repair[/bold] with run_postcheck_repair()")
+        console.print(f"    Import error: {e}")
+        return 2
+
+    console.print(Panel.fit(
+        f"[bold]Post-check requested[/bold]\n"
+        f"[cyan]fpv_dir:[/cyan] {fpv_dir}\n"
+        f"[cyan]sva_top:[/cyan] {sva_top}\n"
+        f"[cyan]apply:[/cyan] {apply_patch}\n"
+        f"[cyan]rerun_jg_after:[/cyan] {rerun_jg_after}\n"
+        f"[cyan]max_iters:[/cyan] {max_iters}  [cyan]tail_lines:[/cyan] {tail_lines}",
+        title="POSTCHECK", border_style="magenta"
+    ))
+
+    return int(run_postcheck_repair(
+        fpv_dir=fpv_dir,
+        sva_top=sva_top,
+        scope_path=scope_path,
+        llm_conf=llm_conf,
+        apply=apply_patch,
+        rerun_jg=rerun_jg_after,
+        jasper_bin=jasper_bin,
+        max_iters=max_iters,
+        tail_lines=tail_lines,
+    ))
+
+
+# -----------------------------------------------------------------------------
+# Main pipeline
+# -----------------------------------------------------------------------------
+def main() -> int:
     import argparse
 
-    ap = argparse.ArgumentParser(description="Formal Agent - FPV Pipeline")
-    ap.add_argument("--slang", required=True, help="Path to slang binary or wrapper.")
-    ap.add_argument("--rtl", required=True, help="RTL source directory.")
+    ap = argparse.ArgumentParser(description="Formal pipeline: spec → props → fpv collateral → Jasper → feedback")
+
+    # Core I/O
+    ap.add_argument("--rtl", help="RTL source directory. Required unless --rerun-jg or only postcheck.")
     ap.add_argument("--top", required=True, help="Design top module name (e.g. cva6).")
-    ap.add_argument("--sva-top", help="Module to generate spec/properties/SVA for. Defaults to --top.")
-    ap.add_argument("--scope-path", help="Optional Slang hierarchical scope path (e.g. cva6.ex_stage_i.lsu_i.i_load_unit).")
-    ap.add_argument("--out", required=True, help="Output directory for results.")
-    ap.add_argument("-I", "--include", nargs="*", default=[], help="Include directories.")
-    ap.add_argument("-D", "--defines", nargs="*", default=[], help="Verilog defines.")
-    ap.add_argument("--filelist", help="Optional HDL filelist for design compilation (manifest/command file).")
-    ap.add_argument("--jasper-bin", default="<cadence jasper_bin path>", help="Path to Jasper binary.")
-    ap.add_argument("--run-jg", action="store_true", help="Run JasperGold FPV automatically.")
+    ap.add_argument("--sva-top", help="Module to generate spec/properties/wrapper for (defaults to --top).")
+    ap.add_argument("--scope-path", default="", help="Hierarchical instance path to sva-top (used by spec builder + advisor context).")
+    ap.add_argument("--out", required=True, help="Output directory root. Writes to: <out>/fpv_<top>/")
+
+    # Tool paths (spec builder)
+    ap.add_argument("--slang", help="Path to slang binary/wrapper (required if running spec builder).")
+
+    # Build context
+    ap.add_argument("--filelist", help="Optional HDL filelist. In this mode, we reference it via -F in files.vc (not parsed).")
+    ap.add_argument("-I", dest="include_dirs", action="append", default=[], help="Include directory (repeatable).")
+    ap.add_argument("--defines", action="append", default=[], help="Define NAME or NAME=VAL (repeatable).")
+
+    # Stage control
+    ap.add_argument("--skip-spec", action="store_true", help="Skip spec generation stage.")
+    ap.add_argument("--skip-props", action="store_true", help="Skip property generation stage.")
+    ap.add_argument("--skip-fpv", action="store_true", help="Skip FPV collateral stage.")
+
+    # Wrapper quality inputs (optional)
+    ap.add_argument("--ports-json", help="Optional ports.json for wrapper port widths/types.")
+    ap.add_argument("--scoped-ast-json", help="Optional scoped_ast.json for type params / fallback params.")
+
+    # SVA wrapper options
+    ap.add_argument("--bind-scope", help="Optional bind scope (hierarchical instance path).")
+    ap.add_argument("--prop-include", default="properties.sv", help='File included inside *_prop.sv (default: "properties.sv").')
+
+    # Jasper execution (ONLY if asked)
+    ap.add_argument("--run-jg", action="store_true", help="Run Jasper after generation.")
+    ap.add_argument("--rerun-jg", action="store_true", help="Rerun Jasper only (no regeneration).")
+    ap.add_argument("--jasper-bin", default="jg", help="Jasper executable (default: jg).")
+
+    # TCL knobs forwarded to private writer
+    ap.add_argument("--clock-name", help="Override detected clock name.")
+    ap.add_argument("--reset-expr", help="Override detected reset expression.")
+    ap.add_argument("--prove-time", default="72h", help="Proof time limit (passed to private writer).")
+    ap.add_argument("--proofgrid-jobs", type=int, default=180, help="Proofgrid jobs (passed to private writer).")
+
+    # LLM prompt config overrides for spec/props
+    ap.add_argument("--spec-llm-conf", help="Override spec_prompt.yaml path.")
+    ap.add_argument("--prop-llm-conf", help="Override property_prompt.yaml path.")
+
+    # Advisor config (used only when trouble detected)
+    ap.add_argument("--advisor-llm-conf", help="LLM prompt yaml for advisor recommendations (runs only on FAIL/UNKNOWN/ERROR/CEX).")
+
+    # Postcheck (optional, manual)
+    ap.add_argument("--postcheck", action="store_true", help="Run post-check repair flow (opt-in).")
+    ap.add_argument("--postcheck-llm-conf", help="Path to jg_post_repair_prompt.yaml")
+    ap.add_argument("--postcheck-apply", action="store_true", help="Apply the patch produced by post-check repair.")
+    ap.add_argument("--postcheck-rerun-jg", action="store_true", help="After applying patch, rerun Jasper (feedback loop).")
+    ap.add_argument("--postcheck-max-iters", type=int, default=1)
+    ap.add_argument("--postcheck-tail-lines", type=int, default=250)
+
     args = ap.parse_args()
 
     banner()
 
-    rtl_dir = Path(os.path.expanduser(args.rtl)).resolve()
-    if not rtl_dir.is_dir():
-        raise SystemExit(f"[❌] RTL directory not found: {rtl_dir}")
-
-    out_base = Path(os.path.expanduser(args.out)).resolve()
-    fpv_dir = out_base / f"fpv_{args.top}"
+    out_root = Path(os.path.expanduser(args.out)).resolve()
+    fpv_dir = out_root / f"fpv_{args.top}"
     ensure_dir(fpv_dir)
     ensure_dir(fpv_dir / "sva")
 
     sva_top = args.sva_top or args.top
 
-    root = repo_root()
-    spec_yaml = root / "hagent" / "step" / "sva_gen" / "spec_prompt.yaml"
-    prop_yaml = root / "hagent" / "step" / "sva_gen" / "property_prompt.yaml"
-    if not spec_yaml.exists() or not prop_yaml.exists():
-        raise SystemExit(f"[❌] Missing YAML configs: {spec_yaml}, {prop_yaml}")
+    console.print(Panel.fit(
+        f"[bold]Setup[/bold]\n"
+        f"[cyan]design_top:[/cyan] {args.top}\n"
+        f"[cyan]sva_top   :[/cyan] {sva_top}\n"
+        f"[cyan]fpv_dir   :[/cyan] {fpv_dir}\n"
+        f"[cyan]mode      :[/cyan] {'rerun-only' if args.rerun_jg else 'pipeline'}",
+        border_style="green"
+    ))
 
-    # Detect clock/reset for design top
-    cr_result = detect_clk_rst_for_top(rtl_dir, args.top)
-    if isinstance(cr_result, (list, tuple)) and len(cr_result) >= 3:
-        clk, rst, rst_expr = cr_result[0], cr_result[1], cr_result[2]
-    else:
-        raise ValueError(f"Unexpected return from detect_clk_rst_for_top: {cr_result}")
+    # -------------------------
+    # RERUN-ONLY (no regeneration)
+    # -------------------------
+    if args.rerun_jg:
+        jasper_ok, jasper_exit = run_jasper(fpv_dir=fpv_dir, jasper_bin=args.jasper_bin)
 
-    console.print(f"[cyan]ℹ Design top:[/cyan] {args.top}   [cyan]ℹ SVA target:[/cyan] {sva_top}")
-    if args.scope_path:
-        console.print(f"[cyan]ℹ Using --scope-path:[/cyan] {args.scope_path}")
-
-    steps = [
-        (
-            f"🔧 Generating formal scenarios (spec) for module {sva_top}",
-            [
-                "python3",
-                "-m",
-                "hagent.tool.tests.cli_spec_builder",
-                "--mode",
-                "single",
-                "--slang",
-                args.slang,
-                "--rtl",
-                str(rtl_dir),
-                "--top",
-                sva_top,
-                "--design-top",
-                args.top,
-                "--out",
-                str(fpv_dir),
-                "--llm-conf",
-                str(spec_yaml),
-            ],
-        ),
-        (
-            f"🔒 Generating formal properties (assert/assume/cover) for module {sva_top}",
-            [
-                "python3",
-                "-m",
-                "hagent.tool.tests.cli_property_builder",
-                "--spec-md",
-                str(fpv_dir / f"{sva_top}_spec.md"),
-                "--csv",
-                str(fpv_dir / f"{sva_top}_spec.csv"),
-                "--rtl",
-                str(rtl_dir),
-                "--out",
-                str(fpv_dir),
-                "--llm-conf",
-                str(prop_yaml),
-                "--design-top",
-                args.top,   # keep clk/rst consistent with design top
-            ],
-        ),
-        (
-            "🧩 Generating TCL/SVA utility files",
-            [
-                "python3",
-                "-m",
-                "hagent.tool.gen_dep_tcl_and_sva",
-                "--src",
-                str(rtl_dir),
-                "--top",
-                args.top,
-                "--out",
-                str(fpv_dir / "FPV.tcl"),
-                "--prop-include",
-                str(fpv_dir / "sva" / "properties.sv"),
-                "--clock-name",
-                clk,
-                "--reset-expr",
-                rst_expr,
-                "--prove-time",
-                "6h",
-                "--proofgrid-jobs",
-                "64",
-            ],
-        ),
-    ]
-
-    # pass include/defines/filelist/scope into spec step
-    msg0, cmd0 = steps[0]
-    cmd0 = list(cmd0)
-    if args.scope_path:
-        cmd0 += ["--scope-path", args.scope_path]
-    if args.filelist:
-        cmd0 += ["--filelist", os.path.expanduser(args.filelist)]
-    for inc in args.include:
-        cmd0 += ["--include", os.path.expanduser(inc)]
-    for d in args.defines:
-        cmd0 += ["--defines", d]
-    steps[0] = (msg0, cmd0)
-
-    # pass include/defines/filelist into gen_dep step
-    msg2, cmd2 = steps[2]
-    cmd2 = list(cmd2)
-    if sva_top != args.top:
-        cmd2 += ["--sva-top", sva_top]
-    for inc in args.include:
-        cmd2 += ["--extra-inc", os.path.expanduser(inc)]
-    for d in args.defines:
-        cmd2 += ["--defines", d]
-    if args.filelist:
-        cmd2 += ["--filelist", os.path.expanduser(args.filelist)]
-    steps[2] = (msg2, cmd2)
-
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}")) as progress:
-        for idx, (msg, cmd) in enumerate(steps, 1):
-            progress.add_task(description=f"[cyan]{msg}...", total=None)
-            console.print(f"\n[bold cyan][{idx}/{len(steps)}][/bold cyan] {msg}")
-            run_uv(cmd, cwd=Path.cwd())
-            console.print(f"[green]✔[/green] {msg} completed.\n")
-
-    # move generated property file into sva/
-    prop_src = fpv_dir / "properties.sv"
-    if not prop_src.exists():
-        raise SystemExit("[❌] properties.sv not found after property builder.")
-    shutil.move(str(prop_src), str(fpv_dir / "sva" / "properties.sv"))
-    console.print("[green]✔[/green] Moved properties.sv → sva/")
-
-    # Optional JasperGold run
-    if args.run_jg:
-        console.print(
-            f"\n[bold yellow]⚙ Running Formal Tool: JasperGold FPV (top={args.top}, sva_top={sva_top})...[/bold yellow]"
-        )
-
-        jg_cmd_list = [args.jasper_bin, "-allow_unsupported_OS", "-tcl", "FPV.tcl", "-batch"]
-        console.print(f"[cyan]→[/cyan] [white]{' '.join(jg_cmd_list)}[/white]")
-
-        jg_stdout = fpv_dir / "jg.stdout.log"
-        jg_stderr = fpv_dir / "jg.stderr.log"
-
-        try:
-            console.print(f"[cyan]→[/cyan] [white]stdout:[/white] {jg_stdout}")
-            console.print(f"[cyan]→[/cyan] [white]stderr:[/white] {jg_stderr}")
-            with open(jg_stdout, "w") as fo, open(jg_stderr, "w") as fe:
-                subprocess.run(jg_cmd_list, cwd=fpv_dir, stdout=fo, stderr=fe, check=True)
-        except subprocess.CalledProcessError as e:
-            console.print(f"[red]⚠ Jasper exited with code {e.returncode}[/red]")
-
+        # Stage 5 summary (always after Jasper attempt)
         jg_log = fpv_dir / "jgproject" / "jg.log"
         jg_summary = parse_jg_log_detailed(jg_log)
-        print_jg_summary(jg_summary)
+        counts = write_results_summary(fpv_dir, jg_summary)
 
-        counts = {
-            "PROVEN": jg_summary.get("assertions", {}).get("proven", 0),
-            "FAIL": jg_summary.get("assertions", {}).get("cex", 0),
-            "UNREACHABLE": jg_summary.get("covers", {}).get("unreachable", 0),
-            "COVER": jg_summary.get("covers", {}).get("covered", 0),
-            "UNKNOWN": (
-                jg_summary.get("assertions", {}).get("unknown", 0)
-                + jg_summary.get("covers", {}).get("unknown", 0)
-            ),
-        }
-        write_summary(fpv_dir, counts)
+        # Stage 6 coverage summary (ALWAYS best-effort)
+        try_run_private_coverage_summarizer(fpv_dir)
 
-        cov_html = fpv_dir / "formal_coverage.html"
+        # Advisor (only if trouble)
+        advisor_conf = Path(os.path.expanduser(args.advisor_llm_conf)).resolve() if args.advisor_llm_conf else None
+        run_llm_advisor_if_needed(
+            fpv_dir=fpv_dir,
+            sva_top=sva_top,
+            scope_path=args.scope_path or "",
+            advisor_llm_conf=advisor_conf,
+            jasper_ok=jasper_ok,
+            jasper_exit=jasper_exit,
+            counts=counts,
+        )
 
-        # 1) Try imported function (fast path)
-        if PRIVATE_COV_SUMMARIZER is not None:
-            if cov_html.exists():
-                try:
-                    out_cov_txt = PRIVATE_COV_SUMMARIZER(cov_html, console=console)
-                    console.print(f"[green]✔ Formal coverage summary written to[/green] {out_cov_txt}")
-                except Exception as e:
-                    console.print(f"[yellow]⚠ Private coverage summary failed (import path):[/yellow] {e}")
-            else:
-                console.print(f"[yellow]⚠ formal_coverage.html not found in[/yellow] {fpv_dir}")
+        # Postcheck if explicitly requested (manual). Rerun only after postcheck + only if asked.
+        rc_post = run_postcheck_if_requested(
+            enabled=args.postcheck,
+            fpv_dir=fpv_dir,
+            sva_top=sva_top,
+            scope_path=args.scope_path or "",
+            llm_conf=Path(os.path.expanduser(args.postcheck_llm_conf)).resolve() if args.postcheck_llm_conf else None,
+            apply_patch=args.postcheck_apply,
+            rerun_jg_after=args.postcheck_rerun_jg,
+            jasper_bin=args.jasper_bin,
+            max_iters=args.postcheck_max_iters,
+            tail_lines=args.postcheck_tail_lines,
+        )
+
+        # Return nonzero if postcheck failed, else reflect Jasper success
+        if rc_post != 0:
+            return rc_post
+        return 0 if jasper_ok else 2
+
+    # -------------------------
+    # PIPELINE requires RTL for generation stages
+    # -------------------------
+    if (not args.skip_spec) or (not args.skip_props) or (not args.skip_fpv):
+        if not args.rtl:
+            raise SystemExit("ERROR: --rtl is required for pipeline generation stages. Use --rerun-jg for rerun-only.")
+        rtl_dir = Path(os.path.expanduser(args.rtl)).resolve()
+        if not rtl_dir.is_dir():
+            raise SystemExit(f"ERROR: RTL directory not found: {rtl_dir}")
+    else:
+        rtl_dir = None  # type: ignore
+
+    root = repo_root()
+    default_spec_yaml = root / "hagent" / "step" / "sva_gen" / "spec_prompt.yaml"
+    default_prop_yaml = root / "hagent" / "step" / "sva_gen" / "property_prompt.yaml"
+    spec_yaml = Path(os.path.expanduser(args.spec_llm_conf)).resolve() if args.spec_llm_conf else default_spec_yaml
+    prop_yaml = Path(os.path.expanduser(args.prop_llm_conf)).resolve() if args.prop_llm_conf else default_prop_yaml
+
+    if not args.skip_spec:
+        if not args.slang:
+            raise SystemExit("ERROR: --slang required when running spec builder (omit with --skip-spec).")
+        if not spec_yaml.exists():
+            raise SystemExit(f"ERROR: spec LLM config not found: {spec_yaml}")
+    if not args.skip_props:
+        if not prop_yaml.exists():
+            raise SystemExit(f"ERROR: property LLM config not found: {prop_yaml}")
+
+    ports_json = Path(os.path.expanduser(args.ports_json)).resolve() if args.ports_json else None
+    scoped_ast_json = Path(os.path.expanduser(args.scoped_ast_json)).resolve() if args.scoped_ast_json else None
+
+    include_dirs = [Path(os.path.expanduser(p)).resolve() for p in args.include_dirs]
+    user_filelist = Path(os.path.expanduser(args.filelist)).resolve() if args.filelist else None
+    if user_filelist and not user_filelist.is_file():
+        raise SystemExit(f"ERROR: --filelist not found: {user_filelist}")
+
+    steps: List[Tuple[str, callable]] = []
+
+    # Stage 1: spec
+    def _step_spec():
+        cmd = [
+            "python3", "-m", "hagent.tool.tests.cli_spec_builder",
+            "--mode", "single",
+            "--slang", args.slang,
+            "--rtl", str(rtl_dir),
+            "--top", sva_top,
+            "--design-top", args.top,
+            "--out", str(fpv_dir),
+            "--llm-conf", str(spec_yaml),
+        ]
+        if args.scope_path:
+            cmd += ["--scope-path", args.scope_path]
+        if user_filelist:
+            cmd += ["--filelist", str(user_filelist)]
+        for inc in include_dirs:
+            cmd += ["--include", str(inc)]
+        for d in (args.defines or []):
+            cmd += ["--defines", d]
+        run_cmd(cmd)
+
+    if not args.skip_spec:
+        steps.append((f"🔧 Spec generation (module={sva_top})", _step_spec))
+
+    # Stage 2: props
+    def _step_props():
+        spec_md = fpv_dir / f"{sva_top}_spec.md"
+        spec_csv = fpv_dir / f"{sva_top}_spec.csv"
+        if not spec_md.exists() or not spec_csv.exists():
+            raise SystemExit(f"ERROR: Missing spec outputs: {spec_md} / {spec_csv}")
+
+        cmd = [
+            "python3", "-m", "hagent.tool.tests.cli_property_builder",
+            "--spec-md", str(spec_md),
+            "--csv", str(spec_csv),
+            "--rtl", str(rtl_dir),
+            "--out", str(fpv_dir),
+            "--llm-conf", str(prop_yaml),
+            "--design-top", args.top,
+        ]
+        run_cmd(cmd)
+
+        prop_src = fpv_dir / "properties.sv"
+        if not prop_src.exists():
+            raise SystemExit("ERROR: properties.sv not found after property builder.")
+        prop_dst = fpv_dir / "sva" / "properties.sv"
+        if prop_dst.exists():
+            prop_dst.unlink()
+        shutil.move(str(prop_src), str(prop_dst))
+        console.print("[green]✔[/green] Moved properties.sv → sva/")
+
+    if not args.skip_props:
+        steps.append((f"🔒 Property generation (module={sva_top})", _step_props))
+
+    # Stage 3: fpv collateral
+    def _step_fpv():
+        pj = ports_json
+        saj = scoped_ast_json
+        if pj is None:
+            cand = fpv_dir / "ports.json"
+            if cand.exists():
+                pj = cand
+        if saj is None:
+            cand = fpv_dir / "scoped_ast.json"
+            if cand.exists():
+                saj = cand
+
+        include_basename = Path(args.prop_include).name
+        inc_path = Path(os.path.expanduser(args.prop_include)).resolve()
+        if inc_path.exists() and inc_path.is_file():
+            dst = fpv_dir / "sva" / include_basename
+            if dst.resolve() != inc_path:
+                shutil.copy2(inc_path, dst)
+                console.print(f"[green]✔[/green] Copied prop-include → {dst}")
+
+        all_files = load_sv_tree(rtl_dir)
+        modules: Dict[str, Path] = {}
+        for path, sv in all_files.items():
+            for unit in sv.declared_units():
+                modules.setdefault(unit, path)
+
+        target_src = modules.get(sva_top)
+        if target_src is None:
+            raise SystemExit(f"ERROR: module '{sva_top}' not found under RTL root: {rtl_dir}")
+
+        clk_name, rst_name, rst_expr = detect_clk_rst_for_top(rtl_dir, args.top)
+        if args.clock_name:
+            clk_name = args.clock_name
+        if args.reset_expr:
+            rst_expr = args.reset_expr
+        if not rst_expr and rst_name:
+            rst_expr = f"!{rst_name}"
+        console.print(f"[green]✔[/green] Clock/Reset: clk={clk_name}, reset_expr={rst_expr}")
+
+        prop_p, bind_p = emit_prop_and_bind_for_module(
+            mod_name=sva_top,
+            src_file=target_src,
+            fpv_dir=fpv_dir,
+            include_file=include_basename,
+            bind_scope=args.bind_scope,
+            ports_json=pj,
+            scoped_ast_json=saj,
+        )
+
+        sva_paths: List[Path] = []
+        if prop_p and bind_p:
+            sva_paths.extend([prop_p, bind_p])
+
+        if user_filelist:
+            final_files = list(sva_paths)
+            incdirs_out: List[Path] = []
         else:
-            if PRIVATE_COV_SCRIPT is not None:
-                console.print(f"[yellow]⚠ Private summarizer import unavailable. Script candidate was:[/yellow] {PRIVATE_COV_SCRIPT}")
-            else:
-                console.print("[yellow]⚠ Private summarizer not found (no hagent-private located).[/yellow]")
+            pkg_files, rtl_files, missing_pkgs = build_filelist_for_top(
+                rtl_root=rtl_dir,
+                top_name=args.top,
+                include_dirs=include_dirs,
+            )
+            if missing_pkgs:
+                console.print("[yellow]⚠ WARNING: Missing packages:[/yellow] " + ", ".join(sorted(missing_pkgs)))
+            pkg_files = order_packages_by_dependency(pkg_files)
+            final_files = list(pkg_files) + list(rtl_files) + list(sva_paths)
+            incdirs_out = list(dict.fromkeys(include_dirs))
 
-        # 2) Also run the private script as a command if it exists (requested)
-        if PRIVATE_COV_SCRIPT is not None and PRIVATE_COV_SCRIPT.exists() and cov_html.exists():
-            try:
-                console.print("[cyan]→[/cyan] [white]Running private coverage summarizer CLI[/white]")
-                subprocess.run(
-                    [sys.executable, str(PRIVATE_COV_SCRIPT), "--html", str(cov_html)],
-                    cwd=PRIVATE_COV_SCRIPT.parent,
-                    check=True,
-                )
-                console.print("[green]✔[/green] Coverage summarizer CLI completed.")
-            except Exception as e:
-                console.print(f"[yellow]⚠ Coverage summarizer CLI failed:[/yellow] {e}")
+        write_jasper_tcl(
+            out_path=(fpv_dir / "FPV.tcl"),
+            output_dir=fpv_dir,
+            module_name=args.top,
+            files=final_files,
+            incdirs=incdirs_out,
+            defines=args.defines,
+            clock_name=clk_name,
+            reset_expr=rst_expr,
+            prove_time=args.prove_time,
+            proofgrid_jobs=args.proofgrid_jobs,
+            lib_dirs=incdirs_out,
+            lib_files=None,
+            sva_module=sva_top,
+        )
 
-    console.print("\n[bold green]✅ FORMAL AGENT COMPLETED SUCCESSFULLY![/bold green]")
-    console.print(
-        f"Design top: [bold cyan]{args.top}[/bold cyan]   "
-        f"SVA target: [bold magenta]{sva_top}[/bold magenta]\n"
-        f"All results in: [bold yellow]{fpv_dir}[/bold yellow]\n"
+        if user_filelist:
+            overwrite_files_vc_for_user_filelist(
+                vc_path=(fpv_dir / "files.vc"),
+                user_filelist=user_filelist,
+                fpv_dir=fpv_dir,
+                sva_files=sva_paths,
+                defines=args.defines,
+            )
+
+        console.print("[bold green]✔ FPV collateral generated[/bold green]")
+        console.print(f"[green]✔[/green] FPV dir: {fpv_dir}")
+
+    if not args.skip_fpv:
+        steps.append(("🧩 FPV collateral (wrapper/bind + FPV.tcl/files.vc)", _step_fpv))
+
+    if steps:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}")) as progress:
+            for i, (msg, fn) in enumerate(steps, 1):
+                progress.add_task(description=f"[cyan]{msg}...", total=None)
+                console.print(f"\n[bold cyan][{i}/{len(steps)}][/bold cyan] {msg}")
+                fn()
+                console.print(f"[green]✔[/green] {msg} completed.\n")
+
+    # Stage 4: Jasper only if asked
+    jasper_ok = True
+    jasper_exit: Optional[int] = 0
+    counts: Dict[str, int] = {"PROVEN": 0, "FAIL": 0, "UNKNOWN": 0, "COVER": 0, "UNREACHABLE": 0}
+
+    if args.run_jg:
+        jasper_ok, jasper_exit = run_jasper(fpv_dir=fpv_dir, jasper_bin=args.jasper_bin)
+
+        # Stage 5 summary (always after Jasper attempt)
+        jg_log = fpv_dir / "jgproject" / "jg.log"
+        jg_summary = parse_jg_log_detailed(jg_log)
+        counts = write_results_summary(fpv_dir, jg_summary)
+
+        # Stage 6 coverage summary (ALWAYS best-effort)
+        try_run_private_coverage_summarizer(fpv_dir)
+
+        # Advisor (only if trouble; AFTER summary + coverage)
+        advisor_conf = Path(os.path.expanduser(args.advisor_llm_conf)).resolve() if args.advisor_llm_conf else None
+        run_llm_advisor_if_needed(
+            fpv_dir=fpv_dir,
+            sva_top=sva_top,
+            scope_path=args.scope_path or "",
+            advisor_llm_conf=advisor_conf,
+            jasper_ok=jasper_ok,
+            jasper_exit=jasper_exit,
+            counts=counts,
+        )
+
+    # Stage 7: Postcheck ONLY if user explicitly requested (manual feedback loop)
+    rc_post = run_postcheck_if_requested(
+        enabled=args.postcheck,
+        fpv_dir=fpv_dir,
+        sva_top=sva_top,
+        scope_path=args.scope_path or "",
+        llm_conf=Path(os.path.expanduser(args.postcheck_llm_conf)).resolve() if args.postcheck_llm_conf else None,
+        apply_patch=args.postcheck_apply,
+        rerun_jg_after=args.postcheck_rerun_jg,
+        jasper_bin=args.jasper_bin,
+        max_iters=args.postcheck_max_iters,
+        tail_lines=args.postcheck_tail_lines,
     )
+    if rc_post != 0:
+        return rc_post
+
+    # Final status:
+    # - If Jasper wasn't run, success is based on generation stages.
+    # - If Jasper was run and failed, return nonzero (but we still produced summary/coverage/advice).
+    if args.run_jg and not jasper_ok:
+        return 2
+
+    console.print(Panel.fit(
+        f"[bold green]DONE[/bold green]\n"
+        f"[cyan]fpv_dir:[/cyan] {fpv_dir}\n"
+        f"[cyan]ran_jasper:[/cyan] {bool(args.run_jg or args.rerun_jg)}\n"
+        f"[cyan]postcheck:[/cyan] {bool(args.postcheck)}",
+        border_style="green"
+    ))
+    return 0
 
 
 if __name__ == "__main__":
     try:
-        main()
-    except Exception as e:
-        console.print(f"[red]❌ Fatal Error:[/red] {e}")
-        sys.exit(1)
-    sys.exit(0)
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted.[/yellow]")
+        raise SystemExit(130)
+

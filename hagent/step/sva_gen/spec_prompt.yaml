@@ -193,7 +193,7 @@ default:
         =========================================================
         CONTENT GOALS / WHAT TO GENERATE
         =========================================================
-        - Balanced mix: assume >= 8, cover >= 8, assert >= 8.
+        - Balanced mix: assume >= 20, cover >= 20, assert >= 20.
         - Focus on IO behavior only; do NOT mention internal regs/wires/states.
 
         - Use io_relations.hints FIRST for assume/cover ideas.
@@ -346,4 +346,4 @@ default:
 
         broken_csv:
         {csv_text}
-
+              
