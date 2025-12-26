@@ -64,8 +64,10 @@ HEADER_RE = re.compile(
 
 _COMMENT_RE = re.compile(r'//.*?$|/\*.*?\*/', re.DOTALL | re.MULTILINE)
 
+
 def strip_comments(text: str) -> str:
     return re.sub(_COMMENT_RE, '', text)
+
 
 # -----------------------------------------------------------------------------
 # Private TCL writer loader (no fallback in public repo)
@@ -73,6 +75,7 @@ def strip_comments(text: str) -> str:
 def _load_private_tcl_writer():
     try:
         from JG.fpv_tcl_writer import write_jasper_tcl
+
         console.print('[green]✔ Using private JasperGold TCL writer[/green]')
         return write_jasper_tcl
     except Exception as e:
@@ -82,7 +85,9 @@ def _load_private_tcl_writer():
         console.print(f'    Import error: {e}')
         sys.exit(1)
 
+
 write_jasper_tcl = _load_private_tcl_writer()
+
 
 # -----------------------------------------------------------------------------
 # Declaration helpers (old path: parse module header)
@@ -96,7 +101,9 @@ def clean_decl_to_input(decl: str) -> str:
     decl = re.sub(r'\b(wire|reg|logic|var|signed|unsigned)\b', '', decl)
     return re.sub(r'\s+', ' ', decl).strip()
 
+
 _ID_RE = re.compile(r'\b([\w$]+)\b(?!.*\b[\w$]+\b)')
+
 
 def extract_last_identifier(token: str) -> str | None:
     token = token.strip()
@@ -106,6 +113,7 @@ def extract_last_identifier(token: str) -> str | None:
     m = _ID_RE.search(token)
     return m.group(1) if m else None
 
+
 # -----------------------------------------------------------------------------
 # ports.json / scoped AST helpers (new path)
 # -----------------------------------------------------------------------------
@@ -113,26 +121,27 @@ def _fix_logic_width_syntax(t: str) -> str:
     # "logic[63:0]" -> "logic [63:0]"
     return re.sub(r'\b(logic|bit|byte|int|shortint|longint|integer)\s*\[', r'\1 [', t)
 
+
 def normalize_sv_type(type_str: str, sva_top: str, known_type_params: set[str]) -> str:
     """
     Fix illegal "module.type" forms emitted in some downstream JSON:
       load_unit.lsu_ctrl_t -> lsu_ctrl_t
     Keep pkg::type unchanged.
     """
-    if not type_str or type_str.strip() in ("-", ""):
-        return "logic"
+    if not type_str or type_str.strip() in ('-', ''):
+        return 'logic'
 
     t = type_str.strip()
     t = _fix_logic_width_syntax(t)
 
     # If it's already package-qualified, keep as-is.
-    if "::" in t:
+    if '::' in t:
         return t
 
     # If it is "mod.type", and mod == sva_top, strip prefix.
     m = re.match(r'^(?P<mod>[A-Za-z_]\w*)\.(?P<name>[A-Za-z_]\w*)$', t)
-    if m and m.group("mod") == sva_top:
-        inner = m.group("name")
+    if m and m.group('mod') == sva_top:
+        inner = m.group('name')
         # Only strip if it matches a known type-parameter (safe).
         if inner in known_type_params:
             return inner
@@ -141,6 +150,7 @@ def normalize_sv_type(type_str: str, sva_top: str, known_type_params: set[str]) 
 
     return t
 
+
 def load_known_type_params_from_scoped_ast(scoped_ast_json: Path) -> set[str]:
     """
     Read your Slang 'scoped_ast.json' (the one created by cli_spec_builder)
@@ -148,17 +158,18 @@ def load_known_type_params_from_scoped_ast(scoped_ast_json: Path) -> set[str]:
     """
     try:
         data = json.loads(scoped_ast_json.read_text())
-        members = data.get("body", {}).get("members", [])
+        members = data.get('body', {}).get('members', [])
         tp = set()
         for m in members:
-            if m.get("kind") == "TypeParameter" and m.get("isPort"):
-                n = m.get("name")
+            if m.get('kind') == 'TypeParameter' and m.get('isPort'):
+                n = m.get('name')
                 if n:
                     tp.add(n)
         return tp
     except Exception as e:
-        console.print(f"[yellow]⚠ Could not parse scoped ast json {scoped_ast_json}: {e}[/yellow]")
+        console.print(f'[yellow]⚠ Could not parse scoped ast json {scoped_ast_json}: {e}[/yellow]')
         return set()
+
 
 def build_params_text_from_scoped_ast(scoped_ast_json: Path) -> str:
     """
@@ -168,40 +179,41 @@ def build_params_text_from_scoped_ast(scoped_ast_json: Path) -> str:
     """
     try:
         data = json.loads(scoped_ast_json.read_text())
-        members = data.get("body", {}).get("members", [])
+        members = data.get('body', {}).get('members', [])
 
         value_params = []
         type_params = []
 
         for m in members:
-            if m.get("isPort") and m.get("kind") == "Parameter":
-                ptype = (m.get("type") or "int").strip()
-                pname = (m.get("name") or "").strip()
+            if m.get('isPort') and m.get('kind') == 'Parameter':
+                ptype = (m.get('type') or 'int').strip()
+                pname = (m.get('name') or '').strip()
                 if pname:
                     value_params.append((ptype, pname))
 
-            if m.get("isPort") and m.get("kind") == "TypeParameter":
-                pname = (m.get("name") or "").strip()
+            if m.get('isPort') and m.get('kind') == 'TypeParameter':
+                pname = (m.get('name') or '').strip()
                 if pname:
                     type_params.append(pname)
 
         if not value_params and not type_params:
-            return ""
+            return ''
 
-        lines = ["#("]
+        lines = ['#(']
         first = True
         for ptype, pname in value_params:
-            comma = "," if not first else ""
-            lines.append(f"    {comma}parameter {ptype} {pname}")
+            comma = ',' if not first else ''
+            lines.append(f'    {comma}parameter {ptype} {pname}')
             first = False
         for pname in type_params:
-            comma = "," if not first else ""
-            lines.append(f"    {comma}parameter type {pname}")
+            comma = ',' if not first else ''
+            lines.append(f'    {comma}parameter type {pname}')
             first = False
-        lines.append(")")
-        return "\n".join(lines)
+        lines.append(')')
+        return '\n'.join(lines)
     except Exception:
-        return ""
+        return ''
+
 
 def port_decls_from_ports_json(
     ports_json: Path,
@@ -218,16 +230,17 @@ def port_decls_from_ports_json(
     seen: set[str] = set()
 
     for p in data:
-        name = (p.get("name") or "").strip()
+        name = (p.get('name') or '').strip()
         if not name or name in seen:
             continue
         seen.add(name)
 
-        t = normalize_sv_type(p.get("type") or "logic", sva_top=sva_top, known_type_params=known_type_params)
+        t = normalize_sv_type(p.get('type') or 'logic', sva_top=sva_top, known_type_params=known_type_params)
         # Some ports.json entries may be like "logic[2:0]" already fixed by normalize.
-        decls.append(f"input {t} {name}")
+        decls.append(f'input {t} {name}')
 
     return decls
+
 
 # -----------------------------------------------------------------------------
 # SVA generation
@@ -243,6 +256,7 @@ def generate_prop_module_min(dut_name: str, params_text: str, port_decls: list[s
         lines.append(f'`include "{include_file}"\n')
     lines.append('endmodule\n')
     return ''.join(lines)
+
 
 def generate_bind(dut_name: str, params_text: str, port_decls: list[str], bind_target: str | None = None):
     bind_scope = bind_target or dut_name
@@ -263,17 +277,19 @@ def generate_bind(dut_name: str, params_text: str, port_decls: list[str], bind_t
     if params_text:
         # Extract parameter names including "parameter type X" and "parameter <T> X"
         pnames = re.findall(r'\bparameter\b(?:\s+type)?(?:\s+[\w:$.]+\s+)?\b(\w+)\b\s*(?==|,|\))', params_text)
-        pnames = [p for p in pnames if p not in ("parameter", "type")]
+        pnames = [p for p in pnames if p not in ('parameter', 'type')]
         if pnames:
             params_inst = '#(' + ', '.join(f'.{p}({p})' for p in pnames) + ')'
 
     return f'bind {bind_scope} {dut_name}_prop {params_inst} i_{dut_name}_prop ( {assoc} );\n'
 
+
 def find_module_header(text: str, mod_name: str):
     for m in HEADER_RE.finditer(text):
-        if m.group("name") == mod_name:
+        if m.group('name') == mod_name:
             return m
     return None
+
 
 def emit_prop_and_bind_for_module(
     mod_name: str,
@@ -291,7 +307,7 @@ def emit_prop_and_bind_for_module(
         return None, None
 
     m = find_module_header(text, mod_name)
-    params_text = ""
+    params_text = ''
     port_decls: list[str] = []
 
     known_type_params: set[str] = set()
@@ -308,11 +324,11 @@ def emit_prop_and_bind_for_module(
         console.print(f'[yellow]⚠ Could not parse module header for {mod_name} in {src_file}; will fallback.[/yellow]')
         if scoped_ast_json and scoped_ast_json.is_file():
             params_text = build_params_text_from_scoped_ast(scoped_ast_json)
-        port_body = ""
+        port_body = ''
 
     # Prefer ports.json if provided
     if ports_json and ports_json.is_file():
-        console.print(f"[cyan]✔ Using ports.json for wrapper ports: {ports_json}[/cyan]")
+        console.print(f'[cyan]✔ Using ports.json for wrapper ports: {ports_json}[/cyan]')
         port_decls = port_decls_from_ports_json(ports_json, sva_top=mod_name, known_type_params=known_type_params)
     else:
         # Old fallback: parse header port list
@@ -384,6 +400,7 @@ def emit_prop_and_bind_for_module(
     console.print(f'[green]✔[/green] Wrote bind: {bind_path}')
     return prop_path, bind_path
 
+
 # -----------------------------------------------------------------------------
 # Package ordering (auto mode)
 # -----------------------------------------------------------------------------
@@ -426,6 +443,7 @@ def order_packages_by_dependency(pkg_files):
                     changed = True
     return ordered
 
+
 # -----------------------------------------------------------------------------
 # files.vc overwrite (FILELIST MODE ONLY)
 # -----------------------------------------------------------------------------
@@ -441,24 +459,25 @@ def overwrite_files_vc_for_user_filelist(
     sva_dir = (out_root / 'sva').resolve()
 
     lines: list[str] = []
-    lines.append("+libext+.v")
-    lines.append("+libext+.sv")
-    lines.append("+libext+.svh")
-    lines.append("+librescan")
+    lines.append('+libext+.v')
+    lines.append('+libext+.sv')
+    lines.append('+libext+.svh')
+    lines.append('+librescan')
 
-    for d in (defines or []):
-        d = (d or "").strip()
+    for d in defines or []:
+        d = (d or '').strip()
         if d:
-            lines.append(f"+define+{d}")
+            lines.append(f'+define+{d}')
 
-    lines.append(f"+incdir+{sva_dir}")
-    lines.append(f"-F {user_filelist}")
+    lines.append(f'+incdir+{sva_dir}')
+    lines.append(f'-F {user_filelist}')
 
     for f in sva_files:
         lines.append(str(Path(f).resolve()))
 
-    vc_path.write_text("\n".join(lines) + "\n")
-    console.print(f"[green]✔[/green] Overwrote files.vc for user filelist mode: [bold]{vc_path}[/bold]")
+    vc_path.write_text('\n'.join(lines) + '\n')
+    console.print(f'[green]✔[/green] Overwrote files.vc for user filelist mode: [bold]{vc_path}[/bold]')
+
 
 # -----------------------------------------------------------------------------
 # Main
@@ -469,19 +488,25 @@ def main():
     ap.add_argument('--top', required=True, help='Design top module name')
     ap.add_argument('--out', required=True, help='Output Tcl path, e.g. out/FPV.tcl')
 
-    ap.add_argument('--extra-inc', dest='extra_inc', action='append', default=[],
-                    help='Force-add include dirs (also used as -y library dirs) [auto mode only]')
-    ap.add_argument('--defines', dest='defines', action='append', default=[],
-                    help='Defines NAME or NAME=VAL')
+    ap.add_argument(
+        '--extra-inc',
+        dest='extra_inc',
+        action='append',
+        default=[],
+        help='Force-add include dirs (also used as -y library dirs) [auto mode only]',
+    )
+    ap.add_argument('--defines', dest='defines', action='append', default=[], help='Defines NAME or NAME=VAL')
 
-    ap.add_argument('--all-sva', action='store_true',
-                    help='Generate prop+bind for all modules (auto mode). In --filelist mode this is disabled.')
+    ap.add_argument(
+        '--all-sva',
+        action='store_true',
+        help='Generate prop+bind for all modules (auto mode). In --filelist mode this is disabled.',
+    )
     ap.add_argument('--sva-top', help='Module for which to generate *_prop.sv and *_bind.sv for. Defaults to --top.')
 
     ap.add_argument('--bind-scope', help='Optional bind scope (hierarchical instance path).')
 
-    ap.add_argument('--prop-include', default='properties.sv',
-                    help='File to include inside *_prop.sv (e.g. "properties.sv")')
+    ap.add_argument('--prop-include', default='properties.sv', help='File to include inside *_prop.sv (e.g. "properties.sv")')
 
     ap.add_argument('--filelist', help='Optional HDL filelist (referenced via "-F <filelist>" in files.vc).')
 
@@ -524,7 +549,7 @@ def main():
             raise SystemExit(f'ERROR: filelist not found: {user_filelist_path}')
 
         if args.all_sva:
-            console.print("[yellow]⚠ --all-sva not supported in --filelist mode; generating only for --sva-top.[/yellow]")
+            console.print('[yellow]⚠ --all-sva not supported in --filelist mode; generating only for --sva-top.[/yellow]')
 
         files_out: list[Path] = []
         incdirs_out: list[Path] = []
@@ -536,8 +561,9 @@ def main():
         )
 
         if missing_pkgs:
-            console.print('[yellow]⚠ WARNING: Some packages could not be resolved: ' +
-                          ', '.join(sorted(missing_pkgs)) + '[/yellow]')
+            console.print(
+                '[yellow]⚠ WARNING: Some packages could not be resolved: ' + ', '.join(sorted(missing_pkgs)) + '[/yellow]'
+            )
 
         pkg_files = order_packages_by_dependency(pkg_files)
         files_out = pkg_files + rtl_files
@@ -623,7 +649,7 @@ def main():
     )
 
     if user_filelist_path is not None:
-        vc_path = out_root / "files.vc"
+        vc_path = out_root / 'files.vc'
         overwrite_files_vc_for_user_filelist(
             vc_path=vc_path,
             user_filelist=user_filelist_path,
@@ -636,9 +662,10 @@ def main():
     console.print(
         f'   Design top : [cyan]{args.top}[/cyan]\n'
         f'   SVA target : [magenta]{sva_top}[/magenta]\n'
-        f'   Filelist   : ' +
-        ('[cyan]user-provided (referenced via -F; not parsed)[/cyan]' if args.filelist else '[cyan]auto-discovered[/cyan]')
+        f'   Filelist   : '
+        + ('[cyan]user-provided (referenced via -F; not parsed)[/cyan]' if args.filelist else '[cyan]auto-discovered[/cyan]')
     )
+
 
 if __name__ == '__main__':
     try:

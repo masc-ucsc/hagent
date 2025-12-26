@@ -36,13 +36,13 @@ except Exception:
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
-_ALLOWED_SVA_FUNCS = {"$stable", "$changed", "$past", "$rose", "$fell"}
-_IMP_OPS = ("|->", "|=>")
+_ALLOWED_SVA_FUNCS = {'$stable', '$changed', '$past', '$rose', '$fell'}
+_IMP_OPS = ('|->', '|=>')
 
 
 def _strip_sv_comments(s: str) -> str:
-    s = re.sub(r"//.*?$", "", s, flags=re.M)
-    s = re.sub(r"/\*.*?\*/", "", s, flags=re.S)
+    s = re.sub(r'//.*?$', '', s, flags=re.M)
+    s = re.sub(r'/\*.*?\*/', '', s, flags=re.S)
     return s
 
 
@@ -55,12 +55,12 @@ def _load_ports_from_ports_json(candidate_paths: List[Path]) -> List[str]:
         if not p or not p.exists():
             continue
         try:
-            data = json.loads(p.read_text(encoding="utf-8"))
+            data = json.loads(p.read_text(encoding='utf-8'))
             if isinstance(data, list):
                 names: List[str] = []
                 for item in data:
-                    if isinstance(item, dict) and item.get("name"):
-                        names.append(str(item["name"]).strip())
+                    if isinstance(item, dict) and item.get('name'):
+                        names.append(str(item['name']).strip())
                 # de-dup preserve order
                 out: List[str] = []
                 seen = set()
@@ -84,15 +84,15 @@ def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
     top_esc = re.escape(top)
 
     mod_re = re.compile(
-        rf"\bmodule\s+{top_esc}\b[\s\S]*?\((?P<ports>[\s\S]*?)\)\s*;",
+        rf'\bmodule\s+{top_esc}\b[\s\S]*?\((?P<ports>[\s\S]*?)\)\s*;',
         re.MULTILINE,
     )
 
-    for sv in rtl_dir_path.rglob("*"):
-        if sv.suffix not in {".sv", ".v", ".svh", ".vh"}:
+    for sv in rtl_dir_path.rglob('*'):
+        if sv.suffix not in {'.sv', '.v', '.svh', '.vh'}:
             continue
         try:
-            txt = sv.read_text(encoding="utf-8", errors="ignore")
+            txt = sv.read_text(encoding='utf-8', errors='ignore')
         except Exception:
             continue
 
@@ -100,39 +100,48 @@ def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
         if not m:
             continue
 
-        port_block = _strip_sv_comments(m.group("ports") or "")
+        port_block = _strip_sv_comments(m.group('ports') or '')
 
         parts: List[str] = []
         buf = []
         depth = 0
         for ch in port_block:
-            if ch == "(":
+            if ch == '(':
                 depth += 1
-            elif ch == ")":
+            elif ch == ')':
                 depth = max(0, depth - 1)
-            if ch == "," and depth == 0:
-                parts.append("".join(buf).strip())
+            if ch == ',' and depth == 0:
+                parts.append(''.join(buf).strip())
                 buf = []
             else:
                 buf.append(ch)
         if buf:
-            parts.append("".join(buf).strip())
+            parts.append(''.join(buf).strip())
 
         ports: List[str] = []
         for p in parts:
             if not p:
                 continue
-            p2 = re.sub(r"\[[^\]]+\]", " ", p)
-            toks = re.findall(r"\b[A-Za-z_]\w*\b", p2)
+            p2 = re.sub(r'\[[^\]]+\]', ' ', p)
+            toks = re.findall(r'\b[A-Za-z_]\w*\b', p2)
             if not toks:
                 continue
 
             blacklist = {
-                "input", "output", "inout",
-                "wire", "logic", "reg",
-                "signed", "unsigned",
-                "parameter", "localparam",
-                "typedef", "struct", "union", "enum",
+                'input',
+                'output',
+                'inout',
+                'wire',
+                'logic',
+                'reg',
+                'signed',
+                'unsigned',
+                'parameter',
+                'localparam',
+                'typedef',
+                'struct',
+                'union',
+                'enum',
             }
             name = None
             for t in reversed(toks):
@@ -150,8 +159,8 @@ def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
 
 
 def _is_trivial_true(expr: str) -> bool:
-    e = (expr or "").strip()
-    return e in {"1", "1'b1", "1'b01", "1'h1"}  # keep small set; conservative
+    e = (expr or '').strip()
+    return e in {'1', "1'b1", "1'b01", "1'h1"}  # keep small set; conservative
 
 
 def _split_first_implication(expr: str) -> Optional[Tuple[str, str, str]]:
@@ -165,7 +174,7 @@ def _split_first_implication(expr: str) -> Optional[Tuple[str, str, str]]:
         idx = expr.find(op)
         if idx >= 0:
             ante = expr[:idx].strip()
-            cons = expr[idx + len(op):].strip()
+            cons = expr[idx + len(op) :].strip()
             return ante, op, cons
     return None
 
@@ -176,20 +185,20 @@ def _rewrite_temporal_mix_to_sequence_ops(post: str) -> str:
     '|', '||', '&', '&&' often creates illegal syntax (boolean vs sequence).
     In SVA, sequence OR/AND operators are 'or'/'and'. Convert spaced operators.
     """
-    p = (post or "").strip()
-    if "##" not in p:
+    p = (post or '').strip()
+    if '##' not in p:
         return p
 
     # Do not touch implications (handled elsewhere)
-    if "|->" in p or "|=>" in p:
+    if '|->' in p or '|=>' in p:
         return p
 
     # Replace logical/binary ops when they appear as separated tokens (with whitespace)
     # This avoids messing with bit-slices, concatenations, etc.
-    p = re.sub(r"\s\|\|\s", " or ", p)
-    p = re.sub(r"\s\|\s", " or ", p)
-    p = re.sub(r"\s&&\s", " and ", p)
-    p = re.sub(r"\s&\s", " and ", p)
+    p = re.sub(r'\s\|\|\s', ' or ', p)
+    p = re.sub(r'\s\|\s', ' or ', p)
+    p = re.sub(r'\s&&\s', ' and ', p)
+    p = re.sub(r'\s&\s', ' and ', p)
     return p.strip()
 
 
@@ -217,50 +226,50 @@ class PropertyBuilder:
 
         self.llm = None
         if LLM_wrap and self.llm_conf and os.path.exists(self.llm_conf):
-            print(f"[LLM] Using config: {self.llm_conf}")
+            print(f'[LLM] Using config: {self.llm_conf}')
             try:
                 self.llm = LLM_wrap(
-                    name="default",
+                    name='default',
                     conf_file=self.llm_conf,
-                    log_file="property_llm.log",
+                    log_file='property_llm.log',
                 )
             except Exception as e:
-                print(f"[WARN] LLM init failed: {e}. Falling back to rule-based generation.")
+                print(f'[WARN] LLM init failed: {e}. Falling back to rule-based generation.')
                 self.llm = None
         else:
-            print("[WARN] LLM disabled (LLM_wrap missing or llm_conf missing). Using rule-based generation.")
+            print('[WARN] LLM disabled (LLM_wrap missing or llm_conf missing). Using rule-based generation.')
 
     # ------------------------------------------------------------------
     @staticmethod
     def _fmt(s: Optional[str]) -> str:
         if s is None:
-            return ""
-        return str(s).replace("{", "{{").replace("}", "}}")
+            return ''
+        return str(s).replace('{', '{{').replace('}', '}}')
 
     # ------------------------------------------------------------------
     def _read_csv_rows(self) -> List[Dict[str, str]]:
         rows: List[Dict[str, str]] = []
-        with open(self.csv_path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(self.csv_path, 'r', encoding='utf-8', errors='ignore') as f:
             reader = csv.DictReader(f)
             for r in reader:
-                clean = {(k or "").strip(): self._fmt((v or "").strip()) for k, v in r.items() if k is not None}
+                clean = {(k or '').strip(): self._fmt((v or '').strip()) for k, v in r.items() if k is not None}
                 rows.append(clean)
-        print(f"[DEBUG] Loaded {len(rows)} CSV rows.")
+        print(f'[DEBUG] Loaded {len(rows)} CSV rows.')
         return rows
 
     # ------------------------------------------------------------------
     def _read_markdown(self) -> str:
         try:
-            txt = Path(self.spec_md).read_text(encoding="utf-8", errors="ignore")
+            txt = Path(self.spec_md).read_text(encoding='utf-8', errors='ignore')
         except Exception:
-            txt = ""
+            txt = ''
         return self._fmt(txt)
 
     # ------------------------------------------------------------------
     def _infer_spec_top(self) -> str:
         stem = Path(self.spec_md).stem
-        if "_spec" in stem:
-            return stem.split("_spec")[0]
+        if '_spec' in stem:
+            return stem.split('_spec')[0]
         return stem
 
     # ------------------------------------------------------------------
@@ -272,12 +281,12 @@ class PropertyBuilder:
         if isinstance(cr, (list, tuple)) and len(cr) >= 3:
             clk, rst, rst_expr = cr[0], cr[1], cr[2]
         else:
-            raise ValueError(f"Unexpected return from detect_clk_rst_for_top: {cr}")
+            raise ValueError(f'Unexpected return from detect_clk_rst_for_top: {cr}')
 
         if rst_expr and str(rst_expr).strip():
             disable_cond = str(rst_expr).strip()
         else:
-            disable_cond = f"!{rst}" if (rst.endswith("_ni") or rst.endswith("ni") or rst.endswith("_n")) else rst
+            disable_cond = f'!{rst}' if (rst.endswith('_ni') or rst.endswith('ni') or rst.endswith('_n')) else rst
 
         print(f'[INFO] Clock={clk}, Reset={rst}, disable iff ({disable_cond}) (detected from top="{clk_top}")')
         return clk, rst, disable_cond, spec_top
@@ -286,8 +295,8 @@ class PropertyBuilder:
     @staticmethod
     def _extract_sv_code(text: str) -> str:
         if not text:
-            return ""
-        m = re.search(r"```(?:systemverilog|sv|verilog)?\s*([\s\S]*?)```", text, re.I)
+            return ''
+        m = re.search(r'```(?:systemverilog|sv|verilog)?\s*([\s\S]*?)```', text, re.I)
         if m:
             return m.group(1).strip()
         return text.strip()
@@ -295,32 +304,32 @@ class PropertyBuilder:
     # ------------------------------------------------------------------
     @staticmethod
     def _normalize_csv_expr(expr: str, ports: List[str]) -> str:
-        e = (expr or "").strip()
+        e = (expr or '').strip()
         if not e:
-            return ""
+            return ''
 
-        if e == "1":
+        if e == '1':
             return "1'b1"
-        if e == "0":
+        if e == '0':
             return "1'b0"
 
         # Simple english normalizations (keep minimal)
-        m = re.match(r"^([A-Za-z_]\w*)\s+stable\s+for\s+1\s+cycle$", e, re.I)
+        m = re.match(r'^([A-Za-z_]\w*)\s+stable\s+for\s+1\s+cycle$', e, re.I)
         if m:
-            return f"$stable({m.group(1)})"
+            return f'$stable({m.group(1)})'
 
-        m = re.match(r"^([A-Za-z_]\w*)\s+changes$", e, re.I)
+        m = re.match(r'^([A-Za-z_]\w*)\s+changes$', e, re.I)
         if m:
-            return f"$changed({m.group(1)})"
+            return f'$changed({m.group(1)})'
 
-        if e.lower().endswith(" changes"):
+        if e.lower().endswith(' changes'):
             sig = e[:-8].strip()
             if sig in ports:
-                return f"$changed({sig})"
+                return f'$changed({sig})'
 
-        m = re.match(r"^stable\(([\s\S]+)\)$", e, re.I)
+        m = re.match(r'^stable\(([\s\S]+)\)$', e, re.I)
         if m:
-            return f"$stable({m.group(1).strip()})"
+            return f'$stable({m.group(1).strip()})'
 
         return e
 
@@ -334,34 +343,41 @@ class PropertyBuilder:
           - $rose/$fell/$stable/$changed/$past
           - SV keywords/operators tokens that appear as identifiers
         """
-        if not (expr or "").strip():
+        if not (expr or '').strip():
             return False
 
         allowed_ids = set(ports) | {
-            "if", "else", "and", "or", "not",
-            "posedge", "negedge", "disable", "iff",
+            'if',
+            'else',
+            'and',
+            'or',
+            'not',
+            'posedge',
+            'negedge',
+            'disable',
+            'iff',
             # $funcs are in the raw text as "$rose", but regex sees "rose" too (handled below)
             *list(_ALLOWED_SVA_FUNCS),
         }
 
-        for m in re.finditer(r"\b[A-Za-z_]\w*\b", expr):
+        for m in re.finditer(r'\b[A-Za-z_]\w*\b', expr):
             t = m.group(0)
 
             if t in allowed_ids:
                 continue
 
-            if re.match(r"^[A-Z0-9_]+$", t):
+            if re.match(r'^[A-Z0-9_]+$', t):
                 continue
 
             idx = m.start()
 
             # Allow system functions: "$rose" -> regex sees "rose" preceded by '$'
-            if idx > 0 and expr[idx - 1] == "$":
-                if ("$" + t) in allowed_ids:
+            if idx > 0 and expr[idx - 1] == '$':
+                if ('$' + t) in allowed_ids:
                     continue
 
             # Allow field names after dot
-            if idx > 0 and expr[idx - 1] == ".":
+            if idx > 0 and expr[idx - 1] == '.':
                 continue
 
             return False
@@ -371,13 +387,13 @@ class PropertyBuilder:
     # ------------------------------------------------------------------
     @staticmethod
     def _fix_reset_deassertion(row: Dict[str, str], rst: str) -> None:
-        name = (row.get("name") or "").lower()
-        scen = (row.get("scenario") or "").lower()
-        post = (row.get("post") or "").strip()
+        name = (row.get('name') or '').lower()
+        scen = (row.get('scenario') or '').lower()
+        post = (row.get('post') or '').strip()
 
-        if "deassert" in name or "deassert" in scen:
-            if (rst.endswith("_ni") or rst.endswith("ni") or rst.endswith("_n")) and post in (f"!{rst}", f"! {rst}"):
-                row["post"] = rst
+        if 'deassert' in name or 'deassert' in scen:
+            if (rst.endswith('_ni') or rst.endswith('ni') or rst.endswith('_n')) and post in (f'!{rst}', f'! {rst}'):
+                row['post'] = rst
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -389,26 +405,26 @@ class PropertyBuilder:
         disable_cond: str,
         body_expr: str,
     ) -> str:
-        prop_name = (name or sid or "prop").replace("-", "_")
-        label = f"{ptype}_{prop_name}".replace("-", "_")
+        prop_name = (name or sid or 'prop').replace('-', '_')
+        label = f'{ptype}_{prop_name}'.replace('-', '_')
 
-        if ptype not in {"assert", "assume", "cover"}:
-            ptype = "assert"
+        if ptype not in {'assert', 'assume', 'cover'}:
+            ptype = 'assert'
 
         return (
-            f"// {sid}: {prop_name}\n"
-            f"property {prop_name};\n"
-            f"  @(posedge {clk}) disable iff ({disable_cond})\n"
-            f"    {body_expr};\n"
-            f"endproperty\n"
-            f"{label}: {ptype} property({prop_name});"
+            f'// {sid}: {prop_name}\n'
+            f'property {prop_name};\n'
+            f'  @(posedge {clk}) disable iff ({disable_cond})\n'
+            f'    {body_expr};\n'
+            f'endproperty\n'
+            f'{label}: {ptype} property({prop_name});'
         )
 
     # ------------------------------------------------------------------
     @staticmethod
     def _post_has_temporal(post: str) -> bool:
-        p = (post or "").strip()
-        return ("##" in p) or ("[*" in p) or ("[->" in p) or ("throughout" in p)
+        p = (post or '').strip()
+        return ('##' in p) or ('[*' in p) or ('[->' in p) or ('throughout' in p)
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -416,7 +432,7 @@ class PropertyBuilder:
         """
         Treat empty / 1 / 1'b1 as "no real precondition".
         """
-        if (pre_raw or "").strip() in {"", "1", "1'b1"}:
+        if (pre_raw or '').strip() in {'', '1', "1'b1"}:
             return True
         return _is_trivial_true(pre_norm)
 
@@ -444,11 +460,11 @@ class PropertyBuilder:
             if not pre.strip() or _is_trivial_true(pre.strip()):
                 pre = ante
             else:
-                pre = f"({pre}) && ({ante})"
+                pre = f'({pre}) && ({ante})'
             post = cons
 
         # If implication exists in pre (shouldn't), drop it (safer than generating invalid SVA)
-        if "|->" in pre or "|=>" in pre:
+        if '|->' in pre or '|=>' in pre:
             # keep only antecedent part
             spl = _split_first_implication(pre)
             if spl:
@@ -468,29 +484,29 @@ class PropertyBuilder:
         disable_cond: str,
         ports: List[str],
     ) -> Optional[str]:
-        sid = row.get("sid", "").strip()
-        name = row.get("name", "").strip() or sid
-        ptype = (row.get("prop_type", "assert") or "assert").strip().lower()
-        scenario = (row.get("scenario", "") or "").strip().lower()
+        sid = row.get('sid', '').strip()
+        name = row.get('name', '').strip() or sid
+        ptype = (row.get('prop_type', 'assert') or 'assert').strip().lower()
+        scenario = (row.get('scenario', '') or '').strip().lower()
 
-        pre_raw = row.get("pre", "")
-        post_raw = row.get("post", "")
+        pre_raw = row.get('pre', '')
+        post_raw = row.get('post', '')
 
         pre, post = self._repair_pre_post_from_csv(pre_raw, post_raw, ports)
 
         # Identifier whitelist checks
         if pre and not self._expr_uses_only_ports(pre, ports):
-            pre = ""
+            pre = ''
         if post and not self._expr_uses_only_ports(post, ports):
-            post = ""
+            post = ''
 
         pre_missing = self._pre_is_missing(pre_raw, pre)
 
         # If post is empty: only keep for COVER (covering an event) or skip for assume/assert
         if not post:
-            if ptype == "cover":
+            if ptype == 'cover':
                 if pre and not pre_missing:
-                    body = f"({pre})"
+                    body = f'({pre})'
                 else:
                     body = "1'b1"
             else:
@@ -498,20 +514,22 @@ class PropertyBuilder:
         else:
             # IMPORTANT: user request — if no real pre, do NOT emit "1 |-> ..."
             if pre_missing:
-                body = f"({post})"
+                body = f'({post})'
             else:
                 # Optional fairness wrapping only when we truly have pre and post lacks temporal
-                if (("eventually" in scenario) or ("not stuck" in scenario) or ("forever" in scenario)) and (not self._post_has_temporal(post)):
-                    body = f"({pre}) |-> ##[1:$] ({post})"
+                if (('eventually' in scenario) or ('not stuck' in scenario) or ('forever' in scenario)) and (
+                    not self._post_has_temporal(post)
+                ):
+                    body = f'({pre}) |-> ##[1:$] ({post})'
                 else:
-                    body = f"({pre}) |-> ({post})"
+                    body = f'({pre}) |-> ({post})'
 
         # Drop tautologies for assume/assert
-        flat = re.sub(r"\s+", "", body)
-        if ptype in {"assume", "assert"}:
+        flat = re.sub(r'\s+', '', body)
+        if ptype in {'assume', 'assert'}:
             if flat in {"(1'b1)", "1'b1"}:
                 return None
-            if "1'b1|->1'b1" in flat or "1|->1" in flat:
+            if "1'b1|->1'b1" in flat or '1|->1' in flat:
                 return None
 
         return self._wrap_property(
@@ -534,53 +552,53 @@ class PropertyBuilder:
         row: Dict[str, str],
     ) -> str:
         if not self.llm:
-            return ""
+            return ''
 
         # IMPORTANT: Your current property_prompt.yaml ALWAYS outputs "<PRE> |-> <POST>".
         # Since you explicitly do not want "1 |-> ..." when pre is empty, we skip LLM when pre is missing.
-        pre_raw = (row.get("pre", "") or "").strip()
-        if pre_raw in {"", "1", "1'b1"}:
-            return ""
+        pre_raw = (row.get('pre', '') or '').strip()
+        if pre_raw in {'', '1', "1'b1"}:
+            return ''
 
-        sid = row.get("sid", "")
-        name = row.get("name", "")
-        ptype = row.get("prop_type", "assert")
+        sid = row.get('sid', '')
+        name = row.get('name', '')
+        ptype = row.get('prop_type', 'assert')
 
         # Repair CSV mistakes BEFORE sending to LLM (prevents nested implications)
-        pre_fixed, post_fixed = self._repair_pre_post_from_csv(row.get("pre", ""), row.get("post", ""), ports)
+        pre_fixed, post_fixed = self._repair_pre_post_from_csv(row.get('pre', ''), row.get('post', ''), ports)
 
         payload = {
-            "clock": clk,
-            "reset": rst,
-            "reset_disable": disable_cond,
-            "sid": sid,
-            "name": name,
-            "ptype": ptype,
-            "pre": pre_fixed,
-            "post": post_fixed,
-            "spec_markdown": md,
-            "allowed_signals": ", ".join(sorted(set(ports))),
+            'clock': clk,
+            'reset': rst,
+            'reset_disable': disable_cond,
+            'sid': sid,
+            'name': name,
+            'ptype': ptype,
+            'pre': pre_fixed,
+            'post': post_fixed,
+            'spec_markdown': md,
+            'allowed_signals': ', '.join(sorted(set(ports))),
         }
 
         try:
-            res = self.llm.inference(payload, prompt_index="sva_property_block", n=1)
+            res = self.llm.inference(payload, prompt_index='sva_property_block', n=1)
         except Exception as e:
-            print(f"[LLM ERROR] row {sid} ({name}): {e}")
-            return ""
+            print(f'[LLM ERROR] row {sid} ({name}): {e}')
+            return ''
 
         if isinstance(res, str):
             text = res
         elif isinstance(res, list) and res:
             text = res[0]
-        elif isinstance(res, dict) and "choices" in res:
+        elif isinstance(res, dict) and 'choices' in res:
             try:
-                text = res["choices"][0]["message"]["content"]
+                text = res['choices'][0]['message']['content']
             except Exception:
-                text = ""
+                text = ''
         else:
-            text = ""
+            text = ''
 
-        return self._extract_sv_code(text or "")
+        return self._extract_sv_code(text or '')
 
     # ------------------------------------------------------------------
     def _sanitize_llm_property(
@@ -592,31 +610,31 @@ class PropertyBuilder:
         disable_cond: str,
         ports: List[str],
     ) -> Optional[str]:
-        sv = (llm_sv or "").strip()
+        sv = (llm_sv or '').strip()
         if not sv:
             return None
 
         # If LLM returned a bare expression, fall back
-        if "property" not in sv:
+        if 'property' not in sv:
             return None
 
         # Ensure disable iff exists; if not, inject after @(posedge clk)
-        if "disable iff" not in sv:
+        if 'disable iff' not in sv:
             sv = re.sub(
-                rf"(@\(\s*posedge\s+{re.escape(clk)}\s*\))",
-                rf"\1 disable iff ({disable_cond})",
+                rf'(@\(\s*posedge\s+{re.escape(clk)}\s*\))',
+                rf'\1 disable iff ({disable_cond})',
                 sv,
                 count=1,
             )
 
         # Reject tautologies
-        flat = re.sub(r"\s+", "", sv)
-        if "1|->1" in flat or "1'b1|->1'b1" in flat:
+        flat = re.sub(r'\s+', '', sv)
+        if '1|->1' in flat or "1'b1|->1'b1" in flat:
             return None
 
         # Also reject nested implications inside the property text (common when CSV was broken)
         # (If present, fall back to rule-based which repairs pre/post.)
-        if sv.count("|->") > 1 or sv.count("|=>") > 1:
+        if sv.count('|->') > 1 or sv.count('|=>') > 1:
             return None
 
         return sv.strip()
@@ -629,9 +647,9 @@ class PropertyBuilder:
 
         # Prefer AST-derived ports json located in out_dir / near csv
         ports_json_candidates = [
-            Path(self.out_dir) / f"{spec_top_module}_ports.json",
-            Path(self.csv_path).parent / f"{spec_top_module}_ports.json",
-            Path(self.spec_md).parent / f"{spec_top_module}_ports.json",
+            Path(self.out_dir) / f'{spec_top_module}_ports.json',
+            Path(self.csv_path).parent / f'{spec_top_module}_ports.json',
+            Path(self.spec_md).parent / f'{spec_top_module}_ports.json',
         ]
         ports = _load_ports_from_ports_json(ports_json_candidates)
 
@@ -642,8 +660,8 @@ class PropertyBuilder:
             # fallback: infer from CSV signals column
             ports = []
             for r in rows:
-                sigs = (r.get("signals") or "").strip()
-                for tok in re.split(r"[\s,]+", sigs):
+                sigs = (r.get('signals') or '').strip()
+                for tok in re.split(r'[\s,]+', sigs):
                     tok = tok.strip()
                     if tok and tok not in ports:
                         ports.append(tok)
@@ -654,57 +672,57 @@ class PropertyBuilder:
         if rst and rst not in ports:
             ports.append(rst)
 
-        print(f"[INFO] Spec-top ports used for checking ({spec_top_module}): {ports}")
+        print(f'[INFO] Spec-top ports used for checking ({spec_top_module}): {ports}')
 
         all_props: List[str] = []
         header = (
-            "// ------------------------------------------------------------------\n"
-            "// Auto-generated properties\n"
-            f"// Spec: {Path(self.spec_md).name}\n"
-            f"// CSV : {Path(self.csv_path).name}\n"
-            "// ------------------------------------------------------------------\n"
+            '// ------------------------------------------------------------------\n'
+            '// Auto-generated properties\n'
+            f'// Spec: {Path(self.spec_md).name}\n'
+            f'// CSV : {Path(self.csv_path).name}\n'
+            '// ------------------------------------------------------------------\n'
         )
 
         for row in rows:
             self._fix_reset_deassertion(row, rst)
 
-            sid = row.get("sid", "").strip()
-            name = row.get("name", "").strip()
-            print(f"[INFO] Generating property for row {sid} ({name})")
+            sid = row.get('sid', '').strip()
+            name = row.get('name', '').strip()
+            print(f'[INFO] Generating property for row {sid} ({name})')
 
             # LLM then sanitize; fallback to deterministic rule-based
-            llm_sv = self._call_llm_for_row(clk, rst, disable_cond, ports, md, row) if self.llm else ""
+            llm_sv = self._call_llm_for_row(clk, rst, disable_cond, ports, md, row) if self.llm else ''
             sv_text = self._sanitize_llm_property(llm_sv, row, clk, rst, disable_cond, ports)
 
             if not sv_text:
                 sv_text = self._rule_based_property_from_row(row, clk, rst, disable_cond, ports)
 
             if not sv_text:
-                print(f"[WARN] Could not generate usable property for row {sid} ({name}); skipping.")
+                print(f'[WARN] Could not generate usable property for row {sid} ({name}); skipping.')
                 continue
 
             all_props.append(sv_text.strip())
 
-        out_path = os.path.join(self.out_dir, "properties.sv")
-        final_text = header + ("\n\n".join(all_props) if all_props else "\n// No valid properties generated\n")
+        out_path = os.path.join(self.out_dir, 'properties.sv')
+        final_text = header + ('\n\n'.join(all_props) if all_props else '\n// No valid properties generated\n')
 
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(final_text.rstrip() + "\n")
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(final_text.rstrip() + '\n')
 
-        print(f"[✅] Properties written to {out_path}")
+        print(f'[✅] Properties written to {out_path}')
         return out_path
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     import argparse
 
     p = argparse.ArgumentParser()
-    p.add_argument("--spec-md", required=True)
-    p.add_argument("--csv", required=True)
-    p.add_argument("--rtl", required=True)
-    p.add_argument("--out", required=True)
-    p.add_argument("--llm-conf", required=False, default=None)
-    p.add_argument("--design-top")
+    p.add_argument('--spec-md', required=True)
+    p.add_argument('--csv', required=True)
+    p.add_argument('--rtl', required=True)
+    p.add_argument('--out', required=True)
+    p.add_argument('--llm-conf', required=False, default=None)
+    p.add_argument('--design-top')
     args = p.parse_args()
 
     pb = PropertyBuilder(
