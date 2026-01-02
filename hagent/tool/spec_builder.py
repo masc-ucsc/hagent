@@ -23,6 +23,13 @@ Key additions:
     <top>_io_influence.csv
     <top>_logic_blocks.json
 - CSV validation + repair using the existing 'csv_repair' prompt.
+
+ROBUST CSV GUARANTEES (NEW):
+- Never invent pre=1.
+- No implication synthesis.
+- If post is missing (9 columns), insert empty post field (10 columns).
+- If both pre and post empty => drop the row (no property).
+- If CSV still invalid after repair attempts, salvage best-effort CSV and DO NOT fail the pipeline.
 """
 
 from __future__ import annotations
@@ -57,7 +64,7 @@ except Exception:  # pragma: no cover
 # ──────────────────────────────────────────────────────────────────────────────
 from hagent.core.llm_wrap import LLM_wrap
 from hagent.core.llm_template import LLM_template
-from hagent.tool.utils.clk_rst_utils import detect_clk_rst_for_top
+from hagent.tool.utils.clk_rst_utils import detect_clk_rst_for_top, detect_clk_rst_from_ports
 
 CSV_HEADER = ['sid', 'prop_type', 'module', 'name', 'scenario', 'pre', 'post', 'signals', 'param_ok', 'notes']
 SV_SUFFIXES = {'.sv', '.svh', '.v', '.vh'}
@@ -116,7 +123,6 @@ _SV_KEYWORDS = {
 }
 _ALLOWED_SVA_FUNCS = {'$rose', '$fell', '$stable', '$changed', '$past'}
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # File utils
 # ──────────────────────────────────────────────────────────────────────────────
@@ -140,7 +146,6 @@ def _write_jsonl(path: Path, rows: Iterable[Dict[str, Any]]) -> None:
 
 def _basename(p: Optional[str]) -> str:
     return os.path.basename(p) if p else ''
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # AST helpers (robust)
@@ -276,7 +281,6 @@ def _expr_text(n: Any) -> str:
 
     return f'/*{k or "node"}*/'
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Ports / params from SCOPED bodies
 # ──────────────────────────────────────────────────────────────────────────────
@@ -361,7 +365,6 @@ def extract_parameters_from_body(body: Dict[str, Any]) -> List[Dict[str, str]]:
         seen.add(p['name'])
         out.append(p)
     return out
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Assignment extraction with guards (IO slicing base)
@@ -571,7 +574,6 @@ def extract_assignments_with_guards(body: Dict[str, Any]) -> List[AssignRecord]:
     visit_member(body.get('members') or [])
     return records
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Logic blocks + FSM case blocks (for your existing LLM prompts)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -648,8 +650,6 @@ def parse_case_blocks(body: Dict[str, Any]) -> List[Dict[str, Any]]:
         out.append(b)
     out.sort(key=lambda x: (_basename(x['source_file']), x['line_start']))
     return out
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # IO relations builder (matches your prompt expectations)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -673,7 +673,7 @@ def build_io_relations(
       - relationships.per_output_influences
       - hints (basic suggestions; conservative)
     """
-    # port_dir: Dict[str, str] = {p["name"]: p["dir"] for p in ports}
+    # port_dir: Dict[str, str] = {p['name']: p['dir'] for p in ports}
     inputs = {p['name'] for p in ports if p['dir'] in ('In', 'Inout')}
     outputs = {p['name'] for p in ports if p['dir'] in ('Out', 'Inout')}
 
@@ -771,7 +771,6 @@ def build_io_relations(
         'cover': [],
         'assert': [],
     }
-    # Example: if a signal name suggests flush or valid/ready, add a hint (still not a concrete property)
     for s in control_signals_ranked[:10]:
         low = s.lower()
         if 'flush' in low:
@@ -788,7 +787,6 @@ def build_io_relations(
             'per_output_influences': uniq,
         },
     }
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CSV validation + repair (uses your csv_repair prompt)
@@ -821,39 +819,77 @@ def _split_csv_line(line: str) -> List[str]:
     return [c.strip() for c in next(r, [])]
 
 
+def normalize_csv_rows(csv_text: str) -> str:
+    """
+    Deterministic structural normalization. NO semantics invented.
+    - Ensure header exists.
+    - If row has 9 columns, treat it as missing 'post' and insert post=''.
+      Expected 9-col layout from LLM mistake:
+        sid,prop_type,module,name,scenario,pre,signals,param_ok,notes
+      Converted to:
+        sid,prop_type,module,name,scenario,pre,post,signals,param_ok,notes
+    - If row has >10 columns, merge extras into notes (commas removed).
+    - If both pre and post are empty -> DROP row (no property).
+    - Never set pre=1; never synthesize implications.
+    """
+    csv_text = _ensure_csv_header(_strip_code_fences(csv_text))
+    lines = [ln for ln in csv_text.splitlines() if ln.strip()]
+    if not lines:
+        return csv_text
+
+    out_lines: List[str] = [lines[0].strip()]  # header
+
+    for ln in lines[1:]:
+        cols = _split_csv_line(ln)
+
+        # Merge extras to notes if too many cols
+        if len(cols) > 10:
+            base9 = cols[:9]
+            extra = ' '.join((c or '').replace(',', ' ').strip() for c in cols[9:]).strip()
+            cols = base9 + [extra]
+
+        # Fix common LLM error: 9 cols (missing post)
+        if len(cols) == 9:
+            sid, prop_type, module, name, scenario, pre, signals, param_ok, notes = cols
+            post = ''
+            cols = [sid, prop_type, module, name, scenario, pre, post, signals, param_ok, notes]
+
+        # If still wrong column count, skip row (do not hard-fail)
+        if len(cols) != 10:
+            continue
+
+        pre = (cols[5] or '').strip()
+        post = (cols[6] or '').strip()
+
+        # Drop no-op rows
+        if pre == '' and post == '':
+            continue
+
+        # Enforce 'no commas inside fields' by sanitizing commas to spaces
+        cols = [(c or '').replace(',', ' ').strip() for c in cols]
+        out_lines.append(','.join(cols))
+
+    return '\n'.join(out_lines) + '\n'
+
+
 def _strip_sv_numeric_literals(expr: str) -> str:
     """
     Remove SystemVerilog numeric literals so tokenization doesn't treat parts like
-    b0/hFF as identifiers.
-
-    Examples removed:
-      1'b0, 8'hFF, 16'd10, 4'sb1010, 'hFF, '0, '1, 'x, 'z
+    b0/hFF/etc as identifiers.
     """
     if not expr:
         return expr
 
     s = expr
 
-    # Sized literals: 8'hFF, 1'b0, 16'd10, 4'sb1010, etc.
-    s = re.sub(
-        r"\b\d+\s*'\s*[sS]?[bBoOdDhH][0-9a-fA-FxXzZ_]+\b",
-        ' ',
-        s,
-    )
+    # Sized literals
+    s = re.sub(r'\b\d+\s*\'\s*[sS]?[bBoOdDhH][0-9a-fA-FxXzZ_]+\b', ' ', s)
 
-    # Unsized base literals: 'hFF, 'b0, 'd10, etc.
-    s = re.sub(
-        r"(?<!\w)'\s*[sS]?[bBoOdDhH][0-9a-fA-FxXzZ_]+\b",
-        ' ',
-        s,
-    )
+    # Unsized base literals
+    s = re.sub(r'(?<!\w)\'\s*[sS]?[bBoOdDhH][0-9a-fA-FxXzZ_]+\b', ' ', s)
 
     # Unsized 1-bit literals: '0, '1, 'x, 'z
-    s = re.sub(
-        r"(?<!\w)'\s*[01xXzZ]\b",
-        ' ',
-        s,
-    )
+    s = re.sub(r'(?<!\w)\'\s*[01xXzZ]\b', ' ', s)
 
     return s
 
@@ -862,20 +898,17 @@ def _extract_dotted_and_plain_identifiers(expr: str) -> List[str]:
     if not expr:
         return []
 
-    # Remove quoted strings first (don’t parse identifiers inside them)
+    # Remove quoted strings first (don't parse identifiers inside them)
     expr2 = re.sub(r'\"[^\"]*\"', ' ', expr)
 
-    # --- KEY FIX: strip SV numeric literals so we don't see b0/hFF/etc as "signals"
+    # Strip SV numeric literals
     expr2 = _strip_sv_numeric_literals(expr2)
 
     # Remove allowed SVA funcs so we don't treat them as identifiers
     for fn in _ALLOWED_SVA_FUNCS:
         expr2 = expr2.replace(fn, ' ')
 
-    # Dotted refs first (struct/member chains)
     dotted = re.findall(r'\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+\b', expr2)
-
-    # Plain identifiers
     plain = re.findall(r'\b[A-Za-z_]\w*\b', expr2)
 
     dotted_set = set(dotted)
@@ -944,6 +977,12 @@ def validate_csv_text(csv_text: str, allowed_ports: List[str]) -> Dict[str, Any]
         post = row.get('post', '').strip()
         sigs_col = row.get('signals', '').strip()
 
+        # NEW: reject empty pre+post (no property)
+        if pre == '' and post == '':
+            report['ok'] = False
+            report['bad_rows'].append({'line': line_no, 'reason': 'empty_pre_and_post', 'cols': len(cols), 'text': lines[idx]})
+            continue
+
         if _detect_nested_temporal(post):
             report['ok'] = False
             report['nested_temporal'].append({'line': line_no, 'sid': sid, 'post': post})
@@ -978,7 +1017,6 @@ def validate_csv_text(csv_text: str, allowed_ports: List[str]) -> Dict[str, Any]
 
     return report
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Scope discovery (find instance paths for a module definition)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1009,11 +1047,9 @@ def find_instance_paths(ast: Dict[str, Any], target_module: str) -> List[str]:
             if match_def(defn):
                 paths.append('.'.join(new_stack))
 
-            # descend into instance body
             if isinstance(body, dict):
                 walk(body.get('members') or [], new_stack)
 
-            # also recurse other content
             for v in n.values():
                 if v is body:
                     continue
@@ -1023,14 +1059,12 @@ def find_instance_paths(ast: Dict[str, Any], target_module: str) -> List[str]:
         for v in n.values():
             walk(v, stack)
 
-    # Try common roots
     if ast.get('kind') == 'Instance':
         walk(ast, [])
     else:
         design = ast.get('design') or {}
         walk(design.get('members') or [], [])
 
-    # de-dupe keep order
     seen = set()
     uniq = []
     for p in paths:
@@ -1038,7 +1072,6 @@ def find_instance_paths(ast: Dict[str, Any], target_module: str) -> List[str]:
             seen.add(p)
             uniq.append(p)
     return uniq
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SpecBuilder
@@ -1080,7 +1113,6 @@ class SpecBuilder:
         self.out_json = self.out_dir / (f'{self.top}_scoped_ast.json' if self.scope_path else f'{self.top}_ast.json')
         self.full_ast_json = self.out_dir / f'{self.design_top}_full_ast.json'
 
-        # primary outputs
         self.out_md = self.out_dir / f'{self.top}_spec.md'
         self.out_csv = self.out_dir / f'{self.top}_spec.csv'
         self.logic_snap = self.out_dir / f'{self.top}_logic_blocks.json'
@@ -1100,13 +1132,11 @@ class SpecBuilder:
         self.tmpl = LLM_template(str(self.llm_conf))
         self.template_dict = getattr(self.tmpl, 'template_dict', {}) or {}
 
-        # Required prompts in your YAML
         for req in ('doc_sections', 'fsm_specification', 'sva_row_list_csv'):
             if not (self.template_dict.get('default', {}).get(req)):
-                console.print(f"[red]❌ Required prompt '{req}' missing in: {self.llm_conf}[/red]")
+                console.print(f'[red]❌ Required prompt \'{req}\' missing in: {self.llm_conf}[/red]')
                 raise SystemExit(2)
 
-        # clock/reset from design top
         self.clk, self.rst, self.rst_expr = detect_clk_rst_for_top(self.rtl_dir, self.design_top)
 
     def _llm(self, prompt_index: str, payload: dict) -> str:
@@ -1123,12 +1153,12 @@ class SpecBuilder:
                     return ''
             return ''
         except Exception as e:
-            console.print(f"[red]❌ LLM '{prompt_index}' failed: {e}[/red]")
+            console.print(f'[red]❌ LLM \'{prompt_index}\' failed: {e}[/red]')
             return ''
 
     def _repair_csv_with_llm(self, csv_text: str, allowed_ports: List[str], report: Dict[str, Any]) -> str:
         if not self.template_dict.get('default', {}).get('csv_repair'):
-            console.print("[yellow]⚠ No 'csv_repair' prompt found in YAML; cannot repair CSV.[/yellow]")
+            console.print('[yellow]⚠ No \'csv_repair\' prompt found in YAML; cannot repair CSV.[/yellow]')
             return csv_text
         payload = {
             'top_module': self.top,
@@ -1143,10 +1173,6 @@ class SpecBuilder:
         return json.loads(p.read_text(encoding='utf-8'))
 
     def _run_slang(self, out_json: Path, full: bool) -> None:
-        """
-        If full=True: build full AST for design_top (no scope)
-        Else: if scope_path is set, build scoped AST for design_top + scope_path
-        """
         top_for_slang = self.design_top if (full or self.scope_path) else self.top
 
         cmd = [
@@ -1174,7 +1200,6 @@ class SpecBuilder:
         if self.filelist:
             cmd += ['-f', str(self.filelist)]
         else:
-            # fallback: enumerate RTL files
             files = []
             for p in self.rtl_dir.rglob('*'):
                 if p.suffix.lower() in SV_SUFFIXES and p.is_file():
@@ -1195,7 +1220,7 @@ class SpecBuilder:
     def _get_scoped_body(self, ast: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
         """
         In scoped runs, Slang often returns:
-          - root.kind == "Instance"  -> body is InstanceBody of the scoped instance
+          - root.kind == 'Instance'  -> body is InstanceBody of the scoped instance
         In other runs, it may wrap under design.members.
         """
         if isinstance(ast, dict) and ast.get('kind') == 'Instance':
@@ -1239,7 +1264,7 @@ class SpecBuilder:
 
         rec(members)
         if found_body is None:
-            console.print(f"[red]❌ Could not locate target '{self.top}' in AST. Provide --scope-path or use discovery.[/red]")
+            console.print(f'[red]❌ Could not locate target \'{self.top}\' in AST. Provide --scope-path or use discovery.[/red]')
             raise SystemExit(2)
         return found_body, found_name
 
@@ -1297,7 +1322,7 @@ class SpecBuilder:
             full_ast = self._read_json(self.full_ast_json)
             paths = find_instance_paths(full_ast, self.discover_scope_module)
             if not paths:
-                console.print(f"[red]❌ No instance paths found for module '{self.discover_scope_module}'.[/red]")
+                console.print(f'[red]❌ No instance paths found for module \'{self.discover_scope_module}\'.[/red]')
                 raise SystemExit(2)
             console.print('[green]✔ Found scope paths:[/green]')
             for p in paths:
@@ -1323,6 +1348,18 @@ class SpecBuilder:
         if not ports:
             console.print('[red]❌ No ports extracted. Check --scope-path (or discovery results).[/red]')
             raise SystemExit(2)
+
+        # Override clk/rst from top-level port names (authoritative)
+        clk2, rst2, rst_expr2 = detect_clk_rst_from_ports(ports)
+        if clk2 and rst2 and rst_expr2:
+            self.clk, self.rst, self.rst_expr = clk2, rst2, rst_expr2
+            console.print(
+                f'[green]✔ Clock/Reset overridden from extracted ports:[/green] clock={self.clk}, reset={self.rst} (expr={self.rst_expr})'
+            )
+        else:
+            console.print(
+                f'[yellow]⚠ Could not infer clk/rst from ports; keeping fallback clock={self.clk}, reset={self.rst} (expr={self.rst_expr}).[/yellow]'
+            )
 
         params = extract_parameters_from_body(body)
         assigns = extract_assignments_with_guards(body)
@@ -1416,10 +1453,12 @@ class SpecBuilder:
         _write_text(self.out_md, md_text)
         console.print(f'[green]✔ Spec Markdown:[/green] {self.out_md}')
 
-        # 6) CSV generation + validate + repair
+        # 6) CSV generation + validate + repair (ROBUST)
         console.print('[cyan]• LLM: sva_row_list_csv[/cyan]')
         csv_raw = self._llm('sva_row_list_csv', {'context_json': json.dumps(context, ensure_ascii=False)}).strip()
         csv_raw = _ensure_csv_header(_strip_code_fences(csv_raw))
+        csv_raw = normalize_csv_rows(csv_raw)
+
         if not csv_raw.strip():
             console.print('[red]❌ LLM produced empty CSV text.[/red]')
             raise SystemExit(2)
@@ -1436,6 +1475,7 @@ class SpecBuilder:
             repaired = csv_raw
             for attempt in range(1, 3):
                 repaired = self._repair_csv_with_llm(repaired, allowed_ports, report)
+                repaired = normalize_csv_rows(repaired)
                 report = validate_csv_text(repaired, allowed_ports)
                 _write_json(report_path, report)
                 if report.get('ok', False):
@@ -1445,10 +1485,12 @@ class SpecBuilder:
                 console.print(f'[yellow]⚠ Repair attempt {attempt} still invalid.[/yellow]')
 
             if not report.get('ok', False):
-                _write_text(self.out_csv, repaired)
-                console.print(f'[red]❌ CSV still invalid after repair attempts. Wrote latest to: {self.out_csv}[/red]')
-                console.print(f'[red]Validation report: {json.dumps(report, indent=2)}[/red]')
-                raise SystemExit(2)
+                console.print('[yellow]⚠ CSV still invalid after repair attempts; salvaging best-effort CSV and continuing.[/yellow]')
+                salvaged = normalize_csv_rows(repaired)
+                _write_text(self.out_csv, salvaged)
+                console.print(f'[green]✔ CSV spec (salvaged):[/green] {self.out_csv}')
+                console.print('[bold yellow]⚠ SPEC BUILDER COMPLETED WITH CSV SALVAGE (no pipeline failure)[/bold yellow]')
+                return
 
         _write_text(self.out_csv, csv_raw)
         console.print(f'[green]✔ CSV spec:[/green] {self.out_csv}')

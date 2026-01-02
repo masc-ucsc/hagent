@@ -18,6 +18,14 @@ Feedback loop policy:
   - We ONLY run the LLM "advisor" if Jasper output indicates ERROR/CEX/FAIL/UNKNOWN.
   - Advisor prints a recommendation; user must re-run with --postcheck and choose max iters.
   - Jasper re-run after postcheck happens ONLY if user sets --postcheck-rerun-jg (and apply is enabled).
+
+FIXED (Dec 2025):
+  - Added package import extraction from module source and port types
+  - Package-qualified types (ariane_pkg::alu_bypass_t) are now properly handled
+
+FIXED (Jan 2026):
+  - Private coverage summarizer CLI is now invoked with required --fpv-dir
+    (and optional --jg-log/--results-csv/--out), instead of the invalid --html flag.
 """
 
 from __future__ import annotations
@@ -175,6 +183,74 @@ def find_module_header(text: str, mod_name: str):
 
 
 # -----------------------------------------------------------------------------
+# NEW: Package import extraction functions
+# -----------------------------------------------------------------------------
+def extract_packages_from_port_types(ports_json: Path) -> List[str]:
+    """
+    Extract package names from package-qualified types in ports.
+    E.g., ariane_pkg::alu_bypass_t -> import ariane_pkg::*;
+    """
+    try:
+        ports = json.loads(ports_json.read_text())
+    except Exception:
+        return []
+
+    packages = set()
+    for p in ports:
+        if not isinstance(p, dict):
+            continue
+        type_str = (p.get('type') or '').strip()
+        # Match pkg::type patterns
+        m = re.match(r'^([A-Za-z_]\w*)::(\w+)', type_str)
+        if m:
+            packages.add(m.group(1))
+
+    return [f'import {pkg}::*;' for pkg in sorted(packages)]
+
+
+def extract_package_imports_from_module(src_file: Path, mod_name: str) -> List[str]:
+    """
+    Extract package imports from module source.
+    Handles both:
+      module foo import pkg::*; (...)
+      module foo import pkg::*; #(...) (...)
+    """
+    try:
+        text = src_file.read_text(errors='ignore')
+    except Exception:
+        return []
+
+    # Find the module declaration
+    module_start = re.compile(
+        rf'\bmodule\s+{re.escape(mod_name)}\b',
+        re.DOTALL
+    )
+
+    m = module_start.search(text)
+    if not m:
+        return []
+
+    # Get text from module name to the end of the header
+    start_pos = m.end()
+    remaining = text[start_pos:]
+
+    # Extract just the import section - between module name and #( or (
+    header_end = len(remaining)
+    for marker in ['#(', '(']:
+        idx = remaining.find(marker)
+        if idx != -1 and idx < header_end:
+            header_end = idx
+
+    header = remaining[:header_end]
+
+    # Match imports with or without trailing semicolons
+    import_pattern = re.compile(r'import\s+([A-Za-z_]\w*)::\*\s*;?')
+    imports = import_pattern.findall(header)
+
+    return [f'import {pkg}::*;' for pkg in imports]
+
+
+# -----------------------------------------------------------------------------
 # ports.json / scoped_ast.json support (preferred)
 # -----------------------------------------------------------------------------
 def _fix_logic_width_syntax(t: str) -> str:
@@ -234,21 +310,35 @@ def build_params_text_from_scoped_ast(scoped_ast_json: Path) -> str:
         return ''
 
 
-def normalize_sv_type(type_str: str, sva_top: str, known_type_params: Set[str]) -> str:
+def normalize_sv_type(type_str: str, sva_top: str, known_type_params: set[str]) -> str:
+    """Normalize type strings - preserve package-qualified types and strip module. prefixes."""
     if not type_str or type_str.strip() in ('-', ''):
         return 'logic'
 
     t = _fix_logic_width_syntax(type_str.strip())
-    if '::' in t:
-        return t
 
-    m = re.match(r'^(?P<mod>[A-Za-z_]\w*)\.(?P<name>[A-Za-z_]\w*)$', t)
+    # Split trailing dimensions (e.g. issue_stage.foo_t[0:0][31:0])
+    base = t
+    dims = ''
+    while True:
+        m = re.search(r'(\s*\[[^\]]+\]\s*)$', base)
+        if not m:
+            break
+        dims = m.group(1) + dims
+        base = base[:m.start()].rstrip()
+
+    # Preserve package-qualified types
+    if '::' in base:
+        return base + dims
+
+    # Strip module.type prefix when module matches sva_top
+    m = re.match(r'^(?P<mod>[A-Za-z_]\w*)\.(?P<name>[A-Za-z_]\w*)$', base)
     if m and m.group('mod') == sva_top:
         inner = m.group('name')
-        if inner in known_type_params:
-            return inner
-        return inner
-    return t
+        # If it's a known type param, use it; otherwise still prefer inner
+        return inner + dims
+
+    return base + dims
 
 
 def port_decls_from_ports_json(ports_json: Path, sva_top: str, known_type_params: Set[str]) -> List[str]:
@@ -267,19 +357,48 @@ def port_decls_from_ports_json(ports_json: Path, sva_top: str, known_type_params
 
 
 # -----------------------------------------------------------------------------
-# SVA wrapper + bind generation
+# SVA wrapper + bind generation - FIXED with package imports
 # -----------------------------------------------------------------------------
-def generate_prop_module_min(dut_name: str, params_text: str, port_decls: List[str], include_file: str) -> str:
-    header_params = f' {params_text} ' if params_text else ''
-    port_lines = ',\n    '.join(port_decls)
-
+def generate_prop_module_min(
+    dut_name: str,
+    params_text: str,
+    port_decls: List[str],
+    include_file: str,
+    package_imports: Optional[List[str]] = None
+) -> str:
+    """Generate property wrapper with package imports."""
     lines: List[str] = []
-    lines.append(f'module {dut_name}_prop{header_params}(\n    {port_lines}\n);\n')
-    lines.append('// Auto-generated property wrapper. Connect DUT ports as inputs.\n')
+
+    # Module declaration
+    lines.append(f'module {dut_name}_prop')
+
+    # Add package imports AFTER module name, BEFORE parameters
+    # This is the correct SystemVerilog syntax:
+    #   module foo
+    #     import pkg::*;
+    #   #(...)
+    if package_imports:
+        for imp in package_imports:
+            lines.append(f'  {imp}')
+
+    # Add parameters if present
+    if params_text:
+        lines.append(f'{params_text}')
+
+    # Port list
+    port_lines = ',\n    '.join(port_decls)
+    lines.append(f'(\n    {port_lines}\n);')
+
+    # Module body
+    lines.append('')
+    lines.append('// Auto-generated property wrapper. Connect DUT ports as inputs.')
     if include_file:
-        lines.append(f'`include "{include_file}"\n')
-    lines.append('endmodule\n')
-    return ''.join(lines)
+        lines.append(f'`include "{include_file}"')
+    lines.append('')
+    lines.append('endmodule')
+    lines.append('')
+
+    return '\n'.join(lines)
 
 
 def generate_bind(dut_name: str, params_text: str, port_decls: List[str], bind_target: Optional[str]) -> str:
@@ -339,6 +458,24 @@ def emit_prop_and_bind_for_module(
         console.print(f'[yellow]⚠ Could not parse module header for {mod_name}; trying scoped_ast fallback.[/yellow]')
         params_text = build_params_text_from_scoped_ast(scoped_ast_json) if scoped_ast_json and scoped_ast_json.is_file() else ''
         port_body = ''
+
+    # FIXED: Extract package imports from BOTH sources
+    # 1. From module source (import ariane_pkg::*; in module header)
+    package_imports = extract_package_imports_from_module(src_file, mod_name)
+    console.print(f'[cyan]ℹ Package imports from module source: {package_imports}[/cyan]')
+
+    # 2. From port types (ariane_pkg::alu_bypass_t -> import ariane_pkg::*)
+    if ports_json and ports_json.is_file():
+        type_imports = extract_packages_from_port_types(ports_json)
+        console.print(f'[cyan]ℹ Package imports from port types: {type_imports}[/cyan]')
+        # Merge, avoiding duplicates
+        existing = set(package_imports)
+        for imp in type_imports:
+            if imp not in existing:
+                package_imports.append(imp)
+                existing.add(imp)
+
+    console.print(f'[green]✔ Final package imports: {package_imports}[/green]')
 
     if ports_json and ports_json.is_file():
         console.print(f'[cyan]✔ Using ports.json for wrapper ports:[/cyan] {ports_json}')
@@ -402,7 +539,13 @@ def emit_prop_and_bind_for_module(
     prop_path = sva_dir / f'{mod_name}_prop.sv'
     bind_path = sva_dir / f'{mod_name}_bind.sv'
 
-    prop_sv = generate_prop_module_min(dut_name, params_text, port_decls, include_file)
+    prop_sv = generate_prop_module_min(
+        dut_name,
+        params_text,
+        port_decls,
+        include_file,
+        package_imports=package_imports
+    )
     bind_sv = generate_bind(dut_name, params_text, port_decls, bind_scope)
 
     prop_path.write_text(prop_sv, encoding='utf-8')
@@ -659,9 +802,18 @@ def try_run_private_coverage_summarizer(fpv_dir: Path):
     """
     ALWAYS attempted after Jasper run. Best-effort only:
       - if private repo not found, prints a warning and continues
-      - if HTML not found, prints a warning and continues
+      - if formal_coverage.html not found, prints a warning and continues
       - never raises an exception
+
+    IMPORTANT FIX:
+      The private CLI requires --fpv-dir (NOT --html).
+      We now pass:
+        --fpv-dir <fpv_dir>
+        [--jg-log <...>] [--results-csv <...>] [--out <...>]
     """
+    fpv_dir = fpv_dir.resolve()
+
+    # Keep the skip behavior: if Jasper didn't generate HTML, there's nothing to summarize.
     cov_html = fpv_dir / 'formal_coverage.html'
     if not cov_html.exists():
         console.print(f'[yellow]⚠ formal_coverage.html not found in {fpv_dir} (coverage summary skipped).[/yellow]')
@@ -677,13 +829,20 @@ def try_run_private_coverage_summarizer(fpv_dir: Path):
         console.print(f'[yellow]⚠ Private summarizer script missing: {priv_script}[/yellow]')
         return
 
+    # Try import-path (fast path), but keep it best-effort.
     summarize_fn = None
     try:
         spec = importlib.util.spec_from_file_location('hagent_private_summarize_formal_coverage', priv_script)
         if spec and spec.loader:
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-            summarize_fn = getattr(module, 'summarize_coverage_html', None)
+            import sys as _sys
+            _sys.modules[spec.name] = module  # <-- IMPORTANT
+            # Be tolerant to private API naming differences.
+            summarize_fn = (
+                getattr(module, 'summarize_coverage_html', None)
+                or getattr(module, 'summarize_formal_coverage_html', None)
+            )
     except Exception as e:
         console.print(f'[yellow]⚠ Private coverage summarizer import failed: {e}[/yellow]')
 
@@ -695,10 +854,29 @@ def try_run_private_coverage_summarizer(fpv_dir: Path):
         except Exception as e:
             console.print(f'[yellow]⚠ Private coverage summary (import path) failed: {e}[/yellow]')
 
+    # Fallback CLI (FIXED): call with --fpv-dir and optional args.
     try:
         console.print('[cyan]→[/cyan] [white]Running private coverage summarizer CLI[/white]')
-        subprocess.run([sys.executable, str(priv_script), '--html', str(cov_html)], cwd=priv_script.parent, check=True)
-        console.print('[green]✔[/green] Coverage summarizer CLI completed.')
+
+        jg_log_candidates = [
+            fpv_dir / 'jgproject' / 'jg.log',
+            fpv_dir / 'jg.stdout.log',
+            fpv_dir / 'jg.stderr.log',
+        ]
+        jg_log = next((p for p in jg_log_candidates if p.exists()), None)
+
+        results_csv = fpv_dir / 'results_summary.csv'
+        out_txt = fpv_dir / 'formal_coverage_summary.txt'
+
+        cmd = [sys.executable, str(priv_script), '--fpv-dir', str(fpv_dir)]
+        if jg_log is not None:
+            cmd += ['--jg-log', str(jg_log)]
+        if results_csv.exists():
+            cmd += ['--results-csv', str(results_csv)]
+        cmd += ['--out', str(out_txt)]
+
+        subprocess.run(cmd, cwd=priv_script.parent, check=True)
+        console.print(f'[green]✔[/green] Coverage summarizer CLI completed. Output: {out_txt}')
     except Exception as e:
         console.print(f'[yellow]⚠ Coverage summarizer CLI failed: {e}[/yellow]')
 
@@ -799,7 +977,7 @@ def run_llm_advisor_if_needed(
     llm = LLM_wrap(
         name='default',
         conf_file=str(advisor_llm_conf),
-        log_file=str(fpv_dir / 'jg_advisor_llm.log'),
+        log_file='jg_advisor_llm.log',
     )
 
     try:
@@ -1139,13 +1317,21 @@ def main() -> int:
         pj = ports_json
         saj = scoped_ast_json
         if pj is None:
-            cand = fpv_dir / 'ports.json'
+            cand = fpv_dir / f'{sva_top}_ports.json'
             if cand.exists():
                 pj = cand
+            else:
+                cand2 = fpv_dir / 'ports.json'
+                if cand2.exists():
+                    pj = cand2
         if saj is None:
-            cand = fpv_dir / 'scoped_ast.json'
+            cand = fpv_dir / f'{sva_top}_scoped_ast.json'
             if cand.exists():
                 saj = cand
+            else:
+                cand2 = fpv_dir / 'scoped_ast.json'
+                if cand2.exists():
+                    saj = cand2
 
         include_basename = Path(args.prop_include).name
         inc_path = Path(os.path.expanduser(args.prop_include)).resolve()

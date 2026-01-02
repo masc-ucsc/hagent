@@ -22,6 +22,7 @@ jg_post_repair_patch:
             * convert brittle ASSERT to COVER only if clearly an environment/stimulus issue
             * avoid inventing new signals not already present in the provided files
         - If logs show compile/filelist/TCL/bind issues, fix those first.
+        - If logs show ERROR, fix those first.
 
       Output MUST be a unified diff patch ONLY:
         - No prose, no markdown, no explanations
