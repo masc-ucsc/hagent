@@ -53,8 +53,9 @@ default:
 
         C4) Temporal operators / sequence legality:
             - Do NOT wrap a seed post that already has temporal operators (##, ##[a:b], [*], [->], throughout).
-            - If <FINAL_POST> contains '##' and also contains boolean operators like '|', '||', '&', '&&',
-              rewrite them to sequence operators: 'or' and 'and' respectively, so the expression is legal SVA.
+            - ALWAYS use standard boolean/bitwise operators: ||, &&, |, &, ^, ~, !
+            - NEVER use word-form operators 'or', 'and', 'not' in property expressions.
+            - If mixing temporal (##) with boolean logic, ensure proper parentheses and use only symbolic operators.
 
         C5) No useless tautologies:
             - Do NOT emit:
