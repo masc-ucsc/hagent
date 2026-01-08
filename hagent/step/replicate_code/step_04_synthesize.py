@@ -48,7 +48,7 @@ class Synthesize(OptPipeStepBase):
 
         # Run Yosys synthesis
         yosys_script = f"""
-            read_verilog -sv -defer {top_module_file};
+            read_verilog -sv -defer {self.config.populated_file_paths.rtl_path}/*.sv;
             hierarchy -top {top_module};
             flatten {top_module};
             opt;

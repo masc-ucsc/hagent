@@ -306,7 +306,7 @@ exit
 
                             if best_variant_code:
                                 # Save best variant to rtl_optimized directory
-                                best_variant_file = os.path.join(rtl_optimized_dir, f'{module_name}.v')
+                                best_variant_file = os.path.join(rtl_optimized_dir, f'{module_name}.sv')
                                 with open(best_variant_file, 'w') as f:
                                     f.write(best_variant_code)
                                 self.logger.info(f'Saved best variant to {best_variant_file}')

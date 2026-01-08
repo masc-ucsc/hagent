@@ -46,14 +46,14 @@ class CompareTiming(OptPipeStepBase):
 
         # Copy ALL original modules first
         self.logger.info('Copying original module files')
-        ret, out, err = self.runner.run_cmd(f'cp {rtl_modules_dir}/liveparse/*.v {optimized_rtl_dir}/', quiet=True)
+        ret, out, err = self.runner.run_cmd(f'cp {rtl_modules_dir}/*.v {rtl_modules_dir}/*.sv {optimized_rtl_dir}/ 2>/dev/null || true', quiet=True)
         self.step_results['original_modules_copy'] = {'ret': ret, 'stdout': out, 'stderr': err}
         if ret != 0:
             self.error(f'Failed to copy original modules: {err}')
 
         # Copy best optimized variants from step_07 (overwrite originals)
         self.logger.info(f'Copying best optimized variants from {rtl_optimized_dir}')
-        ret, out, err = self.runner.run_cmd(f'cp {rtl_optimized_dir}/*.v {optimized_rtl_dir}/', quiet=True)
+        ret, out, err = self.runner.run_cmd(f'cp {rtl_optimized_dir}/*.v {rtl_optimized_dir}/*.sv {optimized_rtl_dir}/ 2>/dev/null || true', quiet=True)
         self.step_results['optimized_modules_copy'] = {'ret': ret, 'stdout': out, 'stderr': err}
 
         # Track which modules were optimized
@@ -84,7 +84,7 @@ class CompareTiming(OptPipeStepBase):
         optimized_synth_file = f'{optimized_synth_dir}/{top_module}_optimized_synth.v'
 
         yosys_script = f"""
-            read_verilog -sv -defer {optimized_rtl_dir}/*.v;
+            read_verilog -sv -defer {optimized_rtl_dir}/*.sv;
             hierarchy -top {top_module};
             flatten {top_module};
             opt;

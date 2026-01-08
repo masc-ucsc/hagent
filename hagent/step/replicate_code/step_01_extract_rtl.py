@@ -67,12 +67,18 @@ class ExtractRTL(OptPipeStepBase):
         self.step_results['rtl_discovery'] = {'ret': ret, 'stdout': out, 'stderr': err, 'files_found': rtl_source_files}
 
         rtl_real_src_dir = os.path.join(self.work_dir, 'rtl_real_source')
-        os.makedirs(rtl_real_src_dir, exist_ok=True)
+        self._prepare_dir(rtl_real_src_dir)
+
+        rtl_modules_path = os.path.join(self.work_dir, 'rtl_modules')
+        self._prepare_dir(rtl_modules_path)
+
         self.logger.info(f'Copying {len(rtl_source_files)} RTL files to {rtl_real_src_dir}')
         for src_file in rtl_source_files:
             if os.path.isfile(src_file):
-                dst_file = os.path.join(rtl_real_src_dir, os.path.basename(src_file))
-                shutil.copy2(src_file, dst_file)
+                real_src_dst_file = os.path.join(rtl_real_src_dir, os.path.basename(src_file))
+                submodules_dst_file = os.path.join(rtl_modules_path, os.path.basename(src_file))
+                shutil.copy2(src_file, real_src_dst_file)
+                shutil.copy2(src_file, submodules_dst_file)
 
         # Store execution metadata locally for debugging
         debug_log = f'{self.step_debug_dir}/execution_log.txt'
@@ -90,6 +96,7 @@ class ExtractRTL(OptPipeStepBase):
 
         # Update populated file paths in the working directory in config
         self.config.populated_file_paths.rtl_real_src_dir = rtl_real_src_dir
+        self.config.populated_file_paths.rtl_path = rtl_modules_path
         self.config.populated_file_paths.chisel_files = self.step_results['chisel_discovery']['files_found']
 
         # Store execution time and results

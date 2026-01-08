@@ -46,6 +46,7 @@ class CreateTop(OptPipeStepBase):
             hierarchy -top {top_module};
             write_verilog {rtl_selected_top_file};
         """
+        self.config.populated_file_paths.rtl_selected_top_file = rtl_selected_top_file
 
         self.logger.info(f'Creating top module using Yosys: {top_module}')
         ret, out, err = self.runner.run_cmd(f'{yosys_cmd} -p "{yosys_script}"', quiet=True)

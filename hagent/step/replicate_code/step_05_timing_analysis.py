@@ -54,7 +54,19 @@ set_operating_conditions ff_100C_1v95
 read_verilog {synth_file}
 link_design {top_module}
 read_sdc {sdc_file}
-report_checks -path_delay max > {timing_report_file}
+report_checks \\
+  -path_delay max \\
+  -format full_clock_expanded \\
+  -unconstrained \\
+  -fields {{ \
+    fanout \
+    input_pins \
+    hierarchical_pins \
+    src_attr \
+    slew \
+  }} \\
+  > {timing_report_file}
+exit
 """
 
         self.logger.info('Creating OpenSTA TCL script')
