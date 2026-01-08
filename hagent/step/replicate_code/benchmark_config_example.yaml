@@ -17,7 +17,7 @@ benchmark:
 
 # Source file configuration
 source_file_paths:
-  rtl_source_file_path: "~/hagent/hagent/step/replicate_code/tests/rtl_code/testPipelineDino/rtl_real_source/"
+  rtl_source_file_path: "~/hagent/hagent/step/replicate_code/tests/rtl_code/testPipelineDino/build_pipelined_d/"
 
 # Tool paths and configuration
 tools:
@@ -30,7 +30,7 @@ tools:
 # Local storage configuration
 local_storage:
   cache_dir: "~/hagent/cache/"
-  output_dir: "~/hagent/cache/pipeline_results"
+  output_dir: "~/hagent/cache/build_pipelined"
 
 # Optimization configuration
 optimization:
