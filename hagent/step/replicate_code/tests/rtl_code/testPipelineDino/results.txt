@@ -1,0 +1,64 @@
+PipelinedCPU
+run_with_syn=true, results_array=improved_arrival_time_diff
+run_with_syn=false, results_array=improved_arrival_time_diff,improved_arrival_time_diff
+--------------
+PipelinedCPU
+run_with_syn=true, results_array=.41
+run_with_syn=false, results_array=.41
+--------------
+PipelinedCPU
+run_with_syn=true, results_array=1.41
+run_with_syn=false, results_array=.41
+--------------
+PipelinedCPU
+run_with_syn=true, results_array=.41
+run_with_syn=false, results_array=.41
+--------------
+PipelinedCPU
+run_with_syn=true, results_array=.41
+run_with_syn=false, results_array=.41
+--------------
+PipelinedCPU
+--------------
+PipelinedCPU
+--------------
+PipelinedCPU
+--------------
+PipelinedCPU
+--------------
+PipelinedCPU
+run_with_syn=true, results_array=.41
+run_with_syn=false, results_array=.41
+--------------
+PipelinedCPU
+run_with_baseline, results_array=.37
+--------------
+PipelinedCPU
+run_with_baseline, results_array=.37
+run_with_syn=true, results_array=.37
+run_with_syn=false, results_array=.37
+--------------
+PipelinedCPU
+run_with_baseline, results_array=.37
+run_with_syn=true, results_array=.37
+run_with_syn=false, results_array=.37
+--------------
+PipelinedCPU
+run_with_baseline, results_array=.37
+run_with_syn=true, results_array=.41
+run_with_syn=false, results_array=.41
+--------------
+PipelinedCPU
+run_with_baseline, results_array=.37
+run_with_syn=true, results_array=.41
+run_with_syn=false, results_array=.41
+--------------
+PipelinedCPU
+--------------
+PipelinedCPU
+run_with_baseline, results_array=.37
+run_with_syn=true, results_array=.41
+run_with_syn=false, results_array=.41
+--------------
+PipelinedCPU
+run_with_baseline, results_array=0

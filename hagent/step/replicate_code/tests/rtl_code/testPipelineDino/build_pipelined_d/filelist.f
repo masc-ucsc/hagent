@@ -1,0 +1,17 @@
+Control.sv
+RegisterFile.sv
+ALUControl.sv
+ALU.sv
+ImmediateGenerator.sv
+NextPC.sv
+Adder.sv
+ForwardingUnit.sv
+HazardUnit.sv
+StageReg.sv
+StageReg_1.sv
+StageReg_2.sv
+StageReg_3.sv
+StageReg_4.sv
+StageReg_5.sv
+StageReg_6.sv
+PipelinedCPU.sv

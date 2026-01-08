@@ -1,0 +1,4 @@
+create_clock -name clock -period 1 {clock}
+set_input_delay -clock clock 0.1 [all_inputs]
+set_output_delay -clock clock 0.1 [all_outputs]
+

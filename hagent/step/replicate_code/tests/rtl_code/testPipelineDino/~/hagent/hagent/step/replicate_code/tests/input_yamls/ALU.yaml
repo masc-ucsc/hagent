@@ -1,0 +1,355 @@
+"llm":
+  "model": |-
+    openai/o3-mini-2025-01-31
+"top_name": |-
+  ALU
+"replicate_code_prompt1":
+- "role": |-
+    system
+  "content": |-
+    You are a super smart Verilog and timing expert.You have been tasked with improving the frequency of a verilog code.You provide a higher frequency code which passes LEC.Make sure that you only return the code that passes LEC.Take care that:The semantics are  preserved exactly as in the original netlist (including word instantiation and sign‐extension)while breaking a long combinational critical path.The resultant code is functionally equivalent to the original and passes LEC.
+- "role": |-
+    user
+  "content": |-
+    This is the current Verilog:
+    ```
+    {code_content}
+    ```
+    The above code has comments with the word CRITICAL providing hints on the where the critical path resides. These are likely statements or related statements that need to be optimized.Please do not change semantics, just split the always blocks in separate always blocks and try to improve the performance when possible.
+"threshold": 40
+"code_content": |-
+  module ALU(io_operation, io_inputx, io_inputy, io_result);
+  wire [31:0] _000_;
+  wire [63:0] _001_;
+  wire [63:0] _002_;
+  wire _003_;
+  wire _004_;
+  wire _005_;
+  wire _006_;
+  wire _007_;
+  wire _008_;
+  wire _009_;
+  wire _010_;
+  wire _011_;
+  wire _012_;
+  wire _013_;
+  wire _014_;
+  wire _015_;
+  wire _016_;
+  wire _017_;
+  wire _018_;
+  wire _019_;
+  wire _020_;
+  wire _021_;
+  wire _022_;
+  wire _023_;
+  wire _024_;
+  wire [63:0] _025_;
+  wire [63:0] _026_;
+  wire [126:0] _027_;
+  wire [62:0] _028_;
+  wire [31:0] _029_;
+  wire [63:0] _030_;
+  wire [31:0] _031_;
+  wire [63:0] _032_;
+  wire [31:0] _033_;
+  wire [63:0] _034_;
+  wire [31:0] _035_;
+  wire [63:0] _036_;
+  wire [31:0] _037_;
+  wire [63:0] _038_;
+  wire [31:0] _039_;
+  wire [63:0] _040_;
+  wire [31:0] _041_;
+  wire [63:0] _042_;
+  wire [31:0] _043_;
+  wire [126:0] _044_;
+  wire _045_;
+  wire _046_;
+  wire _047_;
+  wire [63:0] _048_;
+  wire [126:0] _049_;
+  wire [126:0] _050_;
+  wire [126:0] _051_;
+  wire [126:0] _052_;
+  wire [126:0] _053_;
+  wire [126:0] _054_;
+  wire [126:0] _055_;
+  wire [126:0] _056_;
+  wire [126:0] _057_;
+  wire [126:0] _058_;
+  wire [63:0] _059_;
+  wire [63:0] _GEN_0;
+  wire [63:0] _GEN_1;
+  wire [126:0] _GEN_10;
+  wire [126:0] _GEN_11;
+  wire [126:0] _GEN_12;
+  wire [126:0] _GEN_13;
+  wire [126:0] _GEN_14;
+  wire [126:0] _GEN_15;
+  wire [126:0] _GEN_16;
+  wire [126:0] _GEN_17;
+  wire [126:0] _GEN_18;
+  wire [126:0] _GEN_19;
+  wire [63:0] _GEN_2;
+  wire [126:0] _GEN_20;
+  wire [62:0] _GEN_21;
+  wire [63:0] _GEN_3;
+  wire [126:0] _GEN_4;
+  wire _GEN_5;
+  wire _GEN_6;
+  wire _GEN_7;
+  wire _GEN_8;
+  wire [63:0] _GEN_9;
+  wire [31:0] _T_12;
+  wire [63:0] _T_14;
+  wire [63:0] _T_16;
+  wire _T_17;
+  wire [31:0] _T_20;
+  wire [31:0] _T_23;
+  wire [63:0] _T_25;
+  wire [63:0] _T_27;
+  wire _T_28;
+  wire _T_3;
+  wire [31:0] _T_30;
+  wire [31:0] _T_33;
+  wire [31:0] _T_36;
+  wire [63:0] _T_38;
+  wire [63:0] _T_4;
+  wire [63:0] _T_42;
+  wire _T_43;
+  wire _T_44;
+  wire _T_45;
+  wire [63:0] _T_46;
+  wire _T_47;
+  wire _T_5;
+  wire [31:0] _T_50;
+  wire [31:0] _T_53;
+  wire [63:0] _T_55;
+  wire [63:0] _T_57;
+  wire _T_58;
+  wire _T_6;
+  wire _T_61;
+  wire _T_62;
+  wire [62:0] _T_65; //CRITICAL
+  wire [31:0] _T_68;
+  wire [63:0] _T_70;
+  wire _T_71;
+  wire [63:0] _T_73;
+  wire _T_74;
+  wire _T_77;
+  wire _T_78;
+  wire _T_79;
+  wire _T_80;
+  wire _T_81;
+  wire _T_82;
+  wire _T_83;
+  wire [31:0] _T_9;
+  wire [3:0] aluop;
+  input [63:0] io_inputx;
+  wire [63:0] io_inputx;
+  input [63:0] io_inputy; //CRITICAL
+  wire [63:0] io_inputy;
+  input [4:0] io_operation;
+  wire [4:0] io_operation;
+  output [63:0] io_result;
+  wire [63:0] io_result;
+  wire [31:0] operand1_32;
+  wire [31:0] operand2_32;
+  wire [126:0] potato2;
+  wire [63:0] potato4;
+  wire wordinst;
+  assign _000_ = operand1_32 + //CRITICAL
+   operand2_32;
+  assign _001_ = io_inputx + //CRITICAL
+   io_inputy;
+  assign _002_ = io_inputx & //CRITICAL
+   io_inputy;
+  assign _003_ = _T_82 & //CRITICAL
+   _T_83;
+  assign _004_ = aluop ==
+   4'h6;
+  assign _005_ = aluop ==
+   4'h5;
+  assign _006_ = aluop ==
+   4'h7;
+  assign _007_ = aluop ==
+   4'h4;
+  assign _008_ = aluop ==
+   4'h3;
+  assign _009_ = aluop ==
+   4'h1;
+  assign _010_ = aluop ==
+   4'h0;
+  assign _011_ = aluop ==
+   4'h2;
+  assign _012_ = aluop ==
+   4'h9;
+  assign _013_ = aluop ==
+   4'h8;
+  assign _014_ = aluop ==
+   4'ha;
+  assign _015_ = aluop ==
+   4'hb;
+  assign _016_ = aluop ==
+   4'hc;
+  assign _017_ = aluop ==
+   4'hd;
+  assign _018_ = io_inputx == //CRITICAL
+   io_inputy;
+  assign _019_ = aluop ==
+   4'he;
+  assign _020_ = $signed(io_inputx) >= //CRITICAL
+   $signed(io_inputy);
+  assign _021_ = io_inputx >= //CRITICAL
+   io_inputy;
+  assign _022_ = io_inputx < //CRITICAL
+   io_inputy;
+  assign _023_ = $signed(io_inputx) < //CRITICAL
+   $signed(io_inputy);
+  assign _024_ = io_inputx != //CRITICAL
+   io_inputy;
+  assign _025_ = ~ //CRITICAL
+   potato4;
+  assign _026_ = io_inputx | //CRITICAL
+   io_inputy;
+  assign _027_ = _GEN_20 <<
+   io_inputy[5:0];
+  assign _028_ = _GEN_21 << //CRITICAL
+   operand2_32[4:0];
+  assign _029_ = operand1_32 >> //CRITICAL
+   operand2_32[4:0];
+  assign _030_ = io_inputx >> //CRITICAL
+   io_inputy[5:0];
+  assign _031_ = $signed(_T_30) >>> //CRITICAL
+   operand2_32[4:0];
+  assign _032_ = $signed(io_inputx) >>> //CRITICAL
+   io_inputy[5:0];
+  assign _033_ = operand1_32 - //CRITICAL
+   operand2_32;
+  assign _034_ = io_inputx - //CRITICAL
+   io_inputy;
+  assign _035_ = _T_9[31] ? //CRITICAL
+   32'd4294967295 : 32'd0;
+  assign _036_ = wordinst ? //CRITICAL
+   _T_14 : _T_16;
+  assign _037_ = _T_20[31] ? //CRITICAL
+   32'd4294967295 : 32'd0;
+  assign _038_ = wordinst ? //CRITICAL
+   _T_25 : _T_27;
+  assign _039_ = _T_33[31] ? //CRITICAL
+   32'd4294967295 : 32'd0;
+  assign _040_ = wordinst ? //CRITICAL
+   _T_38 : _T_42;
+  assign _041_ = _T_50[31] ? //CRITICAL
+   32'd4294967295 : 32'd0;
+  assign _042_ = wordinst ? //CRITICAL
+   _T_55 : _T_57;
+  assign _043_ = _T_65[31] ? //CRITICAL
+   32'd4294967295 : 32'd0;
+  assign _044_ = wordinst ? //CRITICAL
+   { 63'h0000000000000000, _T_70 } : potato2;
+  assign _045_ = _T_80 ? //CRITICAL
+   _T_81 : _GEN_5;
+  assign _046_ = _T_78 ? //CRITICAL
+   _T_79 : _GEN_6;
+  assign _047_ = _T_74 ? //CRITICAL
+   _T_77 : _GEN_7;
+  assign _048_ = _T_71 ? //CRITICAL
+   _T_73 : { 63'h0000000000000000, _GEN_8 };
+  assign _049_ = _T_62 ? //CRITICAL
+   _GEN_4 : { 63'h0000000000000000, _GEN_9 };
+  assign _050_ = _T_58 ? //CRITICAL
+   { 126'h00000000000000000000000000000000, _T_61 } : _GEN_10;
+  assign _051_ = _T_47 ? //CRITICAL
+   { 63'h0000000000000000, _GEN_3 } : _GEN_11;
+  assign _052_ = _T_45 ? //CRITICAL
+   { 63'h0000000000000000, _T_46 } : _GEN_12;
+  assign _053_ = _T_43 ? //CRITICAL
+   { 126'h00000000000000000000000000000000, _T_44 } : _GEN_13;
+  assign _054_ = _T_28 ? //CRITICAL
+   { 63'h0000000000000000, _GEN_2 } : _GEN_14;
+  assign _055_ = _T_17 ? //CRITICAL
+   { 63'h0000000000000000, _GEN_1 } : _GEN_15;
+  assign _056_ = _T_6 ? //CRITICAL
+   { 63'h0000000000000000, _GEN_0 } : _GEN_16;
+  assign _057_ = _T_5 ? //CRITICAL
+   { 63'h0000000000000000, potato4 } : _GEN_17;
+  assign _058_ = _T_3 ? //CRITICAL
+   { 63'h0000000000000000, _T_4 } : _GEN_18;
+  assign _059_ = io_inputx ^ //CRITICAL
+   io_inputy;
+  assign wordinst = io_operation[4];
+  assign aluop = io_operation[3:0];
+  assign operand1_32 = io_inputx[31:0];
+  assign operand2_32 = io_inputy[31:0];
+  assign _GEN_20 = { 63'h0000000000000000, io_inputx };
+  assign potato2 = _027_;
+  assign potato4 = _026_;
+  assign _T_3 = _004_;
+  assign _T_4 = _002_;
+  assign _T_5 = _005_;
+  assign _T_6 = _006_;
+  assign _T_9 = _000_;
+  assign _T_12 = _035_;
+  assign _T_14 = { _T_12, _T_9 };
+  assign _T_16 = _001_;
+  assign _GEN_0 = _036_;
+  assign _T_17 = _007_;
+  assign _T_20 = _033_;
+  assign _T_23 = _037_;
+  assign _T_25 = { _T_23, _T_20 };
+  assign _T_27 = _034_;
+  assign _GEN_1 = _038_;
+  assign _T_28 = _008_;
+  assign _T_30 = io_inputx[31:0];
+  assign _T_33 = _031_;
+  assign _T_36 = _039_;
+  assign _T_38 = { _T_36, _T_33 };
+  assign _T_42 = _032_;
+  assign _GEN_2 = _040_;
+  assign _T_43 = _009_;
+  assign _T_44 = _022_;
+  assign _T_45 = _010_;
+  assign _T_46 = _059_;
+  assign _T_47 = _011_;
+  assign _T_50 = _029_;
+  assign _T_53 = _041_;
+  assign _T_55 = { _T_53, _T_50 };
+  assign _T_57 = _030_;
+  assign _GEN_3 = _042_;
+  assign _T_58 = _012_;
+  assign _T_61 = _023_;
+  assign _T_62 = _013_;
+  assign _GEN_21 = { 31'h00000000, operand1_32 };
+  assign _T_65 = _028_;
+  assign _T_68 = _043_;
+  assign _T_70 = { _T_68, _T_65[31:0] };
+  assign _GEN_4 = _044_;
+  assign _T_71 = _014_;
+  assign _T_73 = _025_;
+  assign _T_74 = _015_;
+  assign _T_77 = _020_;
+  assign _T_78 = _016_;
+  assign _T_79 = _021_;
+  assign _T_80 = _017_;
+  assign _T_81 = _018_;
+  assign _T_82 = _019_;
+  assign _T_83 = _024_;
+  assign _GEN_5 = _003_;
+  assign _GEN_6 = _045_;
+  assign _GEN_7 = _046_;
+  assign _GEN_8 = _047_;
+  assign _GEN_9 = _048_;
+  assign _GEN_10 = _049_;
+  assign _GEN_11 = _050_;
+  assign _GEN_12 = _051_;
+  assign _GEN_13 = _052_;
+  assign _GEN_14 = _053_;
+  assign _GEN_15 = _054_;
+  assign _GEN_16 = _055_;
+  assign _GEN_17 = _056_;
+  assign _GEN_18 = _057_;
+  assign _GEN_19 = _058_;
+  assign io_result = _GEN_19[63:0];
+  endmodule

@@ -1,0 +1,95 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+module HazardUnit(io_rs1, io_rs2, io_idex_memread, io_idex_rd, io_exmem_taken, io_pcfromtaken, io_pcstall, io_if_id_stall, io_id_ex_flush, io_ex_mem_flush, io_if_id_flush);
+
+wire _00_;
+
+wire _01_;
+
+wire _02_;
+
+wire _03_;
+
+wire _04_;
+
+wire _05_;
+
+wire _06_;
+
+wire _T;
+
+wire _T_1;
+
+wire _T_2;
+
+wire _T_3;
+
+output io_ex_mem_flush;
+wire io_ex_mem_flush;
+
+input io_exmem_taken;
+wire io_exmem_taken;
+
+output io_id_ex_flush;
+wire io_id_ex_flush;
+
+input io_idex_memread;
+wire io_idex_memread;
+
+input [4:0] io_idex_rd;
+wire [4:0] io_idex_rd;
+
+output io_if_id_flush;
+wire io_if_id_flush;
+
+output io_if_id_stall;
+wire io_if_id_stall;
+
+output io_pcfromtaken;
+wire io_pcfromtaken;
+
+output io_pcstall;
+wire io_pcstall;
+
+input [4:0] io_rs1;
+wire [4:0] io_rs1;
+
+input [4:0] io_rs2;
+wire [4:0] io_rs2;
+assign _00_ = io_idex_memread &
+ _T_2;
+assign _01_ = io_idex_rd ==
+ io_rs1;
+assign _02_ = io_idex_rd ==
+ io_rs2;
+assign _03_ = _T |
+ _T_1;
+assign _04_ = io_exmem_taken |
+ _T_3;
+assign _05_ = io_exmem_taken ?
+ 1'h0 : _T_3;
+assign _06_ = io_exmem_taken ?
+ 1'h0 : _T_3;
+assign _T = _01_;
+assign _T_1 = _02_;
+assign _T_2 = _03_;
+assign _T_3 = _00_;
+assign io_pcfromtaken = io_exmem_taken;
+assign io_pcstall = _05_;
+assign io_if_id_stall = _06_;
+assign io_id_ex_flush = _04_;
+assign io_ex_mem_flush = io_exmem_taken;
+assign io_if_id_flush = io_exmem_taken;
+endmodule

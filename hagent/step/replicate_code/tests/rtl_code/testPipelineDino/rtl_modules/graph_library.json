@@ -1,0 +1,1309 @@
+{
+    "Lgraph": [
+        {
+            "version": 17,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 17,
+            "name": "StageReg_6",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "clock",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_data_wb_ctrl_regwrite",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_wb_ctrl_toreg",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_in_wb_ctrl_regwrite",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_wb_ctrl_toreg",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "reset",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 16,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 16,
+            "name": "StageReg_5",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "clock",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_data_ex_result",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_instruction",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_readdata",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_in_ex_result",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_instruction",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_readdata",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "reset",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 15,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 15,
+            "name": "StageReg_4",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "clock",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_data_mem_ctrl_memop",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_wb_ctrl_regwrite",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_wb_ctrl_toreg",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_flush",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_mem_ctrl_memop",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_wb_ctrl_regwrite",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_wb_ctrl_toreg",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "reset",
+                    "graph_io_pos": 9,
+                    "instance_pid": 9,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 14,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 14,
+            "name": "StageReg_3",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "clock",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_data_ex_result",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_instruction",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_mem_writedata",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_nextpc",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_taken",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_flush",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_ex_result",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_instruction",
+                    "graph_io_pos": 9,
+                    "instance_pid": 9,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_mem_writedata",
+                    "graph_io_pos": 10,
+                    "instance_pid": 10,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_nextpc",
+                    "graph_io_pos": 11,
+                    "instance_pid": 11,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_taken",
+                    "graph_io_pos": 12,
+                    "instance_pid": 12,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "reset",
+                    "graph_io_pos": 13,
+                    "instance_pid": 13,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 13,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 13,
+            "name": "StageReg_2",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "clock",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_data_ex_ctrl_aluop",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_ex_ctrl_branch",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_ex_ctrl_itype",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_ex_ctrl_jumptype",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_ex_ctrl_resultselect",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_ex_ctrl_src1",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_ex_ctrl_src2",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_ex_ctrl_wordinst",
+                    "graph_io_pos": 9,
+                    "instance_pid": 9,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_mem_ctrl_memop",
+                    "graph_io_pos": 10,
+                    "instance_pid": 10,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_wb_ctrl_regwrite",
+                    "graph_io_pos": 11,
+                    "instance_pid": 11,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_wb_ctrl_toreg",
+                    "graph_io_pos": 12,
+                    "instance_pid": 12,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_flush",
+                    "graph_io_pos": 13,
+                    "instance_pid": 13,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_ex_ctrl_aluop",
+                    "graph_io_pos": 14,
+                    "instance_pid": 14,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_ex_ctrl_branch",
+                    "graph_io_pos": 15,
+                    "instance_pid": 15,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_ex_ctrl_itype",
+                    "graph_io_pos": 16,
+                    "instance_pid": 16,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_ex_ctrl_jumptype",
+                    "graph_io_pos": 17,
+                    "instance_pid": 17,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_ex_ctrl_resultselect",
+                    "graph_io_pos": 18,
+                    "instance_pid": 18,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_ex_ctrl_src1",
+                    "graph_io_pos": 19,
+                    "instance_pid": 19,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_ex_ctrl_src2",
+                    "graph_io_pos": 20,
+                    "instance_pid": 20,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_ex_ctrl_wordinst",
+                    "graph_io_pos": 21,
+                    "instance_pid": 21,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_mem_ctrl_memop",
+                    "graph_io_pos": 22,
+                    "instance_pid": 22,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_wb_ctrl_regwrite",
+                    "graph_io_pos": 23,
+                    "instance_pid": 23,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_wb_ctrl_toreg",
+                    "graph_io_pos": 24,
+                    "instance_pid": 24,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "reset",
+                    "graph_io_pos": 25,
+                    "instance_pid": 25,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 12,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 12,
+            "name": "StageReg_1",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "clock",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_data_instruction",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_pc",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_readdata1",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_readdata2",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_sextImm",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_flush",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_instruction",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_pc",
+                    "graph_io_pos": 9,
+                    "instance_pid": 9,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_readdata1",
+                    "graph_io_pos": 10,
+                    "instance_pid": 10,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_readdata2",
+                    "graph_io_pos": 11,
+                    "instance_pid": 11,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_sextImm",
+                    "graph_io_pos": 12,
+                    "instance_pid": 12,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "reset",
+                    "graph_io_pos": 13,
+                    "instance_pid": 13,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 11,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 11,
+            "name": "StageReg",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "clock",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_data_instruction",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_data_pc",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_flush",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_instruction",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_in_pc",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_valid",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "reset",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 10,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 10,
+            "name": "RegisterFile",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "clock",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_readdata1",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_readdata2",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_readreg1",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_readreg2",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_wen",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_writedata",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_writereg",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 9,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 9,
+            "name": "PipelinedCPU",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "clock",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_dmem_address",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_dmem_good",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_dmem_maskmode",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_dmem_memread",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_dmem_memwrite",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_dmem_readdata",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_dmem_sext",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_dmem_valid",
+                    "graph_io_pos": 9,
+                    "instance_pid": 9,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_dmem_writedata",
+                    "graph_io_pos": 10,
+                    "instance_pid": 10,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_imem_address",
+                    "graph_io_pos": 11,
+                    "instance_pid": 11,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_imem_good",
+                    "graph_io_pos": 12,
+                    "instance_pid": 12,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_imem_instruction",
+                    "graph_io_pos": 13,
+                    "instance_pid": 13,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_imem_ready",
+                    "graph_io_pos": 14,
+                    "instance_pid": 14,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_imem_valid",
+                    "graph_io_pos": 15,
+                    "instance_pid": 15,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "reset",
+                    "graph_io_pos": 16,
+                    "instance_pid": 16,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 8,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 8,
+            "name": "NextPC",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "io_branch",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_funct3",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_imm",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_inputx",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_inputy",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_jumptype",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_nextpc",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_pc",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_taken",
+                    "graph_io_pos": 9,
+                    "instance_pid": 9,
+                    "bits": 0,
+                    "dir": "out"
+                }
+            ]
+        },
+        {
+            "version": 7,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 7,
+            "name": "ImmediateGenerator",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "io_instruction",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_sextImm",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                }
+            ]
+        },
+        {
+            "version": 6,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 6,
+            "name": "HazardUnit",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "io_ex_mem_flush",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_exmem_taken",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_id_ex_flush",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_idex_memread",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_idex_rd",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_if_id_flush",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_if_id_stall",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_pcfromtaken",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_pcstall",
+                    "graph_io_pos": 9,
+                    "instance_pid": 9,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_rs1",
+                    "graph_io_pos": 10,
+                    "instance_pid": 10,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_rs2",
+                    "graph_io_pos": 11,
+                    "instance_pid": 11,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 5,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 5,
+            "name": "ForwardingUnit",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "io_exmemrd",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_exmemrw",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_forwardA",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_forwardB",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_memwbrd",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_memwbrw",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_rs1",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_rs2",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 4,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 4,
+            "name": "Control",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "io_aluop",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_branch",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_itype",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_jumptype",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_memop",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_opcode",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_regwrite",
+                    "graph_io_pos": 7,
+                    "instance_pid": 7,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_resultselect",
+                    "graph_io_pos": 8,
+                    "instance_pid": 8,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_src1",
+                    "graph_io_pos": 9,
+                    "instance_pid": 9,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_src2",
+                    "graph_io_pos": 10,
+                    "instance_pid": 10,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_toreg",
+                    "graph_io_pos": 11,
+                    "instance_pid": 11,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_wordinst",
+                    "graph_io_pos": 12,
+                    "instance_pid": 12,
+                    "bits": 0,
+                    "dir": "out"
+                }
+            ]
+        },
+        {
+            "version": 3,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 3,
+            "name": "Adder",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "io_inputx",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_result",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "out"
+                }
+            ]
+        },
+        {
+            "version": 2,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 2,
+            "name": "ALUControl",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "io_aluop",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_funct3",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_funct7",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_itype",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_operation",
+                    "graph_io_pos": 5,
+                    "instance_pid": 5,
+                    "bits": 0,
+                    "dir": "out"
+                },
+                {
+                    "name": "io_wordinst",
+                    "graph_io_pos": 6,
+                    "instance_pid": 6,
+                    "bits": 0,
+                    "dir": "inp"
+                }
+            ]
+        },
+        {
+            "version": 1,
+            "source": "/home/sgarg3/livehd/pass/extractor/tests/testPipelineDino/rtl_single/PipelinedCPU.v",
+            "lgid": 1,
+            "name": "ALU",
+            "loop_last": true,
+            "loop_first": false,
+            "io_pins": [
+                {
+                    "name": "io_inputx",
+                    "graph_io_pos": 1,
+                    "instance_pid": 1,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_inputy",
+                    "graph_io_pos": 2,
+                    "instance_pid": 2,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_operation",
+                    "graph_io_pos": 3,
+                    "instance_pid": 3,
+                    "bits": 0,
+                    "dir": "inp"
+                },
+                {
+                    "name": "io_result",
+                    "graph_io_pos": 4,
+                    "instance_pid": 4,
+                    "bits": 0,
+                    "dir": "out"
+                }
+            ]
+        }
+    ],
+    "liberty": [
+        {
+            "file": "fake_bad.lib"
+        }
+    ],
+    "sdc": [
+        {
+            "file": "fake_bad.sdc"
+        }
+    ],
+    "spef": [
+        {
+            "file": "fake_bad.spef"
+        }
+    ]
+}
