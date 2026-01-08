@@ -1,0 +1,15 @@
+{
+  "compile_errors": {
+    "illegal_identifier_start_char": {
+      "error_tag": "syntax_error_illegal_identifier_start",
+      "compiler_log_pattern": "expected a declaration name",
+      "cause": "Variable name starts with an illegal character (e.g., '$' or a digit) and is not escaped.",
+      "rule": "Standard identifiers must start with a letter or an underscore. Identifiers with special chars (like '$') must be Escaped Identifiers: start with backslash '\\' and end with whitespace.",
+      "fix_strategy": "Prepend backslash to the identifier if it contains special characters, or rename it to start with a letter/underscore. If the line is an artifact (e.g. Yosys $auto), delete it.",
+      "demo_bad": "reg $auto$verilog_backend.cc = 0;",
+      "demo_good": "reg \\$auto$verilog_backend.cc = 0;"
+    }
+  },
+  "lec_errors": {}
+}
+
