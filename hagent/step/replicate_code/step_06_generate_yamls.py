@@ -37,8 +37,8 @@ class GenerateYamls(OptPipeStepBase):
 
         # Find .v files from liveparse directory
         rtl_modules_dir = self.config.populated_file_paths.rtl_path
-        self.logger.info(f'Finding module files in {rtl_modules_dir}/liveparse')
-        ret, out, err = self.runner.run_cmd(f'find {rtl_modules_dir}/liveparse -name "*.v" -type f | sort', quiet=True)
+        self.logger.info(f'Finding module files in {rtl_modules_dir}')
+        ret, out, err = self.runner.run_cmd(f'find {rtl_modules_dir} -name "*.v" -o -name "*.sv" -type f | sort', quiet=True)
         if ret != 0:
             self.logger.error('Failed to find module files!')
             self.logger.error(f'STDOUT:\n{out}')
@@ -50,21 +50,33 @@ class GenerateYamls(OptPipeStepBase):
         self.step_results['module_discovery'] = {'ret': ret, 'stdout': out, 'stderr': err, 'module_files': module_files}
         self.step_results['critical_path_modules'] = critical_path_modules
 
+        # Parse module hierarchy and expand critical modules to include ancestors up to LCA
+        hierarchy = self._parse_module_hierarchy(f'{rtl_modules_dir}')
+        self.step_results['module_hierarchy'] = hierarchy
+
+        # Expand critical modules to include parent modules up to LCA
+        top_module = self.config.benchmark.top_module
+        modules_to_optimize = self._collect_modules_to_optimize(critical_path_modules, hierarchy, top_module)
+        self.step_results['modules_to_optimize'] = modules_to_optimize
+        self.logger.info(
+            f'Expanded critical modules {critical_path_modules} to {modules_to_optimize} (including ancestors up to LCA)'
+        )
+
         model = self.config.optimization.model
         run_with_synalign = self.config.optimization.run_with_synalign
 
         generated_yamls = []
         modules_processed = []
 
-        # Process each module file splitted in step 3
-        critical_path_module_files = [path for path in module_files if any(mod in path for mod in critical_path_modules)]
+        # Process each module file for modules in the expanded set
+        critical_path_module_files = [path for path in module_files if any(mod in path for mod in modules_to_optimize)]
 
         for module_file in critical_path_module_files:
             if not module_file:
                 continue
 
             # Extract module name
-            module_name = os.path.basename(module_file).replace('.v', '')
+            module_name = os.path.splitext(os.path.basename(module_file))[0]
 
             # Read module content. The added `echo` ensures a trailing newline so that output from subsequent commands does not appear on the same line.
             ret, module_content, err = self.runner.run_cmd(f'cat {module_file}; echo', quiet=True)
@@ -140,6 +152,9 @@ class GenerateYamls(OptPipeStepBase):
             f.write(f'Benchmark: {self.config.benchmark.name}\n')
             f.write(f'Model: {model}\n')
             f.write(f'Run with SynAlign: {run_with_synalign}\n')
+            f.write(f'Top Module: {top_module}\n')
+            f.write(f'Critical Path Modules (initial): {critical_path_modules}\n')
+            f.write(f'Modules to Optimize (after hierarchy expansion): {modules_to_optimize}\n')
             f.write(f'Modules to Optimize Directory: {modules_to_optimize_dir}\n')
             f.write(f'Modules Processed: {len(modules_processed)}\n')
             f.write(f'Number of YAML Files Generated: {len(generated_yamls)}\n')
@@ -187,7 +202,7 @@ class GenerateYamls(OptPipeStepBase):
         self.logger.debug(f'Invoking cli_locator: {" ".join(cmd)}')
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
 
             if result.returncode != 0:
                 self.logger.warning(f'cli_locator failed for {vcd_signal_path}: {result.stderr}')
@@ -212,42 +227,45 @@ class GenerateYamls(OptPipeStepBase):
             self.logger.error(f'Error invoking cli_locator for {vcd_signal_path}: {e}')
             return []
 
-    def _extract_source_module_from_netlist(self, file_path: str, line_num: int) -> Optional[str]:
+    def _extract_module_name_from_verilog_file(self, file_path: str) -> Optional[str]:
         """
-        Extract the source module name from netlist annotations near a given line.
+        Extract the module name from a Verilog source file.
 
-        Looks for (* src = "build_xxx/ModuleName.sv:line" *) annotations and extracts "ModuleName".
+        This function parses the source Verilog file to find the module declaration
+        and extracts the module name. It handles both Verilog (.v) and SystemVerilog (.sv) files.
+
+        Strategies:
+        1. Parse the file to find "module ModuleName(" declaration
+        2. Fall back to extracting from filename if parsing fails
 
         Args:
-            file_path: Path to the netlist file
-            line_num: Line number where the signal is found
+            file_path: Path to the Verilog source file
 
         Returns:
-            Source module name (e.g., "StageReg_6") or None if not found
+            Module name (e.g., "Adder") or None if not found
         """
         try:
             with open(file_path, 'r') as f:
-                lines = f.readlines()
+                content = f.read()
 
-            # Search a few lines around the target line for (* src = "..." *) annotation
-            search_start = max(0, line_num - 5)
-            search_end = min(len(lines), line_num + 2)
+            # Find module declaration in the file
+            # Pattern: module ModuleName ( or module ModuleName#( (for parameterized modules)
+            module_pattern = re.compile(r'^\s*module\s+(\w+)\s*[#(]', re.MULTILINE)
+            match = module_pattern.search(content)
 
-            # Pattern: (* src = "build_xxx/ModuleName.sv:line.col" *)
-            src_pattern = re.compile(r'\(\*\s*src\s*=\s*"[^/]+/([^/.]+)\.sv:\d+\.\d+"\s*\*\)')
+            if match:
+                module_name = match.group(1)
+                self.logger.debug(f'Extracted module name "{module_name}" from module declaration in {file_path}')
+                return module_name
 
-            for i in range(search_start, search_end):
-                match = src_pattern.search(lines[i])
-                if match:
-                    module_name = match.group(1)
-                    self.logger.debug(f'Extracted source module "{module_name}" from {file_path}:{i + 1}')
-                    return module_name
-
-            self.logger.warning(f'No source module annotation found near {file_path}:{line_num}')
-            return None
+            # Extract from filename as fallback (this assumes filename convention: ModuleName.v or ModuleName.sv)
+            basename = os.path.basename(file_path)
+            module_name = os.path.splitext(basename)[0]
+            self.logger.debug(f'Extracted module name "{module_name}" from filename {file_path}')
+            return module_name
 
         except Exception as e:
-            self.logger.error(f'Error reading netlist file {file_path}: {e}')
+            self.logger.error(f'Error reading Verilog file {file_path}: {e}')
             return None
 
     def _locate_module_names_with_timing_rpt(self, timing_report: str | Path) -> List[str]:
@@ -256,9 +274,9 @@ class GenerateYamls(OptPipeStepBase):
 
         This method:
         1. Parses timing report to extract launch/capture flip-flop instances
-        2. Extracts Q signal names from the netlist
-        3. Invokes cli_locator to find VCD signal locations in the netlist
-        4. Extracts source module names from netlist annotations
+        2. Extracts Q/D signal names from the synthesized netlist
+        3. Invokes cli_locator to find VCD signal locations in source Verilog files
+        4. Extracts module names from the source Verilog files
 
         Returns:
             List of source module names (e.g., ["StageReg_6", "StageReg_7"])
@@ -283,16 +301,16 @@ class GenerateYamls(OptPipeStepBase):
             verilog_text = f.read()
 
         launch_q_signal = self._extract_q_signal(verilog_text, launch[0])
-        capture_q_signal = self._extract_q_signal(verilog_text, capture[0])
+        capture_d_signal = self._extract_q_signal(verilog_text, capture[0])
 
         self.logger.info(f'Launch Q signal: {launch_q_signal}')
-        self.logger.info(f'Capture Q signal: {capture_q_signal}')
+        self.logger.info(f'Capture D signal: {capture_d_signal}')
 
         # Construct full VCD hierarchical paths and find source modules
         source_modules = []
         top_module = self.config.benchmark.top_module
 
-        for signal_name in [launch_q_signal, capture_q_signal]:
+        for signal_name in [launch_q_signal, capture_d_signal]:
             # Construct full hierarchical VCD path: TopModule.signal.name
             vcd_path = f'{top_module}.{signal_name}'
             self.logger.debug(f'Looking up VCD path: {vcd_path}')
@@ -305,8 +323,8 @@ class GenerateYamls(OptPipeStepBase):
                 continue
 
             # Extract source module from first location
-            file_path, line_num = locations[0]
-            source_module = self._extract_source_module_from_netlist(file_path, line_num)
+            file_path, _ = locations[0]
+            source_module = self._extract_module_name_from_verilog_file(file_path)
 
             if source_module:
                 source_modules.append(source_module)
@@ -339,6 +357,236 @@ class GenerateYamls(OptPipeStepBase):
         cleaned = re.sub(r'\\?([^\s\[]+).*', r'\1', raw_signal).strip()
 
         return cleaned
+
+    def _parse_module_hierarchy(self, liveparse_dir: str) -> Dict[str, List[str]]:
+        """
+        Parse Verilog files to build module hierarchy.
+
+        Returns:
+            Dictionary mapping parent module -> list of child modules it instantiates
+        """
+        hierarchy = {}  # parent -> [children]
+
+        # Find all .v files
+        ret, out, err = self.runner.run_cmd(f'find {liveparse_dir} -name "*.v" -type f | sort', quiet=True)
+        if ret != 0:
+            self.logger.error(f'Failed to find .v files in {liveparse_dir}')
+            return hierarchy
+
+        module_files = [f.strip() for f in out.split('\n') if f.strip()]
+
+        # Pattern to match module instantiations: ModuleType instance_name (
+        # Matches patterns like: StageReg_6 mem_wb_ctrl (
+        inst_pattern = re.compile(r'^\s*(\w+)\s+\w+\s*\(', re.MULTILINE)
+
+        for module_file in module_files:
+            # Extract module name from filename
+            parent_module = os.path.basename(module_file).replace('.v', '')
+
+            # Read module content
+            ret, content, err = self.runner.run_cmd(f'cat {module_file}; echo', quiet=True)
+            if ret != 0:
+                self.logger.warning(f'Failed to read {module_file}')
+                continue
+
+            # Find all module instantiations
+            child_modules = set()
+            for match in inst_pattern.finditer(content):
+                module_type = match.group(1)
+                # Filter out Verilog keywords and wire/reg declarations
+                if module_type not in [
+                    'module',
+                    'input',
+                    'output',
+                    'wire',
+                    'reg',
+                    'assign',
+                    'always',
+                    'begin',
+                    'end',
+                    'if',
+                    'else',
+                ]:
+                    child_modules.add(module_type)
+
+            hierarchy[parent_module] = list(child_modules)
+            self.logger.debug(f'Module {parent_module} instantiates: {child_modules}')
+
+        return hierarchy
+
+    def _build_parent_map(self, hierarchy: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        """
+        Build reverse mapping: child -> list of parents that instantiate it.
+
+        Args:
+            hierarchy: parent -> [children] mapping
+
+        Returns:
+            Dictionary mapping child module -> list of parent modules
+        """
+        parent_map = {}
+
+        for parent, children in hierarchy.items():
+            for child in children:
+                if child not in parent_map:
+                    parent_map[child] = []
+                parent_map[child].append(parent)
+
+        return parent_map
+
+    def _find_path_to_root(self, module: str, parent_map: Dict[str, List[str]], top_module: str) -> List[str]:
+        """
+        Find path from a module to the top module.
+
+        Args:
+            module: Starting module
+            parent_map: child -> [parents] mapping
+            top_module: Root/top module name
+
+        Returns:
+            List representing path from module to top (inclusive), or empty list if no path found
+        """
+        if module == top_module:
+            return [top_module]
+
+        if module not in parent_map:
+            self.logger.warning(f'Module {module} has no parents')
+            return []
+
+        # For simplicity, take the first parent (assumes tree structure, not DAG)
+        # In a full implementation, we might need to handle multiple paths
+        visited = set()
+        path = [module]
+        current = module
+
+        while current != top_module:
+            if current in visited:
+                self.logger.warning(f'Cycle detected in hierarchy at {current}')
+                return []
+
+            visited.add(current)
+
+            if current not in parent_map or len(parent_map[current]) == 0:
+                self.logger.warning(f'Module {current} has no path to top module {top_module}')
+                return []
+
+            # Take first parent
+            parent = parent_map[current][0]
+            path.append(parent)
+            current = parent
+
+        return path
+
+    def _find_lca(self, modules: List[str], parent_map: Dict[str, List[str]], top_module: str) -> Optional[str]:
+        """
+        Find the Lowest Common Ancestor (LCA) of a list of modules.
+
+        Args:
+            modules: List of module names
+            parent_map: child -> [parents] mapping
+            top_module: Root/top module name
+
+        Returns:
+            LCA module name, or None if not found
+        """
+        if not modules:
+            return None
+
+        if len(modules) == 1:
+            # Single module: return its parent (or itself if it's the top)
+            module = modules[0]
+            if module == top_module:
+                return None  # Can't optimize top module
+            if module in parent_map and parent_map[module]:
+                return parent_map[module][0]
+            return None
+
+        # Find paths to root for all modules
+        paths = []
+        for module in modules:
+            path = self._find_path_to_root(module, parent_map, top_module)
+            if not path:
+                self.logger.warning(f'Could not find path to root for module {module}')
+                return None
+            paths.append(path)
+
+        # Convert paths to sets for easier intersection
+        # The LCA is the first common ancestor when traversing from leaf to root
+        # We'll find it by checking each level
+        min_path_len = min(len(p) for p in paths)
+
+        # Start from the end (top module) and work backwards
+        for i in range(min_path_len):
+            # Check if all paths have the same module at this level from the end
+            ancestors = [path[-(i + 1)] for path in paths]
+            if len(set(ancestors)) == 1:
+                # All have same ancestor at this level, but keep looking for closer one
+                lca_candidate = ancestors[0]
+            else:
+                # Divergence found, return the last common ancestor
+                # If i == 0, paths diverge immediately at top, return top
+                if i == 0:
+                    return top_module
+                return lca_candidate
+
+        # All paths are identical up to min length
+        return paths[0][-min_path_len]
+
+    def _collect_modules_to_optimize(
+        self, critical_modules: List[str], hierarchy: Dict[str, List[str]], top_module: str
+    ) -> List[str]:
+        """
+        Collect all modules to optimize: critical modules + their ancestors up to LCA (excluding top).
+
+        Args:
+            critical_modules: Initial critical path modules
+            hierarchy: parent -> [children] mapping
+            top_module: Top module to exclude
+
+        Returns:
+            List of module names to optimize
+        """
+        if not critical_modules:
+            return []
+
+        parent_map = self._build_parent_map(hierarchy)
+
+        # Find LCA
+        lca = self._find_lca(critical_modules, parent_map, top_module)
+
+        if lca is None:
+            self.logger.warning('Could not find LCA, using only critical modules')
+            return critical_modules
+
+        if lca == top_module:
+            self.logger.warning('LCA is top module, excluding it from optimization')
+            # Collect all modules from critical modules up to (but excluding) top
+            modules_to_optimize = set(critical_modules)
+            for module in critical_modules:
+                path = self._find_path_to_root(module, parent_map, top_module)
+                # Add all modules in path except the top
+                modules_to_optimize.update([m for m in path if m != top_module])
+            return list(modules_to_optimize)
+
+        self.logger.info(f'LCA of critical modules {critical_modules} is: {lca}')
+
+        # Collect all modules from critical modules to LCA (inclusive)
+        modules_to_optimize = set(critical_modules)
+        modules_to_optimize.add(lca)  # Include LCA
+
+        for module in critical_modules:
+            path = self._find_path_to_root(module, parent_map, top_module)
+            # Add all modules from current to LCA
+            for m in path:
+                if m == top_module:
+                    break
+                modules_to_optimize.add(m)
+                if m == lca:
+                    break
+
+        result = list(modules_to_optimize)
+        self.logger.info(f'Modules to optimize (critical + ancestors to LCA): {result}')
+        return result
 
 
 if __name__ == '__main__':
