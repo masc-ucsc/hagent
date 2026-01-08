@@ -351,6 +351,14 @@ class LLM_wrap:
 
         # Call litellm responses API
         try:
+            model_name = llm_call_args.get('model', '')
+            oai_reasoning_models = {'o1', 'o1-pro', 'o1-mini', 'o3', 'o3-mini', 'o4-mini'}
+            oai_agentic_models = {'gpt-5.1-codex-mini', 'codex-mini-latest'}
+            
+            does_not_support_temp_topp = any(
+                rm in model_name.lower() for rm in (oai_reasoning_models | oai_agentic_models)
+            )
+
             start = time.time()
 
             # For better diversity when n > 1, make separate calls with varied parameters
@@ -364,18 +372,22 @@ class LLM_wrap:
                 for i in range(n):
                     call_args = llm_call_args.copy()
 
-                    # Scale temperature from 0 to 1 based on n, with one sample having default temperature
-                    if n == 2:
-                        # For n=2: use default temp and either 0 or 1
-                        call_args['temperature'] = base_temperature if i == 0 else (0.0 if base_temperature > 0.5 else 1.0)
+                    if does_not_support_temp_topp:
+                        call_args.pop('temperature', None)
+                        call_args.pop('top_p', None)
                     else:
-                        # For n>2: distribute from 0 to 1, ensuring one sample has default temperature
-                        mid_index = n // 2
-                        if i == mid_index:
-                            call_args['temperature'] = base_temperature  # Keep default for one sample
+                        # Scale temperature from 0 to 1 based on n, with one sample having default temperature
+                        if n == 2:
+                            # For n=2: use default temp and either 0 or 1
+                            call_args['temperature'] = base_temperature if i == 0 else (0.0 if base_temperature > 0.5 else 1.0)
                         else:
-                            # Scale others from 0 to 1
-                            call_args['temperature'] = i / (n - 1)
+                            # For n>2: distribute from 0 to 1, ensuring one sample has default temperature
+                            mid_index = n // 2
+                            if i == mid_index:
+                                call_args['temperature'] = base_temperature  # Keep default for one sample
+                            else:
+                                # Scale others from 0 to 1
+                                call_args['temperature'] = i / (n - 1)
 
                     # Scale top_p intelligently: vary around default with more diversity
                     # Skip top_p for Anthropic models (cannot use both temperature and top_p)
@@ -405,10 +417,10 @@ class LLM_wrap:
                     responses.append(r)
 
                     # Store only the last response for next iteration's variation
-                    # Extract text from output[0].content[0].text
+                    # Extract text from output[1].content[0].text as output[0] is a ResponseReasoningItem object and output[1] is a ResponseOutputMessage object
                     if hasattr(r, 'output') and r.output:
                         try:
-                            last_response = r.output[0].content[0].text
+                            last_response = r.output[1].content[0].text
                         except (IndexError, AttributeError):
                             pass
 
@@ -420,7 +432,7 @@ class LLM_wrap:
                 for resp in responses:
                     if hasattr(resp, 'output') and resp.output:
                         try:
-                            text = resp.output[0].content[0].text
+                            text = resp.output[1].content[0].text
                             if text:
                                 answers.append(text)
                         except (IndexError, AttributeError):
@@ -446,7 +458,7 @@ class LLM_wrap:
                 answers = []
                 if hasattr(r, 'output') and r.output:
                     try:
-                        text = r.output[0].content[0].text
+                        text = r.output[1].content[0].text
                         if text:
                             answers.append(text)
                     except (IndexError, AttributeError):
