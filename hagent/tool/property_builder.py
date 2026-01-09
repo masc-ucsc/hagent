@@ -82,7 +82,7 @@ def _split_csv_line(line: str) -> List[str]:
 
 def _is_trivial_true(expr: str) -> bool:
     e = (expr or '').strip()
-    return e in {'1', '1\'b1', '1\'b01', '1\'h1'}
+    return e in {'1', "1'b1", "1'b01", "1'h1"}
 
 
 def _split_first_implication(expr: str) -> Optional[Tuple[str, str, str]]:
@@ -92,7 +92,7 @@ def _split_first_implication(expr: str) -> Optional[Tuple[str, str, str]]:
         idx = expr.find(op)
         if idx >= 0:
             ante = expr[:idx].strip()
-            cons = expr[idx + len(op):].strip()
+            cons = expr[idx + len(op) :].strip()
             return ante, op, cons
     return None
 
@@ -157,38 +157,44 @@ def _parse_csv_best_effort(raw_text: str) -> Tuple[List[Dict[str, str]], Dict[st
 
     rows: List[Dict[str, str]] = []
 
-    for (lineno, line) in nonblank[data_start_idx:]:
+    for lineno, line in nonblank[data_start_idx:]:
         cols = _split_csv_line(line)
 
         if len(cols) > 10:
             base9 = cols[:9]
             extra = ' '.join((c or '').replace(',', ' ').strip() for c in cols[9:]).strip()
             cols = base9 + [extra]
-            parse_report['repairs'].append({
-                'line': lineno,
-                'kind': 'merge_extra_columns_into_notes',
-                'original_cols': len(_split_csv_line(line)),
-                'final_cols': len(cols),
-            })
+            parse_report['repairs'].append(
+                {
+                    'line': lineno,
+                    'kind': 'merge_extra_columns_into_notes',
+                    'original_cols': len(_split_csv_line(line)),
+                    'final_cols': len(cols),
+                }
+            )
 
         if len(cols) == 9:
             # sid,prop_type,module,name,scenario,pre,signals,param_ok,notes
             sid, prop_type, module, name, scenario, pre, signals, param_ok, notes = cols
             post = ''
             cols = [sid, prop_type, module, name, scenario, pre, post, signals, param_ok, notes]
-            parse_report['repairs'].append({
-                'line': lineno,
-                'kind': 'insert_missing_post_column',
-            })
+            parse_report['repairs'].append(
+                {
+                    'line': lineno,
+                    'kind': 'insert_missing_post_column',
+                }
+            )
 
         if len(cols) != 10:
             parse_report['dropped_rows'] += 1
-            parse_report['dropped'].append({
-                'line': lineno,
-                'kind': 'unfixable_column_count',
-                'cols': len(cols),
-                'text': line,
-            })
+            parse_report['dropped'].append(
+                {
+                    'line': lineno,
+                    'kind': 'unfixable_column_count',
+                    'cols': len(cols),
+                    'text': line,
+                }
+            )
             continue
 
         row = {CSV_HEADER[i]: (cols[i] or '').strip() for i in range(10)}
@@ -341,8 +347,12 @@ def _detect_clk_rst_from_port_names(
 
     if not clk:
         clk_patterns = [
-            r'^clk$', r'^clock$', r'^pclk$', r'^aclk$',
-            r'.*clk.*', r'.*clock.*',
+            r'^clk$',
+            r'^clock$',
+            r'^pclk$',
+            r'^aclk$',
+            r'.*clk.*',
+            r'.*clock.*',
         ]
         clk_best = ''
         clk_best_rank = None
@@ -358,8 +368,15 @@ def _detect_clk_rst_from_port_names(
 
     if not rst:
         rst_patterns = [
-            r'^rst$', r'^reset$', r'^resetn$', r'^rst_n$', r'^reset_n$', r'^reset_ni$', r'^rst_ni$',
-            r'.*reset.*', r'.*rst.*',
+            r'^rst$',
+            r'^reset$',
+            r'^resetn$',
+            r'^rst_n$',
+            r'^reset_n$',
+            r'^reset_ni$',
+            r'^rst_ni$',
+            r'.*reset.*',
+            r'.*rst.*',
         ]
         rst_best = ''
         rst_best_rank = None
@@ -394,10 +411,10 @@ class PropertyBuilder:
         out_dir: str,
         llm_conf: Optional[str],
         design_top: Optional[str] = None,
-        property_top: Optional[str] = None,   # NEW: module where properties are clocked (SVA/bind target)
-        clock_name: Optional[str] = None,     # NEW: override property clock name
-        reset_name: Optional[str] = None,     # NEW: override property reset name
-        reset_expr: Optional[str] = None,     # NEW: override disable iff expression
+        property_top: Optional[str] = None,  # NEW: module where properties are clocked (SVA/bind target)
+        clock_name: Optional[str] = None,  # NEW: override property clock name
+        reset_name: Optional[str] = None,  # NEW: override property reset name
+        reset_expr: Optional[str] = None,  # NEW: override disable iff expression
         strict: bool = False,
         report_json: Optional[str] = None,
     ):
@@ -520,9 +537,13 @@ class PropertyBuilder:
         )
 
         # If heuristics didn't find anything and no overrides, fallback to clk_rst_utils
-        if (not clk or not rst) and (not self.clock_name_override and not self.reset_name_override and not self.reset_expr_override):
+        if (not clk or not rst) and (
+            not self.clock_name_override and not self.reset_name_override and not self.reset_expr_override
+        ):
             try:
-                cr = detect_clk_rst_for_top(Path(self.rtl_dir), prop_top, ports_json=Path(self.out_dir) / f'{prop_top}_ports.json')
+                cr = detect_clk_rst_for_top(
+                    Path(self.rtl_dir), prop_top, ports_json=Path(self.out_dir) / f'{prop_top}_ports.json'
+                )
                 if isinstance(cr, (list, tuple)) and len(cr) >= 3:
                     clk2, rst2, rst_expr2 = cr[0], cr[1], cr[2]
                     if not clk and clk2:
@@ -541,9 +562,13 @@ class PropertyBuilder:
             is_active_low = low.endswith('n') or low.endswith('_n') or low.endswith('ni') or low.endswith('_ni')
             disable_cond = f'!{rst}' if is_active_low else rst
 
-        print(f'[INFO] Property clock/reset domain (property_top="{prop_top}"): clk={clk or "-"}, rst={rst or "-"}, disable iff ({disable_cond or "-"}) [{cr_src}]')
+        print(
+            f'[INFO] Property clock/reset domain (property_top="{prop_top}"): clk={clk or "-"}, rst={rst or "-"}, disable iff ({disable_cond or "-"}) [{cr_src}]'
+        )
         if self.design_top and self.design_top != prop_top:
-            print(f'[INFO] Note: design_top="{self.design_top}" differs from property_top="{prop_top}" (expected when top!=sva_top).')
+            print(
+                f'[INFO] Note: design_top="{self.design_top}" differs from property_top="{prop_top}" (expected when top!=sva_top).'
+            )
 
         return clk, rst, disable_cond, spec_top, prop_top
 
@@ -565,9 +590,9 @@ class PropertyBuilder:
             return ''
 
         if e == '1':
-            return '1\'b1'
+            return "1'b1"
         if e == '0':
-            return '1\'b0'
+            return "1'b0"
 
         # Simple english normalizations (keep minimal)
         m = re.match(r'^([A-Za-z_]\w*)\s+stable\s+for\s+1\s+cycle$', e, re.I)
@@ -694,7 +719,7 @@ class PropertyBuilder:
         """
         Treat empty / 1 / 1'b1 as 'no real precondition'.
         """
-        if (pre_raw or '').strip() in {'', '1', '1\'b1'}:
+        if (pre_raw or '').strip() in {'', '1', "1'b1"}:
             return True
         return _is_trivial_true(pre_norm)
 
@@ -745,7 +770,7 @@ class PropertyBuilder:
         post = post2
         meta['temporal_mix_rewritten'] = bool(changed)
 
-        if pre0 in {'1', '1\'b1'} or _is_trivial_true(pre.strip()):
+        if pre0 in {'1', "1'b1"} or _is_trivial_true(pre.strip()):
             if pre.strip():
                 meta['cleared_trivial_pre'] = True
             pre = ''
@@ -799,29 +824,33 @@ class PropertyBuilder:
                 or repair_meta.get('post_invalid', False)
             )
             if changed:
-                strict_log['row_repairs'].append({
-                    'sid': sid,
-                    'name': name,
-                    'line': line_no,
-                    'prop_type': ptype,
-                    'details': repair_meta,
-                })
+                strict_log['row_repairs'].append(
+                    {
+                        'sid': sid,
+                        'name': name,
+                        'line': line_no,
+                        'prop_type': ptype,
+                        'details': repair_meta,
+                    }
+                )
 
         pre_missing = self._pre_is_missing(pre_raw, pre)
 
         if not pre and not post:
             if self.strict:
-                strict_log['skipped'].append({
-                    'sid': sid,
-                    'name': name,
-                    'line': line_no,
-                    'prop_type': ptype,
-                    'reason': 'empty_pre_and_post_after_repairs_or_invalid_identifiers',
-                    'pre_raw': (pre_raw or '').strip(),
-                    'post_raw': (post_raw or '').strip(),
-                    'pre_norm': pre,
-                    'post_norm': post,
-                })
+                strict_log['skipped'].append(
+                    {
+                        'sid': sid,
+                        'name': name,
+                        'line': line_no,
+                        'prop_type': ptype,
+                        'reason': 'empty_pre_and_post_after_repairs_or_invalid_identifiers',
+                        'pre_raw': (pre_raw or '').strip(),
+                        'post_raw': (post_raw or '').strip(),
+                        'pre_norm': pre,
+                        'post_norm': post,
+                    }
+                )
             return None
 
         if 'auto_repaired_invariant' in scenario:
@@ -831,12 +860,17 @@ class PropertyBuilder:
                 body = f'({pre})' if pre else ''
             if not body:
                 if self.strict:
-                    strict_log['skipped'].append({
-                        'sid': sid, 'name': name, 'line': line_no, 'prop_type': ptype,
-                        'reason': 'auto_repaired_invariant_but_no_expr',
-                        'pre_raw': (pre_raw or '').strip(),
-                        'post_raw': (post_raw or '').strip(),
-                    })
+                    strict_log['skipped'].append(
+                        {
+                            'sid': sid,
+                            'name': name,
+                            'line': line_no,
+                            'prop_type': ptype,
+                            'reason': 'auto_repaired_invariant_but_no_expr',
+                            'pre_raw': (pre_raw or '').strip(),
+                            'post_raw': (post_raw or '').strip(),
+                        }
+                    )
                 return None
             return self._wrap_property(sid, name, ptype, clk, disable_cond, body)
 
@@ -844,11 +878,16 @@ class PropertyBuilder:
         if not post and pre:
             if ptype in {'assume', 'assert'} and _is_trivial_true(pre):
                 if self.strict:
-                    strict_log['skipped'].append({
-                        'sid': sid, 'name': name, 'line': line_no, 'prop_type': ptype,
-                        'reason': 'only_pre_but_trivial_true',
-                        'pre_norm': pre,
-                    })
+                    strict_log['skipped'].append(
+                        {
+                            'sid': sid,
+                            'name': name,
+                            'line': line_no,
+                            'prop_type': ptype,
+                            'reason': 'only_pre_but_trivial_true',
+                            'pre_norm': pre,
+                        }
+                    )
                 return None
             body = f'({pre})'
             return self._wrap_property(sid, name, ptype, clk, disable_cond, body)
@@ -857,30 +896,42 @@ class PropertyBuilder:
         if post and pre_missing:
             if ptype in {'assume', 'assert'} and _is_trivial_true(post):
                 if self.strict:
-                    strict_log['skipped'].append({
-                        'sid': sid, 'name': name, 'line': line_no, 'prop_type': ptype,
-                        'reason': 'only_post_but_trivial_true',
-                        'post_norm': post,
-                    })
+                    strict_log['skipped'].append(
+                        {
+                            'sid': sid,
+                            'name': name,
+                            'line': line_no,
+                            'prop_type': ptype,
+                            'reason': 'only_post_but_trivial_true',
+                            'post_norm': post,
+                        }
+                    )
                 return None
             body = f'({post})'
             return self._wrap_property(sid, name, ptype, clk, disable_cond, body)
 
         # BOTH pre and post
         if pre and post:
-            if (('eventually' in scenario) or ('not stuck' in scenario) or ('forever' in scenario)) and (not self._post_has_temporal(post)):
+            if (('eventually' in scenario) or ('not stuck' in scenario) or ('forever' in scenario)) and (
+                not self._post_has_temporal(post)
+            ):
                 body = f'({pre}) |-> ##[1:$] ({post})'
             else:
                 body = f'({pre}) |-> ({post})'
 
             flat = re.sub(r'\s+', '', body)
-            if ptype in {'assume', 'assert'} and ('1\'b1|->1\'b1' in flat or '1|->1' in flat):
+            if ptype in {'assume', 'assert'} and ("1'b1|->1'b1" in flat or '1|->1' in flat):
                 if self.strict:
-                    strict_log['skipped'].append({
-                        'sid': sid, 'name': name, 'line': line_no, 'prop_type': ptype,
-                        'reason': 'tautology_implication',
-                        'body': body,
-                    })
+                    strict_log['skipped'].append(
+                        {
+                            'sid': sid,
+                            'name': name,
+                            'line': line_no,
+                            'prop_type': ptype,
+                            'reason': 'tautology_implication',
+                            'body': body,
+                        }
+                    )
                 return None
 
             return self._wrap_property(sid, name, ptype, clk, disable_cond, body)
@@ -889,10 +940,15 @@ class PropertyBuilder:
             return self._wrap_property(sid, name, ptype, clk, disable_cond, f'({post})')
 
         if self.strict:
-            strict_log['skipped'].append({
-                'sid': sid, 'name': name, 'line': line_no, 'prop_type': ptype,
-                'reason': 'fell_through_unhandled_case',
-            })
+            strict_log['skipped'].append(
+                {
+                    'sid': sid,
+                    'name': name,
+                    'line': line_no,
+                    'prop_type': ptype,
+                    'reason': 'fell_through_unhandled_case',
+                }
+            )
         return None
 
     # ------------------------------------------------------------------
@@ -913,7 +969,7 @@ class PropertyBuilder:
         pre_raw = (row.get('pre', '') or '').strip()
         post_raw = (row.get('post', '') or '').strip()
 
-        if pre_raw in {'', '1', '1\'b1'}:
+        if pre_raw in {'', '1', "1'b1"}:
             return ''
         if post_raw == '':
             return ''
@@ -990,7 +1046,7 @@ class PropertyBuilder:
 
         # Reject tautologies
         flat = re.sub(r'\s+', '', sv)
-        if '1|->1' in flat or '1\'b1|->1\'b1' in flat:
+        if '1|->1' in flat or "1'b1|->1'b1" in flat:
             return None
 
         # Also reject nested implications inside the property text (common when CSV was broken)
@@ -999,7 +1055,7 @@ class PropertyBuilder:
             return None
 
         pre_raw = (row.get('pre', '') or '').strip()
-        if pre_raw in {'', '1', '1\'b1'} and ('|->' in sv or '|=>' in sv):
+        if pre_raw in {'', '1', "1'b1"} and ('|->' in sv or '|=>' in sv):
             return None
 
         return sv.strip()
@@ -1074,13 +1130,13 @@ class PropertyBuilder:
         # If we still don't have a clock, we cannot generate correct properties
         if not clk:
             raise SystemExit(
-                f'ERROR: Could not determine property clock for property_top=\'{prop_top_used}\'. '
+                f"ERROR: Could not determine property clock for property_top='{prop_top_used}'. "
                 f'Provide --clock-name or ensure {prop_top_used}_ports.json exists.'
             )
         if not disable_cond:
             # Still allow, but warn; disable iff () is illegal, so we need something.
-            print('[WARN] Could not determine reset/disable iff condition; defaulting to 1\'b0 (no disable).')
-            disable_cond = '1\'b0'
+            print("[WARN] Could not determine reset/disable iff condition; defaulting to 1'b0 (no disable).")
+            disable_cond = "1'b0"
 
         all_props: List[str] = []
         header = (
@@ -1142,16 +1198,23 @@ if __name__ == '__main__':
     p.add_argument('--llm-conf', required=False, default=None)
 
     # Existing (kept): ELAB top name (useful for overall flow/debug), but NOT used for property clocking by default
-    p.add_argument('--design-top', default=None, help='Elaboration top (informational here; properties use --property-top domain).')
+    p.add_argument(
+        '--design-top', default=None, help='Elaboration top (informational here; properties use --property-top domain).'
+    )
 
     # NEW: property domain module (SVA/bind target)
-    p.add_argument('--property-top', '--sva-top', dest='property_top', default=None,
-                   help='Module whose clock/reset domain properties are generated in (bind target). Default: inferred from spec-md filename (e.g. fifo_spec.md -> fifo).')
+    p.add_argument(
+        '--property-top',
+        '--sva-top',
+        dest='property_top',
+        default=None,
+        help='Module whose clock/reset domain properties are generated in (bind target). Default: inferred from spec-md filename (e.g. fifo_spec.md -> fifo).',
+    )
 
     # NEW overrides
     p.add_argument('--clock-name', default=None, help='Override property clock name (e.g. clock).')
     p.add_argument('--reset-name', default=None, help='Override property reset signal name (e.g. reset_n).')
-    p.add_argument('--reset-expr', default=None, help='Override disable iff expression verbatim (e.g. \'!reset_n\' or \'reset\').')
+    p.add_argument('--reset-expr', default=None, help="Override disable iff expression verbatim (e.g. '!reset_n' or 'reset').")
 
     p.add_argument('--strict', action='store_true', help='Write strict JSON report of repairs/skips.')
     p.add_argument('--report-json', default=None, help='Path for strict JSON report (default: out/properties.report.json)')
