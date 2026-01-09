@@ -12,7 +12,7 @@ Follow these concise rules when working in this repo.
 
 ### RTL/HDL Execution Environment
 - Execution mode is determined by HAGENT_DOCKER:
-  - **Docker mode (recommended)**: `export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.12`
+  - **Docker mode (recommended)**: `export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2026.01`
   - **Local mode (debug/dev)**: Don't set HAGENT_DOCKER
 - Both modes can set paths BUT Local mode requires all paths set. Remember these paths are NOT hagent code but RTL/Verilog/HDL code.
   - `export HAGENT_REPO_DIR=/path/to/git/root`

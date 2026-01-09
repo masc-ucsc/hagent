@@ -75,7 +75,7 @@ Docker images are recommended to be derived from hagent-builer like hagent-simpl
 
 ```bash
 # Required for Docker mode - set HAGENT_DOCKER to activate docker mode
-export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.12
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2026.01
 
 # Optional: Mount host directories into container
 export HAGENT_REPO_DIR=/path/to/your/git/repository     # Will be mounted to /code/workspace/repo
@@ -237,7 +237,7 @@ HAgent uses a modernized container management system that automatically handles 
 **Example Docker Usage:**
 ```bash
 # Set Docker mode by setting HAGENT_DOCKER
-export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.12
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2026.01
 
 # Optionally mount your project directory
 export HAGENT_REPO_DIR=/path/to/your/project
@@ -251,7 +251,7 @@ uv run python hagent/step/trivial/trivial.py input.yaml -o output.yaml
 For debugging and experimentation, you can manually start a container using the same arguments that `Runner.py` would use. The `scripts/docker_args.sh` script reads the `HAGENT_*` environment variables and prints a `docker run` command with the correct mounts:
 
 ```bash
-export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.12
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2026.01
 export HAGENT_REPO_DIR=/path/to/your/git/repository
 export HAGENT_BUILD_DIR=/path/to/your/build/directory
 export HAGENT_CACHE_DIR=/path/to/your/cache/directory

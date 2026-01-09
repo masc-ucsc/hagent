@@ -34,7 +34,7 @@ After installation, run a simple test to verify everything works:
 uv run pytest -n auto --forked hagent/step/trivial/tests/
 
 # Run a simple trivial step (Docker mode - recommended)
-export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.12
+export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2026.01
 mkdir -p tmp && cd tmp
 uv run ../hagent/step/trivial/trivial.py ../hagent/step/trivial/tests/input1.yaml -o output.yaml
 cat output.yaml

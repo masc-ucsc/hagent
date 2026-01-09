@@ -475,7 +475,7 @@ def test_get_build_dir_for_profile():
 **Test 1.2: Integration test with actual Builder**
 ```bash
 # Set up environment
-export HAGENT_DOCKER="mascucsc/hagent-simplechisel:2025.12"
+export HAGENT_DOCKER="mascucsc/hagent-simplechisel:2026.01"
 export HAGENT_REPO_DIR="/tmp/test_v2chisel/repo"
 export HAGENT_BUILD_DIR="/tmp/test_v2chisel/build"
 export HAGENT_CACHE_DIR="/tmp/test_v2chisel/cache"
@@ -733,7 +733,7 @@ exit_code, stdout, stderr = builder.run_api(
 
 ```bash
 # Set up environment
-export HAGENT_DOCKER="mascucsc/hagent-simplechisel:2025.12"
+export HAGENT_DOCKER="mascucsc/hagent-simplechisel:2026.01"
 export HAGENT_REPO_DIR="path/to/dinocpu"
 export HAGENT_BUILD_DIR="path/to/build"
 export HAGENT_CACHE_DIR="path/to/cache"
