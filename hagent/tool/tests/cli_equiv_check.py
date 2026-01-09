@@ -264,9 +264,9 @@ def main():
         epilog="""
 Examples:
   # Direct files
-  %(prog)s -r gold1.v -r gold2.v --implementation test1.v
+  %(prog)s -r gold1.v -r gold2.v -i test1.v
   %(prog)s --reference ref.v --implementation impl.v
-  %(prog)s -r ref/*.v --implementation impl/*.v
+  %(prog)s -r ref/*.v -i impl/*.v
 
   # Tagged versions
   %(prog)s --ref-tag baseline --impl-tag current --dir build/
@@ -307,6 +307,7 @@ Examples:
     )
 
     parser.add_argument(
+        '-i',
         '--implementation',
         action='append',
         dest='gate_files',
