@@ -1,4 +1,33 @@
-#!/usr/bin/env python3
+#!/bin/sh
+# fmt: off
+''''
+# Ensure uv discovers the hagent project even when invoked from a different cwd
+if [ -n "$UV_PROJECT" ]; then
+    PROJECT_ROOT="$UV_PROJECT"
+else
+    PROJECT_ROOT="$(cd "$(dirname "$0")"/../.. && pwd -P)"
+fi
+
+# Docker detection: if /code/workspace/cache exists, we're in Docker
+if [ -d "/code/workspace/cache" ]; then
+    # In Docker: /code/hagent is read-only, so use cache venv
+    VENV_DIR="/code/workspace/cache/.venv"
+    if [ -z "$UV_PROJECT_ENVIRONMENT" ]; then
+        export UV_PROJECT_ENVIRONMENT="$VENV_DIR"
+    fi
+
+    # Ensure venv exists - if not, create it once
+    if [ ! -f "$VENV_DIR/bin/python" ]; then
+        cd "$PROJECT_ROOT" && uv venv "$VENV_DIR" && uv sync --frozen
+    fi
+
+    exec uv run python "$0" "$@"
+else
+    # Local: use uv run to manage environment (handles sync automatically)
+    exec uv run --project "$PROJECT_ROOT" python "$0" "$@"
+fi
+'''
+# fmt: on
 # See LICENSE for details
 """
 Command-line tool for equivalence checking between multiple Verilog files.
@@ -25,6 +54,8 @@ import os
 import glob
 from hagent.tool.equiv_check import Equiv_check
 from pathlib import Path
+
+import yaml
 
 
 def ensure_hagent_env():
@@ -61,6 +92,134 @@ def expand_file_patterns(file_patterns):
             # If no wildcard matches, treat as literal filename
             expanded_files.append(pattern)
     return expanded_files
+
+
+def load_manifest(manifest_path):
+    """Load manifest YAML, return None if doesn't exist."""
+    if not manifest_path.exists():
+        return None
+    try:
+        with open(manifest_path) as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        print(f'Warning: Failed to load manifest {manifest_path}: {e}', file=sys.stderr)
+        return None
+
+
+def resolve_tag(tag_name, base_dir=None, use_synth=False, debug=False):
+    """Resolve tag to actual file path and manifest.
+
+    Args:
+        tag_name: Tag name to resolve
+        base_dir: Optional base directory to search first
+        use_synth: Prefer synth.v over elab.v
+        debug: Print debug information
+
+    Returns:
+        tuple: (file_path, manifest_dict or None)
+
+    Raises:
+        FileNotFoundError: If tag not found in search paths
+    """
+    search_paths = []
+
+    # Build search path list
+    if base_dir:
+        search_paths.append(Path(base_dir) / tag_name)
+
+    # HAGENT_CACHE_DIR has priority for tags
+    cache_dir = os.environ.get('HAGENT_CACHE_DIR')
+    if cache_dir:
+        search_paths.append(Path(cache_dir) / tag_name)
+
+    build_dir = os.environ.get('HAGENT_BUILD_DIR')
+    if build_dir:
+        search_paths.append(Path(build_dir) / tag_name)
+
+    search_paths.extend(
+        [
+            Path('./build') / tag_name,
+            Path('../build') / tag_name,
+        ]
+    )
+
+    if debug:
+        print(f'Resolving tag "{tag_name}" in search paths:', file=sys.stderr)
+        for p in search_paths:
+            print(f'  {p}', file=sys.stderr)
+
+    # Find first existing tag directory
+    for path in search_paths:
+        if not path.exists():
+            continue
+
+        # Choose elab.v vs synth.v
+        elab_file = path / 'elab.v'
+        synth_file = path / 'synth.v'
+
+        chosen_file = None
+        if use_synth and synth_file.exists():
+            chosen_file = synth_file
+        elif elab_file.exists():
+            chosen_file = elab_file
+        elif synth_file.exists():
+            chosen_file = synth_file
+
+        if chosen_file:
+            manifest = load_manifest(path / 'manifest.yaml')
+            if debug:
+                print(f'✓ Resolved tag "{tag_name}" to {chosen_file}', file=sys.stderr)
+                if manifest:
+                    print(f'  Top module: {manifest.get("top_module", "unknown")}', file=sys.stderr)
+            return chosen_file, manifest
+
+    raise FileNotFoundError(f'Tag "{tag_name}" not found in: {", ".join(str(p) for p in search_paths)}')
+
+
+def resolve_file_or_dir(path_str, use_synth=False, debug=False):
+    """Resolve a file path or directory to actual Verilog file.
+
+    Args:
+        path_str: File path or directory path
+        use_synth: Prefer synth.v over elab.v for directories
+        debug: Print debug information
+
+    Returns:
+        tuple: (file_path, manifest_dict or None)
+    """
+    path = Path(path_str)
+
+    if not path.exists():
+        raise FileNotFoundError(f'Path not found: {path}')
+
+    # If it's a file, return it directly
+    if path.is_file():
+        # Try to find manifest in same directory
+        manifest = load_manifest(path.parent / 'manifest.yaml')
+        return path, manifest
+
+    # If it's a directory, auto-detect elab.v or synth.v
+    if path.is_dir():
+        elab_file = path / 'elab.v'
+        synth_file = path / 'synth.v'
+
+        chosen_file = None
+        if use_synth and synth_file.exists():
+            chosen_file = synth_file
+        elif elab_file.exists():
+            chosen_file = elab_file
+        elif synth_file.exists():
+            chosen_file = synth_file
+
+        if chosen_file:
+            manifest = load_manifest(path / 'manifest.yaml')
+            if debug:
+                print(f'Auto-detected {chosen_file.name} in directory {path}', file=sys.stderr)
+            return chosen_file, manifest
+
+        raise FileNotFoundError(f'No elab.v or synth.v found in directory: {path}')
+
+    raise ValueError(f'Path is neither file nor directory: {path}')
 
 
 def read_verilog_files(file_list):
@@ -103,58 +262,106 @@ def main():
         description='Equivalence checking tool for multiple Verilog files',
         epilog="""
 Examples:
-  %(prog)s -r gold1.v -r gold2.v -i test1.v
+  # Direct files
+  %(prog)s -r gold1.v -r gold2.v --implementation test1.v
   %(prog)s --reference ref.v --implementation impl.v
-  %(prog)s -r ref/*.v -i impl/*.v
-  %(prog)s -r gold.v -i impl1.v -i impl2.v -i impl3.v
+  %(prog)s -r ref/*.v --implementation impl/*.v
+
+  # Tagged versions
+  %(prog)s --ref-tag baseline --impl-tag current --dir build/
+  %(prog)s --ref-tag baseline --implementation new_alu.v --dir build/
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # Tag-based arguments
+    parser.add_argument(
+        '--ref-tag',
+        help='Reference tag name (searches in --dir, HAGENT_CACHE_DIR, HAGENT_BUILD_DIR, ./build/)',
+    )
+
+    parser.add_argument(
+        '--impl-tag',
+        help='Implementation tag name (searches in --dir, HAGENT_CACHE_DIR, HAGENT_BUILD_DIR, ./build/)',
+    )
+
+    parser.add_argument(
+        '--dir',
+        help='Base directory for tag resolution (optional, auto-detects if not specified)',
+    )
+
+    parser.add_argument(
+        '--use-synth',
+        action='store_true',
+        help='Prefer synth.v over elab.v when resolving tags or directories',
+    )
+
+    # Direct file arguments (backward compatible)
     parser.add_argument(
         '-r',
         '--reference',
         action='append',
         dest='gold_files',
-        required=True,
-        help='Gold/reference Verilog file(s). Can be specified multiple times. Supports wildcards.',
+        help='Gold/reference Verilog file(s) or directories. Can be specified multiple times. Supports wildcards.',
     )
 
     parser.add_argument(
-        '-i',
         '--implementation',
         action='append',
         dest='gate_files',
-        required=True,
-        help='Gate/implementation Verilog file(s). Can be specified multiple times. Supports wildcards.',
+        help='Gate/implementation Verilog file(s) or directories. Can be specified multiple times. Supports wildcards.',
     )
 
     parser.add_argument('--top', help='Specify a particular top module name to check (optional)')
 
-    parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose output')
+    parser.add_argument('--debug', action='store_true', help='Enable debug output')
 
     args = parser.parse_args()
 
     try:
-        # Expand file patterns
-        if args.verbose:
-            print('Expanding file patterns...')
+        # Resolve reference (gold) files/tags
+        gold_files = []
+        gold_manifests = []
 
-        gold_files = expand_file_patterns(args.gold_files)
-        gate_files = expand_file_patterns(args.gate_files)
-
-        if args.verbose:
-            print(f'Gold/Reference files: {gold_files}')
-            print(f'Gate/Implementation files: {gate_files}')
-
-        # Validate that all files exist
-        all_files = gold_files + gate_files
-        missing_files = [f for f in all_files if not os.path.exists(f)]
-        if missing_files:
-            print('ERROR: The following files do not exist:', file=sys.stderr)
-            for f in missing_files:
-                print(f'  - {f}', file=sys.stderr)
+        if args.ref_tag:
+            # Resolve tag to file
+            ref_file, ref_manifest = resolve_tag(args.ref_tag, args.dir, args.use_synth, args.debug)
+            gold_files.append(str(ref_file))
+            gold_manifests.append(ref_manifest)
+        elif args.gold_files:
+            # Expand and resolve file patterns or directories
+            expanded = expand_file_patterns(args.gold_files)
+            for file_path in expanded:
+                resolved_file, manifest = resolve_file_or_dir(file_path, args.use_synth, args.debug)
+                gold_files.append(str(resolved_file))
+                gold_manifests.append(manifest)
+        else:
+            print('ERROR: Either --ref-tag or --reference is required', file=sys.stderr)
             sys.exit(1)
+
+        # Resolve implementation (gate) files/tags
+        gate_files = []
+        gate_manifests = []
+
+        if args.impl_tag:
+            # Resolve tag to file
+            impl_file, impl_manifest = resolve_tag(args.impl_tag, args.dir, args.use_synth, args.debug)
+            gate_files.append(str(impl_file))
+            gate_manifests.append(impl_manifest)
+        elif args.gate_files:
+            # Expand and resolve file patterns or directories
+            expanded = expand_file_patterns(args.gate_files)
+            for file_path in expanded:
+                resolved_file, manifest = resolve_file_or_dir(file_path, args.use_synth, args.debug)
+                gate_files.append(str(resolved_file))
+                gate_manifests.append(manifest)
+        else:
+            print('ERROR: Either --impl-tag or --implementation is required', file=sys.stderr)
+            sys.exit(1)
+
+        if args.debug:
+            print(f'Gold/Reference files: {gold_files}', file=sys.stderr)
+            print(f'Gate/Implementation files: {gate_files}', file=sys.stderr)
 
         # Read and combine Verilog files
         print('Reading gold/reference files...')
@@ -163,9 +370,26 @@ Examples:
         print('Reading gate/implementation files...')
         gate_code = read_verilog_files(gate_files)
 
-        if args.verbose:
-            print(f'Combined gold code: {len(gold_code)} characters')
-            print(f'Combined gate code: {len(gate_code)} characters')
+        if args.debug:
+            print(f'Combined gold code: {len(gold_code)} characters', file=sys.stderr)
+            print(f'Combined gate code: {len(gate_code)} characters', file=sys.stderr)
+
+        # Validate top modules if manifests are available
+        ref_top = None
+        impl_top = None
+
+        if gold_manifests and gold_manifests[0]:
+            ref_top = gold_manifests[0].get('top_module')
+
+        if gate_manifests and gate_manifests[0]:
+            impl_top = gate_manifests[0].get('top_module')
+
+        if ref_top and impl_top and ref_top != impl_top:
+            print('Warning: Comparing different top modules:', file=sys.stderr)
+            print(f'  Reference:     {ref_top}', file=sys.stderr)
+            print(f'  Implementation: {impl_top}', file=sys.stderr)
+            print('This comparison may not be meaningful.', file=sys.stderr)
+            print('', file=sys.stderr)
 
         # Setup equivalence checker
         print('Setting up equivalence checker...')
@@ -176,9 +400,9 @@ Examples:
             print(f'ERROR: Equivalence checker setup failed: {checker.get_error()}', file=sys.stderr)
             sys.exit(1)
 
-        if args.verbose:
+        if args.debug:
             docker_status = 'via Docker' if checker.use_docker else 'locally'
-            print(f'✓ Yosys setup successful ({docker_status})')
+            print(f'✓ Yosys setup successful ({docker_status})', file=sys.stderr)
 
         # Run equivalence check
         print('Running equivalence check...')

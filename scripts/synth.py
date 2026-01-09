@@ -1,11 +1,44 @@
-#!/usr/bin/env python3
+#!/bin/sh
+# fmt: off
+''''
+# Ensure uv discovers the hagent project even when invoked from a different cwd
+if [ -n "$UV_PROJECT" ]; then
+    PROJECT_ROOT="$UV_PROJECT"
+else
+    PROJECT_ROOT="$(cd "$(dirname "$0")"/../.. && pwd -P)"
+fi
+
+# Docker detection: if /code/workspace/cache exists, we're in Docker
+if [ -d "/code/workspace/cache" ]; then
+    # In Docker: /code/hagent is read-only, so use cache venv
+    VENV_DIR="/code/workspace/cache/.venv"
+    if [ -z "$UV_PROJECT_ENVIRONMENT" ]; then
+        export UV_PROJECT_ENVIRONMENT="$VENV_DIR"
+    fi
+
+    # Ensure venv exists - if not, create it once
+    if [ ! -f "$VENV_DIR/bin/python" ]; then
+        cd "$PROJECT_ROOT" && uv venv "$VENV_DIR" && uv sync --frozen
+    fi
+
+    exec uv run python "$0" "$@"
+else
+    # Local: use uv run to manage environment (handles sync automatically)
+    exec uv run --project "$PROJECT_ROOT" python "$0" "$@"
+fi
+'''
+# fmt: on
+# See LICENSE for details
 
 import argparse
+import datetime
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+import yaml
 
 
 def find_top_name(slang_args):
@@ -248,22 +281,74 @@ def _ensure_output_dir(path):
     return output_dir
 
 
+def _write_manifest(output_dir, args, slang_args, top_module):
+    """Write manifest.yaml with synthesis metadata"""
+    # Extract input files from slang_args (files that exist and aren't flags)
+    input_files = []
+    for arg in slang_args:
+        if not arg.startswith('-') and Path(arg).exists():
+            input_files.append(arg)
+
+    manifest = {
+        'tag': args.tag,
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        'top_module': top_module,
+        'input_files': input_files,
+        'docker_image': os.environ.get('HAGENT_DOCKER', 'none'),
+        'liberty_file': args.liberty or 'none',
+        'synthesis_args': {
+            'elab_method': args.elab_method,
+            'exclude_patterns': args.exclude or [],
+            'skip_elab': args.skip_elab,
+        },
+        'slang_args': slang_args,
+    }
+
+    manifest_path = output_dir / 'manifest.yaml'
+    with open(manifest_path, 'w') as f:
+        yaml.dump(manifest, f, default_flow_style=False, sort_keys=False)
+
+    print(f'Manifest: {manifest_path}', file=sys.stderr)
+
+
 def main():
     # Show help if no arguments provided
     if len(sys.argv) == 1:
         sys.argv.append('-h')
 
+    # Handle -- separator for slang arguments (GNU standard)
+    # Preferred: synth.py --tag baseline --dir build/ -- --top ALU alu.sv
+    # Fallback: synth.py --tag baseline --dir build/ --top ALU alu.sv (parse_known_args)
+    if '--' in sys.argv:
+        sep_idx = sys.argv.index('--')
+        synth_argv = sys.argv[1:sep_idx]
+        slang_args = sys.argv[sep_idx + 1 :]
+        use_separator = True
+    else:
+        synth_argv = None  # Will use parse_known_args() fallback
+        slang_args = None
+        use_separator = False
+
     parser = argparse.ArgumentParser(
         description='Run yosys synthesis with slang frontend',
-        epilog='All other arguments are passed to read_slang command. Example: synth.py -o build/ --top cpu input.sv',
+        epilog='Use -- to separate synth.py args from slang args. Example: synth.py --tag baseline --dir build/ -- --top ALU input.sv',
     )
     parser.add_argument('--liberty', help='Liberty file path')
     parser.add_argument('--tech-dir', help='Technology directory path (defaults to HAGENT_TECH_DIR env var)')
     parser.add_argument(
+        '--dir',
+        help='Base directory for outputs (default: HAGENT_CACHE_DIR when --tag used)',
+    )
+    # Backward compatibility - hidden deprecated argument
+    parser.add_argument(
         '--output-dir',
         '-o',
-        required=True,
-        help='Output directory for elab.v and synth.v (replaces --netlist)',
+        dest='dir',
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        '--tag',
+        help='Tag name for this synthesis run (creates <dir>/<tag>/ subdirectory with manifest)',
     )
     parser.add_argument(
         '--run-elab',
@@ -295,13 +380,45 @@ def main():
     parser.add_argument('--top-synthesis', help='Top module for synthesis (when different from elaboration top in --top)')
     parser.add_argument('--dry-run', action='store_true', help='Show command line arguments without executing')
 
-    # Parse known args to separate our args from slang args
-    args, slang_args = parser.parse_known_args()
+    # Parse args using -- separator or fallback to parse_known_args
+    if use_separator:
+        args = parser.parse_args(synth_argv)
+    else:
+        args, slang_args = parser.parse_known_args()
+
+    # Validate --tag (no slashes, no special chars except dash/underscore)
+    if args.tag:
+        import re
+
+        if not re.match(r'^[a-zA-Z0-9_-]+$', args.tag):
+            print('error: --tag must contain only alphanumeric characters, dash, or underscore', file=sys.stderr)
+            sys.exit(1)
+
+    # Directory resolution logic
+    # 1. If --tag + --dir: use <dir>/<tag>/
+    # 2. If --tag only: use HAGENT_CACHE_DIR/<tag>/
+    # 3. If --dir only (no tag): use <dir>/ directly (legacy mode)
+    if args.tag and args.dir:
+        output_dir_path = Path(args.dir) / args.tag
+    elif args.tag:
+        # Use HAGENT_CACHE_DIR for tagged builds without explicit --dir
+        cache_dir = os.environ.get('HAGENT_CACHE_DIR')
+        if not cache_dir:
+            print('error: --tag requires either --dir or HAGENT_CACHE_DIR environment variable', file=sys.stderr)
+            sys.exit(1)
+        output_dir_path = Path(cache_dir) / args.tag
+    elif args.dir:
+        # Legacy mode: --dir without --tag
+        output_dir_path = Path(args.dir)
+    else:
+        print('error: either --dir or --tag (with HAGENT_CACHE_DIR) is required', file=sys.stderr)
+        sys.exit(1)
 
     # Create output directory and store standard paths
-    output_dir = _ensure_output_dir(args.output_dir)
+    output_dir = _ensure_output_dir(output_dir_path)
     args.elab_path = output_dir / 'elab.v'
     args.netlist_path = output_dir / 'synth.v'
+    args.output_dir = str(output_dir)  # For compatibility with rest of code
 
     # Check if --top was in the original arguments but not in slang_args
     # This happens when --top appears before other arguments
@@ -386,6 +503,10 @@ def main():
         # Phase 3: STA if requested
         if should_run_sta:
             run_sta(args, synth_top)
+
+        # Generate manifest.yaml when --tag is used
+        if args.tag:
+            _write_manifest(output_dir, args, slang_args, synth_top)
 
 
 def _generate_yosys_elaboration_script(slang_cmd, top_name, netlist_path):

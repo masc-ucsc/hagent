@@ -69,7 +69,8 @@ def _resolve_filelist(path: Optional[str]) -> Optional[Path]:
 
 
 def _run_one_top(args: argparse.Namespace, top: str) -> Dict[str, Any]:
-    out_dir = Path(args.out).expanduser()
+    """Run SpecBuilder for a single spec top."""
+    out_dir = Path(args.dir).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     design_top = args.design_top or top
@@ -81,7 +82,7 @@ def _run_one_top(args: argparse.Namespace, top: str) -> Dict[str, Any]:
         top=top,
         design_top=design_top,
         out_dir=out_dir,
-        llm_conf=Path(args.llm_conf).resolve(),
+        llm_conf=Path(args.llm_config).resolve(),
         include_dirs=[Path(i).resolve() for i in (args.include or [])],
         defines=args.defines or [],
         disable_analysis=not args.no_disable_analysis,
@@ -150,19 +151,43 @@ def main() -> int:
     parser.add_argument('--discover-scope-module', help='Find instance scope paths for this module name (e.g., load_unit)')
     parser.add_argument('--discover-only', action='store_true', help='Only print discovered scope paths and exit')
     parser.add_argument('--include', '-I', nargs='*', default=[], help='Include directories')
-    parser.add_argument('--defines', '-D', nargs='*', default=[], help='Defines to pass to Slang (e.g., FOO=1)')
-    parser.add_argument('--out', default='out_spec', help='Output directory for spec artifacts')
-    parser.add_argument('--llm-conf', required=True, help='YAML config for LLM (spec_prompt.yaml)')
-    parser.add_argument('--no-disable-analysis', action='store_true', help='Enable full analysis in Slang')
-    parser.add_argument('--filelist', help='Optional HDL filelist. If provided, SpecBuilder passes it to Slang (-f).')
-    parser.add_argument('-f', '--config-file', dest='config_file', help='YAML config file with default arguments')
+    parser.add_argument(
+        '--defines',
+        '-D',
+        nargs='*',
+        default=[],
+        help='Defines to pass to Slang (e.g., FOO=1)',
+    )
+    parser.add_argument('--dir', default='out_spec', help='Output directory for spec artifacts')
+    parser.add_argument(
+        '--llm-config',
+        required=True,
+        help='YAML config for LLM (spec_prompt.yaml)',
+    )
+    parser.add_argument(
+        '--no-disable-analysis',
+        action='store_true',
+        help='Enable full analysis in Slang',
+    )
+    parser.add_argument(
+        '--filelist',
+        help='Optional HDL filelist (one path per line). If provided, SpecBuilder '
+        'uses only these files and does not run dependency discovery.',
+    )
+    parser.add_argument(
+        '-f',
+        '--config-file',
+        dest='config_file',
+        help='YAML config file with default arguments',
+    )
+    parser.add_argument('--debug', action='store_true', help='Enable debug output')
 
     args = parser.parse_args()
     args = merge_config(args, args.config_file)
 
     args.rtl = os.path.expanduser(args.rtl)
     args.include = _sanitize_incdirs(args.include)
-    args.llm_conf = os.path.expanduser(args.llm_conf)
+    args.llm_config = os.path.expanduser(args.llm_config)
 
     if not os.path.isfile(args.slang):
         print(f'[❌] slang not found: {args.slang}')
