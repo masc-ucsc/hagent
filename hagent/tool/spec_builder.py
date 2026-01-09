@@ -123,6 +123,7 @@ _SV_KEYWORDS = {
 }
 _ALLOWED_SVA_FUNCS = {'$rose', '$fell', '$stable', '$changed', '$past'}
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # File utils
 # ──────────────────────────────────────────────────────────────────────────────
@@ -146,6 +147,7 @@ def _write_jsonl(path: Path, rows: Iterable[Dict[str, Any]]) -> None:
 
 def _basename(p: Optional[str]) -> str:
     return os.path.basename(p) if p else ''
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # AST helpers (robust)
@@ -281,6 +283,7 @@ def _expr_text(n: Any) -> str:
 
     return f'/*{k or "node"}*/'
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Ports / params from SCOPED bodies
 # ──────────────────────────────────────────────────────────────────────────────
@@ -365,6 +368,7 @@ def extract_parameters_from_body(body: Dict[str, Any]) -> List[Dict[str, str]]:
         seen.add(p['name'])
         out.append(p)
     return out
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Assignment extraction with guards (IO slicing base)
@@ -574,6 +578,7 @@ def extract_assignments_with_guards(body: Dict[str, Any]) -> List[AssignRecord]:
     visit_member(body.get('members') or [])
     return records
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Logic blocks + FSM case blocks (for your existing LLM prompts)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -650,6 +655,8 @@ def parse_case_blocks(body: Dict[str, Any]) -> List[Dict[str, Any]]:
         out.append(b)
     out.sort(key=lambda x: (_basename(x['source_file']), x['line_start']))
     return out
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # IO relations builder (matches your prompt expectations)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -787,6 +794,7 @@ def build_io_relations(
             'per_output_influences': uniq,
         },
     }
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CSV validation + repair (uses your csv_repair prompt)
@@ -1017,6 +1025,7 @@ def validate_csv_text(csv_text: str, allowed_ports: List[str]) -> Dict[str, Any]
 
     return report
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Scope discovery (find instance paths for a module definition)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1072,6 +1081,7 @@ def find_instance_paths(ast: Dict[str, Any], target_module: str) -> List[str]:
             seen.add(p)
             uniq.append(p)
     return uniq
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SpecBuilder
@@ -1134,7 +1144,7 @@ class SpecBuilder:
 
         for req in ('doc_sections', 'fsm_specification', 'sva_row_list_csv'):
             if not (self.template_dict.get('default', {}).get(req)):
-                console.print(f'[red]❌ Required prompt \'{req}\' missing in: {self.llm_conf}[/red]')
+                console.print(f"[red]❌ Required prompt '{req}' missing in: {self.llm_conf}[/red]")
                 raise SystemExit(2)
 
         self.clk, self.rst, self.rst_expr = detect_clk_rst_for_top(self.rtl_dir, self.design_top)
@@ -1153,12 +1163,12 @@ class SpecBuilder:
                     return ''
             return ''
         except Exception as e:
-            console.print(f'[red]❌ LLM \'{prompt_index}\' failed: {e}[/red]')
+            console.print(f"[red]❌ LLM '{prompt_index}' failed: {e}[/red]")
             return ''
 
     def _repair_csv_with_llm(self, csv_text: str, allowed_ports: List[str], report: Dict[str, Any]) -> str:
         if not self.template_dict.get('default', {}).get('csv_repair'):
-            console.print('[yellow]⚠ No \'csv_repair\' prompt found in YAML; cannot repair CSV.[/yellow]')
+            console.print("[yellow]⚠ No 'csv_repair' prompt found in YAML; cannot repair CSV.[/yellow]")
             return csv_text
         payload = {
             'top_module': self.top,
@@ -1264,7 +1274,7 @@ class SpecBuilder:
 
         rec(members)
         if found_body is None:
-            console.print(f'[red]❌ Could not locate target \'{self.top}\' in AST. Provide --scope-path or use discovery.[/red]')
+            console.print(f"[red]❌ Could not locate target '{self.top}' in AST. Provide --scope-path or use discovery.[/red]")
             raise SystemExit(2)
         return found_body, found_name
 
@@ -1322,7 +1332,7 @@ class SpecBuilder:
             full_ast = self._read_json(self.full_ast_json)
             paths = find_instance_paths(full_ast, self.discover_scope_module)
             if not paths:
-                console.print(f'[red]❌ No instance paths found for module \'{self.discover_scope_module}\'.[/red]')
+                console.print(f"[red]❌ No instance paths found for module '{self.discover_scope_module}'.[/red]")
                 raise SystemExit(2)
             console.print('[green]✔ Found scope paths:[/green]')
             for p in paths:
@@ -1485,7 +1495,9 @@ class SpecBuilder:
                 console.print(f'[yellow]⚠ Repair attempt {attempt} still invalid.[/yellow]')
 
             if not report.get('ok', False):
-                console.print('[yellow]⚠ CSV still invalid after repair attempts; salvaging best-effort CSV and continuing.[/yellow]')
+                console.print(
+                    '[yellow]⚠ CSV still invalid after repair attempts; salvaging best-effort CSV and continuing.[/yellow]'
+                )
                 salvaged = normalize_csv_rows(repaired)
                 _write_text(self.out_csv, salvaged)
                 console.print(f'[green]✔ CSV spec (salvaged):[/green] {self.out_csv}')

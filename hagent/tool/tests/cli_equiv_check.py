@@ -1,5 +1,6 @@
 #!/bin/sh
 # fmt: off
+# ruff: noqa: E402
 ''''
 # Ensure uv discovers the hagent project even when invoked from a different cwd
 if [ -n "$UV_PROJECT" ]; then

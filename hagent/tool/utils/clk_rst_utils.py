@@ -112,19 +112,19 @@ def _extract_port_names(full_text: str, top: str) -> list[str]:
 
 
 def _norm_port_dir(d: Any) -> str:
-    s = (str(d) if d is not None else "").strip().lower()
-    if s in ("in", "input"):
-        return "in"
-    if s in ("out", "output"):
-        return "out"
-    if "inout" in s:
-        return "inout"
+    s = (str(d) if d is not None else '').strip().lower()
+    if s in ('in', 'input'):
+        return 'in'
+    if s in ('out', 'output'):
+        return 'out'
+    if 'inout' in s:
+        return 'inout'
     return s
 
 
 def _is_inputish_port(p: Dict[str, Any]) -> bool:
-    d = _norm_port_dir(p.get("dir") or p.get("direction"))
-    return d in ("in", "input", "inout")
+    d = _norm_port_dir(p.get('dir') or p.get('direction'))
+    return d in ('in', 'input', 'inout')
 
 
 def _is_likely_reset_name(name: str) -> bool:
@@ -137,44 +137,131 @@ def _is_likely_reset_name(name: str) -> bool:
 
     # Direct exact matches (most common)
     exact_matches = {
-        'rst', 'reset', 'rst_n', 'rstn', 'rst_ni', 'rstni', 'reset_n', 'resetn',
-        'reset_ni', 'resetni', 'rst_b', 'rstb', 'reset_b', 'resetb',
-        'arst', 'arstn', 'arst_n', 'areset', 'aresetn', 'areset_n',
-        'srst', 'srstn', 'srst_n', 'sreset', 'sresetn', 'sreset_n',
-        'hreset', 'hresetn', 'hrst', 'hrstn',
-        'prst', 'prstn', 'prst_n', 'preset', 'presetn', 'preset_n',
-        'nrst', 'nrstn', 'nreset', 'nresetn',
+        'rst',
+        'reset',
+        'rst_n',
+        'rstn',
+        'rst_ni',
+        'rstni',
+        'reset_n',
+        'resetn',
+        'reset_ni',
+        'resetni',
+        'rst_b',
+        'rstb',
+        'reset_b',
+        'resetb',
+        'arst',
+        'arstn',
+        'arst_n',
+        'areset',
+        'aresetn',
+        'areset_n',
+        'srst',
+        'srstn',
+        'srst_n',
+        'sreset',
+        'sresetn',
+        'sreset_n',
+        'hreset',
+        'hresetn',
+        'hrst',
+        'hrstn',
+        'prst',
+        'prstn',
+        'prst_n',
+        'preset',
+        'presetn',
+        'preset_n',
+        'nrst',
+        'nrstn',
+        'nreset',
+        'nresetn',
     }
     if s in exact_matches:
         return True
-    
+
     # Starts with reset-like prefix
     reset_prefixes = (
-        'rst', 'reset', 'preset', 'prst', 'arst', 'areset', 'srst', 'sreset',
-        'hrst', 'hreset', 'nrst', 'nreset', 'sys_rst', 'sys_reset',
-        'core_rst', 'core_reset', 'async_rst', 'async_reset', 'sync_rst', 'sync_reset'
+        'rst',
+        'reset',
+        'preset',
+        'prst',
+        'arst',
+        'areset',
+        'srst',
+        'sreset',
+        'hrst',
+        'hreset',
+        'nrst',
+        'nreset',
+        'sys_rst',
+        'sys_reset',
+        'core_rst',
+        'core_reset',
+        'async_rst',
+        'async_reset',
+        'sync_rst',
+        'sync_reset',
     )
     if s.startswith(reset_prefixes):
         return True
-    
+
     # Ends with reset-like suffix
     reset_suffixes = (
-        'rst', 'rst_n', 'rst_ni', 'rst_b', 'rstn', 'rstni', 'rstb',
-        'reset', 'reset_n', 'reset_ni', 'reset_b', 'resetn', 'resetni', 'resetb',
-        'arst', 'arstn', 'arst_n', 'areset', 'aresetn', 'areset_n',
-        'srst', 'srstn', 'srst_n', 'sreset', 'sresetn', 'sreset_n',
-        'preset', 'presetn', 'preset_n', 'prst', 'prstn', 'prst_n'
+        'rst',
+        'rst_n',
+        'rst_ni',
+        'rst_b',
+        'rstn',
+        'rstni',
+        'rstb',
+        'reset',
+        'reset_n',
+        'reset_ni',
+        'reset_b',
+        'resetn',
+        'resetni',
+        'resetb',
+        'arst',
+        'arstn',
+        'arst_n',
+        'areset',
+        'aresetn',
+        'areset_n',
+        'srst',
+        'srstn',
+        'srst_n',
+        'sreset',
+        'sresetn',
+        'sreset_n',
+        'preset',
+        'presetn',
+        'preset_n',
+        'prst',
+        'prstn',
+        'prst_n',
     )
     if s.endswith(reset_suffixes):
         return True
-    
+
     # Contains reset pattern with underscores (common in hierarchical names)
     reset_patterns = [
-        '_rst_', '_rst$', '^rst_',
-        '_reset_', '_reset$', '^reset_',
-        '_preset_', '_preset$', '^preset_',
-        '_arst_', '_arst$', '^arst_',
-        '_srst_', '_srst$', '^srst_'
+        '_rst_',
+        '_rst$',
+        '^rst_',
+        '_reset_',
+        '_reset$',
+        '^reset_',
+        '_preset_',
+        '_preset$',
+        '^preset_',
+        '_arst_',
+        '_arst$',
+        '^arst_',
+        '_srst_',
+        '_srst$',
+        '^srst_',
     ]
     for pattern in reset_patterns:
         if re.search(pattern, s):
@@ -189,22 +276,22 @@ def _build_rst_expr(rst_name: str) -> str:
     Comprehensive active-low detection for all naming conventions.
     """
     s = rst_name.lower()
-    
+
     # Active-low indicators (reset is asserted when signal is 0)
     # Check suffixes
     if s.endswith(('_n', '_ni', '_b', '_l')):
         return f'!{rst_name}'
-    
+
     # Check if ends with 'n' (but not common words like 'begin', 'main', etc.)
     if s.endswith('n') and len(s) > 3:
         # Common active-low patterns: resetn, rstn, presetn, arstn, etc.
         if any(pattern in s for pattern in ['reset', 'rst', 'preset', 'prst']):
             return f'!{rst_name}'
-    
+
     # Check for explicit negative naming
     if s.startswith(('n_', 'neg_', 'not_')):
         return f'!{rst_name}'
-    
+
     # Default: active-high (reset is asserted when signal is 1)
     return rst_name
 
@@ -221,17 +308,26 @@ def _rank_clk(cands: list[str]) -> str:
     def score(name: str):
         s = name.lower()
         sc = 0
-        
+
         # Exact matches (highest priority)
         exact_scores = {
-            'clock': 50, 'clk': 48,
-            'pclk': 49, 'aclk': 47, 'hclk': 47, 'mclk': 47, 'sclk': 47,
-            'sys_clk': 46, 'core_clk': 46, 'cpu_clk': 46,
-            'sysclk': 46, 'coreclk': 46, 'cpuclk': 46
+            'clock': 50,
+            'clk': 48,
+            'pclk': 49,
+            'aclk': 47,
+            'hclk': 47,
+            'mclk': 47,
+            'sclk': 47,
+            'sys_clk': 46,
+            'core_clk': 46,
+            'cpu_clk': 46,
+            'sysclk': 46,
+            'coreclk': 46,
+            'cpuclk': 46,
         }
         if s in exact_scores:
             sc += exact_scores[s]
-        
+
         # Prefix matching (high priority)
         if s.startswith(('pclk', 'aclk', 'hclk', 'mclk', 'sclk')):
             sc += 30
@@ -239,13 +335,13 @@ def _rank_clk(cands: list[str]) -> str:
             sc += 28
         elif s.startswith(('sys_clk', 'core_clk', 'cpu_clk')):
             sc += 25
-        
+
         # Contains clock/clk (medium priority)
         if 'clock' in s:
             sc += 20
         if 'clk' in s:
             sc += 18
-        
+
         # Common suffixes
         if s.endswith('_clk'):
             sc += 10
@@ -253,14 +349,14 @@ def _rank_clk(cands: list[str]) -> str:
             sc += 10
         elif s.endswith('clk'):
             sc += 8
-        
+
         # Input signal indicator
         if s.endswith('_i'):
             sc += 5
-        
+
         # Prefer shorter names (simpler is better)
         length_penalty = len(s) // 4
-        
+
         return (-sc, length_penalty, name)
 
     return sorted(set(cands), key=score)[0]
@@ -274,39 +370,66 @@ def _rank_rst(cands: list[str]) -> str:
     """
     if not cands:
         console.print('[yellow]⚠ Could not find reset signal in port candidates[/yellow]')
-        raise SystemExit('ERROR: Reset signal detection failed. No reset candidates found. Please specify --reset-name and --reset-expr')
+        raise SystemExit(
+            'ERROR: Reset signal detection failed. No reset candidates found. Please specify --reset-name and --reset-expr'
+        )
 
     def score(name: str):
         s = name.lower()
         sc = 0
-        
+
         # Exact matches (highest priority - common standard names)
         exact_scores = {
-            'reset': 50, 'rst': 48,
-            'resetn': 49, 'rstn': 49, 'rst_n': 49, 'reset_n': 49,
-            'presetn': 50, 'preset_n': 50, 'prstn': 49, 'prst_n': 49,  # APB
-            'aresetn': 48, 'areset_n': 48, 'arstn': 48, 'arst_n': 48,  # Async
-            'sresetn': 47, 'sreset_n': 47, 'srstn': 47, 'srst_n': 47,  # Sync
-            'hresetn': 48, 'hreset_n': 48, 'hrstn': 48, 'hrst_n': 48,  # AHB/APB
-            'nrst': 47, 'nrstn': 47, 'nreset': 47, 'nresetn': 47,
+            'reset': 50,
+            'rst': 48,
+            'resetn': 49,
+            'rstn': 49,
+            'rst_n': 49,
+            'reset_n': 49,
+            'presetn': 50,
+            'preset_n': 50,
+            'prstn': 49,
+            'prst_n': 49,  # APB
+            'aresetn': 48,
+            'areset_n': 48,
+            'arstn': 48,
+            'arst_n': 48,  # Async
+            'sresetn': 47,
+            'sreset_n': 47,
+            'srstn': 47,
+            'srst_n': 47,  # Sync
+            'hresetn': 48,
+            'hreset_n': 48,
+            'hrstn': 48,
+            'hrst_n': 48,  # AHB/APB
+            'nrst': 47,
+            'nrstn': 47,
+            'nreset': 47,
+            'nresetn': 47,
         }
         if s in exact_scores:
             sc += exact_scores[s]
-        
+
         # Prefix matching (high priority)
         prefix_scores = {
-            'preset': 35, 'prst': 33,  # APB resets
-            'areset': 30, 'arst': 28,  # Async resets
-            'sreset': 30, 'srst': 28,  # Sync resets
-            'hreset': 32, 'hrst': 30,  # AHB/APB resets
-            'nreset': 28, 'nrst': 26,  # Active-low naming
-            'reset': 25, 'rst': 23,    # Generic resets
+            'preset': 35,
+            'prst': 33,  # APB resets
+            'areset': 30,
+            'arst': 28,  # Async resets
+            'sreset': 30,
+            'srst': 28,  # Sync resets
+            'hreset': 32,
+            'hrst': 30,  # AHB/APB resets
+            'nreset': 28,
+            'nrst': 26,  # Active-low naming
+            'reset': 25,
+            'rst': 23,  # Generic resets
         }
         for prefix, points in prefix_scores.items():
             if s.startswith(prefix):
                 sc += points
                 break
-        
+
         # Contains reset/rst patterns (medium priority)
         if 'preset' in s:
             sc += 20
@@ -318,24 +441,24 @@ def _rank_rst(cands: list[str]) -> str:
             sc += 16
         elif 'rst' in s:
             sc += 14
-        
+
         # Active-low indicators (important for correct polarity)
         if s.endswith(('_n', '_ni', '_b')):
             sc += 15
         elif s.endswith('n') and len(s) > 4:  # resetn, rstn, etc
             sc += 12
-        
+
         # Common suffixes
         if s.endswith(('_reset', '_rst')):
             sc += 8
-        
+
         # Input signal indicator
         if s.endswith('_i'):
             sc += 2
-        
+
         # Prefer shorter names (simpler is better)
         length_penalty = len(s) // 4
-        
+
         return (-sc, length_penalty, name)
 
     # preserve unique
@@ -351,15 +474,15 @@ def detect_clk_rst_from_ports(ports: List[Dict[str, Any]]) -> Tuple[Optional[str
     COMPREHENSIVE: Handles ALL naming conventions.
     """
     # Env override wins
-    env_clk = os.environ.get("HAGENT_CLK_NAME")
-    env_rst_expr = os.environ.get("HAGENT_RESET_EXPR")
+    env_clk = os.environ.get('HAGENT_CLK_NAME')
+    env_rst_expr = os.environ.get('HAGENT_RESET_EXPR')
     if env_clk and env_rst_expr:
         rst_tokens = re.sub(r'[!()]', ' ', env_rst_expr).split()
         rst_name = rst_tokens[-1] if rst_tokens else env_rst_expr
         return env_clk, rst_name, env_rst_expr
 
     in_ports = [p for p in ports if isinstance(p, dict) and _is_inputish_port(p)]
-    names = [str(p.get("name") or "").strip() for p in in_ports]
+    names = [str(p.get('name') or '').strip() for p in in_ports]
     names = [n for n in names if n]
 
     if not names:
@@ -370,13 +493,13 @@ def detect_clk_rst_from_ports(ports: List[Dict[str, Any]]) -> Tuple[Optional[str
 
     for n in names:
         nl = n.lower()
-        
+
         # Comprehensive clock detection - any signal with clk/clock in the name
         if 'clk' in nl or 'clock' in nl:
             # Avoid false positives
             if not any(bad in nl for bad in ['block', 'clockwise', 'interlock']):
                 clk_cands.append(n)
-        
+
         # Comprehensive reset detection - use the enhanced filter
         if _is_likely_reset_name(n):
             rst_cands.append(n)
@@ -391,7 +514,7 @@ def detect_clk_rst_from_ports(ports: List[Dict[str, Any]]) -> Tuple[Optional[str
 
 def _load_ports_json(path: Path) -> List[Dict[str, Any]]:
     try:
-        obj = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+        obj = json.loads(path.read_text(encoding='utf-8', errors='ignore'))
         return obj if isinstance(obj, list) else []
     except Exception:
         return []
@@ -412,9 +535,9 @@ def _find_decl_clk_rst_candidates(module_text: str):
         r'\b(?:input|wire|logic|reg)\b[^;]*?\b([A-Za-z_][\w]*)\b',
         flags=re.S,
     )
-    
+
     all_signals = {m.group(1) for m in sig_pat.finditer(module_text)}
-    
+
     # Filter for clock-like signals
     clk_cands = set()
     for sig in all_signals:
@@ -423,10 +546,10 @@ def _find_decl_clk_rst_candidates(module_text: str):
             # Avoid false positives
             if not any(bad in sig_lower for bad in ['block', 'clockwise', 'interlock']):
                 clk_cands.add(sig)
-    
+
     # Filter for reset-like signals using comprehensive check
     rst_cands = {n for n in all_signals if _is_likely_reset_name(n)}
-    
+
     return list(clk_cands), list(rst_cands)
 
 
@@ -439,16 +562,10 @@ def _find_sensitivity_clk_rst(module_text: str):
     rst_from_sens: list[str] = []
 
     # Match ALL posedge signals
-    clk_pos_pat = re.compile(
-        r'\bposedge\s+([A-Za-z_][\w]*)',
-        flags=re.S
-    )
-    
+    clk_pos_pat = re.compile(r'\bposedge\s+([A-Za-z_][\w]*)', flags=re.S)
+
     # Match ALL edge-sensitive signals
-    rst_edge_pat = re.compile(
-        r'\b(?:posedge|negedge)\s+([A-Za-z_][\w]*)',
-        flags=re.S
-    )
+    rst_edge_pat = re.compile(r'\b(?:posedge|negedge)\s+([A-Za-z_][\w]*)', flags=re.S)
 
     # Find all posedge signals (potential clocks)
     for m in clk_pos_pat.finditer(module_text):
@@ -458,7 +575,7 @@ def _find_sensitivity_clk_rst(module_text: str):
         if 'clk' in sig_lower or 'clock' in sig_lower:
             if not any(bad in sig_lower for bad in ['block', 'clockwise', 'interlock']):
                 clk_from_sens.append(sig)
-    
+
     # Find all edge-sensitive signals (potential resets)
     for m in rst_edge_pat.finditer(module_text):
         sig = m.group(1)
@@ -513,40 +630,45 @@ def _rank_clk_text(cands: list[str], port_names: set[str]) -> str:
     def score(name: str):
         s = name.lower()
         sc = 0
-        
+
         # Port names are preferred (they're the actual interface)
         if name in port_names:
             sc += 20
-        
+
         # Exact matches
         exact_scores = {
-            'clock': 50, 'clk': 48,
-            'pclk': 49, 'aclk': 47, 'hclk': 47, 'mclk': 47, 'sclk': 47,
+            'clock': 50,
+            'clk': 48,
+            'pclk': 49,
+            'aclk': 47,
+            'hclk': 47,
+            'mclk': 47,
+            'sclk': 47,
         }
         if s in exact_scores:
             sc += exact_scores[s]
-        
+
         # Prefix patterns
         if s.startswith(('pclk', 'aclk', 'hclk', 'mclk', 'sclk')):
             sc += 15
         elif s.startswith(('clk', 'clock')):
             sc += 12
-        
+
         # Contains patterns
         if 'clk' in s or 'clock' in s:
             sc += 8
-        
+
         # Common suffixes
         if s.endswith(('_clk', '_clock')):
             sc += 5
-        
+
         # Input indicator
         if s.endswith('_i'):
             sc += 3
-        
+
         # Prefer names that are ports
         port_bonus = 0 if name in port_names else 1
-        
+
         return (-sc, len(s), port_bonus)
 
     return sorted(set(cands), key=score)[0]
@@ -566,20 +688,25 @@ def _rank_rst_text(cands: list[str], port_names: set[str]) -> str:
     def score(name: str):
         s = name.lower()
         sc = 0
-        
+
         # Port names are preferred (they're the actual interface)
         if name in port_names:
             sc += 20
-        
+
         # Exact matches
         exact_scores = {
-            'reset': 50, 'rst': 48,
-            'resetn': 49, 'rstn': 49, 'presetn': 50,
-            'aresetn': 48, 'arstn': 48, 'sresetn': 47,
+            'reset': 50,
+            'rst': 48,
+            'resetn': 49,
+            'rstn': 49,
+            'presetn': 50,
+            'aresetn': 48,
+            'arstn': 48,
+            'sresetn': 47,
         }
         if s in exact_scores:
             sc += exact_scores[s]
-        
+
         # Prefix patterns
         if s.startswith(('preset', 'prst')):
             sc += 18
@@ -589,30 +716,30 @@ def _rank_rst_text(cands: list[str], port_names: set[str]) -> str:
             sc += 16
         elif s.startswith(('reset', 'rst')):
             sc += 14
-        
+
         # Active-low suffixes (important)
         if s.endswith(('_n', '_ni', '_b')):
             sc += 10
         elif s.endswith('n') and len(s) > 3:
             sc += 8
-        
+
         # Contains patterns
         if 'preset' in s or 'prst' in s:
             sc += 6
         elif 'reset' in s or 'rst' in s:
             sc += 5
-        
+
         # Common suffixes
         if s.endswith(('_reset', '_rst')):
             sc += 3
-        
+
         # Input indicator
         if s.endswith('_i'):
             sc += 1
-        
+
         # Prefer names that are ports
         port_bonus = 0 if name in port_names else 1
-        
+
         return (-sc, len(s), port_bonus)
 
     return sorted(cands_set, key=score)[0]
@@ -650,11 +777,9 @@ def detect_clk_rst_for_top(src_root, top: str, ports_json: Path | None = None):
             ports = _load_ports_json(pj)
             clk, rst, rst_expr = detect_clk_rst_from_ports(ports)
             if clk and rst and rst_expr:
-                console.print(
-                    f'[green]✔ Top module clock={clk}, reset={rst} (expression: {rst_expr}) from ports.json[/green]'
-                )
+                console.print(f'[green]✔ Top module clock={clk}, reset={rst} (expression: {rst_expr}) from ports.json[/green]')
                 return clk, rst, rst_expr
-            console.print(f"[yellow]⚠ ports.json provided but clk/rst not found in it: {pj}[/yellow]")
+            console.print(f'[yellow]⚠ ports.json provided but clk/rst not found in it: {pj}[/yellow]')
 
     # 2) RTL heuristics fallback
     console.print(f'[cyan]🔍 Scanning for top module {top} under {src_root}[/cyan]')
@@ -672,7 +797,9 @@ def detect_clk_rst_for_top(src_root, top: str, ports_json: Path | None = None):
 
     if not module_text:
         console.print('[red]❌ Could not extract module body[/red]')
-        raise SystemExit(f'ERROR: Clock/reset detection failed for module {top}. Please specify --clock-name, --reset-name, --reset-expr')
+        raise SystemExit(
+            f'ERROR: Clock/reset detection failed for module {top}. Please specify --clock-name, --reset-name, --reset-expr'
+        )
 
     port_names = set(_extract_port_names(no_cmt, top))
 
