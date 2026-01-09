@@ -97,7 +97,7 @@ def test_cli_equivalent_designs():
             './hagent/tool/tests/test_files/gold1.v',
             '-r',
             './hagent/tool/tests/test_files/gold2.v',
-            '-i',
+            '--implementation',
             './hagent/tool/tests/test_files/test1.v',
         ]
     )
@@ -134,7 +134,7 @@ def test_cli_non_equivalent_designs():
             './hagent/tool/tests/test_files/gold1.v',
             '-r',
             './hagent/tool/tests/test_files/gold2.v',
-            '-i',
+            '--implementation',
             './hagent/tool/tests/test_files/bad_impl.v',
         ]
     )
@@ -159,7 +159,7 @@ def test_cli_specific_top_module():
             './hagent/tool/tests/test_files/gold1.v',
             '-r',
             './hagent/tool/tests/test_files/gold2.v',
-            '-i',
+            '--implementation',
             './hagent/tool/tests/test_files/test1.v',
             '--top',
             'adder',
@@ -183,10 +183,12 @@ def test_cli_specific_top_module():
 
 def test_cli_missing_file():
     """Test CLI error handling for missing files"""
-    exit_code, stdout, stderr = run_cli_command(['-r', 'nonexistent.v', '-i', './hagent/tool/tests/test_files/test1.v'])
+    exit_code, stdout, stderr = run_cli_command(
+        ['-r', 'nonexistent.v', '--implementation', './hagent/tool/tests/test_files/test1.v']
+    )
 
-    assert exit_code == 1  # Error
-    assert 'The following files do not exist:' in stderr
+    assert exit_code == 1, f'Expected exit code 1, but got {exit_code}. Stderr: {stderr}'  # Error
+    assert 'ERROR: Path not found: nonexistent.v' in stderr or 'ERROR: File not found: nonexistent.v' in stderr
     assert 'nonexistent.v' in stderr
 
 
