@@ -3,8 +3,8 @@ name: Ubuntu
 on: [push, pull_request]
 
 env:
-  HAGENT_BUILDER_IMAGE: mascucsc/hagent-builder:2025.11
-  HAGENT_SIMPLECHISEL_IMAGE: mascucsc/hagent-simplechisel:2025.11
+  HAGENT_BUILDER_IMAGE: mascucsc/hagent-builder:2026.01
+  HAGENT_SIMPLECHISEL_IMAGE: mascucsc/hagent-simplechisel:2026.01
 
 jobs:
   install_uv:
