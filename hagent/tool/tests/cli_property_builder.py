@@ -7,21 +7,25 @@ from hagent.tool.property_builder import PropertyBuilder
 
 
 def main():
-    parser = argparse.ArgumentParser(description='CLI for SVA property generation.')
-    parser.add_argument('--spec-md', required=True)
-    parser.add_argument('--csv', required=True)
-    parser.add_argument('--rtl', required=True)
-    parser.add_argument('--out', required=True)
-    parser.add_argument('--llm-conf', required=False, default=None)
-    parser.add_argument('--design-top', required=False, default=None)
+    parser = argparse.ArgumentParser(description='CLI for SVA property generation using LLM.')
+    parser.add_argument('--spec-md', required=True, help='Path to Markdown spec (e.g. load_unit_spec.md)')
+    parser.add_argument('--csv', required=True, help='Path to CSV spec (e.g. load_unit_spec.csv)')
+    parser.add_argument('--rtl', required=True, help='RTL directory')
+    parser.add_argument('--dir', required=True, help='Output directory')
+    parser.add_argument('--llm-config', required=True, help='YAML LLM configuration file')
+    parser.add_argument(
+        '--design-top',
+        help='Optional design top module name used to detect clock/reset. '
+        'If omitted, clk/rst are detected from the module inferred '
+        'from --spec-md (<name>_spec.* -> <name>).',
+    )
+    parser.add_argument('--debug', action='store_true', help='Enable debug output')
     args = parser.parse_args()
 
-    for path in [args.spec_md, args.csv]:
+    # Basic path checks
+    for path in [args.spec_md, args.csv, args.llm_config]:
         if not os.path.exists(path):
             raise FileNotFoundError(f'Required file not found: {path}')
-
-    if args.llm_conf and not os.path.exists(args.llm_conf):
-        raise FileNotFoundError(f'LLM config not found: {args.llm_conf}')
 
     if not os.path.isdir(args.rtl):
         raise NotADirectoryError(f'RTL directory not found: {args.rtl}')
@@ -30,8 +34,8 @@ def main():
         spec_md=args.spec_md,
         csv_path=args.csv,
         rtl_dir=args.rtl,
-        out_dir=args.out,
-        llm_conf=args.llm_conf,
+        out_dir=args.dir,
+        llm_conf=args.llm_config,
         design_top=args.design_top,
     )
 

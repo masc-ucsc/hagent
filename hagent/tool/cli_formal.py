@@ -221,10 +221,7 @@ def extract_package_imports_from_module(src_file: Path, mod_name: str) -> List[s
         return []
 
     # Find the module declaration
-    module_start = re.compile(
-        rf'\bmodule\s+{re.escape(mod_name)}\b',
-        re.DOTALL
-    )
+    module_start = re.compile(rf'\bmodule\s+{re.escape(mod_name)}\b', re.DOTALL)
 
     m = module_start.search(text)
     if not m:
@@ -325,7 +322,7 @@ def normalize_sv_type(type_str: str, sva_top: str, known_type_params: set[str]) 
         if not m:
             break
         dims = m.group(1) + dims
-        base = base[:m.start()].rstrip()
+        base = base[: m.start()].rstrip()
 
     # Preserve package-qualified types
     if '::' in base:
@@ -360,11 +357,7 @@ def port_decls_from_ports_json(ports_json: Path, sva_top: str, known_type_params
 # SVA wrapper + bind generation - FIXED with package imports
 # -----------------------------------------------------------------------------
 def generate_prop_module_min(
-    dut_name: str,
-    params_text: str,
-    port_decls: List[str],
-    include_file: str,
-    package_imports: Optional[List[str]] = None
+    dut_name: str, params_text: str, port_decls: List[str], include_file: str, package_imports: Optional[List[str]] = None
 ) -> str:
     """Generate property wrapper with package imports."""
     lines: List[str] = []
@@ -539,13 +532,7 @@ def emit_prop_and_bind_for_module(
     prop_path = sva_dir / f'{mod_name}_prop.sv'
     bind_path = sva_dir / f'{mod_name}_bind.sv'
 
-    prop_sv = generate_prop_module_min(
-        dut_name,
-        params_text,
-        port_decls,
-        include_file,
-        package_imports=package_imports
-    )
+    prop_sv = generate_prop_module_min(dut_name, params_text, port_decls, include_file, package_imports=package_imports)
     bind_sv = generate_bind(dut_name, params_text, port_decls, bind_scope)
 
     prop_path.write_text(prop_sv, encoding='utf-8')
@@ -837,11 +824,11 @@ def try_run_private_coverage_summarizer(fpv_dir: Path):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             import sys as _sys
+
             _sys.modules[spec.name] = module  # <-- IMPORTANT
             # Be tolerant to private API naming differences.
-            summarize_fn = (
-                getattr(module, 'summarize_coverage_html', None)
-                or getattr(module, 'summarize_formal_coverage_html', None)
+            summarize_fn = getattr(module, 'summarize_coverage_html', None) or getattr(
+                module, 'summarize_formal_coverage_html', None
             )
     except Exception as e:
         console.print(f'[yellow]⚠ Private coverage summarizer import failed: {e}[/yellow]')
@@ -1085,7 +1072,7 @@ def main() -> int:
     ap.add_argument(
         '--scope-path', default='', help='Hierarchical instance path to sva-top (used by spec builder + advisor context).'
     )
-    ap.add_argument('--out', required=True, help='Output directory root. Writes to: <out>/fpv_<top>/')
+    ap.add_argument('--dir', required=True, help='Output directory root. Writes to: <dir>/fpv_<top>/')
 
     # Tool paths (spec builder)
     ap.add_argument('--slang', help='Path to slang binary/wrapper (required if running spec builder).')
@@ -1136,11 +1123,13 @@ def main() -> int:
     ap.add_argument('--postcheck-max-iters', type=int, default=1)
     ap.add_argument('--postcheck-tail-lines', type=int, default=250)
 
+    # Debug flag
+    ap.add_argument('--debug', action='store_true', help='Enable debug output')
     args = ap.parse_args()
 
     banner()
 
-    out_root = Path(os.path.expanduser(args.out)).resolve()
+    out_root = Path(os.path.expanduser(args.dir)).resolve()
     fpv_dir = out_root / f'fpv_{args.top}'
     ensure_dir(fpv_dir)
     ensure_dir(fpv_dir / 'sva')
@@ -1256,9 +1245,9 @@ def main() -> int:
             sva_top,
             '--design-top',
             args.top,
-            '--out',
+            '--dir',
             str(fpv_dir),
-            '--llm-conf',
+            '--llm-config',
             str(spec_yaml),
         ]
         if args.scope_path:
@@ -1291,9 +1280,9 @@ def main() -> int:
             str(spec_csv),
             '--rtl',
             str(rtl_dir),
-            '--out',
+            '--dir',
             str(fpv_dir),
-            '--llm-conf',
+            '--llm-config',
             str(prop_yaml),
             '--design-top',
             args.top,
