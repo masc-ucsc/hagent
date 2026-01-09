@@ -1,7 +1,7 @@
 """Tests for hagent.inou.cli_locator module.
 
 These are blackbox tests that exercise the CLI using subprocess only.
-Tests use Docker mode with mascucsc/hagent-simplechisel:2025.12.
+Tests use Docker mode with mascucsc/hagent-simplechisel:2026.01.
 
 Note: These tests use subprocess.run() and need to pass environment variables
 to the subprocess. For subprocess-based CLI tests, we create a copy of os.environ
@@ -29,7 +29,7 @@ def docker_env_for_cli():
     Uses Docker mode with only cache directory mounted. This allows:
     - Prebuilt files (repo, build) inside the Docker image to be used
     - Cache directory for faster re-runs
-    - HAGENT_DOCKER=mascucsc/hagent-simplechisel:2025.12
+    - HAGENT_DOCKER=mascucsc/hagent-simplechisel:2026.01
     - HAGENT_CACHE_DIR=<temp_dir>/cache (for caching)
     """
     # Check if Docker is available
@@ -62,7 +62,7 @@ def docker_env_for_cli():
     # Set execution mode, Docker image, and cache directory
     env.update(
         {
-            'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2025.12',
+            'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2026.01',
             'HAGENT_CACHE_DIR': str(cache_dir),
         }
     )
@@ -229,7 +229,7 @@ class TestCLILocatorWithPipelinedD:
     These tests use Docker mode with prebuilt files from the Docker image.
     Only HAGENT_CACHE_DIR is mounted for faster re-runs. HAGENT_REPO_DIR and
     HAGENT_BUILD_DIR are not mounted, so tests use prebuilt files inside
-    mascucsc/hagent-simplechisel:2025.12.
+    mascucsc/hagent-simplechisel:2026.01.
     """
 
     @pytest.mark.skip(reason='Locator does not yet support flat netlist/SystemVerilog (no hierarchy)')

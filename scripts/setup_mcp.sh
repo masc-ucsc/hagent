@@ -84,7 +84,7 @@ esp32_led)
   ;;
 esac
 
-# Extract docker version from image tag (e.g., "mascucsc/hagent-simplechisel:2025.12" -> "2025.12")
+# Extract docker version from image tag (e.g., "mascucsc/hagent-simplechisel:2026.01" -> "2025.12")
 DOCKER_VERSION=$(echo "$DOCKER_IMAGE" | sed 's/.*://')
 CACHE_TEMPLATE_DIR="${HAGENT_ROOT}/.cache/setup_${PROJECT_NAME}_mcp_${DOCKER_VERSION}"
 

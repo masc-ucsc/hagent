@@ -50,7 +50,7 @@ def test_hints_generator_integration():
     output_file = tempfile.mktemp(suffix='.yaml')
 
     # Use PathManager.configured() context manager for clean test isolation
-    with PathManager.configured(docker_image='mascucsc/hagent-simplechisel:2025.12'):
+    with PathManager.configured(docker_image='mascucsc/hagent-simplechisel:2026.01'):
         try:
             # Test 1: Initialize V2chisel_batch and check HintsGenerator is created
             processor = V2chisel_batch()

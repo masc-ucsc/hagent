@@ -65,7 +65,7 @@ def ensure_hagent_env():
     Users don't need to set HAGENT_DOCKER manually for this CLI.
     """
     # Default Docker image for Yosys if not provided by user
-    os.environ.setdefault('HAGENT_DOCKER', 'mascucsc/hagent-builder:2025.12')
+    os.environ.setdefault('HAGENT_DOCKER', 'mascucsc/hagent-builder:2026.01')
 
     if not os.environ.get('HAGENT_CACHE_DIR'):
         cache_dir = Path('output/cli_equiv_check/cache').resolve()

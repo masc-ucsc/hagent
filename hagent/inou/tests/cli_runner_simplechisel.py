@@ -22,7 +22,7 @@ def _run_simplechisel_test():
     """Core SimpleChisel test logic - shared between CLI and pytest."""
 
     # 1. Initialize Runner with Docker image
-    runner = Runner(docker_image='mascucsc/hagent-simplechisel:2025.12')
+    runner = Runner(docker_image='mascucsc/hagent-simplechisel:2026.01')
 
     # 2. Setup runner (creates and configures container)
     assert runner.setup(), f'Setup failed: {runner.get_error()}'
@@ -49,7 +49,7 @@ def _run_simplechisel_test():
         runner.run_cmd('find /code -name "build.sbt" -o -name "*.scala" | head -10', cwd='/code')
 
         print('⚠️  SimpleChisel project not found in expected locations')
-        print('This test requires the mascucsc/hagent-simplechisel:2025.12 image with SimpleChisel project')
+        print('This test requires the mascucsc/hagent-simplechisel:2026.01 image with SimpleChisel project')
         print('✅ Test completed - container setup verified (SimpleChisel project not available)')
         runner.cleanup()
         return

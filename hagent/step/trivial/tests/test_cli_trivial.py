@@ -11,7 +11,7 @@ import subprocess
 import pytest
 from pathlib import Path
 
-DEFAULT_HAGENT_DOCKER = 'mascucsc/hagent-builder:2025.12'
+DEFAULT_HAGENT_DOCKER = 'mascucsc/hagent-builder:2026.01'
 
 
 class TestTrivialCLI:
