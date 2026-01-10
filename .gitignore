@@ -4,6 +4,7 @@
 htmlcov
 .pytest_cache
 .coverage
+.venv
 output
 __pycache__
 env/

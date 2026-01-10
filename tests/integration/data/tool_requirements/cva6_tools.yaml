@@ -20,4 +20,4 @@ required_tools:
 
   - name: python3
     version_flag: "--version"
-    min_version: "3.8"
+    min_version: "3.12"

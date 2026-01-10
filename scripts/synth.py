@@ -5,6 +5,7 @@ import argparse
 import datetime
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -301,6 +302,65 @@ def _write_manifest(output_dir, args, slang_args, top_module):
 
 
 def main():
+    # Check if we need to invoke Docker
+    # If HAGENT_DOCKER is set but we're not already in Docker, re-invoke via Docker
+    if os.environ.get('HAGENT_DOCKER') and not Path('/code/workspace/cache').exists():
+        # Get hagent root directory
+        script_dir = Path(__file__).resolve().parent
+        hagent_root = script_dir.parent
+
+        # Build Docker command using docker_args.sh
+        docker_args_script = hagent_root / 'scripts' / 'docker_args.sh'
+        if docker_args_script.exists():
+            result = subprocess.run(
+                [str(docker_args_script)],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                # Parse docker args and build command
+                docker_cmd = result.stdout.strip().split()
+                # Remove -it for non-interactive execution
+                docker_cmd = [arg for arg in docker_cmd if arg != '-it']
+
+                # Add the command to run inside Docker
+                # Convert file paths in argv to Docker paths if needed
+                docker_argv = []
+                for arg in sys.argv[1:]:
+                    # Convert absolute paths to Docker paths
+                    if Path(arg).exists() and Path(arg).is_absolute():
+                        arg_path = Path(arg)
+                        # Check if path is under any of the mounted directories
+                        for env_var in [
+                            'HAGENT_REPO_DIR',
+                            'HAGENT_BUILD_DIR',
+                            'HAGENT_CACHE_DIR',
+                            'HAGENT_OUTPUT_DIR',
+                            'HAGENT_TECH_DIR',
+                        ]:
+                            env_path = os.environ.get(env_var)
+                            if env_path and arg_path.is_relative_to(env_path):
+                                # Map to Docker path
+                                rel_path = arg_path.relative_to(env_path)
+                                docker_mount_map = {
+                                    'HAGENT_REPO_DIR': '/code/workspace/repo',
+                                    'HAGENT_BUILD_DIR': '/code/workspace/build',
+                                    'HAGENT_CACHE_DIR': '/code/workspace/cache',
+                                    'HAGENT_OUTPUT_DIR': '/code/workspace/output',
+                                    'HAGENT_TECH_DIR': '/code/workspace/tech',
+                                }
+                                arg = str(Path(docker_mount_map[env_var]) / rel_path)
+                                break
+                    docker_argv.append(arg)
+
+                # Run synth.py inside Docker
+                synth_cmd_str = 'cd /code/hagent && ./scripts/synth.py ' + ' '.join(shlex.quote(arg) for arg in docker_argv)
+                docker_cmd.extend(['bash', '-c', synth_cmd_str])
+
+                # Execute and exit
+                result = subprocess.run(docker_cmd)
+                sys.exit(result.returncode)
+
     # Show help if no arguments provided
     if len(sys.argv) == 1:
         sys.argv.append('-h')
@@ -320,7 +380,8 @@ def main():
 
     parser = argparse.ArgumentParser(
         description='Run yosys synthesis with slang frontend',
-        epilog='Use -- to separate synth.py args from slang args. Example: synth.py --tag baseline --dir build/ -- --top ALU input.sv',
+        epilog='Use -- to separate synth.py args from slang args. '
+        'Example: synth.py --tag baseline --dir build/ -- --top ALU input.sv',
     )
     parser.add_argument('--liberty', help='Liberty file path')
     parser.add_argument('--tech-dir', help='Technology directory path (defaults to HAGENT_TECH_DIR env var)')
@@ -352,7 +413,7 @@ def main():
     parser.add_argument(
         '--run-sta',
         action='store_true',
-        help='Run STA on synth.v (use alone to run only STA without elab/synth)',
+        help='Run full workflow including STA (elaboration + synthesis + STA)',
     )
     parser.add_argument(
         '--skip-elab',
@@ -477,8 +538,9 @@ def main():
         # Default: all phases (elab + synth + STA) if no --run-* flags specified
         no_run_flags = not (args.run_elab or args.run_synth or args.run_sta)
 
-        should_run_elab = no_run_flags or args.run_elab or args.run_synth
-        should_run_synth = no_run_flags or args.run_synth
+        # --run-sta implies running all prerequisite phases
+        should_run_elab = no_run_flags or args.run_elab or args.run_synth or args.run_sta
+        should_run_synth = no_run_flags or args.run_synth or args.run_sta
         should_run_sta = no_run_flags or args.run_sta
 
         # Phase 1: Elaborate (unless --skip-elab and elab.v exists)
@@ -527,7 +589,10 @@ set rejected [list]
 # Collect all matching candidates
 foreach line $lines {{
     set trimmed [string trim $line]
-    if {{$trimmed ne "" && [string first "{top_name}" $trimmed] >= 0 && [string first "modules:" $trimmed] < 0 && [string first "memories:" $trimmed] < 0 && [string first "processes:" $trimmed] < 0}} {{
+    set is_match [expr {{$trimmed ne "" && [string first "{top_name}" $trimmed] >= 0}}]
+    set not_special [expr {{[string first "modules:" $trimmed] < 0 && \\
+        [string first "memories:" $trimmed] < 0 && [string first "processes:" $trimmed] < 0}}]
+    if {{$is_match && $not_special}} {{
         lappend candidates $trimmed
     }}
 }}
