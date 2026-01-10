@@ -658,7 +658,7 @@ class TestContainerManager:
             },
         ):
             # Create container manager using the fixture for cleanup
-            manager = container_manager_with_cleanup('mascucsc/hagent-builder:2026.01')
+            manager = container_manager_with_cleanup('mascucsc/hagent-simplechisel:2026.01')
 
             # Setup the container
             setup_result = manager.setup()
