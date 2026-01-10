@@ -40,7 +40,7 @@ def setup_hagent_environment(request):
 
     # Use PathManager.configured() context manager for clean test isolation
     with PathManager.configured(
-        docker_image='mascucsc/hagent-builder:2026.01',
+        docker_image='mascucsc/hagent-simplechisel:2026.01',
         repo_dir=repo_dir,
         build_dir=build_dir,
         cache_dir=cache_dir,
@@ -103,7 +103,7 @@ endmodule
     def runner_filesystem(self):
         """Create and setup a Runner and FileSystem instance with Yosys tools."""
         # Create Runner instance with Docker image
-        runner = Runner(docker_image='mascucsc/hagent-builder:2026.01')
+        runner = Runner(docker_image='mascucsc/hagent-simplechisel:2026.01')
         assert runner.setup(), f'Runner setup failed: {runner.get_error()}'
 
         # Runner provides its own filesystem

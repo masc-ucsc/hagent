@@ -44,7 +44,7 @@ class Equiv_check:
     def setup(self, try_local: bool = True) -> bool:
         """
         Checks if Yosys is installed, accessible, and meets the minimum version 0.4.
-        If local Yosys is not available, falls back to Docker with mascucsc/hagent-builder:2026.01.
+        If local Yosys is not available, falls back to Docker with mascucsc/hagent-simplechisel:2026.01.
 
         Returns True if Yosys is available (locally or via Docker), False otherwise.
         """
@@ -88,13 +88,13 @@ class Equiv_check:
 
     def _setup_docker_fallback(self) -> bool:
         """
-        Sets up Docker fallback using ContainerManager with mascucsc/hagent-builder:2026.01 image.
+        Sets up Docker fallback using ContainerManager with mascucsc/hagent-simplechisel:2026.01 image.
         Uses no mount points - files are copied in/out as needed.
 
         Returns True if Docker setup succeeds, False otherwise.
         """
 
-        docker_image = 'mascucsc/hagent-builder:2026.01'
+        docker_image = 'mascucsc/hagent-simplechisel:2026.01'
         try:
             self.runner = Runner(docker_image=docker_image)
             if not self.runner.setup():

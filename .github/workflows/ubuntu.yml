@@ -3,7 +3,6 @@ name: Ubuntu
 on: [push, pull_request]
 
 env:
-  HAGENT_BUILDER_IMAGE: mascucsc/hagent-builder:2026.01
   HAGENT_SIMPLECHISEL_IMAGE: mascucsc/hagent-simplechisel:2026.01
 
 jobs:
@@ -69,7 +68,6 @@ jobs:
 
       - name: Pull Docker images
         run: |
-          docker pull ${{ env.HAGENT_BUILDER_IMAGE }}
           docker pull ${{ env.HAGENT_SIMPLECHISEL_IMAGE }}
 
       - name: Run tests with coverage
@@ -127,7 +125,6 @@ jobs:
 
       - name: Pull Docker images
         run: |
-          docker pull ${{ env.HAGENT_BUILDER_IMAGE }}
           docker pull ${{ env.HAGENT_SIMPLECHISEL_IMAGE }}
 
       - name: Run slow tests
