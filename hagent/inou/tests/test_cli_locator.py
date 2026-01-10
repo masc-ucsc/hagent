@@ -13,14 +13,12 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
-from pathlib import Path
 
 import pytest
 
 
-@pytest.fixture(scope='class')
-def docker_env_for_cli():
+@pytest.fixture
+def docker_env_for_cli(test_output_dir):
     """Setup environment for Docker-based CLI testing.
 
     Creates a temporary directory with cache dir and returns environment
@@ -40,12 +38,8 @@ def docker_env_for_cli():
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pytest.skip('Docker not available')
 
-    # Create a temporary working directory for test execution
-    test_file = Path(__file__).resolve()
-    hagent_root = test_file.parent.parent.parent.parent
-    setup_run_dir = hagent_root / 'setup_run'
-    setup_run_dir.mkdir(exist_ok=True)
-    test_dir = Path(tempfile.mkdtemp(prefix='cli_locator_', dir=setup_run_dir))
+    # Create a working directory for test execution under output/
+    test_dir = test_output_dir
 
     # Create cache directory
     cache_dir = test_dir / 'cache'

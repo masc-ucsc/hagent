@@ -1,0 +1,23 @@
+# Required tools for SimpleChisel Docker image
+# mascucsc/hagent-simplechisel:2026.01
+
+required_tools:
+  - name: yosys
+    version_flag: "--version"
+    min_version: "0.60"
+
+  - name: slang
+    version_flag: "--version"
+    min_version: "9.1"
+
+  - name: sta
+    version_flag: "-version"
+    min_version: "2.7"
+
+  - name: verilator
+    version_flag: "--version"
+    min_version: "5.0"
+
+  - name: python3
+    version_flag: "--version"
+    min_version: "3.8"

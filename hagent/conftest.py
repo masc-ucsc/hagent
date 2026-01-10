@@ -5,11 +5,14 @@ Provides automatic cleanup of Docker containers created during testing
 to prevent container accumulation from test runs.
 """
 
-import pytest
-import docker
-import sys
-import re
 import os
+import re
+import sys
+import uuid
+from pathlib import Path
+
+import docker
+import pytest
 
 
 def pytest_sessionstart(session):
@@ -67,6 +70,31 @@ def pytest_sessionfinish(session, exitstatus):
         initial_containers = getattr(session.config, '_initial_test_containers', set())
         if initial_containers:
             print(f'Warning: Failed to cleanup test containers: {e}', file=sys.stderr)
+
+
+def _sanitize_node_id(node_id: str) -> str:
+    """Normalize a pytest node id for filesystem use."""
+    return re.sub(r'[^A-Za-z0-9_.-]+', '_', node_id).strip('_')
+
+
+@pytest.fixture(autouse=True)
+def test_output_dir(request, monkeypatch):
+    """
+    Create a per-test output directory and route temp files there.
+
+    Keeps all test artifacts under <repo>/output/tests/<nodeid>_<uuid>.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    safe_node_id = _sanitize_node_id(request.node.nodeid)
+    test_id = uuid.uuid4().hex[:8]
+    output_dir = (repo_root / 'output' / 'tests' / f'{safe_node_id}_{test_id}').resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv('TMPDIR', str(output_dir))
+    monkeypatch.setenv('TEMP', str(output_dir))
+    monkeypatch.setenv('TMP', str(output_dir))
+
+    return output_dir
 
 
 @pytest.fixture(autouse=True)

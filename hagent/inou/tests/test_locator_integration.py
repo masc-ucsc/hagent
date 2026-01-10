@@ -5,7 +5,6 @@ the full Locator workflow with actual Chisel compilation and slang-hier integrat
 """
 
 import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -15,8 +14,8 @@ from hagent.inou.locator import Locator, RepresentationType
 from hagent.inou.path_manager import PathManager
 
 
-@pytest.fixture(scope='class')
-def docker_env():
+@pytest.fixture
+def docker_env(test_output_dir):
     """Setup environment for Docker-based testing.
 
     Creates a temporary test directory and runs setup_mcp.sh simplechisel to
@@ -33,11 +32,9 @@ def docker_env():
     # Find hagent root directory
     test_file = Path(__file__).resolve()
     hagent_root = test_file.parent.parent.parent.parent
-    setup_run_dir = hagent_root / 'setup_run'
-    setup_run_dir.mkdir(exist_ok=True)
 
-    # Create unique temporary directory for this test class
-    test_dir = Path(tempfile.mkdtemp(prefix='locator_integration_', dir=setup_run_dir))
+    # Create unique temporary directory for this test
+    test_dir = test_output_dir
 
     try:
         # Run setup_mcp.sh to initialize the test environment
