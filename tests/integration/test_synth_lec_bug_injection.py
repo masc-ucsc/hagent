@@ -164,7 +164,6 @@ def test_simplechisel_gcd_bug_detection(simplechisel_setup, test_config):
 
     # Find GCD file (generated SystemVerilog in build directory)
     # Debug: List what's actually in build_dir
-    import os
 
     print(f'Build dir contents: {list(build_dir.iterdir()) if build_dir.exists() else "DIR DOES NOT EXIST"}')
 
