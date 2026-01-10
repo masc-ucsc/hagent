@@ -65,8 +65,8 @@ class TestMCPBuildDocker(unittest.TestCase):
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             raise unittest.SkipTest('Failed to check Docker images')
 
-        # Create base test directory in the hagent root
-        cls.base_test_dir = cls.hagent_root / 'setup_run'
+        # Create base test directory in the hagent output/ tree
+        cls.base_test_dir = cls.hagent_root / 'output' / 'mcp_build'
         cls.original_cwd = Path.cwd()
 
         print(f'Base test directory: {cls.base_test_dir}')

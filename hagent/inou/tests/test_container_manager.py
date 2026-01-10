@@ -6,8 +6,7 @@ environment variable injection, and workspace validation.
 """
 
 import os
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 import pytest
 
 from hagent.inou.container_manager import ContainerManager
@@ -639,13 +638,13 @@ class TestContainerManager:
                             assert '/code/workspace/build' in mount_targets
 
     @pytest.mark.skip(reason='Docker container setup fails with temporary directory mount issues')
-    def test_mcp_build_script_execution(self, container_manager_with_cleanup, setup_local_directory):
+    def test_mcp_build_script_execution(self, container_manager_with_cleanup, setup_local_directory, test_output_dir):
         """Test that mcp_build.py script can be executed directly inside the container."""
         local_dirs = setup_local_directory
 
         # Create container_manager_cache directory for persistent uv cache across test runs
         # This speeds up successive runs significantly by avoiding uv sync on each run
-        container_cache_dir = Path('./setup_run/container_manager_cache')
+        container_cache_dir = test_output_dir / 'container_manager_cache'
         container_cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Create a real PathManager with test environment

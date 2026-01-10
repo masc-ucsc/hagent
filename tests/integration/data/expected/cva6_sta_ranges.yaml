@@ -1,0 +1,14 @@
+# Expected STA value ranges for CVA6
+# These ranges define acceptable timing and power values
+
+timing:
+  min_slack: -100.0  # picoseconds
+  max_slack: 1000.0
+  min_delay: 0.0
+  max_delay: 10000.0
+
+power:
+  min_total_power: 0.0  # watts
+  max_total_power: 1.0
+  min_leakage: 0.0
+  max_leakage: 0.1
