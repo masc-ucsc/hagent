@@ -1,33 +1,4 @@
-#!/bin/sh
-# fmt: off
-''''
-# Ensure uv discovers the hagent project even when invoked from a different cwd
-if [ -n "$UV_PROJECT" ]; then
-    PROJECT_ROOT="$UV_PROJECT"
-else
-    PROJECT_ROOT="$(cd "$(dirname "$0")"/../.. && pwd -P)"
-fi
-
-# Docker detection: if /code/workspace/cache exists, we're in Docker
-if [ -d "/code/workspace/cache" ]; then
-    # In Docker: /code/hagent is read-only, so use cache venv
-    VENV_DIR="/code/workspace/cache/.venv"
-    if [ -z "$UV_PROJECT_ENVIRONMENT" ]; then
-        export UV_PROJECT_ENVIRONMENT="$VENV_DIR"
-    fi
-
-    # Ensure venv exists - if not, create it once
-    if [ ! -f "$VENV_DIR/bin/python" ]; then
-        cd "$PROJECT_ROOT" && uv venv "$VENV_DIR" && uv sync --frozen
-    fi
-
-    exec uv run python "$0" "$@"
-else
-    # Local: use uv run to manage environment (handles sync automatically)
-    exec uv run --project "$PROJECT_ROOT" python "$0" "$@"
-fi
-'''
-# fmt: on
+#!/usr/bin/env python3
 # See LICENSE for details
 
 import argparse
@@ -37,8 +8,6 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-
-import yaml
 
 
 def find_top_name(slang_args):
@@ -289,24 +258,44 @@ def _write_manifest(output_dir, args, slang_args, top_module):
         if not arg.startswith('-') and Path(arg).exists():
             input_files.append(arg)
 
-    manifest = {
-        'tag': args.tag,
-        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        'top_module': top_module,
-        'input_files': input_files,
-        'docker_image': os.environ.get('HAGENT_DOCKER', 'none'),
-        'liberty_file': args.liberty or 'none',
-        'synthesis_args': {
-            'elab_method': args.elab_method,
-            'exclude_patterns': args.exclude or [],
-            'skip_elab': args.skip_elab,
-        },
-        'slang_args': slang_args,
-    }
-
+    # Build YAML content manually (simple key-value pairs and lists)
     manifest_path = output_dir / 'manifest.yaml'
     with open(manifest_path, 'w') as f:
-        yaml.dump(manifest, f, default_flow_style=False, sort_keys=False)
+        # Top-level fields
+        f.write(f'tag: {args.tag}\n')
+        f.write(f'timestamp: {datetime.datetime.now(datetime.timezone.utc).isoformat()}\n')
+        f.write(f'top_module: {top_module}\n')
+
+        # Input files list
+        f.write('input_files:\n')
+        if input_files:
+            for file in input_files:
+                f.write(f'  - {file}\n')
+        else:
+            f.write('  []\n')
+
+        # Environment info
+        f.write(f'docker_image: {os.environ.get("HAGENT_DOCKER", "none")}\n')
+        f.write(f'liberty_file: {args.liberty or "none"}\n')
+
+        # Synthesis args (nested)
+        f.write('synthesis_args:\n')
+        f.write(f'  elab_method: {args.elab_method}\n')
+        f.write('  exclude_patterns:\n')
+        if args.exclude:
+            for pattern in args.exclude:
+                f.write(f'    - {pattern}\n')
+        else:
+            f.write('    []\n')
+        f.write(f'  skip_elab: {args.skip_elab}\n')
+
+        # Slang args list
+        f.write('slang_args:\n')
+        if slang_args:
+            for arg in slang_args:
+                f.write(f'  - {arg}\n')
+        else:
+            f.write('  []\n')
 
     print(f'Manifest: {manifest_path}', file=sys.stderr)
 
