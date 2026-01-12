@@ -10,25 +10,27 @@ the current process).
 """
 
 import os
-import shutil
 import subprocess
 import sys
+import uuid
+from pathlib import Path
 
 import pytest
 
 
-@pytest.fixture
-def docker_env_for_cli(test_output_dir):
+@pytest.fixture(scope='module')
+def docker_env_for_cli():
     """Setup environment for Docker-based CLI testing.
 
-    Creates a temporary directory with cache dir and returns environment
-    variables suitable for passing to subprocess.run().
+    Creates a persistent empty cache directory shared across tests and returns
+    environment variables suitable for passing to subprocess.run().
 
-    Uses Docker mode with only cache directory mounted. This allows:
+    Uses Docker mode with an empty cache directory. This allows:
     - Prebuilt files (repo, build) inside the Docker image to be used
-    - Cache directory for faster re-runs
+    - Empty cache directory shared across all tests in this module
+    - Persists across tests for efficiency (no recreation overhead)
     - HAGENT_DOCKER=mascucsc/hagent-simplechisel:2026.01
-    - HAGENT_CACHE_DIR=<temp_dir>/cache (for caching)
+    - HAGENT_CACHE_DIR=output/test_cli_locator_<unique_id>
     """
     # Check if Docker is available
     try:
@@ -38,22 +40,26 @@ def docker_env_for_cli(test_output_dir):
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pytest.skip('Docker not available')
 
-    # Create a working directory for test execution under output/
-    test_dir = test_output_dir
+    # Create a persistent cache directory for all tests in this module
+    # Use output/test_cli_locator_<uuid> to avoid conflicts
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    test_id = uuid.uuid4().hex[:8]
+    test_dir = repo_root / 'output' / f'test_cli_locator_{test_id}'
+    test_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create cache directory
     cache_dir = test_dir / 'cache'
     cache_dir.mkdir(exist_ok=True)
 
-    # Set up Docker environment with only cache mounted
+    # Set up Docker environment with empty cache mounted
     # Create a NEW dict based on os.environ (don't modify global state)
     env = os.environ.copy()
 
-    # Remove any existing HAGENT path variables except cache
+    # Remove any existing HAGENT path variables
     for key in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_OUTPUT_DIR']:
         env.pop(key, None)
 
-    # Set execution mode, Docker image, and cache directory
+    # Set execution mode, Docker image, and empty cache directory
+    # The cache directory is shared across tests but should NOT be populated from Docker
     env.update(
         {
             'HAGENT_DOCKER': 'mascucsc/hagent-simplechisel:2026.01',
@@ -61,12 +67,8 @@ def docker_env_for_cli(test_output_dir):
         }
     )
 
-    try:
-        yield {'env': env, 'test_dir': test_dir}
-    finally:
-        # Cleanup: remove temporary test directory
-        if test_dir.exists():
-            shutil.rmtree(test_dir, ignore_errors=True)
+    # No cleanup - persist cache across all tests for efficiency
+    yield {'env': env, 'test_dir': test_dir}
 
 
 class TestCLILocatorBasics:
