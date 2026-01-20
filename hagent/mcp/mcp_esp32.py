@@ -21,7 +21,7 @@ def initialize_idf_env():
     print('Adding idf.py to PATH')
     export_sh_path = os.path.join(os.environ['HAGENT_CACHE_DIR'], 'esp-idf', 'export.sh')
     export_script_cmd = f"bash -c 'source {export_sh_path} >/dev/null 2>&1 && python3 - <<PY\nimport os, json\nprint(json.dumps(dict(os.environ)))\nPY'"
-    export_proc = subprocess.run(export_script_cmd, shell=True, capture_output=True, text=True)
+    export_proc = subprocess.run(export_script_cmd, shell=True, capture_output=True, text=True, check=True)
 
     # Update the current Python process' ENV variables
     os.environ.update(json.loads(export_proc.stdout))
@@ -133,7 +133,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         except subprocess.CalledProcessError as e:
             return {
                 'success': False,
-                'exit_code': 1,
+                'exit_code': e.returncode,
                 'stdout': e.stdout,
                 'stderr': e.stderr,
             }
@@ -243,11 +243,12 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
 
     return {
         'success': True,
-        'exit_code': 1,
-        'stdout': result.stout,
+        'exit_code': 0,
+        'stdout': result.stdout,
         'stderr': result.stderr,
-        'project_path': os.env['HAGENT_REPO_DIR'],
-        'target_config': target_config,
+        'project_path': os.environ["HAGENT_REPO_DIR"],
+        'target_config': target_config
+
     }
 
 
@@ -282,10 +283,11 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
     except subprocess.CalledProcessError as e:
         return {
             'success': False,
-            'exit_code': 1,
-            'binary_location': '',
+            'exit_code': e.returncode,
+            'binary_location': "",
+
             'stdout': e.stdout,
-            'stderror': e.stderr,
+            'stderr': e.stderr,
         }
 
     return {
@@ -328,17 +330,16 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
             'exit_code': e.returncode,
             'flash_status': 'Flash failed',
             'stdout': e.stdout,
-            'stderror': e.stderr,
+            'stderr': e.stderr,
         }
 
     return {
         'success': True,
-        'exit_code': result.returncode,
+        'exit_code': 0,
         'stdout': result.stdout,
         'stderr': result.stderr,
         'flash_result': 'Flash done',
     }
-
 
 def api_factory_reset(args: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -408,8 +409,14 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
         out, err = proc.communicate()
         return {'success': True, 'exit_code': 0, 'stdout': out, 'stderr': err}
     except subprocess.CalledProcessError as e:
-        # This block is reached when initialize_idf_env fails
-        return {'success': False, 'exit_code': 1, 'stdout': '', 'stderr': str(e)}
+        # This block is reached when initialize_idf_env fails 
+        return {
+            'success': False,
+            'exit_code': e.returncode,
+            'stdout': e.stdout,
+            'stderr': e.stderr 
+        }
+    
 
     # The process exits prematurely if an error is encountered
     return {
@@ -435,12 +442,30 @@ def api_idf(args: Optional[str] = None) -> Dict[str, Any]:
     # 2. Navigate to HAGENT_REPO_DIR
     # 3. Run: idf.py <args>
     # 4. Capture and return output
+    
+    # If the string is non-empty, then it's passed down as a valid argument 
+    idf_cmd = "idf.py"
+    if args:
+        idf_cmd += f" {args}"
+
+    try: 
+        # Check if idf.py is in the PATH, if not then source export.sh before running the command
+        if not shutil.which('idf.py'):
+            initialize_idf_env()
+        result = subprocess.run(idf_cmd, cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        return {
+            'success': False,
+            'exit_code': e.returncode,
+            'stdout': e.stdout,
+            'stderr': e.stderr
+        }
 
     return {
-        'success': False,
-        'exit_code': 1,
-        'stdout': '',
-        'stderr': 'api_idf not implemented yet',
+        'success': True,
+        'exit_code': 0,
+        'stdout': result.stdout,
+        'stderr': result.stderr,
     }
 
 
