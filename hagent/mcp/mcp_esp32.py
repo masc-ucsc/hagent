@@ -18,6 +18,7 @@ import re
 import json
 
 def initialize_idf_env():
+    # Source export.sh in a separate process and load the dumped ENV variables from the called process into the calling process' ENV
     print("Adding idf.py to PATH")
     export_sh_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf", "export.sh")
     export_script_cmd = f"bash -c 'source {export_sh_path} >/dev/null 2>&1 && python3 - <<PY\nimport os, json\nprint(json.dumps(dict(os.environ)))\nPY'"
@@ -192,7 +193,6 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
 
     idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
     md_path = os.path.join(os.environ["HAGENT_REPO_DIR"], "AGENTS.md")
-    export_script_cmd = f"call {os.path.join(idf_path, 'export.bat')}" if platform.system() == "Windows" else f"source {os.path.join(idf_path, 'export.sh')}"
 
     if os.path.isdir(idf_path):
         # with open(md_path, "r") as agent_f:
@@ -210,8 +210,6 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
         target_config = 'esp32c3'
 
         crt_prj_cmd = (
-            # f"{export_script_cmd} && "
-            # f"cd /d {os.environ['HAGENT_REPO_DIR']} && "
             f"idf.py create-project -p . {args} && "
             f"idf.py set-target {target_config}"
         )
@@ -262,9 +260,6 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
     # 4. Run: idf.py build
     # 5. Capture and return build output
     
-    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
-    # export_script_cmd = f"call {os.path.join(idf_path, 'export.bat')}" if platform.system() == "Windows" else f"source {os.path.join(idf_path, 'export.sh')}"
-
     try:
         # Check if idf.py is in PATH; source export.sh/export.bat before build if not in path  
         if not shutil.which('idf.py'):
@@ -306,8 +301,6 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
     # 3. Run: idf.py flash (with optional port arg)
     # 4. Capture flash output
     
-    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
-    # export_script_cmd = f"call {os.path.join(idf_path, 'export.bat')}" if platform.system() == "Windows" else f"source {os.path.join(idf_path, 'export.sh')}"
     flash_cmd = "idf.py flash"
 
     try:
@@ -383,9 +376,6 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
     # 6. Return captured output
 
     repo_dir = os.path.join(os.environ["HAGENT_REPO_DIR"])
-    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
-    export_sh = os.path.join(idf_path, 'export.sh')
-    export_script_cmd = f"bash -c 'source {export_sh} >/dev/null 2>&1 && python3 - <<PY\nimport os, json\nprint(json.dumps(dict(os.environ)))\nPY'"
     monitor_cmd = "script -q /dev/null idf.py monitor"
         
     try:
@@ -685,16 +675,17 @@ def main():
 if __name__ == '__main__':
     # sys.exit(api_install("rust board that uses esp32"))
     # sys.exit(api_setup("newproject"))
-    # api_setup("newproject")
-    api_install("rust board that uses esp32")
-    print("Executable is being built...")
-    build_result = api_build()
-    if build_result['success'] == True:
-        print("Build successful ")
-    else:
-        print("Build failed")
-        print(f"Build output: {build_result}")
-        sys.exit(1)
+    setup_resul = api_setup("newproject")
+    print(setup_resul)
+    # api_install("rust board that uses esp32")
+    # print("Executable is being built...")
+    # build_result = api_build()
+    # if build_result['success'] == True:
+    #     print("Build successful ")
+    # else:
+    #     print("Build failed")
+    #     print(f"Build output: {build_result}")
+    #     sys.exit(1)
 
     # print("Flashing the firmware...")
     # flash_result = api_flash()
