@@ -11,8 +11,11 @@ import sys
 import os
 import subprocess
 import shutil
+import tempfile
+import time
 from typing import Dict, Any, Optional
 import difflib
+<<<<<<< HEAD
 import platform
 import json
 
@@ -35,6 +38,11 @@ def initialize_idf_env():
     # CalledProcessError is caught and handled by the calling function
 
 
+=======
+import re
+import json
+
+>>>>>>> bb20714 (modularized monitor functions + added safety checks in api_build function + implemented api_factory_reset w/ user confirmation)
 def get_mcp_schema() -> Dict[str, Any]:
     """Return MCP tool schema for ESP32 development command."""
 
@@ -50,10 +58,7 @@ def get_mcp_schema() -> Dict[str, Any]:
         'env',
     ]
 
-    return {
-        'name': 'hagent_esp32',
-        'description': 'ESP32 development tool for managing boards, projects, building, and flashing',
-        'inputSchema': {
+    return { 'name': 'hagent_esp32', 'description': 'ESP32 development tool for managing boards, projects, building, and flashing', 'inputSchema': {
             'type': 'object',
             'properties': {
                 'api': {
@@ -75,6 +80,68 @@ def get_mcp_schema() -> Dict[str, Any]:
         },
     }
 
+
+# ==============================================================================
+# INTERNAL HELPER FUNCTIONS
+# ==============================================================================
+
+def initialize_idf_env():
+    # Source export.sh in a separate process and load the dumped ENV variables from the called process into the calling process' ENV
+    print("Adding idf.py to PATH")
+    export_sh_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf", "export.sh")
+    export_script_cmd = f"bash -c 'source {export_sh_path} >/dev/null 2>&1 && python3 - <<PY\nimport os, json\nprint(json.dumps(dict(os.environ)))\nPY'"
+    export_proc = subprocess.run(export_script_cmd, shell=True, capture_output=True, text=True, check=True)
+
+    # Update the current Python process' ENV variables
+    os.environ.update(json.loads(export_proc.stdout))
+
+    # CalledProcessError is caught and handled by the calling function
+
+def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
+    """
+    Internal helper to run idf.py monitor in a specific directory.
+    """
+    monitor_cmd = "script -q /dev/null idf.py monitor"
+    
+    try:
+        # Check if idf.py is in PATH, source export.sh/export.bat before running the command
+        if not shutil.which('idf.py'):
+            initialize_idf_env() 
+        proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True, cwd=project_dir)
+           
+        # Communicate and read stdout from the process monitoring serial output
+        # The communicate function call runs till timeout then throws an exception, which needs to be caught and handled
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        # This is where the function exits by default
+        proc.kill()
+        out, err = proc.communicate()
+        return {
+            'success': True,
+            'exit_code': 0,
+            'stdout': out,
+            'stderr': err
+        }
+    except subprocess.CalledProcessError as e:
+        # This block is reached when initialize_idf_env fails 
+        return {
+            'success': False,
+            'exit_code': e.returncode,
+            'stdout': e.stdout,
+            'stderr': e.stderr 
+        }
+    
+    # The process exits prematurely if an error is encountered
+    return {
+        'success': False,
+        'exit_code': 1,
+        'stdout': out,
+        'stderr': err,
+    }
+
+# ==============================================================================
+# API FUNCTIONS
+# ==============================================================================
 
 def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -114,8 +181,14 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                 )
         # Prompt user for: board name + models
         for idx, b in enumerate(board_details):
+<<<<<<< HEAD
             print(f'[{idx}] {b["name"]} ({b["model"]})')
 
+=======
+            print(f"[{idx}] {b['name']} ({b['model']})")
+        
+        # TODO: The input has to be removed when being run as a MCP server, else this might cause the MCP server to hang waiting for the input.
+>>>>>>> bb20714 (modularized monitor functions + added safety checks in api_build function + implemented api_factory_reset w/ user confirmation)
         c = int(input())
 
         # Check if ESP-IDF exists in HAGENT_CACHE_DIR/esp-idf/; Install if missing
@@ -131,10 +204,16 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                     text=True,
                 )
                 stdout = stdout + clone_result.stdout
+<<<<<<< HEAD
             install_script = '.\\install.bat' if platform.system() == 'Windows' else './install.sh'
             install_result = subprocess.run(
                 [install_script, board_details[c]['model']], cwd=idf_path, shell=True, check=True, capture_output=True, text=True
             )
+=======
+            install_script = "./install.sh"
+            install_result = subprocess.run([install_script, board_details[c]['model']], cwd=idf_path, shell=True, check=True, capture_output=True, text=True)
+            # TODO Install ESP-IDF specific certificates in python 
+>>>>>>> bb20714 (modularized monitor functions + added safety checks in api_build function + implemented api_factory_reset w/ user confirmation)
             stdout = stdout + install_result.stdout
         except subprocess.CalledProcessError as e:
             return {
@@ -293,6 +372,7 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
         # Check if idf.py is in PATH; source export.sh/export.bat before build if not in path
         if not shutil.which('idf.py'):
             initialize_idf_env()
+<<<<<<< HEAD
         result = subprocess.run(
             'idf.py build', cwd=os.environ['HAGENT_REPO_DIR'], shell=True, capture_output=True, text=True, check=True
         )
@@ -300,6 +380,18 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
             'project_name'
         ]
         binary_location = os.path.join(os.environ['HAGENT_REPO_DIR'], 'build', f'{project_name}.bin')
+=======
+        
+        # Check if target board has been set, else set target before running further commands.
+        # This is usually done after the project has been created in api_setup, since we copy an example project in our case, this command might not have been run.
+        target_config = 'esp32c3'
+        if not os.path.exists(os.path.join(os.environ["HAGENT_REPO_DIR"], "sdkconfig")):
+            print("Target config has not been set.\n Setting {target_config} as target config.")
+            set_target_res = subprocess.run(f"idf.py set-target {target_config}", cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, check=True, text=True) 
+
+        result = subprocess.run(f"idf.py build", cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
+        binary_location = os.path.join(os.environ["HAGENT_REPO_DIR"], 'build')
+>>>>>>> bb20714 (modularized monitor functions + added safety checks in api_build function + implemented api_factory_reset w/ user confirmation)
     except subprocess.CalledProcessError as e:
         return {
             'success': False,
@@ -369,12 +461,7 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
 def api_factory_reset(args: Optional[str] = None) -> Dict[str, Any]:
     """
     Guide user through factory reset with hello world example.
-
-    Args:
-        args: Not used
-
-    Returns:
-        Dictionary with factory reset results
+    Verifies board functionality in an isolated temporary environment.
     """
     # TODO: Implement factory_reset logic
     # 1. Create/use hello world example (prints "hello NUM" every second)
@@ -388,6 +475,7 @@ def api_factory_reset(args: Optional[str] = None) -> Dict[str, Any]:
     # 4. Flash hello world
     # 5. Instruct user to press RESET
     # 6. Run monitor briefly to verify
+<<<<<<< HEAD
 
     return {
         'success': False,
@@ -395,6 +483,63 @@ def api_factory_reset(args: Optional[str] = None) -> Dict[str, Any]:
         'stdout': '',
         'stderr': 'api_factory_reset not implemented yet',
     }
+=======
+    
+    hello_world_src = os.path.join(os.environ["HAGENT_ROOT"], "examples", "esp32_helloworld")
+    target_config = "esp32c3"
+    try:
+        if not shutil.which('idf.py'):
+            initialize_idf_env()
+        
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            shutil.copytree(hello_world_src, tmp_dir, dirs_exist_ok=True)
+
+            subprocess.run(f"idf.py set-target {target_config}", cwd=tmp_dir, shell=True, check=True, capture_output=True, text=True)
+
+            subprocess.run("idf.py build", cwd=tmp_dir, shell=True, check=True, capture_output=True, text=True)
+
+            print("\n" + "="*45)
+            print(" STEP 1: ENTER BOOTLOADER MODE")
+            print("="*45)
+            print("1. Unplug the USB-C cable from the board.")
+            print("2. Press and HOLD the BOOT button.")
+            print("3. Plug the USB-C cable back in while holding BOOT.")
+            print("4. Release the BOOT button.")
+            input("\nPress [ENTER] once the board is in bootloader mode...")
+
+            subprocess.run("idf.py flash", cwd=tmp_dir, shell=True, check=True, capture_output=True, text=True)
+
+            print("\n" + "="*45)
+            print(" STEP 2: VERIFY OPERATION")
+            print("="*45)
+            print("1. Press the RESET button on the board.")
+            input("2. Press [ENTER] to start monitoring output for 10 seconds...")
+
+            monitor_res = _run_monitor(tmp_dir, timeout=10)
+            monitor_output = monitor_res.get('stdout', 'No output captured.')
+
+            return {
+                'success': True,
+                'exit_code': 0,
+                'stdout': monitor_output,
+                'stderr': ''
+            }
+
+    except subprocess.CalledProcessError as e:
+        return {
+            'success': False,
+            'exit_code': e.returncode,
+            'stdout': e.stdout,
+            'stderr': e.stderr
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': e.stderr
+        }
+>>>>>>> bb20714 (modularized monitor functions + added safety checks in api_build function + implemented api_factory_reset w/ user confirmation)
 
 
 def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]:
@@ -415,6 +560,7 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
     # 4. Capture output for timeout duration
     # 5. Send CTRL+] to exit monitor
     # 6. Return captured output
+<<<<<<< HEAD
 
 <<<<<<< HEAD
     repo_dir = os.path.join(os.environ['HAGENT_REPO_DIR'])
@@ -456,6 +602,12 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
         'stdout': out,
         'stderr': err,
     }
+=======
+    
+    # TODO: In _run_monitor, check if the process can be made to run without an error-driven exit; program to input ctrl+] and exit after the timout duration.
+    repo_dir = os.environ["HAGENT_REPO_DIR"]
+    return _run_monitor(repo_dir, timeout)
+>>>>>>> bb20714 (modularized monitor functions + added safety checks in api_build function + implemented api_factory_reset w/ user confirmation)
 
 
 def api_idf(args: Optional[str] = None) -> Dict[str, Any]:
@@ -721,6 +873,7 @@ if __name__ == '__main__':
     # sys.exit(api_install("rust board that uses esp32"))
     # sys.exit(api_setup("newproject"))
 <<<<<<< HEAD
+<<<<<<< HEAD
     # api_setup("newproject")
     api_install('rust board that uses esp32')
     print('Executable is being built...')
@@ -734,6 +887,10 @@ if __name__ == '__main__':
 =======
     setup_resul = api_setup("newproject")
     print(setup_resul)
+=======
+    # setup_resul = api_setup("newproject")
+    # print(setup_resul)
+>>>>>>> bb20714 (modularized monitor functions + added safety checks in api_build function + implemented api_factory_reset w/ user confirmation)
     # api_install("rust board that uses esp32")
     # print("Executable is being built...")
     # build_result = api_build()
@@ -751,9 +908,11 @@ if __name__ == '__main__':
     #     print("Flash completed, exiting...")
     # else:
     #     print("Flash failed")
-    #     print(f"Flash output: {flash_output}")
+    #     print(f"Flash output: {flash_result}")
     # print("Starting serial monitor for 30 seconds...")
     # monitor_result = api_monitor()
     # print(monitor_result['stdout'])
-    sys.exit(1)
+    # sys.exit(1)
     # sys.exit(main())
+    res = api_factory_reset()
+    print(res['stdout'])
