@@ -18,8 +18,14 @@ import json
 
 
 def initialize_idf_env():
+<<<<<<< HEAD
     print('Adding idf.py to PATH')
     export_sh_path = os.path.join(os.environ['HAGENT_CACHE_DIR'], 'esp-idf', 'export.sh')
+=======
+    # Source export.sh in a separate process and load the dumped ENV variables from the called process into the calling process' ENV
+    print("Adding idf.py to PATH")
+    export_sh_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf", "export.sh")
+>>>>>>> fb89df6 (cleaned up further + fixed bugs across the file)
     export_script_cmd = f"bash -c 'source {export_sh_path} >/dev/null 2>&1 && python3 - <<PY\nimport os, json\nprint(json.dumps(dict(os.environ)))\nPY'"
     export_proc = subprocess.run(export_script_cmd, shell=True, capture_output=True, text=True, check=True)
 
@@ -197,7 +203,12 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     # 6. Run: idf.py set-target <esp32_model>
     # 7. Create esp_env.sh helper script
 
+<<<<<<< HEAD
     idf_path = os.path.join(os.environ['HAGENT_CACHE_DIR'], 'esp-idf')
+=======
+    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
+    md_path = os.path.join(os.environ["HAGENT_REPO_DIR"], "AGENTS.md")
+>>>>>>> fb89df6 (cleaned up further + fixed bugs across the file)
 
     if os.path.isdir(idf_path):
         # with open(md_path, "r") as agent_f:
@@ -215,9 +226,14 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
         target_config = 'esp32c3'
 
         crt_prj_cmd = (
+<<<<<<< HEAD
             # f"{export_script_cmd} && "
             # f"cd /d {os.environ['HAGENT_REPO_DIR']} && "
             f'idf.py create-project -p . {args} && idf.py set-target {target_config}'
+=======
+            f"idf.py create-project -p . {args} && "
+            f"idf.py set-target {target_config}"
+>>>>>>> fb89df6 (cleaned up further + fixed bugs across the file)
         )
         try:
             # Check if idf.py is in PATH, if not persent, source export.sh
@@ -268,7 +284,11 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
     # 3. Navigate to HAGENT_REPO_DIR
     # 4. Run: idf.py build
     # 5. Capture and return build output
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> fb89df6 (cleaned up further + fixed bugs across the file)
     try:
         # Check if idf.py is in PATH; source export.sh/export.bat before build if not in path
         if not shutil.which('idf.py'):
@@ -314,8 +334,13 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
     # 2. Navigate to HAGENT_REPO_DIR
     # 3. Run: idf.py flash (with optional port arg)
     # 4. Capture flash output
+<<<<<<< HEAD
 
     flash_cmd = 'idf.py flash'
+=======
+    
+    flash_cmd = "idf.py flash"
+>>>>>>> fb89df6 (cleaned up further + fixed bugs across the file)
 
     try:
         # Check if idf.py is in PATH; source export.sh/export.bat before flash if not in path
@@ -391,9 +416,15 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
     # 5. Send CTRL+] to exit monitor
     # 6. Return captured output
 
+<<<<<<< HEAD
     repo_dir = os.path.join(os.environ['HAGENT_REPO_DIR'])
     monitor_cmd = 'script -q /dev/null idf.py monitor'
 
+=======
+    repo_dir = os.path.join(os.environ["HAGENT_REPO_DIR"])
+    monitor_cmd = "script -q /dev/null idf.py monitor"
+        
+>>>>>>> fb89df6 (cleaned up further + fixed bugs across the file)
     try:
         # Check if idf.py is in PATH, source export.sh/export.bat before running the command
         if not shutil.which('idf.py'):
@@ -689,6 +720,7 @@ def main():
 if __name__ == '__main__':
     # sys.exit(api_install("rust board that uses esp32"))
     # sys.exit(api_setup("newproject"))
+<<<<<<< HEAD
     # api_setup("newproject")
     api_install('rust board that uses esp32')
     print('Executable is being built...')
@@ -699,6 +731,19 @@ if __name__ == '__main__':
         print('Build failed')
         print(f'Build output: {build_result}')
         sys.exit(1)
+=======
+    setup_resul = api_setup("newproject")
+    print(setup_resul)
+    # api_install("rust board that uses esp32")
+    # print("Executable is being built...")
+    # build_result = api_build()
+    # if build_result['success'] == True:
+    #     print("Build successful ")
+    # else:
+    #     print("Build failed")
+    #     print(f"Build output: {build_result}")
+    #     sys.exit(1)
+>>>>>>> fb89df6 (cleaned up further + fixed bugs across the file)
 
     # print("Flashing the firmware...")
     # flash_result = api_flash()
