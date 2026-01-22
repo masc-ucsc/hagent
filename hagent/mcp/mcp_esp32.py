@@ -161,6 +161,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
             print(f"[{idx}] {b['name']} ({b['model']})")
         
         # TODO: The input has to be removed when being run as a MCP server, else this might cause the MCP server to hang waiting for the input.
+        # TODO: Remove the option to choose, instead always go for the option the has the closest match.
         c = int(input())
 
         # Check if ESP-IDF exists in HAGENT_CACHE_DIR/esp-idf/; Install if missing
