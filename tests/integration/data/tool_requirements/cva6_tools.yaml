@@ -1,5 +1,5 @@
 # Required tools for CVA6 Docker image
-# mascucsc/hagent-cva6:2026.01
+# mascucsc/hagent-cva6:2026.02
 
 required_tools:
   - name: yosys

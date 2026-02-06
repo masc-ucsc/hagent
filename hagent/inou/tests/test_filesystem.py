@@ -67,13 +67,13 @@ def local_filesystem(setup_test_directory):
 def docker_filesystem(setup_test_directory):
     """
     Create a Docker filesystem instance for testing.
-    Uses mascucsc/hagent-simplechisel:2026.01 image.
+    Uses mascucsc/hagent-simplechisel:2026.02 image.
     """
     test_dirs = setup_test_directory
 
     # Use PathManager.configured() for Docker mode setup
     with PathManager.configured(
-        docker_image='mascucsc/hagent-simplechisel:2026.01',
+        docker_image='mascucsc/hagent-simplechisel:2026.02',
         repo_dir=str(test_dirs['repo']),
         build_dir=str(test_dirs['build']),
         cache_dir=str(test_dirs['cache']),

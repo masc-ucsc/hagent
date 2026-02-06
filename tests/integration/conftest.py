@@ -5,6 +5,7 @@ Provides shared fixtures and pytest configuration for integration tests.
 """
 
 import re
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -23,6 +24,53 @@ def pytest_configure(config):
     config.addinivalue_line('markers', 'integration: mark test as integration test (requires external repos/Docker)')
     config.addinivalue_line('markers', 'cva6: mark test as using CVA6 Docker image')
     config.addinivalue_line('markers', 'simplechisel: mark test as using SimpleChisel Docker image')
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """
+    After all tests complete, collect coverage files from cache directories.
+
+    Integration tests write coverage data to HAGENT_CACHE_DIR (which persists
+    after Docker containers exit). This hook copies those files to the repo root
+    so 'coverage combine' can find them.
+    """
+    import os
+    import shutil
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+
+    # Find all .coverage.* files in output/integration_tests/*/cache/
+    integration_output = repo_root / 'output' / 'integration_tests'
+    if not integration_output.exists():
+        return
+
+    coverage_files_found = []
+    for cache_dir in integration_output.rglob('cache'):
+        if cache_dir.is_dir():
+            # Find all coverage files (.coverage and .coverage.*)
+            for pattern in ['.coverage', '.coverage.*']:
+                for cov_file in cache_dir.glob(pattern):
+                    if not cov_file.is_file():
+                        continue
+                    # Copy to repo root with unique name
+                    if cov_file.name == '.coverage':
+                        # Rename .coverage to .coverage.<random> to avoid conflicts
+                        import uuid
+
+                        dest = repo_root / f'.coverage.{uuid.uuid4().hex[:8]}'
+                    else:
+                        dest = repo_root / cov_file.name
+                        # If file already exists, append random suffix
+                        if dest.exists():
+                            import uuid
+
+                            dest = repo_root / f'{cov_file.name}.{uuid.uuid4().hex[:8]}'
+                    shutil.copy2(cov_file, dest)
+                    coverage_files_found.append(dest.name)
+
+    if coverage_files_found:
+        print(f'\n✓ Collected {len(coverage_files_found)} coverage file(s) from cache directories')
+        print(f'  Run: uv run coverage combine && uv run coverage xml -o coverage.xml')
 
 
 def _sanitize_node_id(node_id: str) -> str:
@@ -48,6 +96,66 @@ def test_output_dir(request, monkeypatch):
     monkeypatch.setenv('TMP', str(output_dir))
 
     return output_dir
+
+
+@pytest.fixture(autouse=True)
+def enable_subprocess_coverage(monkeypatch):
+    """
+    Automatically wrap subprocess.run calls to enable coverage tracking.
+
+    This fixture monkeypatches subprocess.run to inject 'coverage run -p'
+    for Python commands, enabling coverage tracking in integration test subprocesses.
+
+    For Docker-based tests, coverage data is written to HAGENT_CACHE_DIR so it
+    persists after the container exits.
+    """
+    original_run = subprocess.run
+    repo_root = Path(__file__).resolve().parent.parent.parent
+
+    def coverage_aware_run(cmd, *args, **kwargs):
+        """Wrapper that injects coverage tracking for Python subprocess calls."""
+        # Check if this is a Python command via uv run
+        if isinstance(cmd, list) and len(cmd) >= 3 and cmd[0:3] == ['uv', 'run', 'python']:
+            # Ensure env has coverage config
+            if 'env' in kwargs:
+                env = kwargs['env'].copy()
+            else:
+                import os
+
+                env = os.environ.copy()
+
+            # Determine if running in Docker mode
+            is_docker = 'HAGENT_DOCKER' in env and env.get('HAGENT_DOCKER')
+
+            # Set coverage paths based on Docker vs local mode
+            if is_docker:
+                # Inside Docker:
+                # - pyproject.toml is at /code/hagent/pyproject.toml
+                # - cache is mounted at /code/workspace/cache
+                coverage_rc = '/code/hagent/pyproject.toml'
+                coverage_file = '/code/workspace/cache/.coverage'
+            else:
+                # Local mode
+                coverage_rc = str(repo_root / 'pyproject.toml')
+                if 'HAGENT_CACHE_DIR' in env:
+                    coverage_file = f"{env['HAGENT_CACHE_DIR']}/.coverage"
+                else:
+                    coverage_file = str(repo_root / '.coverage')
+
+            # Inject coverage with explicit config file
+            # ['uv', 'run', 'python', ...] -> ['uv', 'run', 'coverage', 'run', '-p', '--rcfile=...', 'python', ...]
+            modified_cmd = cmd[0:2] + ['coverage', 'run', '-p', f'--rcfile={coverage_rc}'] + cmd[2:]
+
+            # Set COVERAGE_FILE to write to cache directory (persists after Docker exit)
+            env['COVERAGE_FILE'] = coverage_file
+
+            kwargs['env'] = env
+            return original_run(modified_cmd, *args, **kwargs)
+        else:
+            # Not a Python command, run as-is
+            return original_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, 'run', coverage_aware_run)
 
 
 # ============================================================================

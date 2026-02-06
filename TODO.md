@@ -1,4 +1,10 @@
 -------
+tests/integration/test_synth_lec_bug_injection.py::test_cva6_alu_bug_detection FAILED                                                                                 [ 62%]
+tests/integration/test_synth_lec_bug_injection.py::test_simplechisel_gcd_bug_detection FAILED                                                                         [ 75%]
+tests/integration/test_synth_sta_validation.py::test_cva6_sta_reports FAILED                                                                                          [ 87%]
+tests/integration/test_synth_sta_validation.py::test_simplechisel_sta_reports FAILED                                                                                  [100%]
+
+-------
 
 litellm also supports OpenAI codex, but there is code to switch to OpenAI API.
 
@@ -80,7 +86,7 @@ Can we provide test_replicate_code and test_equiv_checker_docker to see which fu
 
 mada4:
 
- docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2026.01
+ docker run -it -v ./tmp/repo:/code/workspace/repo -v /mada/software/techfiles/sky130_fd_sc/:/code/workspace/tech --rm mascucsc/hagent-simplechisel:2026.02
 
  fix hagent.yaml so that it can run synth.rb
 

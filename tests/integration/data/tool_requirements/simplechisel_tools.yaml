@@ -1,5 +1,5 @@
 # Required tools for SimpleChisel Docker image
-# mascucsc/hagent-simplechisel:2026.01
+# mascucsc/hagent-simplechisel:2026.02
 
 required_tools:
   - name: yosys

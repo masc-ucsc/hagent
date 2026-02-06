@@ -48,33 +48,33 @@ HAGENT_ROOT=${HAGENT_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}
 
 case "$PROJECT_NAME" in
 cva6)
-  DOCKER_IMAGE="mascucsc/hagent-cva6:2026.01"
+  DOCKER_IMAGE="mascucsc/hagent-cva6:2026.02"
   ;;
 simplechisel)
-  DOCKER_IMAGE="mascucsc/hagent-simplechisel:2026.01"
+  DOCKER_IMAGE="mascucsc/hagent-simplechisel:2026.02"
   ;;
 soomrv)
-  DOCKER_IMAGE="mascucsc/hagent-soomrv:2025.12"
+  DOCKER_IMAGE="mascucsc/hagent-soomrv:2026.02"
   ;;
 verilog-adder)
-  DOCKER_IMAGE="mascucsc/hagent-builder:2026.01"
+  DOCKER_IMAGE="mascucsc/hagent-builder:2026.02"
   EXAMPLE_SOURCE_DIR="${HAGENT_ROOT}/examples/verilog_adder"
   ;;
 xiangshan)
   DOCKER_IMAGE="mascucsc/hagent-xiangshan:2025.12"
   ;;
 esp32_led)
-  DOCKER_IMAGE="mascucsc/hagent-builder:2026.01"
+  DOCKER_IMAGE="mascucsc/hagent-builder:2026.02"
   EXAMPLE_SOURCE_DIR="${HAGENT_ROOT}/examples/esp32_led"
   ;;
 *)
   # Check if it's a directory in examples or a direct path
   if [[ -d "${HAGENT_ROOT}/examples/${PROJECT_NAME}" ]]; then
     EXAMPLE_SOURCE_DIR="${HAGENT_ROOT}/examples/${PROJECT_NAME}"
-    DOCKER_IMAGE="mascucsc/hagent-builder:2026.01"
+    DOCKER_IMAGE="mascucsc/hagent-builder:2026.02"
   elif [[ -d "$PROJECT_NAME" ]]; then
     EXAMPLE_SOURCE_DIR="$(cd "$PROJECT_NAME" && pwd)" # Get absolute path
-    DOCKER_IMAGE="mascucsc/hagent-builder:2026.01"
+    DOCKER_IMAGE="mascucsc/hagent-builder:2026.02"
   else
     echo "Unknown project: '$PROJECT_NAME'" >&2
     echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan, esp32_led" >&2
@@ -84,7 +84,7 @@ esp32_led)
   ;;
 esac
 
-# Extract docker version from image tag (e.g., "mascucsc/hagent-simplechisel:2026.01" -> "2025.12")
+# Extract docker version from image tag (e.g., "mascucsc/hagent-simplechisel:2026.02" -> "2025.12")
 DOCKER_VERSION=$(echo "$DOCKER_IMAGE" | sed 's/.*://')
 CACHE_TEMPLATE_DIR="${HAGENT_ROOT}/.cache/setup_${PROJECT_NAME}_mcp_${DOCKER_VERSION}"
 
