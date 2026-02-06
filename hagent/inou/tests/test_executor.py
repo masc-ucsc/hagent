@@ -47,7 +47,7 @@ class TestExecutorFactory:
             repo_dir.mkdir()
 
             with PathManager.configured(
-                docker_image='mascucsc/hagent-simplechisel:2026.01',
+                docker_image='mascucsc/hagent-simplechisel:2026.02',
                 repo_dir=str(repo_dir),
                 build_dir=str(Path(temp_dir) / 'build'),
                 cache_dir=str(Path(temp_dir) / 'cache'),
@@ -266,7 +266,7 @@ class TestDockerExecutorOperations:
             mock_cm.get_cwd.return_value = '/code/workspace/repo'
 
             with PathManager.configured(
-                docker_image='mascucsc/hagent-simplechisel:2026.01',
+                docker_image='mascucsc/hagent-simplechisel:2026.02',
                 repo_dir=str(repo_dir),
                 build_dir=str(Path(temp_dir) / 'build'),
                 cache_dir=str(Path(temp_dir) / 'cache'),
@@ -292,7 +292,7 @@ class TestDockerExecutorOperations:
             mock_cm.run_cmd.return_value = (0, 'output', '')
 
             with PathManager.configured(
-                docker_image='mascucsc/hagent-simplechisel:2026.01',
+                docker_image='mascucsc/hagent-simplechisel:2026.02',
                 repo_dir=str(repo_dir),
                 build_dir=str(Path(temp_dir) / 'build'),
                 cache_dir=str(Path(temp_dir) / 'cache'),
@@ -327,7 +327,7 @@ class TestDockerExecutorOperations:
             mock_cm.set_cwd.return_value = True
 
             with PathManager.configured(
-                docker_image='mascucsc/hagent-simplechisel:2026.01',
+                docker_image='mascucsc/hagent-simplechisel:2026.02',
                 repo_dir=str(repo_dir),
                 build_dir=str(Path(temp_dir) / 'build'),
                 cache_dir=str(Path(temp_dir) / 'cache'),
@@ -351,7 +351,7 @@ class TestDockerExecutorOperations:
             mock_cm.get_cwd.return_value = '/code/workspace/repo'
 
             with PathManager.configured(
-                docker_image='mascucsc/hagent-simplechisel:2026.01',
+                docker_image='mascucsc/hagent-simplechisel:2026.02',
                 repo_dir=str(repo_dir),
                 build_dir=str(Path(temp_dir) / 'build'),
                 cache_dir=str(Path(temp_dir) / 'cache'),

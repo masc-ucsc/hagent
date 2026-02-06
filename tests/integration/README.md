@@ -1,6 +1,6 @@
 # HAgent Integration Tests
 
-This directory contains integration tests for HAgent that test against Docker images (cva6:2026.01 and simplechisel:2026.01).
+This directory contains integration tests for HAgent that test against Docker images (cva6:2026.02 and simplechisel:2026.02).
 
 ## Overview
 
@@ -51,13 +51,13 @@ Tests that required tools are installed and working in Docker images:
 
 ### Docker Images
 Tests require Docker images to be available:
-- `mascucsc/hagent-cva6:2026.01`
-- `mascucsc/hagent-simplechisel:2026.01`
+- `mascucsc/hagent-cva6:2026.02`
+- `mascucsc/hagent-simplechisel:2026.02`
 
 Pull images:
 ```bash
-docker pull mascucsc/hagent-cva6:2026.01
-docker pull mascucsc/hagent-simplechisel:2026.01
+docker pull mascucsc/hagent-cva6:2026.02
+docker pull mascucsc/hagent-simplechisel:2026.02
 ```
 
 ### Tools
@@ -190,7 +190,7 @@ Note: Integration tests store artifacts in `output/integration_tests/` instead o
 ```
 Error: Failed to extract template from Docker image
 ```
-**Solution:** Pull the Docker image: `docker pull mascucsc/hagent-cva6:2026.01`
+**Solution:** Pull the Docker image: `docker pull mascucsc/hagent-cva6:2026.02`
 
 ### setup_mcp.sh fails
 ```

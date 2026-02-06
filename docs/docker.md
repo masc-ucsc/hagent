@@ -13,6 +13,6 @@ Command line that mounts a local cache (allows to reuse data across docker runs)
 
 ```bash
 cd HAGENT_REPO
-docker run --rm -it -v ~/tmp/cache:/code/workspace/cache -v$HAGENT_TECH_DIR:/code/workspace/tech -v.:/code/hagent  mascucsc/hagent-simplechisel:2026.01
+docker run --rm -it -v ~/tmp/cache:/code/workspace/cache -v$HAGENT_TECH_DIR:/code/workspace/tech -v.:/code/hagent  mascucsc/hagent-simplechisel:2026.02
 ```
 

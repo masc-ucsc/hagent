@@ -21,7 +21,7 @@ Input YAML Format:
     # Docker settings (script will start/stop container automatically)
     docker_patterns:  # Paths to scan in Docker
       - "/code/workspace/repo/src/main/scala"
-    docker_image: "mascucsc/hagent-simplechisel:2026.01"  # Docker image
+    docker_image: "mascucsc/hagent-simplechisel:2026.02"  # Docker image
 
     # Optional
     repo_path: "."  # For git commit tracking
@@ -35,7 +35,7 @@ from typing import Dict, Any
 
 # Set execution mode to docker if not already set
 if 'HAGENT_DOCKER' not in os.environ:
-    os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-simplechisel:2026.01'
+    os.environ['HAGENT_DOCKER'] = 'mascucsc/hagent-simplechisel:2026.02'
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -91,7 +91,7 @@ def generate_hints(input_data: Dict[str, Any]) -> None:
     print('-' * 70)
 
     # Initialize Builder and Docker container
-    docker_image = input_data.get('docker_image', 'mascucsc/hagent-simplechisel:2026.01')
+    docker_image = input_data.get('docker_image', 'mascucsc/hagent-simplechisel:2026.02')
     print('\n🐳 Step 0: Initializing Docker Container')
     print(f'   Docker image: {docker_image}')
 
@@ -286,7 +286,7 @@ unified_diff: |
 # Docker settings (script will start/stop container automatically)
 docker_patterns:
   - "/code/workspace/repo/src/main/scala"
-docker_image: "mascucsc/hagent-simplechisel:2026.01"
+docker_image: "mascucsc/hagent-simplechisel:2026.02"
 
 # Optional
 repo_path: "."
