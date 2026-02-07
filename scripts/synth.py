@@ -567,6 +567,8 @@ yosys hierarchy -top {top_name}
 yosys flatten {top_name}
 yosys chformal -remove
 yosys opt
+yosys bwmuxmap
+yosys demuxmap
 yosys write_verilog -simple-lhs {netlist_path}
 """
 
@@ -644,6 +646,8 @@ yosys hierarchy -top $top_module
 yosys flatten
 yosys chformal -remove
 yosys opt
+yosys bwmuxmap
+yosys demuxmap
 if {{$top_module ne "{top_name}"}} {{
     puts "Renaming module $top_module to {top_name}"
     yosys rename $top_module {top_name}
@@ -724,15 +728,17 @@ yosys hierarchy -top {top_name}
 yosys flatten {top_name}
 yosys chformal -remove
 yosys opt
+yosys bwmuxmap
+yosys demuxmap
 yosys write_verilog -simple-lhs {elab_path}
 """
 
-    # Execute
+    # Execute (use elab_sv2v.tcl/log so failed read_slang logs are preserved)
     _run_tool_with_script(
-        ['yosys', '-c', str(output_dir / 'elab.tcl')],
+        ['yosys', '-c', str(output_dir / 'elab_sv2v.tcl')],
         script,
-        output_dir / 'elab.tcl',
-        output_dir / 'elab.log',
+        output_dir / 'elab_sv2v.tcl',
+        output_dir / 'elab_sv2v.log',
         f'Elaboration (sv2v): {elab_path}',
     )
 
