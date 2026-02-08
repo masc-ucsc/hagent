@@ -26,15 +26,47 @@ def _check_tool_available(tool_name):
         sys.exit(1)
 
 
-def _run_tool_with_script(tool_cmd, script_content, script_path, log_path, phase_name):
+def _print_log_tail(log_path, lines=30):
+    """Print the last N lines of a log file to stderr for debugging."""
+    try:
+        with open(log_path, 'r') as f:
+            all_lines = f.readlines()
+        tail = all_lines[-lines:] if len(all_lines) > lines else all_lines
+        print(f'--- Last {len(tail)} lines of {log_path} ---', file=sys.stderr)
+        for line in tail:
+            print(line, end='', file=sys.stderr)
+        print(f'--- End of {log_path} ---', file=sys.stderr)
+    except OSError:
+        print(f'warning: could not read log file {log_path}', file=sys.stderr)
+
+
+def _run_tool_with_script(tool_cmd, script_content, script_path, log_path, phase_name, timeout_seconds=1800):
     """Execute a tool with a script and capture output to log"""
     # Write script
     with open(script_path, 'w') as f:
         f.write(script_content)
 
-    # Execute with logging
-    with open(log_path, 'w') as log:
-        subprocess.run(tool_cmd, stdout=log, stderr=subprocess.STDOUT, check=True)
+    # Execute with timeout and log monitoring
+    log = open(log_path, 'w')
+    try:
+        proc = subprocess.Popen(tool_cmd, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            proc.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            log.close()
+            print(f'error: {phase_name} timed out after {timeout_seconds}s', file=sys.stderr)
+            _print_log_tail(log_path)
+            sys.exit(1)
+    finally:
+        if not log.closed:
+            log.close()
+
+    if proc.returncode != 0:
+        print(f'error: {phase_name} failed with return code {proc.returncode}', file=sys.stderr)
+        _print_log_tail(log_path)
+        raise subprocess.CalledProcessError(proc.returncode, tool_cmd)
 
     # Report completion
     print(f'{phase_name} complete', file=sys.stderr)
@@ -755,6 +787,12 @@ def run_synthesis(args, top_name):
         print('hint: Run elaboration first (without --skip-elab)', file=sys.stderr)
         sys.exit(1)
 
+    # Write ABC optimization script to a separate file to avoid TCL quoting issues
+    # Note: {D} is literal ABC syntax for delay-oriented NF mapper, not a Python format string
+    abc_script_path = output_dir / 'abc.script'
+    with open(abc_script_path, 'w') as f:
+        f.write('strash; &get -n; &fraig -x; &put; scorr; dc2; dretime; strash; &get -n; &dch -f; &nf {D}; &put\n')
+
     # Generate synthesis script
     script = f"""yosys read_verilog -sv {elab_path}
 yosys hierarchy -top {top_name}
@@ -762,7 +800,7 @@ yosys synth -top {top_name}
 yosys dfflibmap -liberty {args.liberty}
 yosys printattrs
 yosys stat
-yosys abc -liberty {args.liberty} -dff -keepff -g aig
+yosys abc -liberty {args.liberty} -dff -keepff -script {abc_script_path}
 yosys stat
 yosys write_verilog -simple-lhs {netlist_path}
 """
