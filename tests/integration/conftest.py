@@ -34,7 +34,6 @@ def pytest_sessionfinish(session, exitstatus):
     after Docker containers exit). This hook copies those files to the repo root
     so 'coverage combine' can find them.
     """
-    import os
     import shutil
 
     repo_root = Path(__file__).resolve().parent.parent.parent
@@ -70,7 +69,7 @@ def pytest_sessionfinish(session, exitstatus):
 
     if coverage_files_found:
         print(f'\n✓ Collected {len(coverage_files_found)} coverage file(s) from cache directories')
-        print(f'  Run: uv run coverage combine && uv run coverage xml -o coverage.xml')
+        print('  Run: uv run coverage combine && uv run coverage xml -o coverage.xml')
 
 
 def _sanitize_node_id(node_id: str) -> str:
@@ -138,7 +137,7 @@ def enable_subprocess_coverage(monkeypatch):
                 # Local mode
                 coverage_rc = str(repo_root / 'pyproject.toml')
                 if 'HAGENT_CACHE_DIR' in env:
-                    coverage_file = f"{env['HAGENT_CACHE_DIR']}/.coverage"
+                    coverage_file = f'{env["HAGENT_CACHE_DIR"]}/.coverage'
                 else:
                     coverage_file = str(repo_root / '.coverage')
 
