@@ -17,17 +17,17 @@ from typing import Dict, Any, Optional
 import difflib
 import platform
 import json
+import re
 
 def get_mcp_schema() -> Dict[str, Any]:
     """Return MCP tool schema for ESP32 development command."""
 
     available_apis = [
         'install',
-        'define_board',
         'setup',
         'build',
         'flash',
-        'factory_reset',
+        'check_bootloader',
         'monitor',
         'idf',
         'env',
@@ -43,7 +43,11 @@ def get_mcp_schema() -> Dict[str, Any]:
                 },
                 'args': {
                     'type': 'string',
-                    'description': 'Arguments for the API command (e.g., board description, project name, idf.py args)',
+                    'description': 'Arguments for the API command: \n'
+                                   '- install: (REQUIRED) Board name or description (e.g., "rust board", "board_rust_esp32_c3")\n'
+                                   '- setup: (REQUIRED) New project name\n'
+                                   '- build/flash: (OPTIONAL) Extra flags for idf.py\n'
+                                   '- idf: (REQUIRED) Arbitrary idf.py command string',
                 },
                 'timeout': {
                     'type': 'integer',
@@ -71,6 +75,37 @@ def initialize_idf_env():
     os.environ.update(json.loads(export_proc.stdout))
 
     # CalledProcessError is caught and handled by the calling function
+
+def _parse_board_config(file_path: str) -> Dict[str, str]:
+    """
+    Parses a board configuration Markdown file to extract metadata.
+    """
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+            
+        # Extract Board Identifier (look for `- `board`: identifier`)
+        board_match = re.search(r"-\s*`board`\s*:\s*([a-zA-Z0-9_]+)", content)
+        board_id = board_match.group(1).strip() if board_match else "esp32"
+        
+        # Extract Human Readable Model (look for `- `model`: name`)
+        model_match = re.search(r"-\s*`model`\s*:\s*(.+)$", content, re.MULTILINE)
+        model_name = model_match.group(1).strip() if model_match else board_id
+        
+        return {
+            'name': model_name,
+            'model': board_id, # 'model' in board_details refers to the IDF target
+            'file_name': file_path,
+            'short_name': os.path.basename(file_path).replace('.md', '')
+        }
+    except Exception as e:
+        print(f"Warning: Failed to parse {file_path}: {e}", file=sys.stderr)
+        return {
+            'name': os.path.basename(file_path),
+            'model': 'esp32',
+            'file_name': file_path,
+            'short_name': os.path.basename(file_path).replace('.md', '')
+        }
 
 def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
     """
@@ -134,7 +169,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     # 3. Check if ESP-IDF exists in HAGENT_CACHE_DIR/esp-idf/
     # 4. Clone ESP-IDF if needed: git clone --recursive https://github.com/espressif/esp-idf.git
     # 5. Run ./install.sh <esp32_model>
-    # 6. Copy board config to HAGENT_REPO_DIR/AGENTS.md or CLAUDE.md
+    # 6. Copy board config to HAGENT_REPO_DIR/AGENTS.md and GEMINI.md
 
     configs_path = os.path.join(os.environ['HAGENT_ROOT'], 'hagent', 'mcp', 'configs')
     if os.path.isdir(configs_path):
@@ -149,19 +184,40 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         # Process the filtered the boards
         for b in boards:
             file_name = os.path.join(configs_path, f'{b}.md')
-            with open(file_name, 'r') as f:
-                lines = f.read().split('\n')
-                board_details.append(
-                    {'name': lines[0].split(':')[1].strip(), 'model': lines[3].split(':')[1].strip(), 'file_name': file_name}
-                )
-        # Prompt user for: board name + models
-        for idx, b in enumerate(board_details):
-            print(f"[{idx}] {b['name']} ({b['model']})")
+            board_info = _parse_board_config(file_name)
+            board_details.append(board_info)
         
-        # TODO: The input has to be removed when being run as a MCP server, else this might cause the MCP server to hang waiting for the input.
-        # TODO: Remove the option to choose, instead always go for the option the has the closest match.
+        selected_board = None
+        
+        # Check if args are provided. If yes, then filter the boards using args
+        # If exact match is found or if there is only one matching board, set it as the target and proceed with installation
+        # If there are no matches or if args are not provided, prompt the user to provide one from the candidates returned
+        if args:
+            exact_matches = [b for b in board_details if b['name'].lower() == args.lower() or b['short_name'].lower() == args.lower()]
+            if len(exact_matches) == 1:
+                selected_board = exact_matches[0]
 
-        c = int(input())
+            if not selected_board and len(board_details) == 1:
+                selected_board = board_details[0]
+
+        if not selected_board:
+            candidates = [f"{b['name']} (ID: {b['short_name']})" for b in board_details]
+            candidate_str = "\n".join(candidates)
+            
+            if not args:
+                error_msg = f"Please specify a board to install. Available boards:\n{candidate_str}"
+            elif not board_details:
+                error_msg = f"No boards found matching '{args}'. Please try a different search term."
+            else:
+                error_msg = f"Multiple boards match '{args}'. Please specify a specific ID from the list below:\n{candidate_str}"
+            
+            return {
+                'success': False,
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': error_msg,
+                'candidates': candidates
+            }
 
         # Check if ESP-IDF exists in HAGENT_CACHE_DIR/esp-idf/; Install if missing
         idf_path = os.path.join(os.environ['HAGENT_CACHE_DIR'], 'esp-idf')
@@ -177,7 +233,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                 )
                 stdout = stdout + clone_result.stdout
             install_script = "./install.sh"
-            install_result = subprocess.run([install_script, board_details[c]['model']], cwd=idf_path, shell=True, check=True, capture_output=True, text=True)
+            install_result = subprocess.run([install_script, selected_board['model']], cwd=idf_path, shell=True, check=True, capture_output=True, text=True)
             # TODO Install ESP-IDF specific certificates in python 
 
             stdout = stdout + install_result.stdout
@@ -189,11 +245,12 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                 'stderr': e.stderr,
             }
 
-        # Append configuration details markdown to $HAGENT_REPO_DIR/AGENTS.md
-        source_file = board_details[c]['file_name']
-        dest_file = os.path.join(os.environ['HAGENT_REPO_DIR'], 'AGENTS.md')
-
-        shutil.copyfile(source_file, dest_file)
+        # Copy board config to $HAGENT_REPO_DIR/AGENTS.md and GEMINI.md
+        source_file = selected_board['file_name']
+        repo_dir = os.environ['HAGENT_REPO_DIR']
+        
+        shutil.copyfile(source_file, os.path.join(repo_dir, 'AGENTS.md'))
+        shutil.copyfile(source_file, os.path.join(repo_dir, 'GEMINI.md'))
 
     return {
         'success': True,
@@ -201,33 +258,8 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         'stdout': stdout,
         'stderr': '',
         'installation_path': idf_path,
-        'board_config': board_details[c],
+        'board_config': selected_board,
     }
-
-
-def api_define_board(args: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Create a new board configuration from a URL.
-
-    Args:
-        args: URL to board specification
-
-    Returns:
-        Dictionary with board definition results
-    """
-    # TODO: Implement define_board logic
-    # 1. Accept board specification URL
-    # 2. Prompt user for: board name, ESP32 model, GPIO mappings
-    # 3. Create hagent/mcp/configs/board_<name>.md
-    # 4. Include: board name, model, GPIO table, reference URL, example usage
-
-    return {
-        'success': False,
-        'exit_code': 1,
-        'stdout': '',
-        'stderr': 'api_define_board not implemented yet',
-    }
-
 
 def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -244,7 +276,7 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     # 2. Source export.sh: . $HAGENT_CACHE_DIR/esp-idf/export.sh
     # 3. Navigate to HAGENT_REPO_DIR
     # 4. Run: idf.py create-project -p . <project_name>
-    # 5. Detect board model from AGENTS.md or CLAUDE.md
+    # 5. Detect board model from AGENTS.md or GEMINI.md
     # 6. Run: idf.py set-target <esp32_model>
     # 7. Create esp_env.sh helper script
 
@@ -399,77 +431,58 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
         'flash_result': 'Flash done',
     }
 
-def api_factory_reset(args: Optional[str] = None) -> Dict[str, Any]:
+def api_check_bootloader(args: Optional[str] = None) -> Dict[str, Any]:
     """
-    Guide user through factory reset with hello world example.
-    Verifies board functionality in an isolated temporary environment.
-    """
-    # TODO: Implement factory_reset logic
-    # 1. Create/use hello world example (prints "hello NUM" every second)
-    # 2. Build hello world
-    # 3. Display step-by-step instructions:
-    #    - Unplug USB-C
-    #    - Press and hold BOOT button
-    #    - Plug USB-C while holding BOOT
-    #    - Release BOOT button
-    #    - Wait for user confirmation at each step
-    # 4. Flash hello world
-    # 5. Instruct user to press RESET
-    # 6. Run monitor briefly to verify
+    Verify if the ESP32 board is connected and responsive in bootloader mode.
     
-    hello_world_src = os.path.join(os.environ["HAGENT_ROOT"], "examples", "esp32_helloworld")
-    target_config = "esp32c3"
+    CRITICAL: Call this tool FIRST to verify hardware connectivity. If it fails, 
+    check physical connections (cable, ports), verify that the board is in 
+    bootloader mode, and ensure the necessary USB-to-Serial drivers (e.g., CP210x, 
+    CH34x) are installed on the host system before troubleshooting software.
+
+    Returns:
+        Dictionary with check results (success=True if chip is responsive)
+    """
+    check_cmd = "esptool chip-id"
+    
     try:
-        if not shutil.which('idf.py'):
+        # Check if esptool is in PATH; source export.sh if not
+        if not shutil.which('esptool'):
             initialize_idf_env()
+            
+        # Run the chip-id command to handshake with the board
+        result = subprocess.run(
+            check_cmd, 
+            cwd=os.environ['HAGENT_REPO_DIR'], 
+            shell=True, 
+            capture_output=True, 
+            text=True, 
+            check=True
+        )
         
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            shutil.copytree(hello_world_src, tmp_dir, dirs_exist_ok=True)
-
-            subprocess.run(f"idf.py set-target {target_config}", cwd=tmp_dir, shell=True, check=True, capture_output=True, text=True)
-
-            subprocess.run("idf.py build", cwd=tmp_dir, shell=True, check=True, capture_output=True, text=True)
-
-            print("\n" + "="*45)
-            print(" STEP 1: ENTER BOOTLOADER MODE")
-            print("="*45)
-            print("1. Unplug the USB-C cable from the board.")
-            print("2. Press and HOLD the BOOT button.")
-            print("3. Plug the USB-C cable back in while holding BOOT.")
-            print("4. Release the BOOT button.")
-            input("\nPress [ENTER] once the board is in bootloader mode...")
-
-            subprocess.run("idf.py flash", cwd=tmp_dir, shell=True, check=True, capture_output=True, text=True)
-
-            print("\n" + "="*45)
-            print(" STEP 2: VERIFY OPERATION")
-            print("="*45)
-            print("1. Press the RESET button on the board.")
-            input("2. Press [ENTER] to start monitoring output for 10 seconds...")
-
-            monitor_res = _run_monitor(tmp_dir, timeout=10)
-            monitor_output = monitor_res.get('stdout', 'No output captured.')
-
-            return {
-                'success': True,
-                'exit_code': 0,
-                'stdout': monitor_output,
-                'stderr': ''
-            }
-
+        return {
+            'success': True,
+            'exit_code': 0,
+            'stdout': result.stdout,
+            'stderr': result.stderr,
+            'status': 'Board connected and responsive'
+        }
+        
     except subprocess.CalledProcessError as e:
         return {
             'success': False,
             'exit_code': e.returncode,
             'stdout': e.stdout,
-            'stderr': e.stderr
+            'stderr': e.stderr,
+            'status': 'Board not detected or not in bootloader mode'
         }
     except Exception as e:
         return {
             'success': False,
             'exit_code': 1,
             'stdout': '',
-            'stderr': e.stderr
+            'stderr': str(e),
+            'status': 'Error checking bootloader'
         }
 
 
@@ -634,11 +647,10 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
         # Route to appropriate API handler
         api_handlers = {
             'install': api_install,
-            'define_board': api_define_board,
             'setup': api_setup,
             'build': api_build,
             'flash': api_flash,
-            'factory_reset': api_factory_reset,
+            'check_bootloader': api_check_bootloader,
             'monitor': lambda args: api_monitor(args, timeout),
             'idf': api_idf,
             'env': api_env,
@@ -678,9 +690,6 @@ def create_argument_parser():
   # Install ESP-IDF for rust board
   %(prog)s --api install --args "rust board that uses esp32"
 
-  # Define a new board from URL
-  %(prog)s --api define_board --args "https://example.com/board-spec"
-
   # Setup a new project
   %(prog)s --api setup --args "led_toggle"
 
@@ -690,8 +699,8 @@ def create_argument_parser():
   # Flash to board
   %(prog)s --api flash
 
-  # Factory reset with hello world
-  %(prog)s --api factory_reset
+  # Check if board is in bootloader mode
+  %(prog)s --api check_bootloader
 
   # Monitor output (30s timeout)
   %(prog)s --api monitor --timeout 30
