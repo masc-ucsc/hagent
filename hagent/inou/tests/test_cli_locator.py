@@ -112,7 +112,7 @@ class TestCLILocatorBasics:
                 'verilog',
                 '--to',
                 'chisel',
-                '--top',
+                '--name',
                 'test',
             ],
             capture_output=True,
@@ -132,7 +132,7 @@ class TestCLILocatorBasics:
                 'locate_variable',
                 '--to',
                 'invalid',
-                '--top',
+                '--name',
                 'test',
                 'x',
             ],
@@ -153,7 +153,7 @@ class TestCLILocatorBasics:
                 'locate_variable',
                 '--to',
                 'chisel',
-                '--top',
+                '--name',
                 'test',
             ],
             capture_output=True,
@@ -176,7 +176,7 @@ class TestCLILocatorBasics:
                 'verilog',
                 '--to',
                 'chisel',
-                '--top',
+                '--name',
                 'test',
                 'x',
             ],
@@ -204,7 +204,7 @@ class TestCLILocatorValidation:
                 'verilog',
                 '--to',
                 'chisel',
-                '--top',
+                '--name',
                 'test',
                 'x',
             ],
@@ -228,14 +228,12 @@ class TestCLILocatorWithPipelinedD:
     mascucsc/hagent-simplechisel:2026.02.
     """
 
-    @pytest.mark.skip(reason='Locator does not yet support flat netlist/SystemVerilog (no hierarchy)')
     def test_locate_vcd_to_chisel(self, docker_env_for_cli):
         """Test VCD signal mapping to Chisel using locate_vcd API.
 
-        Example: pipelined_d.id_ex_ctrl.reg_ex_ctrl_aluop -> stage-register.scala
-        Note: Skipped - netlist.v is flat and Chisel-generated .sv files use flattened
-        signal names (_id_ex_ctrl_io_data_ex_ctrl_aluop) instead of hierarchical paths.
-        Locator currently requires hierarchical Verilog with module instances.
+        PipelinedCPU.id_ex_ctrl.reg_ex_ctrl_aluop -> cpu.scala (parent module fallback)
+        The hierarchy maps id_ex_ctrl to StageReg_2 (generic register), but the actual
+        signal reference is in PipelinedCPU where aluop is connected through the pipeline.
         """
         result = subprocess.run(
             [
@@ -246,9 +244,9 @@ class TestCLILocatorWithPipelinedD:
                 'locate_vcd',
                 '--to',
                 'Chisel',
-                '--top',
+                '--name',
                 'pipelined_d',
-                'pipelined_d.id_ex_ctrl.reg_ex_ctrl_aluop',
+                'PipelinedCPU.id_ex_ctrl.reg_ex_ctrl_aluop',
             ],
             capture_output=True,
             text=True,
@@ -256,23 +254,18 @@ class TestCLILocatorWithPipelinedD:
             cwd=str(docker_env_for_cli['test_dir']),
         )
 
-        # Should succeed and find locations in Scala source
         if result.returncode != 0:
             print(f'STDOUT: {result.stdout}')
             print(f'STDERR: {result.stderr}')
 
         assert result.returncode == 0, f'CLI failed: {result.stderr}'
-        # Should find Scala source files
-        assert '.scala' in result.stdout.lower(), f'Scala source not found in output: {result.stdout}'
-        # Should contain line numbers
-        assert ':' in result.stdout
+        assert 'cpu.scala' in result.stdout, f'cpu.scala not found in output: {result.stdout}'
+        assert result.stdout.count(':') >= 3, f'Expected at least 3 occurrences, got: {result.stdout}'
 
-    @pytest.mark.skip(reason='Locator does not yet support flat netlist/SystemVerilog (no hierarchy)')
     def test_locate_vcd_to_verilog(self, docker_env_for_cli):
         """Test VCD signal mapping to Verilog using locate_vcd API.
 
-        Example: pipelined_d.id_ex_ctrl.reg_ex_ctrl_aluop -> StageReg.sv
-        Note: Skipped - requires hierarchical Verilog support
+        PipelinedCPU.id_ex_ctrl.reg_ex_ctrl_aluop -> StageReg_2.sv
         """
         result = subprocess.run(
             [
@@ -283,9 +276,9 @@ class TestCLILocatorWithPipelinedD:
                 'locate_vcd',
                 '--to',
                 'Verilog',
-                '--top',
+                '--name',
                 'pipelined_d',
-                'pipelined_d.id_ex_ctrl.reg_ex_ctrl_aluop',
+                'PipelinedCPU.id_ex_ctrl.reg_ex_ctrl_aluop',
             ],
             capture_output=True,
             text=True,
@@ -298,10 +291,9 @@ class TestCLILocatorWithPipelinedD:
             print(f'STDERR: {result.stderr}')
 
         assert result.returncode == 0, f'CLI failed: {result.stderr}'
-        assert '.sv' in result.stdout or '.v' in result.stdout, f'Verilog source not found in output: {result.stdout}'
-        assert ':' in result.stdout
+        assert 'StageReg_2.sv' in result.stdout, f'StageReg_2.sv not found in output: {result.stdout}'
+        assert result.stdout.count(':') >= 4, f'Expected at least 4 occurrences, got: {result.stdout}'
 
-    @pytest.mark.skip(reason='Locator does not yet support flat netlist/SystemVerilog (no hierarchy)')
     def test_locate_vcd_verbose(self, docker_env_for_cli):
         """Test verbose output with confidence scores and module info."""
         result = subprocess.run(
@@ -313,10 +305,10 @@ class TestCLILocatorWithPipelinedD:
                 'locate_vcd',
                 '--to',
                 'Chisel',
-                '--top',
+                '--name',
                 'pipelined_d',
                 '-v',
-                'pipelined_d.id_ex_ctrl.reg_ex_ctrl_aluop',
+                'PipelinedCPU.id_ex_ctrl.reg_ex_ctrl_aluop',
             ],
             capture_output=True,
             text=True,
@@ -328,11 +320,11 @@ class TestCLILocatorWithPipelinedD:
             print(f'STDOUT: {result.stdout}')
             print(f'STDERR: {result.stderr}')
 
-        assert result.returncode == 0
-        # Verbose output should include additional information
-        # (either in stdout or stderr depending on implementation)
-        output = result.stdout + result.stderr
-        assert 'Confidence:' in output or 'Module:' in output or '.scala' in output.lower()
+        assert result.returncode == 0, f'CLI failed: {result.stderr}'
+        # Verbose output should include confidence and module info
+        assert 'Confidence:' in result.stdout
+        assert 'Module:' in result.stdout
+        assert 'cpu.scala' in result.stdout
 
     def test_map_variable_verilog_to_chisel(self, docker_env_for_cli):
         """Test cross-representation variable mapping from Verilog to Chisel."""
@@ -347,7 +339,7 @@ class TestCLILocatorWithPipelinedD:
                 'verilog',
                 '--to',
                 'chisel',
-                '--top',
+                '--name',
                 'pipelined_d',
                 '--module',
                 'ALUControl',
@@ -376,7 +368,7 @@ class TestCLILocatorWithPipelinedD:
                 'locate_variable',
                 '--to',
                 'chisel',
-                '--top',
+                '--name',
                 'pipelined_d',
                 '--module',
                 'ALUControl',
@@ -419,7 +411,7 @@ class TestCLILocatorWithGCD:
                 'locate_vcd',
                 '--to',
                 'verilog',
-                '--top',
+                '--name',
                 'gcd',
                 'gcd.x',
             ],
@@ -453,7 +445,7 @@ class TestCLILocatorWithGCD:
                 'locate_vcd',
                 '--to',
                 'verilog',
-                '--top',
+                '--name',
                 'gcd',
                 'GCD.x',
             ],
@@ -484,7 +476,7 @@ class TestCLILocatorWithGCD:
                 'locate_vcd',
                 '--to',
                 'verilog',
-                '--top',
+                '--name',
                 'gcd',
                 'gcd.io_outputGCD',
             ],
@@ -532,7 +524,7 @@ class TestCLILocatorWithPipelinedDHierarchy:
                 'locate_vcd',
                 '--to',
                 'verilog',
-                '--top',
+                '--name',
                 'pipelined_d',
                 'PipelinedCPU.aluControl.io_aluop',
             ],
