@@ -455,12 +455,13 @@ def main():
     )
     parser.add_argument(
         '--elab-method',
-        choices=['auto', 'slang', 'sv2v'],
+        choices=['auto', 'slang', 'sv2v', 'none'],
         default='auto',
-        help='Elaboration method: auto (try slang, fallback to sv2v), slang (read_slang only), sv2v (sv2v only)',
+        help='Elaboration method: auto (try slang, then sv2v, then none), slang (read_slang only), sv2v (sv2v first), none (read_verilog -sv directly)',
     )
     parser.add_argument('--exclude', action='append', help='Exclude files matching regex pattern (can be used multiple times)')
     parser.add_argument('--top-synthesis', help='Top module for synthesis (when different from elaboration top in --top)')
+    parser.add_argument('--output-module', help='Final module name in output netlist (renames complex names like "mod$inst" to clean names)')
     parser.add_argument('--dry-run', action='store_true', help='Show command line arguments without executing')
     parser.add_argument(
         '--max-fanout',
@@ -571,6 +572,15 @@ def main():
     # Determine synthesis top (may differ from elaborate top)
     synth_top = args.top_synthesis if args.top_synthesis else elaborate_top
 
+    # Determine output module name (final name in netlist, defaults to synth_top)
+    output_module = args.output_module if args.output_module else synth_top
+
+    # Validate: if output_module differs from synth_top, elaboration must run to perform the rename
+    if output_module != synth_top:
+        if args.skip_elab:
+            print('error: --output-module requires elaboration to run (cannot use --skip-elab)', file=sys.stderr)
+            sys.exit(1)
+
     if args.dry_run:
         print_dry_run(args, slang_args, synth_top, elaborate_top)
     else:
@@ -585,10 +595,12 @@ def main():
 
         # Phase 1: Elaborate (unless --skip-elab and elab.v exists)
         if should_run_elab and not (args.skip_elab and args.elab_path.exists()):
-            run_elaboration(args, slang_args, synth_top)
+            run_elaboration(args, slang_args, synth_top, output_module)
 
         # Phase 2: Synthesize if requested
         if should_run_synth:
+            if synth_top != output_module:
+                synth_top = output_module
             run_synthesis(args, synth_top)
 
         # Phase 3: STA if requested
@@ -600,20 +612,27 @@ def main():
             _write_manifest(output_dir, args, slang_args, synth_top)
 
 
-def _generate_yosys_elaboration_script(slang_cmd, top_name, netlist_path):
+def _generate_yosys_elaboration_script(slang_cmd, top_name, output_module, netlist_path):
     """Generate simple Yosys TCL script for elaboration only (stops after opt)"""
+    # Build rename command if output_module differs from top_name
+    rename_cmd = ''
+    if output_module != top_name:
+        rename_cmd = f'yosys rename {top_name} {output_module}\n'
+
     return f"""yosys read_slang {slang_cmd}
 yosys hierarchy -top {top_name}
 yosys flatten {top_name}
 yosys chformal -remove
+yosys proc
 yosys opt
+yosys memory -nomap
 yosys bwmuxmap
 yosys demuxmap
-yosys write_verilog -simple-lhs {netlist_path}
+{rename_cmd}yosys write_verilog -simple-lhs {netlist_path}
 """
 
 
-def _generate_yosys_elaboration_hierarchy_script(slang_cmd, top_name, netlist_path, output_dir):
+def _generate_yosys_elaboration_hierarchy_script(slang_cmd, top_name, output_module, netlist_path, output_dir):
     """Generate Yosys TCL script for elaboration with hierarchy handling (stops after opt)"""
     # Use output directory for hierarchy file
     hierarchy_file = output_dir / 'hierarchy.txt'
@@ -685,35 +704,44 @@ if {{[llength $rejected] > 0}} {{
 yosys hierarchy -top $top_module
 yosys flatten
 yosys chformal -remove
+yosys proc
 yosys opt
+yosys memory -nomap
 yosys bwmuxmap
 yosys demuxmap
-if {{$top_module ne "{top_name}"}} {{
-    puts "Renaming module $top_module to {top_name}"
-    yosys rename $top_module {top_name}
+# Always rename to output_module for clean downstream processing
+if {{$top_module ne "{output_module}"}} {{
+    puts "Renaming module $top_module to {output_module}"
+    yosys rename $top_module {output_module}
 }}
 yosys write_verilog -simple-lhs {netlist_path}
 """
 
 
-def run_elaboration(args, slang_args, top_name):
+def run_elaboration(args, slang_args, top_name, output_module):
     """Run elaboration phase (produces elab.v)"""
     _check_tool_available('yosys')
 
     # Determine elaboration method
     if args.elab_method == 'sv2v':
-        _elaborate_with_sv2v(args, slang_args, top_name)
+        _elaborate_with_verilog(args, slang_args, top_name, output_module, use_sv2v=True)
+    elif args.elab_method == 'none':
+        _elaborate_with_verilog(args, slang_args, top_name, output_module, use_sv2v=False)
     elif args.elab_method == 'slang':
-        _elaborate_with_readslang(args, slang_args, top_name)
+        _elaborate_with_readslang(args, slang_args, top_name, output_module)
     else:  # auto
         try:
-            _elaborate_with_readslang(args, slang_args, top_name)
+            _elaborate_with_readslang(args, slang_args, top_name, output_module)
         except subprocess.CalledProcessError as e:
             print(f'read_slang failed: {e}, falling back to sv2v', file=sys.stderr)
-            _elaborate_with_sv2v(args, slang_args, top_name)
+            try:
+                _elaborate_with_verilog(args, slang_args, top_name, output_module, use_sv2v=True)
+            except subprocess.CalledProcessError as e2:
+                print(f'sv2v failed: {e2}, falling back to direct read_verilog', file=sys.stderr)
+                _elaborate_with_verilog(args, slang_args, top_name, output_module, use_sv2v=False)
 
 
-def _elaborate_with_readslang(args, slang_args, top_name):
+def _elaborate_with_readslang(args, slang_args, top_name, output_module):
     """Elaborate using read_slang"""
     output_dir = Path(args.output_dir)
     elab_path = args.elab_path
@@ -734,9 +762,9 @@ def _elaborate_with_readslang(args, slang_args, top_name):
 
     # Generate script
     if needs_hierarchy:
-        script = _generate_yosys_elaboration_hierarchy_script(slang_cmd, top_name, elab_path, output_dir)
+        script = _generate_yosys_elaboration_hierarchy_script(slang_cmd, top_name, output_module, elab_path, output_dir)
     else:
-        script = _generate_yosys_elaboration_script(slang_cmd, top_name, elab_path)
+        script = _generate_yosys_elaboration_script(slang_cmd, top_name, output_module, elab_path)
 
     # Execute
     _run_tool_with_script(
@@ -748,29 +776,54 @@ def _elaborate_with_readslang(args, slang_args, top_name):
     )
 
 
-def _elaborate_with_sv2v(args, slang_args, top_name):
-    """Elaborate using sv2v"""
+def _elaborate_with_verilog(args, slang_args, top_name, output_module, use_sv2v=True):
+    """Elaborate using read_verilog, optionally with sv2v preprocessing.
+
+    Args:
+        args: Parsed command-line arguments
+        slang_args: Arguments including source files
+        top_name: Top module name
+        output_module: Final module name in output netlist
+        use_sv2v: If True, run sv2v first then read_verilog on converted files.
+                  If False, use read_verilog -sv directly on source files.
+    """
     output_dir = Path(args.output_dir)
     elab_path = args.elab_path
 
-    # Run sv2v
     sv_files = [a for a in slang_args if a.endswith(('.sv', '.v'))]
-    tmp_dir = output_dir / 'sv2v_tmp'
-    tmp_dir.mkdir(exist_ok=True)
 
-    sv2v_cmd = ['sv2v', '-DSYNTHESIS', '-EAlways'] + sv_files + ['-w', str(tmp_dir)]
-    print(f'Running sv2v: {" ".join(sv2v_cmd)}', file=sys.stderr)
-    subprocess.run(sv2v_cmd, check=True)
+    if use_sv2v:
+        # Run sv2v first
+        tmp_dir = output_dir / 'sv2v_tmp'
+        tmp_dir.mkdir(exist_ok=True)
 
-    # Elaborate with read_verilog
-    script = f"""yosys read_verilog -sv {tmp_dir}/*.v
+        sv2v_cmd = ['sv2v', '-DSYNTHESIS', '-EAlways'] + sv_files + ['-w', str(tmp_dir)]
+        print(f'Running sv2v: {" ".join(sv2v_cmd)}', file=sys.stderr)
+        subprocess.run(sv2v_cmd, check=True)
+
+        # Elaborate with read_verilog on converted files
+        read_verilog_target = f'{tmp_dir}/*.v'
+        phase_name = f'Elaboration (sv2v): {elab_path}'
+    else:
+        # Direct read_verilog -sv on source files
+        read_verilog_target = ' '.join(sv_files)
+        phase_name = f'Elaboration (none): {elab_path}'
+
+    # Build rename command if output_module differs from top_name
+    rename_cmd = ''
+    if output_module != top_name:
+        rename_cmd = f'yosys rename {top_name} {output_module}\n'
+
+    script = f"""yosys read_verilog -sv {read_verilog_target}
 yosys hierarchy -top {top_name}
 yosys flatten {top_name}
 yosys chformal -remove
+yosys proc
 yosys opt
+yosys memory -nomap
 yosys bwmuxmap
 yosys demuxmap
-yosys write_verilog -simple-lhs {elab_path}
+{rename_cmd}yosys write_verilog -simple-lhs {elab_path}
 """
 
     # Execute (use elab_sv2v.tcl/log so failed read_slang logs are preserved)
@@ -779,7 +832,7 @@ yosys write_verilog -simple-lhs {elab_path}
         script,
         output_dir / 'elab_sv2v.tcl',
         output_dir / 'elab_sv2v.log',
-        f'Elaboration (sv2v): {elab_path}',
+        phase_name,
     )
 
 
@@ -894,6 +947,11 @@ link_design {top_name}
         # Add input/output delays for meaningful timing analysis
         sta_script += f'set_input_delay -clock {clock_signal} 0.1 [all_inputs]\n'
         sta_script += f'set_output_delay -clock {clock_signal} 0.1 [all_outputs]\n'
+        sta_script += f"""report_checks \\
+  -path_delay max \\
+  -format full_clock_expanded \\
+  -fields {{  net   fanout     input_pins     hierarchical_pins     src_attr     slew   }}
+"""
 
     # Add power analysis if VCD exists
     if vcd_exists:
@@ -901,9 +959,7 @@ link_design {top_name}
 report_power
 """
 
-    # Add timing analysis
-    sta_script += """report_checks
-exit
+    sta_script += """exit
 """
 
     # Execute
