@@ -22,7 +22,7 @@ class ChiselDiffGenerator:
     Uses LLM_wrap for API calls and template-based prompt formatting.
     """
 
-    def __init__(self, llm_config_file: str, llm_name: str, debug: bool = True):
+    def __init__(self, llm_config_file: str, llm_name: str, debug: bool = True, llm_model: str = ''):
         """
         Initialize ChiselDiffGenerator.
 
@@ -30,10 +30,12 @@ class ChiselDiffGenerator:
             llm_config_file: Path to LLM configuration YAML file
             llm_name: Name of LLM config section (e.g., 'openai_gpt4', 'claude')
             debug: Enable debug output
+            llm_model: Optional LLM model override (e.g., 'openai/gpt-4o'). Overrides config file.
         """
         self.llm_config_file = llm_config_file
         self.llm_name = llm_name
         self.debug = debug
+        self.llm_model = llm_model
 
         # Initialize LLM wrapper (lazy initialization on first use)
         self.llm_wrap = None
@@ -51,7 +53,10 @@ class ChiselDiffGenerator:
         try:
             # LLM_wrap requires: name, conf_file, log_file
             log_file = 'v2chisel_batch_llm.log'
-            self.llm_wrap = LLM_wrap(self.llm_name, self.llm_config_file, log_file)
+            overwrite_conf = {}
+            if self.llm_model:
+                overwrite_conf = {'llm': {'model': self.llm_model}}
+            self.llm_wrap = LLM_wrap(self.llm_name, self.llm_config_file, log_file, overwrite_conf=overwrite_conf)
 
             if self.llm_wrap.last_error:
                 if self.debug:
@@ -59,7 +64,8 @@ class ChiselDiffGenerator:
                 return False
 
             if self.debug:
-                print(f'✅ [LLM] Initialized LLM wrapper: {self.llm_name}')
+                model_info = self.llm_model if self.llm_model else self.llm_wrap.llm_args.get('model', 'unknown')
+                print(f'✅ [LLM] Initialized LLM wrapper: {self.llm_name} (model: {model_info})')
             return True
 
         except Exception as e:

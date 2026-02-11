@@ -98,7 +98,8 @@ class V2chisel_batch(Step):
         default_config = str(Path(__file__).parent / 'v2chisel_batch_conf.yaml')
         llm_config_file = self.input_data.get('llm_config_file', default_config)
         llm_name = self.input_data.get('llm_name', 'v2chisel_batch')
-        self.chisel_diff_generator = ChiselDiffGenerator(llm_config_file, llm_name, debug=self.debug)
+        llm_model = self.input_data.get('llm_model', '')
+        self.chisel_diff_generator = ChiselDiffGenerator(llm_config_file, llm_name, debug=self.debug, llm_model=llm_model)
 
         # Initialize DockerDiffApplier for applying Chisel diffs in Docker
         self.docker_diff_applier = DockerDiffApplier(self.builder)
@@ -133,24 +134,30 @@ class V2chisel_batch(Step):
         cpu_profile = self._determine_cpu_profile(bugs)
         print(f'🔧 Using CPU profile: {cpu_profile}')
 
-        # Step 3: Generate fresh baseline Verilog
-        print('\n' + '=' * 80)
-        print('STEP 1: Generate Fresh Baseline Verilog')
-        print('=' * 80)
+        chisel_diff_only = self.input_data.get('chisel_diff_only', False)
 
-        baseline_result = self._generate_baseline_verilog(cpu_profile)
+        # Step 3: Generate fresh baseline Verilog (skip in chisel_diff_only mode)
+        baseline_result = {}
+        if not chisel_diff_only:
+            print('\n' + '=' * 80)
+            print('STEP 1: Generate Fresh Baseline Verilog')
+            print('=' * 80)
 
-        if not baseline_result['success']:
-            print(f'❌ Baseline generation failed: {baseline_result.get("error")}')
-            return {'success': False, 'error': f'Baseline generation failed: {baseline_result.get("error")}'}
+            baseline_result = self._generate_baseline_verilog(cpu_profile)
 
-        print('✅ Baseline Verilog generation complete!')
-        print(f'   Profile: {baseline_result.get("profile")}')
-        print(f'   Files: {baseline_result.get("file_count", 0)}')
+            if not baseline_result['success']:
+                print(f'❌ Baseline generation failed: {baseline_result.get("error")}')
+                return {'success': False, 'error': f'Baseline generation failed: {baseline_result.get("error")}'}
+
+            print('✅ Baseline Verilog generation complete!')
+            print(f'   Profile: {baseline_result.get("profile")}')
+            print(f'   Files: {baseline_result.get("file_count", 0)}')
+        else:
+            print('\n⏭️  Skipping baseline generation (chisel_diff_only mode)')
 
         # Step 2: Process each bug with retry loops
         print('\n' + '=' * 80)
-        print('STEP 2: Process Bugs with Retry Loops')
+        print('STEP 2: Process Bugs' + (' (chisel_diff_only)' if chisel_diff_only else ' with Retry Loops'))
         print('=' * 80)
 
         bug_results = []
@@ -166,12 +173,28 @@ class V2chisel_batch(Step):
 
         # Summary
         successful_bugs = sum(1 for r in bug_results if r.get('success'))
+        total_cost = sum(r.get('llm_cost', 0) for r in bug_results)
+        total_tokens = sum(r.get('llm_tokens', 0) for r in bug_results)
+
+        if chisel_diff_only:
+            print(f'\n✅ Generated chisel_diff for {successful_bugs}/{len(bugs)} bugs')
+            print(f'💰 Total LLM cost: ${total_cost:.4f}')
+            print(f'🔢 Total tokens used: {total_tokens}')
+
+            return {
+                'success': True,
+                'cpu_profile': cpu_profile,
+                'bugs_processed': len(bugs),
+                'bug_results': bug_results,
+                'bugs_successful': successful_bugs,
+                'total_llm_cost': total_cost,
+                'total_llm_tokens': total_tokens,
+            }
+
         diffs_applied = sum(1 for r in bug_results if r.get('diff_applied', False))
         compilations_successful = sum(1 for r in bug_results if r.get('compilation_success', False))
         verilog_generated = sum(1 for r in bug_results if r.get('verilog_generated', False))
         lec_passed = sum(1 for r in bug_results if r.get('lec_passed', False))
-        total_cost = sum(r.get('llm_cost', 0) for r in bug_results)
-        total_tokens = sum(r.get('llm_tokens', 0) for r in bug_results)
         total_files_modified = sum(r.get('files_modified', 0) for r in bug_results)
 
         print(f'\n✅ Successfully processed {successful_bugs}/{len(bugs)} bugs')
@@ -411,6 +434,23 @@ class V2chisel_batch(Step):
                 print(f'     Line: {amb["original"][:60]}...')
                 print(f'     Matches: {len(amb["matches"])} possible locations')
             print('   Proceeding with best guess, may need LLM retry if diff fails...')
+
+        # If chisel_diff_only mode, return after generating the diff (skip apply/compile/LEC)
+        if self.input_data.get('chisel_diff_only', False):
+            print('✅ [chisel_diff_only] Returning chisel_diff without apply/compile/LEC')
+            return {
+                'bug_number': bug_number,
+                'file': bug_file,
+                'success': True,
+                'hints': hints,
+                'chisel_files_found': chisel_files_found,
+                'unified_diff': unified_diff,
+                'description': bug_description,
+                'chisel_diff': chisel_diff,
+                'llm_attempts': total_llm_attempts,
+                'llm_cost': total_llm_cost,
+                'llm_tokens': total_llm_tokens,
+            }
 
         # Create master backup before any modifications
         print('💾 Creating master backup of original Chisel files...')
@@ -1320,10 +1360,14 @@ def main():
     # Optional arguments
     parser.add_argument(
         '--cpu',
-        choices=['singlecyclecpu_d', 'pipelined_d', 'dualissue_d'],
+        choices=['singlecyclecpu_d', 'singlecyclecpu_nd', 'pipelined_d', 'pipelined_nd', 'dualissue_d', 'dualissue_nd'],
         help='CPU profile override (default: auto-detect from bugs)',
     )
     parser.add_argument('--bugs', help='Bug numbers to process (e.g., "1,2,3" or "1-5")')
+    parser.add_argument('--llm', help='LLM model to use (e.g., "openai/gpt-4o", "anthropic/claude-sonnet-4-5-20250929")')
+    parser.add_argument('--chisel-diff-only', action='store_true', help='Only generate chisel_diff (skip compile/LEC)')
+    parser.add_argument('--compile-error', help='Compile error from previous attempt (triggers prompt_compile_error)')
+    parser.add_argument('--previous-diff-file', help='Path to file containing previous chisel_diff that failed')
     parser.add_argument('--debug', action='store_true', default=True, help='Enable debug output')
 
     args = parser.parse_args()
@@ -1338,8 +1382,22 @@ def main():
         input_data['cpu_type'] = args.cpu
         print(f'🔧 CPU type override from --cpu: {args.cpu}')
 
+    if args.llm:
+        input_data['llm_model'] = args.llm
+        print(f'🔧 LLM model override from --llm: {args.llm}')
+
     input_data['debug'] = args.debug
     input_data['output_dir'] = args.output
+    input_data['chisel_diff_only'] = args.chisel_diff_only
+
+    if args.compile_error:
+        input_data['compile_error'] = args.compile_error
+    if args.previous_diff_file:
+        prev_diff_path = Path(args.previous_diff_file)
+        if prev_diff_path.exists():
+            input_data['previous_chisel_diff'] = prev_diff_path.read_text()
+        else:
+            print(f'WARNING: previous-diff-file not found: {prev_diff_path}')
 
     # Filter bugs if --bugs specified
     if args.bugs and 'bugs' in input_data:
@@ -1368,44 +1426,45 @@ def main():
     processor = V2chisel_batch()
     result = processor.run(input_data)
 
-    # Print summary
-    print('\n' + '=' * 80)
-    print('📊 PIPELINE SUMMARY')
-    print('=' * 80)
-    if result['success']:
-        print('✅ Pipeline completed successfully')
-        print(f'   CPU Profile: {result.get("cpu_profile")}')
-        print(f'   Bugs Loaded: {result.get("bugs_processed")}')
-        print(f'   Bugs Successful: {result.get("bugs_successful")}/{result.get("bugs_processed")}')
-        print(f'   Diffs Applied: {result.get("diffs_applied")}/{result.get("bugs_processed")}')
-        print(f'   Compilations: {result.get("compilations_successful")}/{result.get("bugs_processed")}')
-        print(f'   Verilog Generated: {result.get("verilog_generated")}/{result.get("bugs_processed")}')
-        print(f'   LEC Passed: {result.get("lec_passed")}/{result.get("bugs_processed")}')
-        print(f'   Chisel Files Modified: {result.get("files_modified", 0)}')
-        print(f'   Total LLM Cost: ${result.get("total_llm_cost", 0):.4f}')
-        print(f'   Total LLM Tokens: {result.get("total_llm_tokens", 0)}')
-        print('\n📋 Status by Bug:')
-        for bug_result in result.get('bug_results', []):
-            status = '✅' if bug_result.get('success') else '❌'
-            applied = '✓' if bug_result.get('diff_applied', False) else '✗'
-            compiled = '✓' if bug_result.get('compilation_success', False) else '✗'
-            lec = '✓' if bug_result.get('lec_passed', False) else '✗'
-            print(
-                f'   {status} Bug {bug_result.get("bug_number")}: {bug_result.get("file")} [Diff: {applied}, Compile: {compiled}, LEC: {lec}]'
-            )
-            if bug_result.get('success'):
-                print(f'      LLM: ${bug_result.get("llm_cost", 0):.4f}, {bug_result.get("llm_tokens", 0)} tokens')
+    # Print summary (minimal for chisel_diff_only)
+    if not args.chisel_diff_only:
+        print('\n' + '=' * 80)
+        print('📊 PIPELINE SUMMARY')
+        print('=' * 80)
+        if result['success']:
+            print('✅ Pipeline completed successfully')
+            print(f'   CPU Profile: {result.get("cpu_profile")}')
+            print(f'   Bugs Loaded: {result.get("bugs_processed")}')
+            print(f'   Bugs Successful: {result.get("bugs_successful")}/{result.get("bugs_processed")}')
+            print(f'   Diffs Applied: {result.get("diffs_applied")}/{result.get("bugs_processed")}')
+            print(f'   Compilations: {result.get("compilations_successful")}/{result.get("bugs_processed")}')
+            print(f'   Verilog Generated: {result.get("verilog_generated")}/{result.get("bugs_processed")}')
+            print(f'   LEC Passed: {result.get("lec_passed")}/{result.get("bugs_processed")}')
+            print(f'   Chisel Files Modified: {result.get("files_modified", 0)}')
+            print(f'   Total LLM Cost: ${result.get("total_llm_cost", 0):.4f}')
+            print(f'   Total LLM Tokens: {result.get("total_llm_tokens", 0)}')
+            print('\n📋 Status by Bug:')
+            for bug_result in result.get('bug_results', []):
+                status = '✅' if bug_result.get('success') else '❌'
+                applied = '✓' if bug_result.get('diff_applied', False) else '✗'
+                compiled = '✓' if bug_result.get('compilation_success', False) else '✗'
+                lec = '✓' if bug_result.get('lec_passed', False) else '✗'
                 print(
-                    f'      Modified: {bug_result.get("files_modified", 0)} Chisel file(s), Generated: {bug_result.get("verilog_count", 0)} Verilog file(s)'
+                    f'   {status} Bug {bug_result.get("bug_number")}: {bug_result.get("file")} [Diff: {applied}, Compile: {compiled}, LEC: {lec}]'
                 )
-                print('      LEC: Passed')
-            else:
-                print(f'      Error: {bug_result.get("error")}')
-                if bug_result.get('lec_counterexample'):
-                    print(f'      Counterexample: {bug_result.get("lec_counterexample")}')
-    else:
-        print(f'❌ Pipeline failed: {result.get("error")}')
-    print('=' * 80)
+                if bug_result.get('success'):
+                    print(f'      LLM: ${bug_result.get("llm_cost", 0):.4f}, {bug_result.get("llm_tokens", 0)} tokens')
+                    print(
+                        f'      Modified: {bug_result.get("files_modified", 0)} Chisel file(s), Generated: {bug_result.get("verilog_count", 0)} Verilog file(s)'
+                    )
+                    print('      LEC: Passed')
+                else:
+                    print(f'      Error: {bug_result.get("error")}')
+                    if bug_result.get('lec_counterexample'):
+                        print(f'      Counterexample: {bug_result.get("lec_counterexample")}')
+        else:
+            print(f'❌ Pipeline failed: {result.get("error")}')
+        print('=' * 80)
 
     # Write output YAML
     output_file = os.path.join(args.output, 'output.yaml')
