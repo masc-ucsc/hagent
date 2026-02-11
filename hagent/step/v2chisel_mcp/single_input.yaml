@@ -1,0 +1,11 @@
+# Single bug input for testing v2chisel_mcp
+# This bug changes addition to subtraction in the ALU
+
+bugs:
+  - file: ALU.sv
+    unified_diff: |
+      --- a/ALU.sv
+      +++ b/ALU.sv
+      @@ -14 +14 @@
+      -  wire [31:0]  _io_result_T_2 = io_inputx[31:0] + io_inputy[31:0];
+      +  wire [31:0]  _io_result_T_2 = io_inputx[31:0] - io_inputy[31:0];
