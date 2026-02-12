@@ -39,8 +39,14 @@ Interactive functions like `api_install` (selecting a board from a list) and `ap
     *   If a user needs multiple boards, they must use separate directories/repos for each firmware project.
 *   **Retrieval:** Subsequent tools (`api_setup`, `api_build`) read `AGENTS.md` to automatically detect the target model.
 
+## Completed (Feb 8, 2026)
+*   **Refactored `api_install`**: Implemented non-blocking two-step handshake, metadata parsing with regex, and strict `args` requirement.
+*   **Context Persistence**: Updated `api_install` to create both `AGENTS.md` and `GEMINI.md` in the target repository.
+*   **Hardware Verification**: Added `api_check_bootloader` using `esptool chip-id` as a primary hardware diagnostic.
+*   **Tool Cleanup**: Removed `api_factory_reset` and `api_define_board`.
+*   **Interactive Recipes**: Updated `configs/board_rust_esp32_c3.md` with a non-blocking "Ask -> Confirm -> Verify" recipe for the Agent.
+
 ## Next Steps
-*   Refactor `api_install` to implement disambiguation and `AGENTS.md` persistence (Overwrite mode).
-*   Remove `api_factory_reset` from `mcp_esp32.py`.
-*   Update `configs/board_rust_esp32_c3.md` with the "Factory Reset" recipe.
-*   System Prompt Update: Instruct the Agent to use `AGENTS.md` as the primary source of truth for the active board.
+*   **`api_flash_test_firmware`**: Implement a safe, non-blocking tool to flash a "Hello World" example from a temporary directory for hardware verification without touching the main project.
+*   **Monitor Refinement**: Improve signal handling and timeout behavior in `api_monitor`.
+*   **System Prompt Update**: Instruct the Agent to prioritize `GEMINI.md`/`AGENTS.md` in the repo for board-specific recipes.
