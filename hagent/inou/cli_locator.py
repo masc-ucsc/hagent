@@ -12,16 +12,13 @@ Environment Variables:
 
 Examples:
     # Map VCD signal to Verilog source
-    python -m hagent.inou.cli_locator --api var --from vcd --to verilog --profile gcd "top.gcd.x"
+    python -m hagent.inou.cli_locator --api locate_vcd --to verilog --name gcd "top.gcd.x"
 
     # Map Verilog variable to Chisel source
-    python -m hagent.inou.cli_locator --api var --from verilog --to chisel --profile gcd "x"
+    python -m hagent.inou.cli_locator --api map_variable --from verilog --to chisel --name gcd "x"
 
     # Map Verilog diff to Chisel source (reads from stdin)
-    cat changes.diff | python -m hagent.inou.cli_locator --api code --from verilog --to chisel --profile gcd
-
-    # Map with explicit profile name
-    python -m hagent.inou.cli_locator --api var --from verilog --to chisel --name gcd "io"
+    cat changes.diff | python -m hagent.inou.cli_locator --api locate_code --from verilog --to chisel --name gcd
 """
 
 import argparse
@@ -286,16 +283,16 @@ Environment Variables:
 
 Examples:
   # Map VCD signal to Verilog
-  %(prog)s --api locate_vcd --to verilog --top gcd "top.gcd.x"
+  %(prog)s --api locate_vcd --to verilog --name gcd "top.gcd.x"
 
   # Map Verilog variable to Chisel (cross-representation)
-  %(prog)s --api map_variable --from verilog --to chisel --top gcd --module GCD "x"
+  %(prog)s --api map_variable --from verilog --to chisel --name gcd --module GCD "x"
 
   # Find variable in Chisel (single-representation)
-  %(prog)s --api locate_variable --to chisel --top gcd --module GCD "x"
+  %(prog)s --api locate_variable --to chisel --name gcd --module GCD "x"
 
   # Map Verilog diff to Chisel (from stdin)
-  cat changes.diff | %(prog)s --api locate_code --from verilog --to chisel --top gcd
+  cat changes.diff | %(prog)s --api locate_code --from verilog --to chisel --name gcd
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -308,8 +305,8 @@ Examples:
         help='API mode: locate_vcd, map_variable, locate_variable, or locate_code',
     )
 
-    # Top-level profile (required)
-    parser.add_argument('--top', dest='top_name', required=True, help='Top-level profile name from hagent.yaml')
+    # Profile name (required)
+    parser.add_argument('--name', dest='profile_name', required=True, help='Profile name from hagent.yaml')
 
     # --to is always required
     parser.add_argument(
@@ -382,9 +379,9 @@ Examples:
 
     # Initialize Locator
     if args.verbose:
-        print(f"Initializing Locator with top-level profile '{args.top_name}'...", file=sys.stderr)
+        print(f"Initializing Locator with profile '{args.profile_name}'...", file=sys.stderr)
 
-    locator = Locator(config_path=args.config_path, profile_name=args.top_name, debug=args.debug)
+    locator = Locator(config_path=args.config_path, profile_name=args.profile_name, debug=args.debug)
 
     if not locator.setup():
         print(f'Error: Locator setup failed: {locator.get_error()}', file=sys.stderr)
