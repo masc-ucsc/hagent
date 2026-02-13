@@ -94,19 +94,6 @@ class Locator:
             if not self._profile_config:
                 return False
 
-            # Setup file tracking for this profile so get_tracked_files() works
-            # This populates the tracked files from the profile's source/output directives
-            if not self.builder.setup_file_tracking_for_profile(self.profile_name, debug=self.debug):
-                self._debug_print(f'Warning: File tracking setup failed: {self.builder.get_error()}')
-            else:
-                # Debug: show what files are tracked
-                tracked_scala = self.builder.get_tracked_files(ext_filter='.scala')
-                tracked_v = self.builder.get_tracked_files(ext_filter='.v')
-                tracked_sv = self.builder.get_tracked_files(ext_filter='.sv')
-                self._debug_print(
-                    f'Tracked files after setup: .scala={len(tracked_scala)}, .v={len(tracked_v)}, .sv={len(tracked_sv)}'
-                )
-
             # Setup cache directory
             cache_base = Path(PathManager().cache_dir)
             self._cache_dir = cache_base / 'locator' / self.profile_name
@@ -377,7 +364,12 @@ class Locator:
 
         try:
             # Add --dry-run to the command to get slang arguments without running synthesis
-            dry_run_cmd = f'{command} --dry-run'
+            # Must insert before '--' separator if present, otherwise synth.py treats it as a slang arg
+            if ' -- ' in command:
+                idx = command.index(' -- ')
+                dry_run_cmd = command[:idx] + ' --dry-run' + command[idx:]
+            else:
+                dry_run_cmd = f'{command} --dry-run'
 
             # Execute the dry-run command
             exit_code, stdout, stderr = self.builder.runner.run_cmd(dry_run_cmd, cwd=cwd, quiet=(not self.debug))
@@ -596,28 +588,14 @@ class Locator:
 
         try:
             repo_dir = Path(PathManager().repo_dir)
-            build_dir = Path(PathManager().build_dir)
 
-            # Get Chisel files (tracked or scanned)
-            chisel_files_set = self.builder.get_tracked_files(ext_filter='.scala')
-            if chisel_files_set:
-                chisel_files = [str(repo_dir / f) for f in chisel_files_set]
-            else:
-                # Fallback: scan repo directory
-                chisel_files = [str(f) for f in repo_dir.rglob('*.scala')]
+            # Get Chisel files via runner (works in Docker and local modes)
+            chisel_files = self._find_files(str(repo_dir), ['.scala'])
 
-            # Get Verilog files (tracked or scanned)
-            verilog_v_files = self.builder.get_tracked_files(ext_filter='.v')
-            verilog_sv_files = self.builder.get_tracked_files(ext_filter='.sv')
-
-            if verilog_v_files or verilog_sv_files:
-                # Use tracked files, filter out netlist.v
-                verilog_files = [build_dir / f for f in (verilog_v_files | verilog_sv_files) if 'netlist.v' not in f]
-            else:
-                # Fallback: scan build directory
-                verilog_files = [f for f in build_dir.rglob('*.sv')] + [
-                    f for f in build_dir.rglob('*.v') if 'netlist.v' not in str(f)
-                ]
+            # Get Verilog files via runner, filter out netlist.v
+            profile_cwd = str(self._get_profile_cwd())
+            verilog_files_raw = self._find_files(profile_cwd, ['.sv', '.v'])
+            verilog_files = [Path(f) for f in verilog_files_raw if 'netlist.v' not in f]
 
             if not chisel_files or not verilog_files:
                 self._debug_print(f'No files for mapping: chisel={len(chisel_files)}, verilog={len(verilog_files)}')
@@ -763,6 +741,39 @@ class Locator:
         except Exception as e:
             self._error = f'Failed to update metadata: {e!s}'
 
+    def _resolve_cwd(self, cwd: str) -> Path:
+        """Resolve a cwd string like '$HAGENT_REPO_DIR' to an actual Path."""
+        pm = PathManager()
+        resolved = cwd.replace('$HAGENT_BUILD_DIR', str(pm.build_dir)).replace('$HAGENT_REPO_DIR', str(pm.repo_dir))
+        return Path(resolved)
+
+    def _find_files(self, directory: str, extensions: List[str]) -> List[str]:
+        """Find files recursively under directory matching extensions.
+
+        Uses builder.runner.run_cmd so it works in both local and Docker modes.
+
+        Args:
+            directory: Directory to search (may contain $HAGENT_* vars)
+            extensions: List of extensions like ['.scala'], ['.sv', '.v']
+
+        Returns:
+            List of absolute file paths found
+        """
+        if not self.builder:
+            return []
+
+        # Build find command for requested extensions
+        name_args = ' -o '.join(f'-name "*{ext}"' for ext in extensions)
+        if len(extensions) > 1:
+            name_args = f'\\( {name_args} \\)'
+        find_cmd = f'find {directory} -type f {name_args}'
+
+        exit_code, stdout, _ = self.builder.runner.run_cmd(find_cmd, cwd=directory, quiet=True)
+        if exit_code != 0 or not stdout.strip():
+            return []
+
+        return [line.strip() for line in stdout.strip().splitlines() if line.strip()]
+
     def _find_matching_class_ranges(self, lines: List[str], module_name: str) -> List[tuple]:
         """Find class/object definitions that match module_name.
 
@@ -785,7 +796,9 @@ class Locator:
             class_name = match.group(1)
 
             # Check if class name matches module name (case-insensitive)
-            if class_name.lower() != module_name.lower():
+            # Also strip Chisel _N suffix (StageReg_2 → StageReg)
+            base_module = re.sub(r'_\d+$', '', module_name)
+            if class_name.lower() != module_name.lower() and class_name.lower() != base_module.lower():
                 continue
 
             # Find the end of this class/object
@@ -900,10 +913,16 @@ class Locator:
         Returns:
             Regex pattern string
         """
-        # For Chisel: strip io_ prefix if present (Chisel defines 'aluop', Verilog has 'io_aluop')
+        # For Chisel: strip common Verilog prefixes to get the base field name
+        # e.g., io_aluop → aluop, reg_ex_ctrl_aluop → aluop
         search_var = variable
-        if not for_verilog and variable.startswith('io_'):
-            search_var = variable[3:]  # Strip 'io_' for Chisel search
+        if not for_verilog:
+            # Strip io_ prefix
+            if search_var.startswith('io_'):
+                search_var = search_var[3:]
+            # Strip reg_ prefix (Chisel register naming)
+            if search_var.startswith('reg_'):
+                search_var = search_var[4:]
 
         # Escape special regex characters in the base variable name
         escaped_var = re.escape(search_var)
@@ -920,19 +939,27 @@ class Locator:
             pattern = rf'(?<!\w)(?:io_)?(?:\w*_)?{escaped_var}(?:_(?:bits|valid|ready|data|addr|q|d|\d+))*(?!\w)'
         else:
             # Chisel pattern: handle Chisel naming conventions
-            # Matches variations like:
-            # - aluop (variable name)
-            # - io.aluop (IO reference)
-            # - io_aluop (if searching with Verilog name)
-            # - _aluop (internal signals)
-            #
-            # Pattern: match the variable with optional prefixes and dot notation
-            # (?<!\w)           - Not preceded by word char
-            # (?:io[_.])?       - Optional io_ or io. prefix
-            # (?:\w*_)?         - Optional prefix with underscore
-            # {escaped_var}     - The actual variable name
-            # (?!\w)            - Not followed by word char (word boundary)
-            pattern = rf'(?<!\w)(?:io[_.])?(?:\w*_)?{escaped_var}(?!\w)'
+            # Verilog flattens bundle fields: reg_ex_ctrl_aluop → aluop in Chisel
+            # Build alternatives: full name and progressively shorter suffixes
+            # e.g., ex_ctrl_aluop → [ex_ctrl_aluop, ctrl_aluop, aluop]
+            alternatives = [escaped_var]
+            parts = search_var.split('_')
+            for i in range(1, len(parts)):
+                suffix = '_'.join(parts[i:])
+                if len(suffix) >= 3:  # Avoid matching too-short fragments
+                    alternatives.append(re.escape(suffix))
+
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_alts = []
+            for alt in alternatives:
+                if alt not in seen:
+                    seen.add(alt)
+                    unique_alts.append(alt)
+
+            var_pattern = '|'.join(unique_alts)
+            # Match with optional io./io_ or dot-separated prefix
+            pattern = rf'(?<!\w)(?:io[_.])?(?:\w*[_.])?(?:{var_pattern})(?!\w)'
 
         return pattern
 
@@ -1048,6 +1075,13 @@ class Locator:
         for entry in matching_entries:
             self._debug_print(f'  - Module: {entry.get("module", "?")}, File: {entry.get("file", "?")}')
 
+        # Resolve the cwd used by slang-hier so file paths are resolved correctly
+        # (e.g., cva6 uses $HAGENT_REPO_DIR, simplechisel uses $HAGENT_BUILD_DIR)
+        hier_metadata = hierarchy.get('_metadata', {})
+        hier_cwd = hier_metadata.get('cwd')
+        hier_base_dir = self._resolve_cwd(hier_cwd) if hier_cwd else None
+        self._debug_print(f'Hierarchy base dir: {hier_base_dir} (from cwd={hier_cwd})')
+
         # Search in all matching files
         locations = []
         seen_files = set()  # Avoid duplicate searches in same file
@@ -1126,7 +1160,11 @@ class Locator:
 
                 # Find variable in this specific Verilog file
                 verilog_locs = self._find_variable_in_specific_file(
-                    variable=var_name, file_path=file_path, module_name=module_name, representation=RepresentationType.VERILOG
+                    variable=var_name,
+                    file_path=file_path,
+                    module_name=module_name,
+                    representation=RepresentationType.VERILOG,
+                    base_dir=hier_base_dir,
                 )
 
                 if verilog_locs:
@@ -1172,6 +1210,27 @@ class Locator:
                         )
                         locations.extend(chisel_locs)
 
+            # Step 3: If no results from the matched module, also search the parent module
+            # e.g., PipelinedCPU.id_ex_ctrl → parent is PipelinedCPU where aluop is connected
+            if not locations and module_path and '.' in module_path:
+                parent_path = module_path.rsplit('.', 1)[0]
+                parent_info = hierarchy.get(parent_path)
+                if parent_info:
+                    parent_module = parent_info.get('module', '')
+                    self._debug_print(f'No results from matched module, trying parent: {parent_module}')
+                    parent_chisel_files = self._find_chisel_files_with_module(parent_module)
+                    for chisel_file in parent_chisel_files:
+                        if chisel_file in seen_target_files:
+                            continue
+                        seen_target_files.add(chisel_file)
+                        chisel_locs = self._find_variable_in_specific_file(
+                            variable=var_name,
+                            file_path=chisel_file,
+                            module_name=parent_module,
+                            representation=target_type,
+                        )
+                        locations.extend(chisel_locs)
+
         else:
             # For Verilog target: search directly in hierarchy files
             for module_info in matching_entries:
@@ -1184,7 +1243,11 @@ class Locator:
                 seen_files.add(file_path)
 
                 file_locations = self._find_variable_in_specific_file(
-                    variable=var_name, file_path=file_path, module_name=module_name, representation=RepresentationType.VERILOG
+                    variable=var_name,
+                    file_path=file_path,
+                    module_name=module_name,
+                    representation=RepresentationType.VERILOG,
+                    base_dir=hier_base_dir,
                 )
                 locations.extend(file_locations)
 
@@ -1305,18 +1368,10 @@ class Locator:
             repo_dir = Path(PathManager().repo_dir)
             matching_files = []
 
-            # First, try to get tracked Chisel files from builder
-            chisel_files_set = self.builder.get_tracked_files(ext_filter='.scala')
-
-            if chisel_files_set:
-                # Use tracked files
-                self._debug_print(f'Using {len(chisel_files_set)} tracked Chisel files')
-                chisel_files = [repo_dir / f for f in chisel_files_set]
-            else:
-                # Fallback: scan repo directory for .scala files
-                self._debug_print(f'No tracked files, scanning repo directory: {repo_dir}')
-                chisel_files = list(repo_dir.rglob('*.scala'))
-                self._debug_print(f'Found {len(chisel_files)} .scala files in repo directory')
+            # Find Chisel files via runner (works in Docker and local modes)
+            chisel_file_paths = self._find_files(str(repo_dir), ['.scala'])
+            self._debug_print(f'Found {len(chisel_file_paths)} .scala files in {repo_dir}')
+            chisel_files = [Path(f) for f in chisel_file_paths]
 
             # Search for module in each file
             for full_path in chisel_files:
@@ -1344,10 +1399,12 @@ class Locator:
                         if match:
                             class_name = match.group(1)
                             self._debug_print(f'    Found class/object: {class_name}')
-                            # Case-insensitive comparison
-                            if class_name.lower() == module_name.lower():
-                                matching_files.append(relative_path)
-                                self._debug_print(f'    MATCH! Module {module_name} found in {relative_path}')
+                            # Case-insensitive comparison; also strip Chisel _N suffix
+                            # (Chisel generates StageReg_1, StageReg_2 from StageReg)
+                            base_module = re.sub(r'_\d+$', '', module_name)
+                            if class_name.lower() == module_name.lower() or class_name.lower() == base_module.lower():
+                                matching_files.append(str(full_path))
+                                self._debug_print(f'    MATCH! Module {module_name} found in {full_path}')
                                 break  # Found match in this file, move to next file
 
                 except Exception as e:
@@ -1364,16 +1421,33 @@ class Locator:
             self._debug_print(f'Traceback: {traceback.format_exc()}')
             return []
 
+    def _get_profile_cwd(self) -> Path:
+        """Get the working directory from the profile's synthesis command in hagent.yaml.
+
+        Falls back to repo_dir if no synthesis command is configured.
+        """
+        cmd_info = self._get_synthesis_command()
+        if cmd_info:
+            return self._resolve_cwd(cmd_info['cwd'])
+        return Path(PathManager().repo_dir)
+
     def _find_variable_in_specific_file(
-        self, variable: str, file_path: str, module_name: str, representation: RepresentationType
+        self,
+        variable: str,
+        file_path: str,
+        module_name: str,
+        representation: RepresentationType,
+        base_dir: Optional[Path] = None,
     ) -> List[SourceLocation]:
         """Find variable in a specific file (used when hierarchy specifies exact file).
 
         Args:
             variable: Variable name to search for
-            file_path: Specific file to search (relative to build/repo dir)
+            file_path: Specific file to search (relative to base_dir)
             module_name: Module name for the result
             representation: Representation type
+            base_dir: Base directory for resolving file_path. If None, uses
+                      the profile's cwd from hagent.yaml.
 
         Returns:
             List of SourceLocation objects
@@ -1383,13 +1457,9 @@ class Locator:
 
         locations = []
 
-        # Construct full path based on representation type
-        if representation == RepresentationType.VERILOG or representation == RepresentationType.NETLIST:
-            # Verilog files are relative to build_dir
-            base_dir = Path(PathManager().build_dir)
-        else:
-            # Chisel files are relative to repo_dir
-            base_dir = Path(PathManager().repo_dir)
+        # Construct full path: use caller-provided base_dir, or derive from profile config
+        if base_dir is None:
+            base_dir = self._get_profile_cwd()
 
         full_path = base_dir / file_path
         self._debug_print(f'Searching for variable "{variable}" in file: {full_path}')
@@ -1449,93 +1519,96 @@ class Locator:
 
         locations = []
 
-        # Determine search directory and file extension
+        # Determine search directory from profile config and file extension from representation
+        search_dir = self._get_profile_cwd()
         if representation == RepresentationType.CHISEL:
-            search_dir = Path(PathManager().repo_dir)
-            extensions = ['*.scala']
+            extensions = ['.scala']
         elif representation == RepresentationType.VERILOG:
-            search_dir = Path(PathManager().build_dir)
-            extensions = ['*.v', '*.sv']
+            extensions = ['.v', '.sv']
         else:
             return []
 
         self._debug_print(f'Searching in directory: {search_dir} with extensions: {extensions}')
 
+        # Find files via runner (works in Docker and local modes)
+        file_paths = self._find_files(str(search_dir), extensions)
+
         # Search for variable in files
-        for ext in extensions:
-            for file_path in search_dir.glob(f'**/{ext}'):
-                try:
-                    with file_path.open('r') as f:
-                        content = f.read()
-                        lines = content.splitlines()
+        for file_path_str in file_paths:
+            file_path = Path(file_path_str)
+            try:
+                content = self.builder.filesystem.read_text(file_path_str)
+                if not content:
+                    continue
+                lines = content.splitlines()
 
-                    # For Chisel, use class-based filtering
-                    if representation == RepresentationType.CHISEL and module_hint:
-                        # Find matching classes
-                        class_ranges = self._find_matching_class_ranges(lines, module_hint)
+                # For Chisel, use class-based filtering
+                if representation == RepresentationType.CHISEL and module_hint:
+                    # Find matching classes
+                    class_ranges = self._find_matching_class_ranges(lines, module_hint)
 
-                        if not class_ranges:
-                            continue
+                    if not class_ranges:
+                        continue
 
-                        # Build flexible pattern for Chisel (simpler word boundary)
-                        pattern = self._build_variable_regex(variable, for_verilog=False)
-                        for start_line, end_line, class_name in class_ranges:
-                            for i in range(start_line, end_line + 1):
-                                if i > len(lines):
-                                    break
-                                line = lines[i - 1]  # Convert to 0-indexed
+                    # Build flexible pattern for Chisel (simpler word boundary)
+                    pattern = self._build_variable_regex(variable, for_verilog=False)
+                    for start_line, end_line, class_name in class_ranges:
+                        for i in range(start_line, end_line + 1):
+                            if i > len(lines):
+                                break
+                            line = lines[i - 1]  # Convert to 0-indexed
 
-                                # Skip comments
-                                if self._is_comment_line(line):
-                                    continue
-
-                                if re.search(pattern, line):
-                                    locations.append(
-                                        SourceLocation(
-                                            file_path=str(file_path),
-                                            module_name=class_name,
-                                            line_start=i,
-                                            line_end=i,
-                                            confidence=0.90,
-                                            representation=representation,
-                                        )
-                                    )
-                    else:
-                        # For Verilog or Chisel without module_hint, search entire file
-                        # Try to extract module/class name from file
-                        if representation == RepresentationType.VERILOG:
-                            module_match = re.search(r'module\s+(\w+)', content)
-                            module_name = module_match.group(1) if module_match else file_path.stem
-                        else:
-                            # Chisel: try to find first class
-                            class_match = re.search(r'class\s+(\w+)', content)
-                            module_name = class_match.group(1) if class_match else file_path.stem
-
-                        # Filter by module_hint if provided (case-insensitive)
-                        if module_hint and module_name.lower() != module_hint.lower():
-                            continue
-
-                        # Build flexible pattern based on representation type
-                        # For Verilog, use permissive pattern to handle name transformations
-                        pattern = self._build_variable_regex(variable, for_verilog=(representation == RepresentationType.VERILOG))
-                        for i, line in enumerate(lines, 1):
-                            # Skip comments for Chisel
-                            if representation == RepresentationType.CHISEL and self._is_comment_line(line):
+                            # Skip comments
+                            if self._is_comment_line(line):
                                 continue
 
                             if re.search(pattern, line):
                                 locations.append(
                                     SourceLocation(
                                         file_path=str(file_path),
-                                        module_name=module_name,
+                                        module_name=class_name,
                                         line_start=i,
                                         line_end=i,
-                                        confidence=0.85 if module_hint else 0.75,
+                                        confidence=0.90,
                                         representation=representation,
                                     )
                                 )
-                except Exception:
-                    continue
+                else:
+                    # For Verilog or Chisel without module_hint, search entire file
+                    # Try to extract module/class name from file
+                    if representation == RepresentationType.VERILOG:
+                        module_match = re.search(r'module\s+(\w+)', content)
+                        module_name = module_match.group(1) if module_match else file_path.stem
+                    else:
+                        # Chisel: try to find first class
+                        class_match = re.search(r'class\s+(\w+)', content)
+                        module_name = class_match.group(1) if class_match else file_path.stem
+
+                    # Filter by module_hint if provided (case-insensitive)
+                    if module_hint and module_name.lower() != module_hint.lower():
+                        continue
+
+                    # Build flexible pattern based on representation type
+                    # For Verilog, use permissive pattern to handle name transformations
+                    pattern = self._build_variable_regex(variable, for_verilog=(representation == RepresentationType.VERILOG))
+                    for i, line in enumerate(lines, 1):
+                        # Skip comments for Chisel
+                        if representation == RepresentationType.CHISEL and self._is_comment_line(line):
+                            continue
+
+                        if re.search(pattern, line):
+                            locations.append(
+                                SourceLocation(
+                                    file_path=str(file_path),
+                                    module_name=module_name,
+                                    line_start=i,
+                                    line_end=i,
+                                    confidence=0.85 if module_hint else 0.75,
+                                    representation=representation,
+                                )
+                            )
+            except Exception:
+                continue
 
         # Sort by confidence
         locations.sort(key=lambda x: x.confidence, reverse=True)
