@@ -51,8 +51,8 @@ class Runner:
         Args:
             docker_image: Docker image to use if HAGENT_DOCKER is set (docker mode)
         """
-
-        self.docker_image = docker_image or PathManager().docker_image
+        self.path_manager = PathManager()
+        self.docker_image = docker_image or self.path_manager.docker_image
         self.container_manager: Optional[ContainerManager] = None
         self.executor = None  # Keep for backward compatibility, but will be deprecated
         self.filesystem: Optional[FileSystem] = None  # New unified approach
@@ -72,6 +72,40 @@ class Runner:
     def get_error(self) -> str:
         """Get current error message following Tool pattern."""
         return self.error_message
+
+    def _translate_container_paths_to_local(self, text: str) -> str:
+        """
+        Translate Docker container paths to mounted local host paths in output text.
+
+        This allows coding agents to see local paths they can access directly,
+        instead of container paths like /code/workspace/build which don't exist
+        on the host machine.
+
+        Args:
+            text: Output text that may contain container paths
+
+        Returns:
+            Text with container paths replaced by local paths
+        """
+        if not text or not self.docker_image:
+            return text
+
+        # Build path mappings: container_path -> local_path
+        # Order matters: more specific paths first to avoid partial replacements
+        path_mappings = [
+            ('/code/workspace/private', self.path_manager.private_mount_dir),
+            ('/code/workspace/tech', self.path_manager.tech_mount_dir),
+            ('/code/workspace/cache', self.path_manager.cache_mount_dir),
+            ('/code/workspace/build', self.path_manager.build_mount_dir),
+            ('/code/workspace/repo', self.path_manager.repo_mount_dir),
+        ]
+
+        result = text
+        for container_path, local_path in path_mappings:
+            if local_path:
+                result = result.replace(container_path, str(local_path))
+
+        return result
 
     def setup(self) -> bool:
         """
@@ -111,7 +145,7 @@ class Runner:
             quiet: Whether to run in quiet mode
 
         Returns:
-            Tuple of (exit_code, stdout, stderr)
+            Tuple of (exit_code, stdout, stderr) with container paths translated to local paths
         """
         # Use new unified FileSystem approach if available
         if self.filesystem:
@@ -120,15 +154,20 @@ class Runner:
                 actual_cwd = self.executor.get_cwd()
             else:
                 actual_cwd = cwd
-            return self.filesystem.run_cmd(command, actual_cwd, env, quiet)
-
-        # Fallback to old executor approach for backward compatibility
-        if not self.executor:
+            exit_code, stdout, stderr = self.filesystem.run_cmd(command, actual_cwd, env, quiet)
+        elif self.executor:
+            # Fallback to old executor approach for backward compatibility
+            exit_code, stdout, stderr = self.executor.run_cmd(command, cwd, env, quiet)
+        else:
             error_msg = 'Neither FileSystem nor Executor available - call setup() first'
             self.set_error(error_msg)
             return -1, '', error_msg
 
-        return self.executor.run_cmd(command, cwd, env, quiet)
+        # Translate container paths to local paths in output (this helps coding agents see paths they can access directly)
+        stdout = self._translate_container_paths_to_local(stdout)
+        stderr = self._translate_container_paths_to_local(stderr)
+
+        return exit_code, stdout, stderr
 
     def set_cwd(self, new_workdir: str) -> bool:
         """
