@@ -118,7 +118,7 @@ def initialize_arduino_env() -> Dict[str, Any]:
             'stderr': f"Failed to initialize Arduino environment: {stderr}"
         }
 
-def _run_monitor(port: str, timeout: int = 30) -> Dict[str, Any]:
+def _run_monitor(port: str, fqbn: str, timeout: int = 30) -> Dict[str, Any]:
     """
     Internal helper to run arduino-cli monitor.
     """
@@ -130,15 +130,16 @@ def _run_monitor(port: str, timeout: int = 30) -> Dict[str, Any]:
             'stderr': 'No port specified for monitor',
         }
 
-    monitor_cmd = f"arduino-cli monitor -p {port}"
-    print(monitor_cmd)
+    monitor_cmd = f"arduino-cli monitor -p {port} --fqbn {fqbn}"
+    repo_dir = os.environ.get("HAGENT_REPO_DIR", ".")
+
     try:
         if not shutil.which('arduino-cli'):
             res = initialize_arduino_env()
             if not res['success']:
                 return res
             
-        proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True)
+        proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True, cwd=repo_dir)
         
         try:
             out, err = proc.communicate(timeout=timeout)
@@ -726,7 +727,6 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
         
     board_info = _get_board_info_from_md()
     fqbn = board_info.get("fqbn")
-    
     _, port = _resolve_board_info(fqbn)
     
     if not port:
@@ -737,7 +737,7 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
             'stderr': f"No connected board found matching FQBN '{fqbn}'. Please connect your board.",
         }
         
-    return _run_monitor(port, timeout)
+    return _run_monitor(port=port, timeout=timeout, fqbn=fqbn)
 
 def api_cli(args: Optional[str] = None) -> Dict[str, Any]:
     """Pass-through"""
