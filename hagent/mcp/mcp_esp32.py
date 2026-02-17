@@ -252,6 +252,10 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         shutil.copyfile(source_file, os.path.join(repo_dir, 'AGENTS.md'))
         shutil.copyfile(source_file, os.path.join(repo_dir, 'GEMINI.md'))
 
+        stdout += f"\nBoard configured: {selected_board['name']}\nConfiguration saved to AGENTS.md"
+        # TODO: This instruction should be added to a context MD file for the LLM later.
+        stdout += "\n\nIMPORTANT: A new configuration file (AGENTS.md/GEMINI.md) has been created. To ensure Gemini recognizes these new instructions, please ask the user to run the '/refresh' or '/memory refresh' command in the chat interface."
+
     return {
         'success': True,
         'exit_code': 0,
@@ -303,12 +307,12 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
             'stderr': 'AGENTS.md not found. Run api_install() before running api_setup()',
         }
 
+    # Use helper to parse target config
+    board_config = _parse_board_config(md_path)
+    target_config = board_config['model']
+
     with open(md_path, "r") as f:
         agents_content = f.read()
-
-    # Extract board identifier (target)
-    board_match = re.search(r"-\s*`board`\s*:\s*([a-zA-Z0-9_]+)", agents_content)
-    target_config = board_match.group(1).strip() if board_match else "esp32"
     
     # Files/Dirs to STRICTLY PRESERVE
     protected_items = [
@@ -411,14 +415,17 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
         if not shutil.which('idf.py'):
             initialize_idf_env()
         
-        # Check if target board has been set, else set target before running further commands.
-        # This is usually done after the project has been created in api_setup, since we copy an example project in our case, this command might not have been run.
-        target_config = 'esp32c3'
-        if not os.path.exists(os.path.join(os.environ["HAGENT_REPO_DIR"], "sdkconfig")):
-            print("Target config has not been set.\n Setting {target_config} as target config.")
-            set_target_res = subprocess.run(f"idf.py set-target {target_config}", cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, check=True, text=True) 
+        # Ensure project is initialized
+        repo_dir = os.environ["HAGENT_REPO_DIR"]
+        if not os.path.exists(os.path.join(repo_dir, "sdkconfig")):
+            return {
+                'success': False,
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': 'Project not initialized (sdkconfig missing). Please run api_setup() to create project and set target before building.',
+            }
 
-        result = subprocess.run(f"idf.py build", cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
+        result = subprocess.run(f"idf.py build", cwd=repo_dir, shell=True, capture_output=True, text=True, check=True)
         binary_location = os.path.join(os.environ["HAGENT_REPO_DIR"], 'build')
 
     except subprocess.CalledProcessError as e:
