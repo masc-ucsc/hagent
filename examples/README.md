@@ -29,10 +29,10 @@ To setup:
 ```
 mkdir -p ~/tmp/esp32_test
 cd ~/tmp/esp32_test
-XXX_PATH_TOHAGENT/scripts/setup_mcp.sh XXX_PATH_TOHAGENT/examples/esp32_led
+XXX_PATH_TOHAGENT/scripts/setup_mcp.sh esp32_led
 ```
 
-Update the repo/AGENTS.md with the board name. Then, setup the MCP:
+Then, setup the MCP:
 ```
 gemini mcp add hagent ./hagent_server.sh
 ```
@@ -44,6 +44,25 @@ The esp32 IDF should be installed in cache:
 ```
 ls ~/tmp/esp32_test/cache
 ```
+
+## Arduino LED
+
+A simple blink example for Arduino.
+
+To setup:
+```
+mkdir -p ~/tmp/arduino_test
+cd ~/tmp/arduino_test
+XXX_PATH_TOHAGENT/scripts/setup_mcp.sh arduino_led
+```
+
+Then, setup the MCP:
+```
+gemini mcp add hagent ./hagent_server.sh
+```
+
+Now, in gemini-cli, you could say:
+"Can you compile and upload to the arduino board?"
 
 ## How to run a docker example
 
