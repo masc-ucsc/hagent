@@ -22,6 +22,7 @@ def get_mcp_schema() -> Dict[str, Any]:
 
     available_apis = [
         'install',
+        'install_core',
         'list_boards',
         'new_sketch',
         'compile',
@@ -624,11 +625,14 @@ def api_compile(args: Optional[str] = None) -> Dict[str, Any]:
         }
 
     # 4. Construct Command
-    # Only append FQBN if not already in args (simple check)
+    # Use a local build directory inside the sketch to ensure upload can find it
+    build_path = os.path.join(repo_dir, sketch_path, "build")
+    
     if "--fqbn" not in final_args:
         final_args += f" --fqbn {fqbn}"
-
-    cmd = f"arduino-cli compile {final_args}"
+    
+    # Add build-path
+    cmd = f"arduino-cli compile --build-path {build_path} {final_args}"
     
     try:
         res = subprocess.run(cmd, cwd=repo_dir, shell=True, capture_output=True, text=True)
@@ -694,12 +698,9 @@ def api_upload(args: Optional[str] = None) -> Dict[str, Any]:
         }
 
     # 5. Upload
-    target_sketch = sketch_path
-    possible_internal = os.path.join(repo_dir, sketch_path)
-    if os.path.isdir(possible_internal):
-        target_sketch = possible_internal
-    
-    cmd = f"arduino-cli upload -p {port} --fqbn {fqbn} {target_sketch}"
+    # Point to the same build directory used by compile
+    build_path = os.path.join(repo_dir, sketch_path, "build")
+    cmd = f"arduino-cli upload -p {port} --fqbn {fqbn} --input-dir {build_path} {sketch_path}"
     
     try:
         res = subprocess.run(cmd, cwd=repo_dir, shell=True, capture_output=True, text=True)
@@ -808,6 +809,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
 
         api_handlers = {
             'install': api_install,
+            'install_core': api_install_core,
             'list_boards': api_list_boards,
             'new_sketch': api_new_sketch,
             'compile': api_compile,
