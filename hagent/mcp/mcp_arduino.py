@@ -47,8 +47,8 @@ def get_mcp_schema() -> Dict[str, Any]:
                                    '- list_boards: (NO ARGS) Lists currently connected Arduino boards. Returns a filtered list of identified boards with FQBNs.\n'\
                                    '- install_core: (REQUIRED) Core identifier (e.g., "arduino:renesas_uno")\n'\
                                    '- new_sketch: (REQUIRED) Sketch name\n'\
-                                   '- compile: (OPTIONAL) Sketch path. Defaults to "Blink". AUTOMATICALLY uses FQBN from installed config. DO NOT pass flags manually.\n'\
-                                   '- upload: (OPTIONAL) Sketch path. Defaults to "Blink". AUTOMATICALLY detects port and FQBN from config. DO NOT pass flags manually.\n'\
+                                   '- compile: (OPTIONAL) Sketch name. Defaults to "Blink". AUTOMATICALLY uses FQBN from installed config. DO NOT pass flags manually.\n'\
+                                   '- upload: (OPTIONAL) Sketch name. Defaults to "Blink". AUTOMATICALLY detects port and FQBN from config. DO NOT pass flags manually.\n'\
                                    '- monitor: (OPTIONAL) No args needed. Port detected from config.\n'\
                                    '- cli: (REQUIRED) Arbitrary arduino-cli command string',
                 },
@@ -449,15 +449,13 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         candidates = [f"{b['name']} (ID: {b['short_name']})" for b in board_details]
         candidate_str = "\n".join(candidates)
         
-        msg = "Please specify a board to install."
-        if args:
-            msg = f"No exact match found for '{args}'."
-            
+        final_stdout = "Arduino CLI is installed. Please run 'install' again with a specific board ID to complete the setup.\n\nAvailable boards:\n" + candidate_str
+
         return {
             'success': False,
             'exit_code': 1,
-            'stdout': stdout,
-            'stderr': f"{msg} Available boards:\n{candidate_str}",
+            'stdout': final_stdout,
+            'stderr': "", # It's a prompt, not a runtime error.
             'candidates': candidates
         }
 
