@@ -35,7 +35,7 @@ PROJECT_NAME="${1:-}"
 BASE_DIR=${2:-$(pwd)}
 if [[ -z "$PROJECT_NAME" ]]; then
   echo "Usage: $0 <project> [target_dir]" >&2
-  echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan, esp32_led, arduino_led" >&2
+  echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan, esp32_led" >&2
   exit 1
 fi
 
@@ -67,10 +67,6 @@ esp32_led)
   DOCKER_IMAGE="mascucsc/hagent-builder:2026.02"
   EXAMPLE_SOURCE_DIR="${HAGENT_ROOT}/examples/esp32_led"
   ;;
-arduino_led)
-  DOCKER_IMAGE="mascucsc/hagent-builder:2026.02"
-  EXAMPLE_SOURCE_DIR="${HAGENT_ROOT}/examples/Blink"
-  ;;
 *)
   # Check if it's a directory in examples or a direct path
   if [[ -d "${HAGENT_ROOT}/examples/${PROJECT_NAME}" ]]; then
@@ -81,7 +77,7 @@ arduino_led)
     DOCKER_IMAGE="mascucsc/hagent-builder:2026.02"
   else
     echo "Unknown project: '$PROJECT_NAME'" >&2
-    echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan, esp32_led, arduino_led" >&2
+    echo "Available projects: cva6, simplechisel, soomrv, verilog-adder, xiangshan, esp32_led" >&2
     echo "Or specify a directory in examples/ or a full path to a directory" >&2
     exit 1
   fi

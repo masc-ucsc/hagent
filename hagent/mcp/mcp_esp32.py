@@ -129,24 +129,24 @@ def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
         return {
             'success': True,
             'exit_code': 0,
-            'stdout': out or "",
-            'stderr': err or ""
+            'stdout': out,
+            'stderr': err
         }
     except subprocess.CalledProcessError as e:
         # This block is reached when initialize_idf_env fails 
         return {
             'success': False,
             'exit_code': e.returncode,
-            'stdout': e.stdout or "",
-            'stderr': e.stderr or "" 
+            'stdout': e.stdout,
+            'stderr': e.stderr 
         }
     
     # The process exits prematurely if an error is encountered
     return {
         'success': False,
         'exit_code': 1,
-        'stdout': out or "",
-        'stderr': err or "",
+        'stdout': out,
+        'stderr': err,
     }
 
 # ==============================================================================
@@ -252,10 +252,6 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         shutil.copyfile(source_file, os.path.join(repo_dir, 'AGENTS.md'))
         shutil.copyfile(source_file, os.path.join(repo_dir, 'GEMINI.md'))
 
-        stdout += f"\nBoard configured: {selected_board['name']}\nConfiguration saved to AGENTS.md"
-        # TODO: This instruction should be added to a context MD file for the LLM later.
-        stdout += "\n\nIMPORTANT: A new configuration file (AGENTS.md/GEMINI.md) has been created. To ensure Gemini recognizes these new instructions, please ask the user to run the '/refresh' or '/memory refresh' command in the chat interface."
-
     return {
         'success': True,
         'exit_code': 0,
@@ -268,8 +264,6 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
 def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     """
     Create a new ESP32 project.
-    WARNING: This function overwrites project files in the repo directory, 
-    but preserves agent configuration (.gemini, AGENTS.md, etc.) and git history.
 
     Args:
         args: Project name
@@ -277,20 +271,54 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     Returns:
         Dictionary with setup results
     """
-    # 1. Verify ESP-IDF installed
-    # 2. Read AGENTS.md to get target config
-    # 3. Create temp directory (Staging)
-    # 4. Run idf.py create-project in Staging
-    # 5. Selectively clean HAGENT_REPO_DIR (Preserve .gemini, .git, etc.)
-    # 6. Copy from Staging to HAGENT_REPO_DIR
-    # 7. Run idf.py set-target in HAGENT_REPO_DIR
-    # 8. Restore AGENTS.md/GEMINI.md
+    # TODO: Implement setup logic
+    # 1. Verify ESP-IDF installed (check HAGENT_CACHE_DIR/esp-idf/)
+    # 2. Source export.sh: . $HAGENT_CACHE_DIR/esp-idf/export.sh
+    # 3. Navigate to HAGENT_REPO_DIR
+    # 4. Run: idf.py create-project -p . <project_name>
+    # 5. Detect board model from AGENTS.md or GEMINI.md
+    # 6. Run: idf.py set-target <esp32_model>
+    # 7. Create esp_env.sh helper script
 
     idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
-    repo_dir = os.environ["HAGENT_REPO_DIR"]
-    md_path = os.path.join(repo_dir, "AGENTS.md")
+    md_path = os.path.join(os.environ["HAGENT_REPO_DIR"], "AGENTS.md")
 
-    if not os.path.isdir(idf_path):
+
+    if os.path.isdir(idf_path):
+        # with open(md_path, "r") as agent_f:
+        #     content = agent_f.read()
+        #     match = re.search(r"^\s*-\s*ESP32 Model\s*:\s*(.*)$", content, re.MULTILINE | re.IGNORECASE)
+        #     if not match:
+        #         return {
+        #             'success': False,
+        #             'exit_code': 1,
+        #             'stdout': '',
+        #             'stderr': 'Could not find board model in AGENTS.md',
+        #         }
+        #     board_model = match.group(1).strip()
+
+        target_config = 'esp32c3'
+
+        crt_prj_cmd = (
+            f"idf.py create-project -p . {args} && "
+            f"idf.py set-target {target_config}"
+
+        )
+        try:
+            # Check if idf.py is in PATH, if not persent, source export.sh
+            if not shutil.which('idf.py'):
+                initialize_idf_env()
+            result = subprocess.run(
+                crt_prj_cmd, cwd=os.environ['HAGENT_REPO_DIR'], shell=True, check=True, capture_output=True, text=True
+            )
+        except subprocess.CalledProcessError as e:
+            return {
+                'success': False,
+                'exit_code': e.returncode,
+                'stdout': e.stdout,
+                'stderr': e.stderr,
+            }
+    else:
         return {
             'success': False,
             'exit_code': 1,
@@ -298,98 +326,14 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
             'stderr': 'ESP-IDF not installed. Run api_install() before running api_setup()',
         }
 
-    # Read AGENTS.md to get target config
-    if not os.path.exists(md_path):
-            return {
-            'success': False,
-            'exit_code': 1,
-            'stdout': '',
-            'stderr': 'AGENTS.md not found. Run api_install() before running api_setup()',
-        }
-
-    # Use helper to parse target config
-    board_config = _parse_board_config(md_path)
-    target_config = board_config['model']
-
-    with open(md_path, "r") as f:
-        agents_content = f.read()
-    
-    # Files/Dirs to STRICTLY PRESERVE
-    protected_items = [
-        '.gemini', '.claude', '.git', '.gitignore', '.vscode',
-        'AGENTS.md', 'GEMINI.md', 'CLAUDE.md'
-    ]
-
-    try:
-        # Check if idf.py is in PATH, if not present, source export.sh
-        if not shutil.which('idf.py'):
-            initialize_idf_env()
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # 1. Create Project in Staging (Temp Dir) - Just the scaffolding
-            crt_prj_cmd = f"idf.py create-project -p . {args}"
-            
-            subprocess.run(
-                crt_prj_cmd, cwd=temp_dir, shell=True, check=True, capture_output=True, text=True
-            )
-
-            # 2. Selectively Clean Repo Directory
-            for item in os.listdir(repo_dir):
-                if item in protected_items:
-                    continue
-                
-                item_path = os.path.join(repo_dir, item)
-                if os.path.isfile(item_path) or os.path.islink(item_path):
-                    os.unlink(item_path)
-                elif os.path.isdir(item_path):
-                    shutil.rmtree(item_path)
-
-            # 3. Transplant from Staging to Repo
-            # Copy everything since create-project only makes source files
-            for item in os.listdir(temp_dir):
-                s = os.path.join(temp_dir, item)
-                d = os.path.join(repo_dir, item)
-                
-                if os.path.isdir(s):
-                    shutil.copytree(s, d, dirs_exist_ok=True)
-                else:
-                    shutil.copy2(s, d)
-            
-            # Ensure AGENTS.md/GEMINI.md content matches buffer
-            with open(os.path.join(repo_dir, 'AGENTS.md'), 'w') as f:
-                f.write(agents_content)
-            with open(os.path.join(repo_dir, 'GEMINI.md'), 'w') as f:
-                f.write(agents_content)
-
-            # 4. Initialize Configuration IN THE REPO
-            # This generates sdkconfig and build/ with correct absolute paths
-            set_target_cmd = f"idf.py set-target {target_config}"
-            result = subprocess.run(
-                set_target_cmd, cwd=repo_dir, shell=True, check=True, capture_output=True, text=True
-            )
-
-    except subprocess.CalledProcessError as e:
-        return {
-            'success': False,
-            'exit_code': e.returncode,
-            'stdout': e.stdout,
-            'stderr': e.stderr,
-        }
-    except Exception as e:
-        return {
-            'success': False,
-            'exit_code': 1,
-            'stdout': '',
-            'stderr': f"Setup failed: {str(e)}",
-        }
-
     return {
         'success': True,
         'exit_code': 0,
         'stdout': result.stdout,
         'stderr': result.stderr,
-        'project_path': repo_dir,
+        'project_path': os.environ["HAGENT_REPO_DIR"],
         'target_config': target_config
+
     }
 
 
