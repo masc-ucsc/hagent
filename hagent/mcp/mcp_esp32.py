@@ -64,17 +64,49 @@ def get_mcp_schema() -> Dict[str, Any]:
 # INTERNAL HELPER FUNCTIONS
 # ==============================================================================
 
-def initialize_idf_env():
+def initialize_idf_env() -> Dict[str, Any]:
+    """
+    Source export.sh and load environment variables.
+    Returns a result dict with 'success', 'stdout', 'stderr'.
+    """
     # Source export.sh in a separate process and load the dumped ENV variables from the called process into the calling process' ENV
     print("Adding idf.py to PATH")
-    export_sh_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf", "export.sh")
+    cache_dir = os.environ.get("HAGENT_CACHE_DIR", ".")
+    idf_path = os.path.join(cache_dir, "esp-idf")
+    export_sh_path = os.path.join(idf_path, "export.sh")
+    
+    if not os.path.exists(export_sh_path):
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': f"ESP-IDF not found at {idf_path}. Please run the 'api_install' tool first to setup the ESP-IDF toolkit."
+        }
+
     export_script_cmd = f"bash -c 'source {export_sh_path} >/dev/null 2>&1 && python3 - <<PY\nimport os, json\nprint(json.dumps(dict(os.environ)))\nPY'"
-    export_proc = subprocess.run(export_script_cmd, shell=True, capture_output=True, text=True, check=True)
-
-    # Update the current Python process' ENV variables
-    os.environ.update(json.loads(export_proc.stdout))
-
-    # CalledProcessError is caught and handled by the calling function
+    
+    try:
+        export_proc = subprocess.run(export_script_cmd, shell=True, capture_output=True, text=True, check=True)
+        # Update the current Python process' ENV variables
+        os.environ.update(json.loads(export_proc.stdout))
+        
+        if not shutil.which('idf.py'):
+             return {
+                'success': False,
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': "idf.py not found in PATH after sourcing export.sh"
+            }
+            
+        return {'success': True, 'stdout': '', 'stderr': ''}
+    except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+        stderr = e.stderr if hasattr(e, 'stderr') else str(e)
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': f"Failed to initialize ESP-IDF environment: {stderr}"
+        }
 
 def _parse_board_config(file_path: str) -> Dict[str, str]:
     """
@@ -116,7 +148,9 @@ def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
     try:
         # Check if idf.py is in PATH, source export.sh/export.bat before running the command
         if not shutil.which('idf.py'):
-            initialize_idf_env() 
+            res = initialize_idf_env() 
+            if not res['success']:
+                return res
         proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True, cwd=project_dir)
            
         # Communicate and read stdout from the process monitoring serial output
@@ -132,13 +166,12 @@ def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
             'stdout': out or "",
             'stderr': err or ""
         }
-    except subprocess.CalledProcessError as e:
-        # This block is reached when initialize_idf_env fails 
+    except Exception as e:
         return {
             'success': False,
-            'exit_code': e.returncode,
-            'stdout': e.stdout or "",
-            'stderr': e.stderr or "" 
+            'exit_code': 1,
+            'stdout': "",
+            'stderr': str(e) 
         }
     
     # The process exits prematurely if an error is encountered
@@ -323,7 +356,9 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     try:
         # Check if idf.py is in PATH, if not present, source export.sh
         if not shutil.which('idf.py'):
-            initialize_idf_env()
+            res = initialize_idf_env()
+            if not res['success']:
+                return res
 
         with tempfile.TemporaryDirectory() as temp_dir:
             # 1. Create Project in Staging (Temp Dir) - Just the scaffolding
@@ -413,7 +448,9 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
     try:
         # Check if idf.py is in PATH; source export.sh/export.bat before build if not in path
         if not shutil.which('idf.py'):
-            initialize_idf_env()
+            res = initialize_idf_env()
+            if not res['success']:
+                return res
         
         # Ensure project is initialized
         repo_dir = os.environ["HAGENT_REPO_DIR"]
@@ -469,7 +506,9 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
     try:
         # Check if idf.py is in PATH; source export.sh/export.bat before flash if not in path
         if not shutil.which('idf.py'):
-            initialize_idf_env()
+            res = initialize_idf_env()
+            if not res['success']:
+                return res
         result = subprocess.run(
             flash_cmd, cwd=os.environ['HAGENT_REPO_DIR'], shell=True, capture_output=True, text=True, check=True
         )
@@ -507,7 +546,9 @@ def api_check_bootloader(args: Optional[str] = None) -> Dict[str, Any]:
     try:
         # Check if esptool is in PATH; source export.sh if not
         if not shutil.which('esptool'):
-            initialize_idf_env()
+            res = initialize_idf_env()
+            if not res['success']:
+                return res
             
         # Run the chip-id command to handshake with the board
         result = subprocess.run(
@@ -594,7 +635,9 @@ def api_idf(args: Optional[str] = None) -> Dict[str, Any]:
     try: 
         # Check if idf.py is in the PATH, if not then source export.sh before running the command
         if not shutil.which('idf.py'):
-            initialize_idf_env()
+            res = initialize_idf_env()
+            if not res['success']:
+                return res
         result = subprocess.run(idf_cmd, cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
         return {
