@@ -222,6 +222,34 @@ def _get_board_info_from_md() -> Dict[str, str]:
                 pass
     return {}
 
+def _parse_board_config(file_path: str) -> Dict[str, str]:
+    """
+    Parses a board configuration Markdown file to extract metadata.
+    """
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+            
+        board_match = re.search(r"-\s*`board`\s*:\s*([a-zA-Z0-9_:]+)", content)
+        board_id = board_match.group(1).strip() if board_match else ""
+        
+        model_match = re.search(r"-\s*`model`\s*:\s*(.+)$", content, re.MULTILINE)
+        model_name = model_match.group(1).strip() if model_match else board_id
+        
+        return {
+            'name': model_name,
+            'model': board_id,
+            'file_name': file_path,
+            'short_name': os.path.basename(file_path).replace('.md', '')
+        }
+    except Exception:
+        return {
+            'name': os.path.basename(file_path),
+            'model': '',
+            'file_name': file_path,
+            'short_name': os.path.basename(file_path).replace('.md', '')
+        }
+
 def _is_core_installed(core_name: str) -> bool:
     """
     Check if the specified core is installed.
@@ -295,33 +323,6 @@ def api_install_core(args: Optional[str] = None) -> Dict[str, Any]:
             'stderr': e.stderr,
         }
 
-def _parse_board_config(file_path: str) -> Dict[str, str]:
-    """
-    Parses a board configuration Markdown file to extract metadata.
-    """
-    try:
-        with open(file_path, 'r') as f:
-            content = f.read()
-            
-        board_match = re.search(r"-\s*`board`\s*:\s*([a-zA-Z0-9_:]+)", content)
-        board_id = board_match.group(1).strip() if board_match else ""
-        
-        model_match = re.search(r"-\s*`model`\s*:\s*(.+)$", content, re.MULTILINE)
-        model_name = model_match.group(1).strip() if model_match else board_id
-        
-        return {
-            'name': model_name,
-            'model': board_id,
-            'file_name': file_path,
-            'short_name': os.path.basename(file_path).replace('.md', '')
-        }
-    except Exception:
-        return {
-            'name': os.path.basename(file_path),
-            'model': '',
-            'file_name': file_path,
-            'short_name': os.path.basename(file_path).replace('.md', '')
-        }
 
 def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -338,23 +339,26 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     install_script_path = os.path.join(toolkit_dir, "install.sh")
 
     if not os.path.isdir(toolkit_dir):
-        # TODO: Enable git clone when repository is available
-        # try:
-        #     print(f"Cloning arduino-toolkit...")
-        #     # PLACEHOLDER: Replace with actual GitHub repo URL when available
-        #     repo_url = "https://github.com/placeholder_user/arduino-toolkit.git"
-        #     clone_cmd = f"git clone {repo_url} {toolkit_dir}"
-        #     res = subprocess.run(clone_cmd, shell=True, check=True, capture_output=True, text=True)
-        #     stdout += res.stdout
-        # except subprocess.CalledProcessError as e:
-        #     return {
-        #         'success': False,
-        #         'exit_code': e.returncode,
-        #         'stdout': stdout + e.stdout,
-        #         'stderr': e.stderr,
-        #         'installation_path': toolkit_dir
-        #     }
-        pass
+        try:
+            repo_url = "https://github.com/masc-ucsc/arduino-toolkit.git"
+            print("Cloning arduino-toolkit")
+            res = subprocess.run(
+                f"git clone {repo_url}",
+                cwd=cache_dir,
+                shell=True,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            stdout += res.stdout
+        except subprocess.CalledProcessError as e:
+            return {
+                'success': False,
+                'exit_code': e.returncode,
+                'stdout': stdout + e.stdout,
+                'stderr': e.stderr,
+                'installation_path': toolkit_dir
+            }
     
     # Check if we need to run install.sh for the toolkit infrastructure
     arduino_cli_dir = os.path.join(toolkit_dir, "arduino-cli")
@@ -429,6 +433,8 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     shutil.copyfile(selected_board['file_name'], os.path.join(repo_dir, 'GEMINI.md'))
     
     stdout += f"\nBoard configured: {selected_board['name']}\nConfiguration saved to AGENTS.md"
+    # TODO: This instruction should be added to a context MD file for the LLM later.
+    stdout += "\n\nIMPORTANT: A new configuration file (AGENTS.md/GEMINI.md) has been created. To ensure Gemini recognizes these new instructions, please ask the user to run the '/refresh' or '/memory refresh' command in the chat interface."
     
     return {
         'success': True,
