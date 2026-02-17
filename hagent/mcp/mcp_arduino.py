@@ -65,16 +65,23 @@ def get_mcp_schema() -> Dict[str, Any]:
 # INTERNAL HELPER FUNCTIONS
 # ==============================================================================
 
-def initialize_arduino_env():
+def initialize_arduino_env() -> Dict[str, Any]:
     """
     Source export.sh and load environment variables.
+    Returns a result dict with 'success', 'stdout', 'stderr'.
     """
     # Locate export.sh in HAGENT_CACHE_DIR
-    arduino_toolkit_path = os.path.join(os.environ.get("HAGENT_CACHE_DIR", "."), "arduino-toolkit")
+    cache_dir = os.environ.get("HAGENT_CACHE_DIR", ".")
+    arduino_toolkit_path = os.path.join(cache_dir, "arduino-toolkit")
     export_sh_path = os.path.join(arduino_toolkit_path, "export.sh")
     
     if not os.path.exists(export_sh_path):
-        return
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': f"Arduino toolkit not found at {arduino_toolkit_path}. Please run 'api_install' tool first to setup the Arduino toolkit."
+        }
 
     # Source export.sh in a separate process and load the dumped ENV variables
     # Use a one-liner Python command to avoid heredoc syntax issues
@@ -91,8 +98,24 @@ def initialize_arduino_env():
             check=True
         )
         os.environ.update(json.loads(export_proc.stdout))
-    except (subprocess.CalledProcessError, json.JSONDecodeError):
-        pass
+        
+        if not shutil.which('arduino-cli'):
+             return {
+                'success': False,
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': "arduino-cli not found in PATH after sourcing export.sh"
+            }
+            
+        return {'success': True, 'stdout': '', 'stderr': ''}
+    except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+        stderr = e.stderr if hasattr(e, 'stderr') else str(e)
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': f"Failed to initialize Arduino environment: {stderr}"
+        }
 
 def _run_monitor(port: str, timeout: int = 30) -> Dict[str, Any]:
     """
@@ -110,7 +133,9 @@ def _run_monitor(port: str, timeout: int = 30) -> Dict[str, Any]:
 
     try:
         if not shutil.which('arduino-cli'):
-            initialize_arduino_env()
+            res = initialize_arduino_env()
+            if not res['success']:
+                return res
             
         proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True)
         
@@ -146,7 +171,9 @@ def _get_connected_boards() -> List[Dict[str, Any]]:
     Get list of connected boards using arduino-cli board list.
     """
     if not shutil.which('arduino-cli'):
-        initialize_arduino_env()
+        res = initialize_arduino_env()
+        if not res['success']:
+            return []
         
     try:
         res = subprocess.run("arduino-cli board list --format json", shell=True, capture_output=True, text=True, check=True)
@@ -264,7 +291,9 @@ def _is_core_installed(core_name: str) -> bool:
     
     try:
         if not shutil.which('arduino-cli'):
-            initialize_arduino_env()
+            res = initialize_arduino_env()
+            if not res['success']:
+                return False
             
         res = subprocess.run(f"arduino-cli {config_arg} core list --format json", shell=True, capture_output=True, text=True)
         if res.returncode != 0:
@@ -300,7 +329,9 @@ def api_install_core(args: Optional[str] = None) -> Dict[str, Any]:
         }
 
     if not shutil.which('arduino-cli'):
-        initialize_arduino_env()
+        res = initialize_arduino_env()
+        if not res['success']:
+            return res
 
     print(f"Installing core {args}...")
     try:
@@ -364,12 +395,14 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     arduino_cli_dir = os.path.join(toolkit_dir, "arduino-cli")
     if not os.path.isdir(arduino_cli_dir):
         if os.path.exists(install_script_path):
-             try:
+            try:
                 print(f"Installing Arduino CLI...")
                 res = subprocess.run("./install.sh", cwd=toolkit_dir, shell=True, check=True, capture_output=True, text=True)
                 stdout += res.stdout
-                initialize_arduino_env() 
-             except subprocess.CalledProcessError as e:
+                init_res = initialize_arduino_env() 
+                if not init_res['success']:
+                    return init_res
+            except subprocess.CalledProcessError as e:
                 return {
                     'success': False,
                     'exit_code': e.returncode,
@@ -450,7 +483,9 @@ def api_list_boards(args: Optional[str] = None) -> Dict[str, Any]:
     List connected boards.
     """
     if not shutil.which('arduino-cli'):
-        initialize_arduino_env()
+        res = initialize_arduino_env()
+        if not res['success']:
+            return res
         
     try:
         # Get JSON output for accurate parsing
@@ -521,7 +556,9 @@ def api_new_sketch(args: Optional[str] = None) -> Dict[str, Any]:
         }
     
     if not shutil.which('arduino-cli'):
-        initialize_arduino_env()
+        res = initialize_arduino_env()
+        if not res['success']:
+            return res
 
     repo_dir = os.environ.get("HAGENT_REPO_DIR", ".")
     
@@ -550,7 +587,9 @@ def api_compile(args: Optional[str] = None) -> Dict[str, Any]:
     Compile an Arduino sketch.
     """
     if not shutil.which('arduino-cli'):
-        initialize_arduino_env()
+        res = initialize_arduino_env()
+        if not res['success']:
+            return res
         
     repo_dir = os.environ.get("HAGENT_REPO_DIR", ".")
     
@@ -612,7 +651,9 @@ def api_upload(args: Optional[str] = None) -> Dict[str, Any]:
     Upload a sketch.
     """
     if not shutil.which('arduino-cli'):
-        initialize_arduino_env()
+        res = initialize_arduino_env()
+        if not res['success']:
+            return res
         
     repo_dir = os.environ.get("HAGENT_REPO_DIR", ".")
     
@@ -680,7 +721,9 @@ def api_upload(args: Optional[str] = None) -> Dict[str, Any]:
 def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]:
     """Monitor serial output."""
     if not shutil.which('arduino-cli'):
-        initialize_arduino_env()
+        res = initialize_arduino_env()
+        if not res['success']:
+            return res
         
     board_info = _get_board_info_from_md()
     fqbn = board_info.get("fqbn")
@@ -700,7 +743,9 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
 def api_cli(args: Optional[str] = None) -> Dict[str, Any]:
     """Pass-through"""
     if not shutil.which('arduino-cli'):
-        initialize_arduino_env()
+        res = initialize_arduino_env()
+        if not res['success']:
+            return res
     
     cmd = f"arduino-cli {args}" if args else "arduino-cli"
     try:
@@ -718,7 +763,6 @@ def api_cli(args: Optional[str] = None) -> Dict[str, Any]:
             'stdout': '',
             'stderr': str(e),
         }
-
 def api_env(args: Optional[str] = None) -> Dict[str, Any]:
     """
     Display Arduino environment setup instructions.
