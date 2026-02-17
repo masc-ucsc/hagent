@@ -208,18 +208,12 @@ def register_mcp_module_impl(module, mcp_instance):
                     fallback_msg = f'❌ COMMAND FAILED (exit code: {exit_code})\n\nSTDERR:\n{stderr}\n\nSTDOUT:\n{stdout}'
                     return {'_mcp_error': True, 'error_message': fallback_msg}
 
-            # For successful executions, return exit code, stdout, and stderr
+            # For successful executions, return just stdout as a plain string
+            # (FastMCP expects string return values for tool functions)
             if isinstance(result, dict):
+                # Return a minimal success indicator
                 exit_code = result.get('exit_code', 0)
-                stdout = result.get('stdout', '').strip()
-                stderr = result.get('stderr', '').strip()
-                
-                msg = f"✓ Command completed (exit code: {exit_code})"
-                if stdout:
-                    msg += f"\n\nSTDOUT:\n{stdout}"
-                if stderr:
-                    msg += f"\n\nSTDERR:\n{stderr}"
-                return msg
+                return f'✓ Command completed successfully (exit code: {exit_code})'
 
             # Fallback for other result types
             return str(result)
