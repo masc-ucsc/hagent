@@ -252,10 +252,6 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         shutil.copyfile(source_file, os.path.join(repo_dir, 'AGENTS.md'))
         shutil.copyfile(source_file, os.path.join(repo_dir, 'GEMINI.md'))
 
-        stdout += f"\nBoard configured: {selected_board['name']}\nConfiguration saved to AGENTS.md"
-        # TODO: This instruction should be added to a context MD file for the LLM later.
-        stdout += "\n\nIMPORTANT: A new configuration file (AGENTS.md/GEMINI.md) has been created. To ensure Gemini recognizes these new instructions, please ask the user to run the '/refresh' or '/memory refresh' command in the chat interface."
-
     return {
         'success': True,
         'exit_code': 0,
@@ -307,12 +303,12 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
             'stderr': 'AGENTS.md not found. Run api_install() before running api_setup()',
         }
 
-    # Use helper to parse target config
-    board_config = _parse_board_config(md_path)
-    target_config = board_config['model']
-
     with open(md_path, "r") as f:
         agents_content = f.read()
+
+    # Extract board identifier (target)
+    board_match = re.search(r"-\s*`board`\s*:\s*([a-zA-Z0-9_]+)", agents_content)
+    target_config = board_match.group(1).strip() if board_match else "esp32"
     
     # Files/Dirs to STRICTLY PRESERVE
     protected_items = [
