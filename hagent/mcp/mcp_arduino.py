@@ -49,7 +49,7 @@ def get_mcp_schema() -> Dict[str, Any]:
                                    '- new_sketch: (REQUIRED) Sketch name\n'\
                                    '- compile: (OPTIONAL) Sketch name. Defaults to "Blink". AUTOMATICALLY uses FQBN from installed config. DO NOT pass flags manually.\n'\
                                    '- upload: (OPTIONAL) Sketch name. Defaults to "Blink". AUTOMATICALLY detects port and FQBN from config. DO NOT pass flags manually.\n'\
-                                   '- monitor: (OPTIONAL) No args needed. Port detected from config.\n'\
+                                   '- monitor: (NO ARGS) Does not use the `args` parameter. The `timeout` parameter can be used to set the duration (default: 30s).\n'\
                                    '- cli: (REQUIRED) Arbitrary arduino-cli command string',
                 },
                 'timeout': {
@@ -130,15 +130,15 @@ def _run_monitor(port: str, timeout: int = 30) -> Dict[str, Any]:
             'stderr': 'No port specified for monitor',
         }
 
-    monitor_cmd = f"arduino-cli monitor -p {port} --quiet"
-
+    monitor_cmd = f"arduino-cli monitor -p {port}"
+    print(monitor_cmd)
     try:
         if not shutil.which('arduino-cli'):
             res = initialize_arduino_env()
             if not res['success']:
                 return res
             
-        proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True)
+        proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True)
         
         try:
             out, err = proc.communicate(timeout=timeout)
@@ -151,7 +151,7 @@ def _run_monitor(port: str, timeout: int = 30) -> Dict[str, Any]:
                 'stdout': out,
                 'stderr': err if err else ''
             }
-            
+
     except Exception as e:
         return {
             'success': False,
@@ -159,7 +159,7 @@ def _run_monitor(port: str, timeout: int = 30) -> Dict[str, Any]:
             'stdout': '',
             'stderr': str(e)
         }
-    
+
     return {
         'success': False,
         'exit_code': 1,
