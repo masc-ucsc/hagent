@@ -23,27 +23,49 @@ Now, in gemini-cli, you could say:
 
 ## ESP32 LED
 
-A simple toggle led example, you need to setup board.
+A simple toggle LED example for ESP32.
 
-To setup:
-```
+To setup the environment:
+```bash
 mkdir -p ~/tmp/esp32_test
 cd ~/tmp/esp32_test
-XXX_PATH_TOHAGENT/scripts/setup_mcp.sh XXX_PATH_TOHAGENT/examples/esp32_led
+PATH_TO_HAGENT/scripts/setup_mcp.sh esp32_led
 ```
 
-Update the repo/AGENTS.md with the board name. Then, setup the MCP:
-```
+To register HAgent as an MCP server for Gemini:
+```bash
 gemini mcp add hagent ./hagent_server.sh
 ```
 
-Now, in gemini-cli, you could say:
-"Can you recompile and flash the board?"
+Now, in Gemini CLI, you can interact with the board. The recommended execution order is:
+1. Navigate to the `repo` directory.
+2. Start Gemini.
+3. Use the `install` API to install required tools and select your board.
+4. Use the `setup` API to initialize the project.
+5. Use the `build` and `flash` APIs to compile and upload the firmware.
 
-The esp32 IDF should be installed in cache:
+## Arduino LED
+
+A simple Blink example for Arduino.
+
+To setup the environment:
+```bash
+mkdir -p ~/tmp/arduino_test
+cd ~/tmp/arduino_test
+PATH_TO_HAGENT/scripts/setup_mcp.sh arduino_led
 ```
-ls ~/tmp/esp32_test/cache
+
+To register HAgent as an MCP server for Gemini:
+```bash
+gemini mcp add hagent ./hagent_server.sh
 ```
+
+Now, in Gemini CLI, you can interact with the board. The recommended execution order is:
+1. Navigate to the `repo` directory.
+2. Start Gemini.
+3. Use the `install` API to install required tools and select your board.
+4. Use the `new_sketch` API to initialize a new sketch.
+5. Use the `compile` and `upload` APIs to compile and upload the firmware.
 
 ## How to run a docker example
 
