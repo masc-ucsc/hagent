@@ -1,71 +1,107 @@
-# Board: ESP32-C3-DevKit-RUST-1
+# ESP32-C3 DevKit-RUST-1 Notes
 
-## Model
-- ESP32 Model: esp32c3
+## Project Setup
+- **Build system**: ESP-IDF (C/C++ framework)
+- **Project structure**: Standard ESP-IDF CMake project
+  - Source directory: `main/`
+  - Build directory: `build/`
+  - Configuration: `sdkconfig`
+- **Build/Flash commands**:
+  - Build: `idf.py build`
+  - Flash: `idf.py flash`
+  - Build + Flash: `idf.py build flash`
+  - Monitor (note: requires TTY and ctrl+] to exit): `idf.py monitor`
 
-## GPIO Mapping
+## Board Overview
+- `board`: esp32c3 
+- `model`: ESP32-C3-DevKit-RUST-1
+- RISC-V single-core MCU up to 160 MHz with 384 KB ROM, 400 KB SRAM, 8 KB RTC SRAM
+- Integrated IEEE 802.11 b/g/n Wi-Fi, Bluetooth 5, Bluetooth Mesh, USB Serial/JTAG
+- Development board includes sensors, LEDs, button, battery charger, USB Type-C connector
 
-| Function | GPIO Pin | Notes |
-|----------|----------|-------|
-| LED | GPIO7 | Built-in LED |
-| WS2812 | GPIO2 | Addressable RGB LED |
-| Button | GPIO9 | Boot button, active low |
-| I2C_SDA | GPIO10 | Shared with IMU and temp/humidity sensor |
-| I2C_SCL | GPIO8 | Shared with IMU and temp/humidity sensor |
-| UART_RX | GPIO21 | UART0 RX |
-| UART_TX | GPIO20 | UART0 TX |
-| USB_DN | GPIO18 | USB data negative |
-| USB_DP | GPIO19 | USB data positive |
-| ADC1_CH0 | GPIO0 | Analog input |
-| ADC1_CH1 | GPIO1 | Analog input |
-| ADC1_CH2 | GPIO2 | Analog input (shared with WS2812) |
-| ADC1_CH3 | GPIO3 | Analog input |
-| ADC2_CH0 | GPIO4 | Analog input |
-| ADC2_CH1 | GPIO5 | Analog input |
+## On-Board Peripherals
 
-## Reference
-- URL: https://github.com/esp-rs/esp-rust-board
-- Purchase: https://www.aliexpress.com/item/1005004418342288.html
+### I2C Bus
+- Bus pins: SDA on GPIO10, SCL on GPIO8
 
-## Example Usage
+| Peripheral | Part | Crate | Address |
+| ---------- | ---- | ----- | ------- |
+| IMU | ICM-42670-P | `icm42670` | 0x68 |
+| Temperature & Humidity | SHTC3 | `shtcx` | 0x70 |
 
-```c
-// LED control example
-#include "driver/gpio.h"
+### Direct GPIO Attachments
 
-gpio_set_direction(GPIO_NUM_7, GPIO_MODE_OUTPUT);
-gpio_set_level(GPIO_NUM_7, 1);  // Turn on LED
-```
+| Function | GPIO |
+| -------- | ---- |
+| WS2812 RGB LED | GPIO2 |
+| Indicator LED | GPIO7 |
+| Boot/User Button | GPIO9 |
 
-```c
-// Button reading example
-#include "driver/gpio.h"
+## Pin Reference
 
-gpio_set_direction(GPIO_NUM_9, GPIO_MODE_INPUT);
-gpio_set_pull_mode(GPIO_NUM_9, GPIO_PULLUP_ONLY);
+DO NOT USE GPIO18 or GPIO19 for your code, or it will destroy the USB setup. This will require a factory reset.
 
-int button_state = gpio_get_level(GPIO_NUM_9);
-if (button_state == 0) {
-    // Button is pressed
-}
-```
+### Left Edge
 
-```c
-// I2C initialization example
-#include "driver/i2c.h"
+| Pin | Description | SoC |
+| --- | ----------- | --- |
+| 1 | Reset | EN/CHIP_PU |
+| 2 | 3V3 | — |
+| 3 | N/C | — |
+| 4 | GND | — |
+| 5 | IO0/ADC1-0 | GPIO0 |
+| 6 | IO1/ADC1-1 | GPIO1 |
+| 7 | IO2/ADC1-2 | GPIO2 |
+| 8 | IO3/ADC1-3 | GPIO3 |
+| 9 | IO4/ADC2-0 | GPIO4 |
+| 10 | IO5/ADC2-1 | GPIO5 |
+| 11 | IO6/MTCK | GPIO6 |
+| 12 | IO7/MTDO/LED | GPIO7 |
+| 13 | IO9/LOG | GPIO8 |
+| 14 | IO21/U0RXD | GPIO21 |
+| 15 | IO20/U0TXD | GPIO20 |
+| 16 | IO9/BOOT | GPIO9 |
 
-#define I2C_MASTER_SCL_IO    8
-#define I2C_MASTER_SDA_IO    10
-#define I2C_MASTER_FREQ_HZ   100000
+### Right Edge
 
-i2c_config_t conf = {
-    .mode = I2C_MODE_MASTER,
-    .sda_io_num = I2C_MASTER_SDA_IO,
-    .scl_io_num = I2C_MASTER_SCL_IO,
-    .sda_pullup_en = GPIO_PULLUP_ENABLE,
-    .scl_pullup_en = GPIO_PULLUP_ENABLE,
-    .master.clk_speed = I2C_MASTER_FREQ_HZ,
-};
-i2c_param_config(I2C_NUM_0, &conf);
-i2c_driver_install(I2C_NUM_0, conf.mode, 0, 0, 0);
-```
+| Pin | Description | SoC |
+| --- | ----------- | --- |
+| 1 | VBAT | — |
+| 2 | EN [1] | — |
+| 3 | VBUS [2] | — |
+| 4 | NC | — |
+| 5 | NC | — |
+| 6 | NC | — |
+| 7 | NC | — |
+| 8 | NC | — |
+| 9 | IO18/USB_D- | GPIO18 |
+| 10 | IO19/USB_D+ | GPIO19 |
+| 11 | IO8/SCL | GPIO8 |
+| 12 | IO10/SDA | GPIO10 |
+
+[1] Connected to LDO enable pin  
+[2] Connected to USB 5V input
+
+## Factory Reset / Initial Verification
+
+If the board is unresponsive or you need to restore the factory state, follow this "Recipe":
+
+1.  **Enter Bootloader**:
+    - **Instruct**: Ask the user to: Unplug USB, Hold BOOT button (GPIO9), Plug USB while holding BOOT, Release BOOT.
+    - **Confirm**: Wait for the user to reply that they have done this.
+    - **Verify**: Use `hagent_esp32` with `api='check_bootloader'`. If this fails, ask the user to check cables/drivers and retry Step 1.
+2.  **Flash**:
+    - Use `hagent_esp32` with `api='flash'`.
+3.  **Finalize & Verify**:
+    - **Instruct**: Ask the user to press the **RESET** button on the board.
+    - **Confirm**: Wait for the user to reply that they have pressed Reset.
+    - **Verify**: Use `hagent_esp32` with `api='check_bootloader'` to confirm the board is connected.
+    - **Monitor**: Use `hagent_esp32` with `api='monitor'` and `timeout=15` to see the new firmware output.
+
+## Power Notes
+- USB Type-C power input (no USB-PD negotiation)
+- On-board MCP73831T-2ACI/OT Li-Ion charger targets 4.2 V; battery protection not included
+- Battery voltage sensing is not provided on this board
+
+## Additional Resources
+- Full board README: https://github.com/esp-rs/esp-rust-board/blob/master/README.md
