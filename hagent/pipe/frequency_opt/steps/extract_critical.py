@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from hagent.core.step import Step
+from hagent.inou.locator import Locator, RepresentationType
 from hagent.pipe.frequency_opt.schema import (
     BenchmarkConfig,
     RTLSourceConfig,
@@ -55,6 +56,7 @@ class ExtractCriticalStep(Step):
         self.netlist_path: Optional[Path] = None
         self.report_path: Optional[Path] = None
         self.rtl_dir: Optional[Path] = None
+        self.locator: Optional[Locator] = None
 
     def run(self, data: Dict) -> Dict:
         # Parse configuration and store as instance fields
@@ -78,6 +80,14 @@ class ExtractCriticalStep(Step):
         print(f'  Netlist: {self.netlist_path}')
         print(f'  RTL source: {self.rtl_dir}')
 
+        # Initialize Locator for signal location and hierarchy queries
+        self.locator = Locator(
+            config_path=self.benchmark.hagent_config_yaml,
+            profile_name=self.benchmark.hagent_profile_name,
+        )
+        if not self.locator.setup():
+            self.error(f'Locator setup failed: {self.locator.get_error()}')
+
         # Step 1: Extract critical path module names from timing report
         critical_path_modules, start_flop, end_flop = self._locate_modules_and_launch_capture_flops()
         print(f'  Critical path modules: {critical_path_modules}')
@@ -88,42 +98,66 @@ class ExtractCriticalStep(Step):
         if tools and tools.run_synalign:
             synalign_mapping = self._run_synalign(data, tools, critical_path_modules)
 
-        # Step 2: Parse module hierarchy from RTL files
-        hierarchy = self._parse_module_hierarchy()
-        print(f'  Found {len(hierarchy)} modules in hierarchy')
-
-        # Step 3: Expand critical modules to include ancestors up to LCA
-        modules_to_optimize, lca = self._collect_modules_to_optimize(critical_path_modules, hierarchy)
-        print(f'  LCA: {lca}')
-        print(f'  Modules to optimize: {modules_to_optimize}')
-
-        # Step 4: Map modules to their RTL files
-        module_to_file = self._map_modules_to_files()
-
-        # Step 5: Copy relevant RTL files to working directory
+        # Step 2-5: Determine modules to optimize and copy RTL files
         work_dir = Path(self.storage.output_dir) / 'critical_modules'
         if os.path.exists(work_dir):
             shutil.rmtree(work_dir)
             print('  Removed existing critical modules dir')
         os.makedirs(work_dir)
+            
+        hierarchy = self._get_hierarchy_from_locator()
 
-        copied_files = []
-        for module_name in modules_to_optimize:
-            if module_name in module_to_file:
-                src_file = module_to_file[module_name]
-                dst_file = work_dir / src_file.name
-                shutil.copy2(src_file, dst_file)
+        if synalign_mapping is not None:
+            # Synalign provides file_path directly — extract unique files and module names
+            synalign_files = sorted(set(
+                m['file_path'] for m in synalign_mapping.get('mappings', [])
+                if m.get('file_path')
+            ))
+
+            # Filter: only include files whose module (stem) exists in the hierarchy.
+            # This excludes packages and other non-module files that synalign may annotate.
+            hierarchy_modules = set(hierarchy.keys())
+            for children in hierarchy.values():
+                hierarchy_modules.update(children)
+
+            modules_to_optimize = []
+            copied_files = []
+            for fpath in synalign_files:
+                src_path = Path(fpath)
+                if not src_path.exists():
+                    continue
+                # Important (maybe fragile) assumption: all files module names matched their path stem's name
+                module_name = src_path.stem
+                if module_name not in hierarchy_modules:
+                    print(f'  Skipping {src_path.name} (not a module in hierarchy, likely a package)')
+                    continue
+                dst_file = work_dir / src_path.name
+                shutil.copy2(src_path, dst_file)
                 copied_files.append(str(dst_file))
-                print(f'  Copied: {src_file.name}')
+                modules_to_optimize.append(module_name)
+                print(f'  Copied: {src_path.name}')
+            lca = None
+            print(f'  Using synalign modules: {modules_to_optimize}')
+        else:
+            # No synalign — use locator + LCA as before
+            print(f'  Found {len(hierarchy)} modules in hierarchy')
+            modules_to_optimize, lca = self._collect_modules_to_optimize(critical_path_modules, hierarchy)
 
-        # If no specific files found, copy all RTL files
-        if not copied_files:
-            print('  No specific module files found, copying all RTL files')
-            for pattern in self.rtl.file_patterns:
-                for src_file in self.rtl_dir.glob(pattern):
+            module_to_file = self._map_modules_to_files()
+            copied_files = []
+            for module_name in modules_to_optimize:
+                if module_name in module_to_file:
+                    src_file = module_to_file[module_name]
                     dst_file = work_dir / src_file.name
                     shutil.copy2(src_file, dst_file)
                     copied_files.append(str(dst_file))
+                    print(f'  Copied: {src_file.name}')
+
+        print(f'  LCA: {lca}')
+        print(f'  Modules to optimize: {modules_to_optimize}')
+
+        if not copied_files:
+            self.error('  No module files across critical path')
 
         # Build output
         output = data.copy()
@@ -133,10 +167,17 @@ class ExtractCriticalStep(Step):
         set_field(output, 'critical_path_info.critical_path.end', end_flop)
 
         if synalign_mapping is not None:
-            set_field(output, 'critical_modules.synalign_mapping', synalign_mapping)
+            commented_dir = self._annotate_rtl_with_critical_comments(synalign_mapping)
+            if commented_dir:
+                set_field(output, 'critical_path_info.commented_rtl_dir', str(commented_dir))
 
         print(f'  Output directory: {work_dir}')
         print(f'  Files copied: {len(copied_files)}')
+
+        # Cleanup Locator resources
+        if self.locator:
+            self.locator.cleanup()
+            self.locator = None
 
         return output
 
@@ -147,8 +188,7 @@ class ExtractCriticalStep(Step):
         This method:
         1. Parses timing report to extract launch/capture flip-flop instances
         2. Extracts Q/D signal names from the synthesized netlist
-        3. Invokes cli_locator to find signal locations in source Verilog files
-        4. Extracts module names from the source Verilog files
+        3. Uses Locator to find signal locations in source Verilog files
 
         Returns:
             List of source module names and launch/capture flip-flop instances
@@ -174,6 +214,9 @@ class ExtractCriticalStep(Step):
         # Read netlist to extract Q signal names
         netlist_text = self.netlist_path.read_text()
 
+        launch_q_signal = ''
+        capture_d_signal = ''
+
         if launch is None:
             print('  Warning: Could not find launch flip-flops in timing report {self.report_path}')
         else:
@@ -183,7 +226,7 @@ class ExtractCriticalStep(Step):
                 print(f'  Launch Q signal: {launch_q_signal}')
             except RuntimeError as e:
                 print(f'  Warning: {e}')
-        
+
         if capture is None:
             print('  Warning: Could not find capture flip-flops in timing report {self.report_path}')
         else:
@@ -195,8 +238,7 @@ class ExtractCriticalStep(Step):
             except RuntimeError as e:
                 print(f'  Warning: {e}')
 
-
-        # Find source modules using cli_locator
+        # Find source modules using Locator directly
         source_modules = []
 
         # Get hierarchy prefix from synth_top_module if available
@@ -209,17 +251,20 @@ class ExtractCriticalStep(Step):
             print(f'  Using hierarchy prefix from synth_top_module: {hierarchy_prefix}')
 
         for signal_name in [launch_q_signal, capture_d_signal]:
+            if not signal_name:
+                continue
             # Construct full VCD hierarchical path
             vcd_path = f'{hierarchy_prefix}.{signal_name}'
-            locations = self._invoke_locator(vcd_path)
+            locations = self.locator.locate_vcd(to=RepresentationType.VERILOG, vcd_variable=vcd_path)
 
             if not locations:
                 print(f'  Warning: No locations found for {vcd_path}')
                 continue
 
-            # Extract source module from first location
-            file_path, _ = locations[0]
-            source_module = self._extract_module_name_from_file(file_path)
+            # SourceLocation has module_name from hierarchy
+            source_module = locations[0].module_name
+            if not source_module:
+                source_module = Path(locations[0].file_path).stem
 
             if source_module and source_module not in source_modules:
                 source_modules.append(source_module)
@@ -254,7 +299,7 @@ class ExtractCriticalStep(Step):
             print(f'  Warning: run_synalign.py not found at {synalign_script}')
             return None
 
-        # Gather RTL source args
+        # Gather RTL source args for LiveHD inou.yosys
         standalone_files = None
         manifest_file = None
         if self.rtl.standalone_files:
@@ -262,8 +307,10 @@ class ExtractCriticalStep(Step):
         if self.rtl.manifest_file:
             manifest_file = self.rtl.manifest_file
 
-        synth_top = self.benchmark.effective_synth_top
+        synth_top = self.benchmark.effective_output_module
         orig_top = self.benchmark.synth_top_module or synth_top
+        if '\\$' in orig_top:
+            orig_top = orig_top.replace('\\$', '$')
         elab_top = self.benchmark.top_module
         output_dir = str(Path(self.storage.output_dir) / 'synalign')
         os.makedirs(output_dir, exist_ok=True)
@@ -272,20 +319,13 @@ class ExtractCriticalStep(Step):
         cmd = [
             sys.executable, str(synalign_script),
             '--timing-report', str(self.report_path),
-            '--netlist',
-            str(self.netlist_path),
-            '--liberty',
-            tools.liberty_file,
-            '--lgshell',
-            tools.lgshell_path,
-            '--synth-top',
-            synth_top,
-            '--orig-top',
-            orig_top,
-            '--elab-top',
-            elab_top,
-            '--output-dir',
-            output_dir,
+            '--netlist', str(self.netlist_path),
+            '--liberty', tools.liberty_file,
+            '--lgshell', tools.lgshell_path,
+            '--synth-top', synth_top,
+            '--orig-top', orig_top,
+            '--elab-top', elab_top,
+            '--output-dir', output_dir,
         ]
 
         if standalone_files:
@@ -294,7 +334,7 @@ class ExtractCriticalStep(Step):
         if manifest_file:
             cmd.extend(['--manifest-file', manifest_file])
 
-        print(f'  Running synalign: {" ".join(cmd[:8])}...')
+        print(f'  Running synalign: {" ".join(cmd)}')
 
         try:
             result = subprocess.run(
@@ -302,10 +342,10 @@ class ExtractCriticalStep(Step):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=360,
+                timeout=1200,
             )
         except subprocess.TimeoutExpired:
-            print('  Warning: synalign timed out after 360s')
+            print('  Warning: synalign timed out after 1200s')
             return None
         except Exception as e:
             print(f'  Warning: synalign failed: {e}')
@@ -329,20 +369,26 @@ class ExtractCriticalStep(Step):
         mappings = parsed.get('mappings', [])
         print(f'  Synalign returned {len(mappings)} net mappings')
 
-        # Sanity check: compare synalign module results with locator results
+        # Sanity check: read synalign file_paths and grep for module declarations
         if mappings and critical_path_modules:
-            synalign_modules = sorted(set(m.get('orig_module', '') for m in mappings))
-            synalign_modules = [m for m in synalign_modules if m]
+            synalign_files = sorted(set(
+                m['file_path'] for m in mappings if m.get('file_path')
+            ))
+            # Collect all module names declared in synalign's files
+            module_decl_re = re.compile(r'^\s*module\s+(\w+)', re.MULTILINE)
+            synalign_declared_modules: set = set()
+            for fpath in synalign_files:
+                p = Path(fpath)
+                if p.exists():
+                    content = p.read_text()
+                    synalign_declared_modules.update(module_decl_re.findall(content))
 
             locator_set = set(critical_path_modules)
-            synalign_set = set(synalign_modules)
-
-            # Check if locator's start/end modules appear in synalign results
-            missing = locator_set - synalign_set
+            missing = locator_set - synalign_declared_modules
             if missing:
-                print(f'  Warning: Locator modules not found in synalign results: {missing}')
+                print(f'  Warning: Locator modules not found in synalign files: {missing}')
             else:
-                print('  Sanity check passed: locator modules found in synalign mapping')
+                print('  Sanity check passed: locator modules found in synalign files')
 
         return parsed
 
@@ -368,137 +414,28 @@ class ExtractCriticalStep(Step):
         cleaned = re.sub(r'\\?([^\s\[]+).*', r'\1', raw_signal).strip()
         return cleaned
 
-    def _invoke_locator(self, vcd_signal_path: str) -> List[Tuple[str, int]]:
+    def _get_hierarchy_from_locator(self) -> Dict[str, List[str]]:
         """
-        Invoke cli_locator.py to find the source location of a signal.
+        Get module hierarchy from Locator's cached slang-hier result.
 
-        Args:
-            vcd_signal_path: Full VCD hierarchical path (e.g., "TopModule.signal_name")
+        Converts the Locator's instance-based hierarchy into a parent->children
+        module mapping needed for LCA computation.
 
         Returns:
-            List of (file_path, line_number) tuples
+            A mapping from parent module to list of child modules it instantiates
         """
-        # Find cli_locator.py
-        this_file = Path(__file__).resolve()
-        hagent_root = this_file.parent.parent.parent.parent.parent
-        cli_locator_path = hagent_root / 'hagent' / 'inou' / 'cli_locator.py'
+        instance_hierarchy = self.locator.get_hierarchy()
 
-        if not cli_locator_path.exists():
-            print(f'  Warning: cli_locator not found at {cli_locator_path}')
-            return []
-
-        # Locator command
-        cmd = [
-            sys.executable, str(cli_locator_path),
-            '--api', 'locate_vcd',
-            '--to', 'verilog',
-        ]
-
-        # Add config file and profile's name if specified
-        if self.benchmark.hagent_profile_name:
-            cmd.extend(['--name', self.benchmark.hagent_profile_name])
-        if self.benchmark.hagent_config_yaml:
-            cmd.extend(['--config', self.benchmark.hagent_config_yaml])
-
-        cmd.append(vcd_signal_path)
-
-        try:
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=60)
-
-            if result.returncode != 0:
-                return []
-
-            # Parse output: format is "file_path:line_start-line_end"
-            locations = []
-            for line in result.stdout.strip().split('\n'):
-                if not line:
-                    continue
-                match = re.match(r'^(.+):(\d+)-(\d+)', line)
-                if match:
-                    file_path = match.group(1)
-                    line_start = int(match.group(2))
-                    locations.append((file_path, line_start))
-
-            return locations
-
-        except Exception as e:
-            print(f'  Warning: cli_locator failed: {e}')
-            return []
-
-    def _extract_module_name_from_file(self, file_path: str) -> Optional[str]:
-        """Extract the module name from a Verilog source file."""
-        try:
-            content = Path(file_path).read_text()
-
-            # Find module declaration
-            module_pattern = re.compile(r'^\s*module\s+(\w+)\s*[#(]', re.MULTILINE)
-            match = module_pattern.search(content)
-
-            if match:
-                return match.group(1)
-
-            # Fallback: extract from filename
-            return Path(file_path).stem
-
-        except Exception:
-            return None
-
-    def _parse_module_hierarchy(self) -> Dict[str, List[str]]:
-        """
-        Parse module hierarchy using slang-hier command.
-
-        Returns:
-            Dictionary mapping parent module -> list of child modules it instantiates
-        """
-        # Build slang-hier command
-        cmd = ['slang-hier', '--top', self.benchmark.top_module]
-
-        # Add standalone files first
-        if hasattr(self.rtl, 'standalone_files') and self.rtl.standalone_files:
-            for f in self.rtl.standalone_files:
-                cmd.append(f)
-
-        # Add manifest file with -f flag
-        if hasattr(self.rtl, 'manifest_file') and self.rtl.manifest_file:
-            cmd.extend(['-f', self.rtl.manifest_file])
-
-        print(f'  Running: {" ".join(cmd)}')
-
-        try:
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
-
-            if result.returncode != 0:
-                self.error(f'  Error: slang-hier failed: {result.stderr}')
-
-            return self._parse_slang_hier_output(result.stdout)
-
-        except Exception as e:
-            self.error(f'  Warning: slang-hier error: {e}')
-
-    def _parse_slang_hier_output(self, output: str) -> Dict[str, List[str]]:
-        """
-        Parse slang-hier output to build hierarchy dict.
-
-        Output format:
-            Module="frontend" Instance="cva6_nocache.i_frontend" File="..."
-        """
-        hierarchy: Dict[str, List[str]] = {}
+        # Build instance_path → module_name mapping from Locator's format
         instance_to_module: Dict[str, str] = {}
-
-        # Parse each line
-        line_pattern = re.compile(r'Module="(\w+)"\s+Instance="([^"]+)"')
-        for line in output.split('\n'):
-            match = line_pattern.search(line)
-            if not match:
+        for inst_path, info in instance_hierarchy.items():
+            if inst_path == '_metadata':
                 continue
+            instance_to_module[inst_path] = info.get('module', '')
 
-            module_name = match.group(1)
-            instance_path = match.group(2)
-            instance_to_module[instance_path] = module_name
-
-        # Build hierarchy: for each instance, find parent and add child
+        # Convert to parent module -> child modules mapping
+        hierarchy: Dict[str, List[str]] = {}
         for instance_path, module_name in instance_to_module.items():
-            # Find parent instance by removing last component
             if '.' not in instance_path:
                 # Top-level module, no parent
                 if module_name not in hierarchy:
@@ -606,8 +543,6 @@ class ExtractCriticalStep(Step):
         Returns:
             Tuple of (list of module names to optimize, LCA module name)
         """
-        top_module = self.benchmark.top_module
-
         if not critical_modules:
             return [], None
 
@@ -620,6 +555,7 @@ class ExtractCriticalStep(Step):
             return critical_modules, None
 
         # Collect all modules from critical modules up to LCA
+        top_module = self.benchmark.top_module
         modules_to_optimize = set(critical_modules)
 
         if lca != top_module:
@@ -640,23 +576,176 @@ class ExtractCriticalStep(Step):
         return list(modules_to_optimize), lca
 
     def _map_modules_to_files(self) -> Dict[str, Path]:
-        """Map module names to their RTL source files."""
-        module_to_file = {}
+        """Map module names to their RTL source files (absolute path) using Locator's hierarchy.
 
-        for pattern in self.rtl.file_patterns:
-            for rtl_file in self.rtl_dir.rglob(pattern):
-                try:
-                    content = rtl_file.read_text()
+        slang-hier already outputs Module to  File mappings, so we extract them
+        directly from the cached hierarchy instead of re-scanning RTL files.
+        """
+        instance_hierarchy = self.locator.get_hierarchy()
+        metadata = instance_hierarchy.get('_metadata', {})
+        hier_cwd = metadata.get('cwd', '')
 
-                    # Find module declarations
-                    for match in re.finditer(r'\bmodule\s+(\w+)', content):
-                        module_name = match.group(1)
-                        module_to_file[module_name] = rtl_file
+        # Resolve base directory for relative file paths from slang-hier
+        from hagent.inou.path_manager import PathManager
 
-                except Exception:
-                    continue
+        pm = PathManager()
+        base_dir = Path(hier_cwd.replace('$HAGENT_BUILD_DIR', str(pm.build_dir)).replace('$HAGENT_REPO_DIR', str(pm.repo_dir)))
+
+        module_to_file: Dict[str, Path] = {}
+        for inst_path, info in instance_hierarchy.items():
+            if inst_path == '_metadata':
+                continue
+            module_name = info.get('module', '')
+            file_path = info.get('file', '')
+            if module_name and file_path and module_name not in module_to_file:
+                resolved = base_dir / file_path if not Path(file_path).is_absolute() else Path(file_path)
+                module_to_file[module_name] = resolved
 
         return module_to_file
+
+    def _extract_signal_name(self, orig_info: str) -> Optional[str]:
+        """Extract signal name from synalign orig_info field.
+
+        Format: "n1044,lu_hit_o(mux,,cva6_tlb$cva6_nocache.ex_stage_i...)"
+        Returns: "lu_hit_o", or None if not parseable or is a pin-number (p0, p1, ...).
+        """
+        match = re.match(r'n\d+,(\w+)\(', orig_info)
+        if not match:
+            return None
+        name = match.group(1)
+        # For those pin-number names (like p0, p1) produced by LiveHD,
+        # we don't provide specific signal names in the annotation
+        if re.fullmatch(r'p\d+', name) or name == "empty":
+            return ""
+        return name
+
+    def _annotate_rtl_with_critical_comments(self, synalign_result: Dict) -> Optional[Path]:
+        """Annotate RTL source files with CRITICAL comments from synalign mapping.
+
+        Copies affected RTL files to <output_dir>/commented_rtl/ and inserts
+        '// CRITICAL: signal1, signal2, ...' comments at the lines identified
+        by synalign. Never modifies the original source files.
+
+        Args:
+            synalign_result: Parsed output from run_synalign.py containing 'mappings' list.
+
+        Returns:
+            Path to commented_rtl directory, or None if no annotations were made.
+        """
+        mappings = synalign_result.get('mappings', [])
+        if not mappings:
+            return None
+
+        # Group signal names by (file_path, line_number)
+        # key: (abs_file_path, line_no) → set of signal names
+        annotations: Dict[Tuple[str, int], set] = {}
+        for entry in mappings:
+            file_path = entry.get('file_path')
+            line_no = entry.get('line')
+            orig_info = entry.get('orig_info', '')
+            if not file_path or not line_no:
+                continue
+
+            signal = self._extract_signal_name(orig_info)
+            if signal is None:
+                continue
+
+            key = (file_path, line_no)
+            if key not in annotations:
+                annotations[key] = set()
+            annotations[key].add(signal)
+
+        if not annotations:
+            print('  No valid annotations from synalign')
+            return None
+
+        # Group annotations by file
+        file_annotations: Dict[str, Dict[int, set]] = {}
+        for (fpath, line_no), signals in annotations.items():
+            if fpath not in file_annotations:
+                file_annotations[fpath] = {}
+            file_annotations[fpath][line_no] = signals
+
+        # Create commented_rtl directory
+        commented_dir = Path(self.storage.output_dir) / 'commented_rtl'
+        if commented_dir.exists():
+            shutil.rmtree(commented_dir)
+        os.makedirs(commented_dir)
+
+        annotated_count = 0
+        for src_file_path, line_signals in file_annotations.items():
+            src_path = Path(src_file_path)
+            if not src_path.exists():
+                self.error(f'  Error: Source file not found for annotation: {src_path}')
+
+            lines = src_path.read_text().splitlines(keepends=True)
+            dst_path = commented_dir / src_path.name
+
+            # Build annotated content: insert CRITICAL comment before each target line
+            new_lines = []
+            for i, line in enumerate(lines, 1):
+                if i in line_signals:
+                    signal_list = ', '.join(sorted(line_signals[i]))
+                    # Detect indentation from the target line
+                    indent = re.match(r'^(\s*)', line).group(1)
+                    new_lines.append(f'{indent}// CRITICAL: {signal_list}\n')
+                new_lines.append(line)
+
+            dst_path.write_text(''.join(new_lines))
+            annotated_count += 1
+            print(f'  Annotated: {src_path.name} ({len(line_signals)} locations)')
+
+        print(f'  Commented RTL directory: {commented_dir} ({annotated_count} files)')
+        return commented_dir
+
+    def _build_llm_optimization_prompt(
+        self,
+        synalign_result: Dict,
+        commented_rtl_dir: Path,
+    ) -> str:
+        """Build a structured LLM prompt for critical path optimization.
+
+        Combines STA report timing data with synalign net-to-signal mapping to
+        produce a prompt that tells the LLM exactly which signals are on the
+        critical path, their delays, fanout, and source locations.
+
+        Args:
+            synalign_result: Parsed synalign output with 'mappings' list.
+            commented_rtl_dir: Path to the annotated RTL directory.
+
+        Returns:
+            Formatted prompt string for the LLM.
+        """
+        # TODO: Parse STA report to extract per-net delay and fanout
+        #   - Pattern for net lines: r'^\s*(\d+)\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+.*$' (fanout line)
+        #   - Pattern for net name: r'^\s+(\S+)\s+\(net\)' (net name line follows)
+        #   - Build dict: net_name → {fanout, delay, arrival_time}
+
+        # TODO: Build synth_instance → signal mapping from synalign
+        #   - Map each synth_instance (e.g. "_015978_") to signal name + file + line
+        #   - Use _extract_signal_name() for name extraction
+
+        # TODO: Traverse STA critical path nets in order, look up each in synalign mapping
+        #   - For each net, emit: "Signal: <name> in <file>:<line> | delay: <ns> | fanout: <N>"
+
+        # TODO: Assemble the final prompt:
+        #   I am optimizing the timing frequency of {top_module}.
+        #
+        #   The Critical Path flows through these RTL points:
+        #   [ordered list of signals with delay/fanout info]
+        #
+        #   The RTL source code directory is in: {commented_rtl_dir}
+        #
+        #   Task:
+        #   1. Analyze the logic of this critical path using the signal names and relations,
+        #      figure out the bottlenecks.
+        #   2. Optimize the modules without introducing new pipeline stages
+        #      (e.g., restructure mux trees, use parallel cases, move critical wires out of
+        #      nested if-else, use optimized arithmetic like carry-lookahead adders).
+        #   3. Make sure the optimization does not break logical equivalence check.
+        #   4. Provide the optimized RTL code.
+
+        return f'TODO: LLM optimization prompt for {self.benchmark.top_module}'
 
 
 if __name__ == '__main__':
