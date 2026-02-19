@@ -81,19 +81,13 @@ class SynthSTAStep(Step):
         # STA command (note that synth.py's run-sta includes elab, synthesis, and sta)
         synth_top = benchmark.effective_synth_top
         cmd = [
-            sys.executable,
-            str(synth_script),
-            '--dir',
-            str(output_dir),
-            '--elab-method',
-            tools.elab_method,
-            '--top-synthesis',
-            synth_top,
+            sys.executable, str(synth_script),
+            '--dir', str(output_dir),
+            '--elab-method', tools.elab_method,
+            '--top-synthesis', synth_top,
             '--run-sta',
-            '--liberty',
-            tools.liberty_file,
-            '--tag',
-            tag,
+            '--liberty', tools.liberty_file,
+            '--tag', tag,
         ]
 
         if benchmark.output_module is not None:
@@ -151,7 +145,9 @@ class SynthSTAStep(Step):
         if not sta_report_path.exists():
             self.error(f'STA did not produce timing report: {sta_report_path}')
         if not hierarchy_path.exists():
-            self.error(f'Elaboration did not produce hierarchy file: {hierarchy_path}')
+            # we don't error out because hierarchy.txt won't be produced by synth.py
+            # if the elab top module is the same as the synth top module
+            print(f'Warning: Elaboration did not produce hierarchy file: {hierarchy_path}')
 
         clock_signal = self._get_clock_signal(netlist_path)
         frequency = self._parse_timing_log(sta_report_path, clock_signal)

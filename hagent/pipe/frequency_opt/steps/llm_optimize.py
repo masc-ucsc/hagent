@@ -11,19 +11,19 @@ Phase 2 (LEC): Use baseline elab.v + successfully elaborated gate elab.v,
   run miter+SAT for equivalence checking.
 """
 
-import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from hagent.core.step import Step
 from hagent.core.llm_wrap import LLM_wrap
 from hagent.tool.extract_code import Extract_code_verilog
+from hagent.tool.parse_tool_result import get_tool_result_parser
+from hagent.tool.memory import CompilationFixMemory, OptimizationMemory, Memory_shot
 from hagent.pipe.frequency_opt.schema import (
     BenchmarkConfig,
     RTLSourceConfig,
@@ -73,12 +73,13 @@ class LLMOptimizeWithLECStep(Step):
     def setup(self):
         super().setup()
         self.verilog_extractor = Extract_code_verilog()
+        self.storage = None
 
     def run(self, data: Dict) -> Dict:
         # Parse configuration
         thresholds = ThresholdsConfig.from_data(data, 'thresholds')
         llm_config = LLMConfig.from_data(data, 'llm')
-        storage = StorageConfig.from_data(data, 'storage')
+        self.storage = StorageConfig.from_data(data, 'storage')
         benchmark = BenchmarkConfig.from_data(data, 'benchmark')
         rtl = RTLSourceConfig.from_data(data, 'rtl')
         tools = ToolsConfig.from_data(data, 'tools')
@@ -88,8 +89,30 @@ class LLMOptimizeWithLECStep(Step):
         module_names = require_field(data, 'critical_path_info.module_names')
         critical_path = get_field(data, 'critical_path_info.critical_path', {})
 
+        # Check if commented RTL (from synalign) is available
+        commented_rtl_dir = get_field(data, 'critical_path_info.commented_rtl_dir', None)
+        use_commented_rtl = (
+            tools.run_synalign
+            and commented_rtl_dir
+            and Path(commented_rtl_dir).is_dir()
+            and any(Path(commented_rtl_dir).iterdir())
+        )
+        rtl_read_dir = commented_rtl_dir if use_commented_rtl else critical_dir
+        synalign_critical_hint = (
+            (
+                'We marked the likely CRITICAL signals/procedures with "// CRITICAL:" markers in the source code. '
+                'The critical signal should be found directly adjacent to the marked lines '
+                'or live in the adjacent "begin, end" blocks, or always blocks of the marked line.'
+            )
+            if use_commented_rtl
+            else None
+        )
+
+        if use_commented_rtl:
+            print(f'  Using commented RTL from synalign: {commented_rtl_dir}')
+
         # Setup output directory
-        output_dir = Path(storage.output_dir) / 'optimized'
+        output_dir = Path(self.storage.output_dir) / 'optimized'
         if output_dir.exists():
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True)
@@ -114,8 +137,8 @@ class LLMOptimizeWithLECStep(Step):
         for module_name in module_names:
             print(f'\nOptimizing module: {module_name}')
 
-            # Read original module code
-            original_code = self._read_module_code(critical_dir, module_name)
+            # Read RTL code: either original or marked by synalign
+            original_code = self._read_module_code(rtl_read_dir, module_name)
             if not original_code:
                 print(f'  Warning: Could not read module {module_name}, skipping')
                 failed_modules.append({'name': module_name, 'reason': 'could not read source'})
@@ -133,6 +156,7 @@ class LLMOptimizeWithLECStep(Step):
                 rtl=rtl,
                 tools=tools,
                 output_dir=output_dir,
+                synalign_critical_hint=synalign_critical_hint,
             )
 
             if result['success']:
@@ -286,7 +310,7 @@ class LLMOptimizeWithLECStep(Step):
         synth_top: str,
         elab_method: str,
         output_dir: Path,
-        label: str,
+        tag: str,
     ) -> Tuple[bool, str, Optional[Path]]:
         """
         Elaborate a full design by invoking scripts/synth.py --run-elab.
@@ -298,47 +322,46 @@ class LLMOptimizeWithLECStep(Step):
             synth_top: Synthesis top module (e.g., module_name)
             elab_method: Elaboration method (tools.elab_method)
             output_dir: Base output directory for this attempt
-            label: Tag name for this elab run (e.g., "gate")
+            tag: Tag name for this elab run (e.g., "gate"), where the output will be stored to
 
         Returns:
             (success, error_message, elab_path)
         """
         synth_script = self._find_synth_script()
 
-        cmd = [
-            sys.executable,
-            str(synth_script),
+        elab_cmd = [
+            sys.executable, str(synth_script),
             '--dir', str(output_dir),
             '--elab-method', elab_method,
             '--top-synthesis', synth_top,
             '--run-elab',
-            '--tag', label,
+            '--tag', tag,
         ]
 
-        cmd.extend(['--', '--top', elab_top])
+        elab_cmd.extend(['--', '--top', elab_top])
+
+        elab_cmd.extend(['--allow-use-before-declare'])
 
         if standalone_files:
             cmd.extend(standalone_files)
 
-        cmd.extend(['-f', str(flist_path)])
+        elab_cmd.extend(['-f', str(flist_path)])
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(elab_cmd, capture_output=True, text=True, timeout=600)
         except subprocess.TimeoutExpired:
             return (False, 'Elaboration timed out after 600s', None)
 
-        elab_path = output_dir / label / 'elab.v'
+        elab_path = output_dir / tag / 'elab.v'
 
         if result.returncode == 0 and elab_path.exists():
             return (True, '', elab_path)
 
-        # Parse error from stderr/stdout
-        error_lines = []
-        for line in (result.stderr + result.stdout).splitlines():
-            cleaned_line = re.sub(r'\s+', ' ', line)
-            error_lines.append(cleaned_line)
+        # Return raw stderr/stdout as fallback error info when providing feedback for the LLM
+        raw = result.stderr + result.stdout
+        lines = [re.sub(r'\s+', ' ', ln) for ln in raw.splitlines() if ln.strip()]
+        error_msg = '\n'.join(lines[:100]) if lines else f'Elaboration failed (rc={result.returncode})'
 
-        error_msg = '\n'.join(error_lines[:100]) if error_lines else f'Elaboration failed (rc={result.returncode})'
         return (False, error_msg, None)
 
     def _find_synth_script(self) -> Path:
@@ -488,19 +511,59 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
         return (None, f'Could not parse LEC result (rc={result.returncode})', '')
 
     # -------------------------------------------------------------------------
-    # Feedback and RAG placeholders
+    # Feedback from memory DB
     # -------------------------------------------------------------------------
+    def _build_compile_feedback(
+        self,
+        error_msg: str,
+        elab_log_dir: Optional[Path] = None,
+        target_module: str = '',
+        memory: Optional[CompilationFixMemory] = None,
+        variant_code: str = '',
+    ) -> Tuple[str, str]:
+        """Build LLM feedback for compilation errors.
 
-    def _build_compile_feedback(self, error_msg: str) -> str:
-        """Build LLM feedback for compilation errors."""
-        # Filter for the most relevant error lines
-        relevant = []
-        for line in error_msg.splitlines():
-            lower = line.lower()
-            if 'error:' in lower or 'error' in lower or 'warning' in lower:
-                relevant.append(line.strip())
+        Tries to parse elab.log / elab_sv2v.log via ParseToolResultForLLM for
+        structured, LLM-friendly feedback. Falls back to filtering the raw
+        error_msg if no log files are found or no parser matches.
 
-        error_summary = '\n'.join(relevant[:15]) if relevant else error_msg[:500]
+        If a CompilationFixMemory is provided, looks up similar past errors and
+        includes fix examples in the feedback.
+
+        Args:
+            error_msg: Raw error text (stderr/stdout from elaboration).
+            elab_log_dir: Directory containing elab.log / elab_sv2v.log.
+            target_module: Name of the module being optimized.
+            memory: Optional FewShotMemory for looking up similar past fixes.
+            variant_code: The broken variant code (used for memory similarity search).
+
+        Returns:
+            Tuple of (feedback_text, error_type) where error_type is the
+            categorized primary error type (for later memory.add on success).
+        """
+        error_summary = None
+        error_type = 'unknown'
+
+        # Try structured parsing from log files
+        if elab_log_dir:
+            for log_name in ['elab.log', 'elab_sv2v.log']:
+                log_path = elab_log_dir / log_name
+                if log_path.exists():
+                    parser = get_tool_result_parser(log_path)
+                    if parser:
+                        parser.parse()
+                        error_summary = parser.format_for_llm(target_module=target_module)
+                        error_type = parser.get_primary_error_type()
+                        break
+
+        # Fallback: filter raw error_msg for relevant lines
+        if not error_summary:
+            relevant = []
+            for line in error_msg.splitlines():
+                lower = line.lower()
+                if 'error:' in lower or 'warning' in lower:
+                    relevant.append(line.strip())
+            error_summary = '\n'.join(relevant[:15]) if relevant else error_msg[:500]
 
         lines = [
             'The previous optimization failed to compile in the full design context.',
@@ -508,10 +571,27 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
             error_summary,
             '',
             'Please fix these compilation errors while maintaining the timing optimization.',
-            'Common issues: missing port connections, type mismatches, undeclared signals,',
-            'or interface changes that break the module boundary.',
         ]
-        return '\n'.join(lines)
+
+        # Look up similar past fixes from memory
+        if memory and error_type != 'unknown' and variant_code:
+            try:
+                examples = memory.find(error_type=error_type, fix_question=variant_code, n_results=2)
+                breakpoint()
+                if examples:
+                    lines.append('')
+                    lines.append('Here are examples of how similar errors were fixed before:')
+                    for i, ex in enumerate(examples):
+                        lines.append(f'--- Example {i + 1} ---')
+                        # Truncate to avoid overwhelming the prompt
+                        q = ex.question[:1000] if len(ex.question) > 1000 else ex.question
+                        a = ex.answer[:1000] if len(ex.answer) > 1000 else ex.answer
+                        lines.append(f'Broken code snippet:\n{q}')
+                        lines.append(f'Fixed code snippet:\n{a}')
+            except Exception:
+                pass  # Memory lookup is best-effort
+
+        return '\n'.join(lines), error_type
 
     _SAT_FAIL_MARKER = re.compile(r'SAT*.*FAIL!')
     _TRYING_RE = re.compile(r'Trying induction with length\s+(\d+)')
@@ -594,43 +674,6 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
 
         return '\n'.join(lines)
 
-    def _store_compilation_error(
-        self,
-        module_name: str,
-        error_msg: str,
-        code: str,
-        output_dir: Path,
-    ):
-        """
-        RAG placeholder: store compilation error for future retrieval.
-
-        Appends to {output_dir}/compilation_errors.jsonl.
-        """
-        jsonl_path = output_dir / 'compilation_errors.jsonl'
-        entry = {
-            'module': module_name,
-            'error': error_msg[:2000],
-            'code_snippet': '\n'.join(code.splitlines()[:50]),
-            'timestamp': datetime.now().isoformat(),
-        }
-        with open(jsonl_path, 'a') as f:
-            f.write(json.dumps(entry) + '\n')
-
-    # TODO
-    def _retrieve_similar_errors(
-        self,
-        module_name: str,
-        error_msg: str,
-        output_dir: Path,
-    ) -> List[Dict]:
-        """
-        RAG placeholder: retrieve similar past errors and their fixes.
-
-        Returns empty list for now. Future: will query the JSONL database
-        for similar errors and human-provided fixes.
-        """
-        return []
-
     # -------------------------------------------------------------------------
     # Main optimization loop (two-phase)
     # -------------------------------------------------------------------------
@@ -647,6 +690,7 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
         rtl: RTLSourceConfig,
         tools: ToolsConfig,
         output_dir: Path,
+        synalign_critical_hint: Optional[str] = None,
     ) -> Dict:
         """
         Optimize a module with two-phase verification and retry loop.
@@ -659,6 +703,22 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
         """
         feedback = None
         lec_dir = output_dir / 'equiv_check' / module_name
+
+        # Initialize memories — compilation fixes and optimization techniques
+        # share the same db_path but live in separate ChromaDB collections.
+        compile_memory = None
+        opt_memory = None
+        try:
+            db_path = str(self.storage.memory_db_dir)
+            compile_memory = CompilationFixMemory(db_path=db_path, learn=True)
+            opt_memory = OptimizationMemory(db_path=db_path, learn=False)
+        except Exception as e:
+            print(f'  Warning: Memory init failed (will proceed without): {e}')
+
+        # Track error state for learning: when a variant succeeds after a previous
+        # failure, we store the (error_type, broken_code -> fixed_code) pair.
+        last_error_type: Optional[str] = None
+        last_broken_code: Optional[str] = None
 
         # Note: _resolve_synth_top() is available for future use to look up
         # yosys-internal names (e.g. 'lsu_bypass$cva6_nocache...') from hierarchy.txt.
@@ -676,16 +736,18 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
                 synth_top=module_synth_top,
                 elab_method=tools.elab_method,
                 output_dir=lec_dir,
-                label='gold',
+                tag='gold',
             )
             if not gold_ok:
                 print(f'  Gold elaboration failed: {gold_error[:100]}')
-                return {'success': False, 'code': '', 'reason': f'Gold elaboration failed: {gold_error}'}
+                return {'success': False, 'code': '', 'reason': f'Gold elaboration failed: {gold_error[:100]}'}
+        else:
+            self.error('We only support elab by manifest file only')
 
         for attempt in range(max_retries + 1):
             print(f'  Attempt {attempt + 1}/{max_retries + 1}')
-            # Generate variants from LLM
 
+            # Generate `max_variants` number of variants per module from LLM
             variants = self._generate_variants(
                 session=session,
                 module_name=module_name,
@@ -693,6 +755,8 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
                 critical_path=critical_path,
                 feedback=feedback,
                 n_variants=max_variants,
+                synalign_critical_hint=synalign_critical_hint,
+                opt_memory=opt_memory,
             )
 
             if not variants:
@@ -734,29 +798,48 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
                         synth_top=module_synth_top,
                         elab_method=tools.elab_method,
                         output_dir=attempt_dir,
-                        label='gate',
+                        tag='gate',
                     )
 
                     if elab_ok:
                         compiled_variant = variant_code
                         gate_elab_path = elab_path
                         print(f'    Variant {idx + 1} compiled successfully')
+
+                        # Learn: store the fix if we had a previous compilation failure
+                        if compile_memory and last_error_type and last_broken_code:
+                            try:
+                                fix = Memory_shot(question=last_broken_code, answer=variant_code)
+                                # TODO: add later after debugging stage
+                                # compile_memory.add(error_type=last_error_type, fix=fix)
+                                # print(f'    Stored compile fix in memory (error_type={last_error_type})')
+                            except Exception as e:
+                                print(f'    Warning: Failed to store fix in memory: {e}')
+                            last_error_type = None
+                            last_broken_code = None
+
                         break
                     else:
                         print(f'    Variant {idx + 1} compilation failed: {elab_error[:200]}')
-                        self._store_compilation_error(module_name, elab_error, variant_code, output_dir)
-                        feedback = self._build_compile_feedback(elab_error)
+                        feedback, error_type = self._build_compile_feedback(
+                            elab_error,
+                            elab_log_dir=attempt_dir / 'gate',
+                            target_module=module_name,
+                            memory=compile_memory,
+                            variant_code=variant_code,
+                        )
+                        last_error_type = error_type
+                        last_broken_code = variant_code
                 else:
-                    # No manifest file — skip compilation phase, go straight to LEC
-                    compiled_variant = variant_code
-                    print(f'    Variant {idx + 1} accepted (no manifest for compilation check)')
-                    break
+                    self.error('We only support elab by manifest file only')
+
 
             if compiled_variant is None:
                 # All variants failed compilation — retry with compile feedback
                 continue
 
             # PHASE 2: LEC check
+            assert attempt_dir is not None
             if gold_elab_path and gate_elab_path:
                 # Both elab files available — run full LEC
                 lec_result, lec_error, cex = self._run_lec(
@@ -794,15 +877,39 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
         critical_path: Dict,
         feedback: Optional[str],
         n_variants: int,
+        synalign_critical_hint: Optional[str] = None,
+        opt_memory: Optional[OptimizationMemory] = None,
     ) -> List[str]:
         """Generate optimized variants using LLM."""
         # Build prompt
         prompt_dict = {
             'module_name': module_name,
             'original_code': original_code,
-            'critical_path_start': critical_path.get('start', 'unknown'),
-            'critical_path_end': critical_path.get('end', 'unknown'),
         }
+
+        if synalign_critical_hint:
+            prompt_dict['critical_hint'] = synalign_critical_hint
+        else:
+            start = critical_path.get('start', 'unknown')
+            end = critical_path.get('end', 'unknown')
+            prompt_dict['critical_hint'] = f'The critical path is from "{start}" to "{end}".'
+
+        # On first attempt (no feedback), inject relevant optimization technique examples
+        if opt_memory and not feedback:
+            try:
+                opt_examples = opt_memory.find_similar(query_code=original_code, n_results=2)
+                if opt_examples:
+                    hint_parts = [prompt_dict['critical_hint'], '', 'Here are relevant optimization techniques with examples:']
+                    for ex in opt_examples:
+                        if ex.description:
+                            hint_parts.append(f'Technique: {ex.description}')
+                        hint_parts.append(f'Before optimization:\n```verilog\n{ex.question}\n```')
+                        hint_parts.append(f'After optimization:\n```verilog\n{ex.answer}\n```')
+                        hint_parts.append('')
+                    prompt_dict['critical_hint'] = '\n'.join(hint_parts)
+                    print(f'    Injected {len(opt_examples)} optimization technique example(s)')
+            except Exception as e:
+                print(f'    Warning: optimization technique lookup failed: {e}')
 
         # Add feedback if this is a retry
         if feedback:
@@ -814,7 +921,7 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
                 prompt_dict,
                 'optimize_timing_prompt',
                 n=n_variants,
-                max_history=6,
+                max_history=8,
             )
         except Exception as e:
             print(f'    LLM call failed: {e}')
