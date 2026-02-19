@@ -506,7 +506,8 @@ def main():
         sys.exit(1)
 
     # Create output directory and store standard paths
-    output_dir = _ensure_output_dir(output_dir_path)
+    # Use resolve() to get absolute paths - this helps coding agents see full paths they can access
+    output_dir = _ensure_output_dir(output_dir_path).resolve()
     args.elab_path = output_dir / 'elab.v'
     args.netlist_path = output_dir / 'synth.v'
     args.output_dir = str(output_dir)  # For compatibility with rest of code
@@ -726,6 +727,8 @@ def run_elaboration(args, slang_args, top_name, output_module):
     if args.elab_method == 'sv2v':
         _elaborate_with_verilog(args, slang_args, top_name, output_module, use_sv2v=True)
     elif args.elab_method == 'none':
+        # sometimes we want `elab_method = none` when `sv2v` extracts loop index declaration
+        # out of the loop, causing latch infer if the loop is in a conditional statement
         _elaborate_with_verilog(args, slang_args, top_name, output_module, use_sv2v=False)
     elif args.elab_method == 'slang':
         _elaborate_with_readslang(args, slang_args, top_name, output_module)
