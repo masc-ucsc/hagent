@@ -35,7 +35,8 @@ Always call the `install` API first for the specific platform tool. This must be
 - **ESP32:** `hagent.esp32(api="install", args="board_id")`
 
 > [!NOTE]
-> **Specify the board ID:** Avoid running the `install` tool without the `args` parameter. Running it without a board identifier will only return a list of available boards, requiring an additional tool call to complete the installation. Identify the board from the list in Section 1 and pass its ID immediately.
+> **Board ID Requirement:** Providing a `board_id` in the `args` parameter allows for a complete, one-step setup. 
+> However, you may run `install` without `args` to perform a "partial setup." This installs the base toolkit infrastructure (e.g., `arduino-cli` or `idf.py`) without configuring a specific board. This is useful when the toolkit itself is required to run discovery commands (like `api_list_boards` or `api_check_bootloader`) to identify the hardware before finalizing the installation with a board-specific ID.
 
 ### **Step 2: Memory Refresh (CRITICAL)**
 After `api_install` completes, a new hardware-specific context file (`AGENTS.md` / `GEMINI.md` / `CLAUDE.md`) is created in the repository.
