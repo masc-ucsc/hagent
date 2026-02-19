@@ -278,16 +278,39 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                 'stderr': e.stderr,
             }
 
-        # Copy board config to $HAGENT_REPO_DIR/AGENTS.md and GEMINI.md
-        source_file = selected_board['file_name']
+        # Copy board config to $HAGENT_REPO_DIR/AGENTS.md, GEMINI.md, and CLAUDE.md
         repo_dir = os.environ['HAGENT_REPO_DIR']
         
-        shutil.copyfile(source_file, os.path.join(repo_dir, 'AGENTS.md'))
-        shutil.copyfile(source_file, os.path.join(repo_dir, 'GEMINI.md'))
+        # Read and concatenate config files
+        combined_content = ""
+        try:
+            for cfg_file in ['CONFIG.md', 'ESP32.md']:
+                cfg_path = os.path.join(configs_path, cfg_file)
+                if os.path.exists(cfg_path):
+                    with open(cfg_path, 'r') as f:
+                        combined_content += f.read() + "\n\n---\n\n"
+            
+            # Add the specific board config
+            with open(selected_board['file_name'], 'r') as f:
+                combined_content += f.read()
+                
+            # Write to AGENTS.md, GEMINI.md, and CLAUDE.md
+            for filename in ['AGENTS.md', 'GEMINI.md', 'CLAUDE.md']:
+                with open(os.path.join(repo_dir, filename), 'w') as f:
+                    f.write(combined_content)
+        except Exception as e:
+            return {
+                'success': False,
+                'exit_code': 1,
+                'stdout': stdout,
+                'stderr': f"Failed to create configuration files: {str(e)}"
+            }
 
-        stdout += f"\nBoard configured: {selected_board['name']}\nConfiguration saved to AGENTS.md"
-        # TODO: This instruction should be added to a context MD file for the LLM later.
-        stdout += "\n\nIMPORTANT: A new configuration file (AGENTS.md/GEMINI.md) has been created. To ensure Gemini recognizes these new instructions, please ask the user to run the '/refresh' or '/memory refresh' command in the chat interface."
+        stdout += f"\nBoard configured: {selected_board['name']}\nConfiguration saved to AGENTS.md, GEMINI.md, and CLAUDE.md"
+
+        stdout += "\n\nIMPORTANT: New configuration files (AGENTS.md, GEMINI.md, CLAUDE.md) have been created. To ensure your agent recognizes these instructions, please perform the following:"
+        stdout += "\n- Gemini CLI: Run the '/memory refresh' command."
+        stdout += "\n- Claude Code / Codex: Restart your current session."
 
     return {
         'success': True,
@@ -321,32 +344,26 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
 
     idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
     repo_dir = os.environ["HAGENT_REPO_DIR"]
-    md_path = os.path.join(repo_dir, "AGENTS.md")
+    # Find any of the configuration files
+    md_path = None
+    for filename in ["AGENTS.md", "GEMINI.md", "CLAUDE.md"]:
+        path = os.path.join(repo_dir, filename)
+        if os.path.exists(path):
+            md_path = path
+            break
 
-    if not os.path.isdir(idf_path):
+    if not md_path:
         return {
             'success': False,
             'exit_code': 1,
             'stdout': '',
-            'stderr': 'ESP-IDF not installed. Run api_install() before running api_setup()',
-        }
-
-    # Read AGENTS.md to get target config
-    if not os.path.exists(md_path):
-            return {
-            'success': False,
-            'exit_code': 1,
-            'stdout': '',
-            'stderr': 'AGENTS.md not found. Run api_install() before running api_setup()',
+            'stderr': 'Board configuration (AGENTS.md, GEMINI.md, or CLAUDE.md) not found. Run api_install() before running api_setup()',
         }
 
     # Use helper to parse target config
     board_config = _parse_board_config(md_path)
     target_config = board_config['model']
 
-    with open(md_path, "r") as f:
-        agents_content = f.read()
-    
     # Files/Dirs to STRICTLY PRESERVE
     protected_items = [
         '.gemini', '.claude', '.git', '.gitignore', '.vscode',
@@ -389,12 +406,6 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
                     shutil.copytree(s, d, dirs_exist_ok=True)
                 else:
                     shutil.copy2(s, d)
-            
-            # Ensure AGENTS.md/GEMINI.md content matches buffer
-            with open(os.path.join(repo_dir, 'AGENTS.md'), 'w') as f:
-                f.write(agents_content)
-            with open(os.path.join(repo_dir, 'GEMINI.md'), 'w') as f:
-                f.write(agents_content)
 
             # 4. Initialize Configuration IN THE REPO
             # This generates sdkconfig and build/ with correct absolute paths

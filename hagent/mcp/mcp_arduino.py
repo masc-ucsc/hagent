@@ -224,10 +224,10 @@ def _resolve_board_info(target_fqbn: Optional[str] = None) -> Tuple[Optional[str
 
 def _get_board_info_from_md() -> Dict[str, str]:
     """
-    Extract board metadata from AGENTS.md or GEMINI.md in the repo directory.
+    Extract board metadata from AGENTS.md, GEMINI.md, or CLAUDE.md in the repo directory.
     """
     repo_dir = os.environ.get("HAGENT_REPO_DIR", ".")
-    for filename in ["AGENTS.md", "GEMINI.md"]:
+    for filename in ["AGENTS.md", "GEMINI.md", "CLAUDE.md"]:
         path = os.path.join(repo_dir, filename)
         if os.path.exists(path):
             try:
@@ -462,12 +462,37 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
 
     # 3. Persist Selection
     repo_dir = os.environ.get('HAGENT_REPO_DIR', '.')
-    shutil.copyfile(selected_board['file_name'], os.path.join(repo_dir, 'AGENTS.md'))
-    shutil.copyfile(selected_board['file_name'], os.path.join(repo_dir, 'GEMINI.md'))
     
-    stdout += f"\nBoard configured: {selected_board['name']}\nConfiguration saved to AGENTS.md"
-    # TODO: This instruction should be added to a context MD file for the LLM later.
-    stdout += "\n\nIMPORTANT: A new configuration file (AGENTS.md/GEMINI.md) has been created. To ensure Gemini recognizes these new instructions, please ask the user to run the '/refresh' or '/memory refresh' command in the chat interface."
+    # Read and concatenate config files
+    combined_content = ""
+    try:
+        for cfg_file in ['CONFIG.md', 'ARDUINO.md']:
+            cfg_path = os.path.join(configs_path, cfg_file)
+            if os.path.exists(cfg_path):
+                with open(cfg_path, 'r') as f:
+                    combined_content += f.read() + "\n\n---\n\n"
+        
+        # Add the specific board config
+        with open(selected_board['file_name'], 'r') as f:
+            combined_content += f.read()
+            
+        # Write to AGENTS.md, GEMINI.md, and CLAUDE.md
+        for filename in ['AGENTS.md', 'GEMINI.md', 'CLAUDE.md']:
+            with open(os.path.join(repo_dir, filename), 'w') as f:
+                f.write(combined_content)
+    except Exception as e:
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': stdout,
+            'stderr': f"Failed to create configuration files: {str(e)}"
+        }
+    
+    stdout += f"\nBoard configured: {selected_board['name']}\nConfiguration saved to AGENTS.md, GEMINI.md, and CLAUDE.md"
+    
+    stdout += "\n\nIMPORTANT: New configuration files (AGENTS.md, GEMINI.md, CLAUDE.md) have been created. To ensure your agent recognizes these instructions, please perform the following:"
+    stdout += "\n- Gemini CLI: Run the '/memory refresh' command."
+    stdout += "\n- Claude Code / Codex: Restart your current session."
     
     return {
         'success': True,
