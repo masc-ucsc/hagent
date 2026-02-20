@@ -220,6 +220,7 @@ def print_dry_run(args, slang_args, synth_top, elaborate_top):
     print(f'Liberty file: {args.liberty}')
     print(f'Elaboration top: {elaborate_top}')
     print(f'Synthesis top: {synth_top}')
+    print(f'Max fanout (buffer trees): {args.max_fanout if args.max_fanout > 0 else "disabled"}')
     if args.exclude:
         print(f'Exclude patterns: {args.exclude}')
 
@@ -461,6 +462,13 @@ def main():
     parser.add_argument('--exclude', action='append', help='Exclude files matching regex pattern (can be used multiple times)')
     parser.add_argument('--top-synthesis', help='Top module for synthesis (when different from elaboration top in --top)')
     parser.add_argument('--dry-run', action='store_true', help='Show command line arguments without executing')
+    parser.add_argument(
+        '--max-fanout',
+        type=int,
+        default=12,
+        help='Max fanout before inserting buffer trees in ABC (0=disabled, default=12). '
+        'Reduces critical path for high-fanout pipeline signals by building buffer trees.',
+    )
 
     # Parse args using -- separator or fallback to parse_known_args
     if use_separator:
@@ -791,7 +799,12 @@ def run_synthesis(args, top_name):
     # Note: {D} is literal ABC syntax for delay-oriented NF mapper, not a Python format string
     abc_script_path = output_dir / 'abc.script'
     with open(abc_script_path, 'w') as f:
-        f.write('strash; &get -n; &fraig -x; &put; scorr; dc2; dretime; strash; &get -n; &dch -f; &nf {D}; &put\n')
+        abc_flow = 'strash; &get -n; &fraig -x; &put; scorr; dc2; dretime; strash; &get -n; &dch -f; &nf {D}; &put'
+        if args.max_fanout > 0:
+            # buffer -c N: insert buffer trees to limit fanout (fixes long critical paths on high-fanout signals)
+            # upsize/dnsize: adjust drive strength on critical/non-critical paths
+            abc_flow += f'; buffer -c {args.max_fanout}; upsize; dnsize'
+        f.write(abc_flow + '\n')
 
     # Generate synthesis script
     script = f"""yosys read_verilog -sv {elab_path}
