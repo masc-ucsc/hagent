@@ -6,12 +6,14 @@ This file targets uncovered lines in react.py.
 
 import tempfile
 import unittest
+from contextlib import ExitStack
 from unittest.mock import patch
 from typing import List, Dict
 from hagent.tool.memory import Memory_shot
 
 from hagent.tool.react import React, process_multiline_strings, insert_comment
 from hagent.tool.compile import Diagnostic
+from hagent.inou.path_manager import PathManager
 
 
 class MockDiagnostic(Diagnostic):
@@ -58,10 +60,20 @@ class TestReactCoverage(unittest.TestCase):
         """Set up for tests."""
         self.react = React()
         # Create a temporary DB file for testing
-        self.temp_db = tempfile.mkdtemp()  # NamedTemporaryFile(delete=False, suffix='.yaml')
+        self.temp_db = tempfile.mkdtemp()
+        # Configure PathManager for test isolation (react_cycle needs it for log saving)
+        self._stack = ExitStack()
+        self._stack.enter_context(
+            PathManager.configured(
+                repo_dir=self.temp_db,
+                build_dir=self.temp_db,
+                cache_dir=self.temp_db,
+            )
+        )
 
     def tearDown(self):
         """Clean up after tests."""
+        self._stack.close()
 
     def test_process_multiline_strings(self):
         """Test the process_multiline_strings function."""
