@@ -723,36 +723,41 @@ class Equiv_check:
         """
         Build a Yosys command string for the simple SMT-based approach,
         """
-        cmd = [
-            f'read_verilog -sv {gold_v_filename}',
-            f'prep -top {gold_top}',
-            f'rename {gold_top} gold',
-            'design -stash gold',
-            f'read_verilog -sv {gate_v_filename}',
-            f'prep -top {gate_top}',
-            f'rename {gate_top} gate',
-            'design -stash gate',
-            'design -copy-from gold -as gold gold; design -copy-from gate -as gate gate;',
-            'miter -equiv -flatten -make_outputs -ignore_gold_x gold gate miter',
-            'hierarchy -top miter',
-            'sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -ignore_unknown_cells -show-ports miter',
-        ]
-        full_cmd = ';\n'.join(cmd)
-
         if self.use_docker:
             if not self.runner:
                 return 1, '', 'Docker mode enabled but Runner is not initialized'
             container_work_dir = self._translate_to_container(work_dir)
 
-            script_name = 'check.s'
-            container_script_path = f'{container_work_dir}/{script_name}'
-
             # Use relative paths in the script since we run from container_work_dir
             relative_gold = os.path.basename(gold_v_filename)
             relative_gate = os.path.basename(gate_v_filename)
-            cmd[0] = f'read_verilog -sv {relative_gold}'
-            cmd[4] = f'read_verilog -sv {relative_gate}'
-            full_cmd = ';\n'.join(cmd) + '\n'
+            fail_json_path = 'fail.json'
+        else:
+            relative_gold = gold_v_filename
+            relative_gate = gate_v_filename
+            fail_json_path = os.path.join(work_dir, 'fail.json')
+
+        cmd = [
+            f'read_verilog -sv {relative_gold}',
+            f'prep -top {gold_top}',
+            f'rename {gold_top} gold',
+            'design -stash gold',
+            f'read_verilog -sv {relative_gate}',
+            f'prep -top {gate_top}',
+            f'rename {gate_top} gate',
+            'design -stash gate',
+            'design -copy-from gold -as gold gold; design -copy-from gate -as gate gate;',
+            'miter -equiv -flatten -make_outputs -ignore_gold_x gold gate miter',
+            'async2sync',
+            'hierarchy -top miter',
+            f'sat -dump_json {fail_json_path} -seq 4 -prove trigger 0 -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -ignore_unknown_cells -show-ports miter',
+        ]
+        full_cmd = ';\n'.join(cmd)
+
+        if self.use_docker:
+            script_name = 'check.s'
+            container_script_path = f'{container_work_dir}/{script_name}'
+            full_cmd += '\n'
 
             # Create the script using filesystem or fallback to write_text
             if self.runner.filesystem:

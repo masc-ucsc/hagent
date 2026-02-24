@@ -65,10 +65,6 @@ def setup_test_environment():
     # Environment successfully set up
 
 
-# Set up environment before importing
-setup_test_environment()
-
-
 def create_test_input():
     """Create test input with known verilog_diff and correct chisel_diff"""
     return {

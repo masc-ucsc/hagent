@@ -597,6 +597,9 @@ def create_argument_parser():
 
   # Dry run
   %(prog)s --name GCD --api compile --dry-run
+
+  # Pass API-specific options (-o KEY=VALUE, can repeat)
+  %(prog)s --name spec --api elab -otop_synth=lsu_bypass -otag=tst1
         """,
     )
 
