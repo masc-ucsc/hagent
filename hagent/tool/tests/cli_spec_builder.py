@@ -90,6 +90,7 @@ def _run_one_top(args: argparse.Namespace, top: str) -> Dict[str, Any]:
         scope_path=args.scope_path,
         discover_scope_module=args.discover_scope_module,
         discover_only=args.discover_only,
+        whitebox=getattr(args, 'whitebox', False),
     )
 
     print(f'\n[⚙️] Building spec for top module: {top} (design_top={design_top})')
@@ -181,6 +182,7 @@ def main() -> int:
         help='YAML config file with default arguments',
     )
     parser.add_argument('--debug', action='store_true', help='Enable debug output')
+    parser.add_argument('--whitebox', action='store_true', help='Whitebox mode: include internal signals in spec.')
 
     args = parser.parse_args()
     args = merge_config(args, args.config_file)

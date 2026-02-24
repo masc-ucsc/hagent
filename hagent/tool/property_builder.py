@@ -417,6 +417,8 @@ class PropertyBuilder:
         reset_expr: Optional[str] = None,  # NEW: override disable iff expression
         strict: bool = False,
         report_json: Optional[str] = None,
+        whitebox: bool = False,
+        internal_signals_json: Optional[str] = None,
     ):
         self.spec_md = os.path.abspath(spec_md)
         self.csv_path = os.path.abspath(csv_path)
@@ -435,7 +437,13 @@ class PropertyBuilder:
         self.reset_expr_override = (reset_expr or '').strip() or None
 
         self.strict = bool(strict)
-        self.report_json = os.path.abspath(report_json) if report_json else os.path.join(self.out_dir, 'properties.report.json')
+        self.whitebox = whitebox
+        self.internal_signals_json = os.path.abspath(internal_signals_json) if internal_signals_json else None
+        wb = '_wb' if self.whitebox else ''
+        self.report_json = (
+            os.path.abspath(report_json) if report_json else os.path.join(self.out_dir, f'properties{wb}.report.json')
+        )
+        self.tokens_json = os.path.join(self.out_dir, f'properties{wb}_tokens.json')
 
         self.llm = None
         if LLM_wrap and self.llm_conf and os.path.exists(self.llm_conf):
@@ -1121,11 +1129,44 @@ class PropertyBuilder:
         if rst and rst not in ports:
             ports.append(rst)
 
+        # Whitebox: load internal signals and extend allowed list
+        internal_signals: List[str] = []
+        if self.whitebox:
+            int_json = self.internal_signals_json
+            if not int_json:
+                # Auto-discover from out_dir or csv parent dir
+                for cand in [
+                    os.path.join(self.out_dir, f'{prop_top_used}_internal_signals.json'),
+                    os.path.join(os.path.dirname(self.csv_path), f'{prop_top_used}_internal_signals.json'),
+                ]:
+                    if os.path.exists(cand):
+                        int_json = cand
+                        break
+            if int_json and os.path.exists(int_json):
+                try:
+                    internal_signals = json.loads(Path(int_json).read_text(encoding='utf-8'))
+                    if isinstance(internal_signals, list):
+                        for sig in internal_signals:
+                            if sig and sig not in ports:
+                                ports.append(sig)
+                        print(f'[INFO] Whitebox: loaded {len(internal_signals)} internal signals from {int_json}')
+                    else:
+                        internal_signals = []
+                except Exception as e:
+                    print(f'[WARN] Failed to load internal signals JSON: {e}')
+            else:
+                print('[WARN] Whitebox mode but no internal_signals.json found; using ports only.')
+
         strict_log['ports']['source'] = ports_source
         strict_log['ports']['count'] = len(ports)
         strict_log['ports']['list'] = ports[:]
+        if self.whitebox:
+            strict_log['whitebox'] = {
+                'enabled': True,
+                'internal_signals_count': len(internal_signals),
+            }
 
-        print(f'[INFO] Allowed signals for checks ({prop_top_used}): {ports}')
+        print(f'[INFO] Allowed signals for checks ({prop_top_used}): {len(ports)} signals (whitebox={self.whitebox})')
 
         # If we still don't have a clock, we cannot generate correct properties
         if not clk:
@@ -1173,7 +1214,8 @@ class PropertyBuilder:
             all_props.append(sv_text.strip())
             strict_log['summary']['generated'] += 1
 
-        out_path = os.path.join(self.out_dir, 'properties.sv')
+        wb = '_wb' if self.whitebox else ''
+        out_path = os.path.join(self.out_dir, f'properties{wb}.sv')
         final_text = header + ('\n\n'.join(all_props) if all_props else '\n// No valid properties generated\n')
 
         with open(out_path, 'w', encoding='utf-8') as f:
@@ -1183,6 +1225,16 @@ class PropertyBuilder:
 
         if self.strict:
             self._write_strict_report(strict_log)
+
+        # Write token summary
+        total_tokens = 0
+        if self.llm and hasattr(self.llm, 'total_tokens'):
+            total_tokens = self.llm.total_tokens
+        try:
+            Path(self.tokens_json).write_text(json.dumps({'total_tokens': total_tokens}), encoding='utf-8')
+        except Exception:
+            pass
+        print(f'[INFO] Property LLM tokens: {total_tokens}')
 
         return out_path
 
@@ -1218,6 +1270,8 @@ if __name__ == '__main__':
 
     p.add_argument('--strict', action='store_true', help='Write strict JSON report of repairs/skips.')
     p.add_argument('--report-json', default=None, help='Path for strict JSON report (default: out/properties.report.json)')
+    p.add_argument('--whitebox', action='store_true', help='Whitebox mode: allow internal signals in properties.')
+    p.add_argument('--internal-signals-json', default=None, help='Path to internal_signals.json (auto-discovered if omitted).')
     args = p.parse_args()
 
     pb = PropertyBuilder(
@@ -1233,5 +1287,7 @@ if __name__ == '__main__':
         reset_expr=args.reset_expr,
         strict=args.strict,
         report_json=args.report_json,
+        whitebox=args.whitebox,
+        internal_signals_json=args.internal_signals_json,
     )
     pb.generate_properties()

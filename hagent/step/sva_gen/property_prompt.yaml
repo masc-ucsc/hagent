@@ -17,18 +17,19 @@ default:
         - ptype: {ptype} (assert|assume|cover)
         - seed pre: {pre}
         - seed post: {post}
-        - allowed top-level port names ONLY: {allowed_signals}
+        - allowed signal names (ports; plus internal signals in whitebox mode): {allowed_signals}
         - design summary: {spec_markdown}
 
         =========================================================
         HARD CONSTRAINTS (violations are NOT allowed)
         =========================================================
 
-        C0) Use ONLY allowed ports:
+        C0) Use ONLY allowed signals:
             - Every identifier in any expression MUST be either:
               * a SystemVerilog keyword/operator, OR
               * a system function ($rose, $fell, $stable, $changed, $past), OR
               * exactly one of the names in {allowed_signals}.
+              (In whitebox mode {allowed_signals} includes internal signal names — use them freely.)
             - NEVER invent identifiers like "logic", "tmp", "sig", "state", etc.
             - NEVER use type casts like logic'(1'b1) or any cast syntax.
 
@@ -97,7 +98,7 @@ default:
         Clock: {clock}
         Reset: {reset}
 
-        ## Allowed top-level signals
+        ## Allowed signals (ports + internal signals in whitebox mode)
         {allowed_signals}
 
         ## Seed property row (from CSV)
