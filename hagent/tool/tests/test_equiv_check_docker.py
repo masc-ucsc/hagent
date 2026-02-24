@@ -297,7 +297,7 @@ endmodule
 
 
 # Standalone test functions for direct execution
-def test_docker_integration_standalone():
+def test_docker_integration_standalone(tmp_path):
     """Standalone integration test for Docker functionality."""
     print('Running Docker integration test...')
 
@@ -320,23 +320,13 @@ module simple_test(
 endmodule
 """
 
-    # Setup temporary environment for standalone run
-    repo_dir = os.environ.get('HAGENT_REPO_DIR')
-    build_dir = os.environ.get('HAGENT_BUILD_DIR')
-    cache_dir = os.environ.get('HAGENT_CACHE_DIR')
-
-    if not repo_dir:
-        repo_dir = os.path.join('output', 'hagent_test_repo')
-        os.makedirs(repo_dir, exist_ok=True)
-        os.environ['HAGENT_REPO_DIR'] = repo_dir
-    if not build_dir:
-        build_dir = os.path.join('output', 'hagent_test_build')
-        os.makedirs(build_dir, exist_ok=True)
-        os.environ['HAGENT_BUILD_DIR'] = build_dir
-    if not cache_dir:
-        cache_dir = os.path.join('output', 'hagent_test_cache')
-        os.makedirs(cache_dir, exist_ok=True)
-        os.environ['HAGENT_CACHE_DIR'] = cache_dir
+    # Use tmp_path for clean test isolation (no env var leaks)
+    repo_dir = str(tmp_path / 'repo')
+    build_dir = str(tmp_path / 'build')
+    cache_dir = str(tmp_path / 'cache')
+    os.makedirs(repo_dir, exist_ok=True)
+    os.makedirs(build_dir, exist_ok=True)
+    os.makedirs(cache_dir, exist_ok=True)
 
     # Docker mode enabled via HAGENT_DOCKER
 
