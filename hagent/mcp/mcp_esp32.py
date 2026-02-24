@@ -12,12 +12,11 @@ import os
 import subprocess
 import shutil
 import tempfile
-import time
 from typing import Dict, Any, Optional
 import difflib
-import platform
 import json
 import re
+
 
 def get_mcp_schema() -> Dict[str, Any]:
     """Return MCP tool schema for ESP32 development command."""
@@ -33,7 +32,10 @@ def get_mcp_schema() -> Dict[str, Any]:
         'env',
     ]
 
-    return { 'name': 'hagent_esp32', 'description': 'ESP32 development tool for managing boards, projects, building, and flashing', 'inputSchema': {
+    return {
+        'name': 'hagent_esp32',
+        'description': 'ESP32 development tool for managing boards, projects, building, and flashing',
+        'inputSchema': {
             'type': 'object',
             'properties': {
                 'api': {
@@ -44,10 +46,10 @@ def get_mcp_schema() -> Dict[str, Any]:
                 'args': {
                     'type': 'string',
                     'description': 'Arguments for the API command: \n'
-                                   '- install: (REQUIRED) Board name or description (e.g., "rust board", "board_rust_esp32_c3")\n'
-                                   '- setup: (REQUIRED) New project name\n'
-                                   '- build/flash: (OPTIONAL) Extra flags for idf.py\n'
-                                   '- idf: (REQUIRED) Arbitrary idf.py command string',
+                    '- install: (REQUIRED) Board name or description (e.g., "rust board", "board_rust_esp32_c3")\n'
+                    '- setup: (REQUIRED) New project name\n'
+                    '- build/flash: (OPTIONAL) Extra flags for idf.py\n'
+                    '- idf: (REQUIRED) Arbitrary idf.py command string',
                 },
                 'timeout': {
                     'type': 'integer',
@@ -64,49 +66,41 @@ def get_mcp_schema() -> Dict[str, Any]:
 # INTERNAL HELPER FUNCTIONS
 # ==============================================================================
 
+
 def initialize_idf_env() -> Dict[str, Any]:
     """
     Source export.sh and load environment variables.
     Returns a result dict with 'success', 'stdout', 'stderr'.
     """
     # Source export.sh in a separate process and load the dumped ENV variables from the called process into the calling process' ENV
-    print("Adding idf.py to PATH")
-    cache_dir = os.environ.get("HAGENT_CACHE_DIR", ".")
-    idf_path = os.path.join(cache_dir, "esp-idf")
-    export_sh_path = os.path.join(idf_path, "export.sh")
-    
+    print('Adding idf.py to PATH')
+    cache_dir = os.environ.get('HAGENT_CACHE_DIR', '.')
+    idf_path = os.path.join(cache_dir, 'esp-idf')
+    export_sh_path = os.path.join(idf_path, 'export.sh')
+
     if not os.path.exists(export_sh_path):
         return {
             'success': False,
             'exit_code': 1,
             'stdout': '',
-            'stderr': f"ESP-IDF not found at {idf_path}. Please run the 'api_install' tool first to setup the ESP-IDF toolkit."
+            'stderr': f"ESP-IDF not found at {idf_path}. Please run the 'api_install' tool first to setup the ESP-IDF toolkit.",
         }
 
     export_script_cmd = f"bash -c 'source {export_sh_path} >/dev/null 2>&1 && python3 - <<PY\nimport os, json\nprint(json.dumps(dict(os.environ)))\nPY'"
-    
+
     try:
         export_proc = subprocess.run(export_script_cmd, shell=True, capture_output=True, text=True, check=True)
         # Update the current Python process' ENV variables
         os.environ.update(json.loads(export_proc.stdout))
-        
+
         if not shutil.which('idf.py'):
-             return {
-                'success': False,
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': "idf.py not found in PATH after sourcing export.sh"
-            }
-            
+            return {'success': False, 'exit_code': 1, 'stdout': '', 'stderr': 'idf.py not found in PATH after sourcing export.sh'}
+
         return {'success': True, 'stdout': '', 'stderr': ''}
     except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
         stderr = e.stderr if hasattr(e, 'stderr') else str(e)
-        return {
-            'success': False,
-            'exit_code': 1,
-            'stdout': '',
-            'stderr': f"Failed to initialize ESP-IDF environment: {stderr}"
-        }
+        return {'success': False, 'exit_code': 1, 'stdout': '', 'stderr': f'Failed to initialize ESP-IDF environment: {stderr}'}
+
 
 def _parse_board_config(file_path: str) -> Dict[str, str]:
     """
@@ -115,76 +109,71 @@ def _parse_board_config(file_path: str) -> Dict[str, str]:
     try:
         with open(file_path, 'r') as f:
             content = f.read()
-            
+
         # Extract Board Identifier (look for `- `board`: identifier`)
-        board_match = re.search(r"-\s*`board`\s*:\s*([a-zA-Z0-9_]+)", content)
-        board_id = board_match.group(1).strip() if board_match else "esp32"
-        
+        board_match = re.search(r'-\s*`board`\s*:\s*([a-zA-Z0-9_]+)', content)
+        board_id = board_match.group(1).strip() if board_match else 'esp32'
+
         # Extract Human Readable Model (look for `- `model`: name`)
-        model_match = re.search(r"-\s*`model`\s*:\s*(.+)$", content, re.MULTILINE)
+        model_match = re.search(r'-\s*`model`\s*:\s*(.+)$', content, re.MULTILINE)
         model_name = model_match.group(1).strip() if model_match else board_id
-        
+
         return {
             'name': model_name,
-            'model': board_id, # 'model' in board_details refers to the IDF target
+            'model': board_id,  # 'model' in board_details refers to the IDF target
             'file_name': file_path,
-            'short_name': os.path.basename(file_path).replace('.md', '')
+            'short_name': os.path.basename(file_path).replace('.md', ''),
         }
     except Exception as e:
-        print(f"Warning: Failed to parse {file_path}: {e}", file=sys.stderr)
+        print(f'Warning: Failed to parse {file_path}: {e}', file=sys.stderr)
         return {
             'name': os.path.basename(file_path),
             'model': 'esp32',
             'file_name': file_path,
-            'short_name': os.path.basename(file_path).replace('.md', '')
+            'short_name': os.path.basename(file_path).replace('.md', ''),
         }
+
 
 def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
     """
     Internal helper to run idf.py monitor in a specific directory.
     """
-    monitor_cmd = "script -q /dev/null idf.py monitor"
-    
+    monitor_cmd = 'script -q /dev/null idf.py monitor'
+
     try:
         # Check if idf.py is in PATH, source export.sh/export.bat before running the command
         if not shutil.which('idf.py'):
-            res = initialize_idf_env() 
+            res = initialize_idf_env()
             if not res['success']:
                 return res
-        proc = subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True, cwd=project_dir)
-           
+        proc = subprocess.Popen(
+            monitor_cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, text=True, shell=True, cwd=project_dir
+        )
+
         # Communicate and read stdout from the process monitoring serial output
         # The communicate function call runs till timeout then throws an exception, which needs to be caught and handled
         out, err = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired as e:
+    except subprocess.TimeoutExpired:
         # This is where the function exits by default
         proc.kill()
         out, err = proc.communicate()
-        return {
-            'success': True,
-            'exit_code': 0,
-            'stdout': out or "",
-            'stderr': err or ""
-        }
+        return {'success': True, 'exit_code': 0, 'stdout': out or '', 'stderr': err or ''}
     except Exception as e:
-        return {
-            'success': False,
-            'exit_code': 1,
-            'stdout': "",
-            'stderr': str(e) 
-        }
-    
+        return {'success': False, 'exit_code': 1, 'stdout': '', 'stderr': str(e)}
+
     # The process exits prematurely if an error is encountered
     return {
         'success': False,
         'exit_code': 1,
-        'stdout': out or "",
-        'stderr': err or "",
+        'stdout': out or '',
+        'stderr': err or '',
     }
+
 
 # ==============================================================================
 # API FUNCTIONS
 # ==============================================================================
+
 
 def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -219,14 +208,16 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
             file_name = os.path.join(configs_path, f'{b}.md')
             board_info = _parse_board_config(file_name)
             board_details.append(board_info)
-        
+
         selected_board = None
-        
+
         # Check if args are provided. If yes, then filter the boards using args
         # If exact match is found or if there is only one matching board, set it as the target and proceed with installation
         # If there are no matches or if args are not provided, prompt the user to provide one from the candidates returned
         if args:
-            exact_matches = [b for b in board_details if b['name'].lower() == args.lower() or b['short_name'].lower() == args.lower()]
+            exact_matches = [
+                b for b in board_details if b['name'].lower() == args.lower() or b['short_name'].lower() == args.lower()
+            ]
             if len(exact_matches) == 1:
                 selected_board = exact_matches[0]
 
@@ -234,23 +225,17 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                 selected_board = board_details[0]
 
         if not selected_board:
-            candidates = [f"{b['name']} (ID: {b['short_name']})" for b in board_details]
-            candidate_str = "\n".join(candidates)
-            
+            candidates = [f'{b["name"]} (ID: {b["short_name"]})' for b in board_details]
+            candidate_str = '\n'.join(candidates)
+
             if not args:
-                error_msg = f"Please specify a board to install. Available boards:\n{candidate_str}"
+                error_msg = f'Please specify a board to install. Available boards:\n{candidate_str}'
             elif not board_details:
                 error_msg = f"No boards found matching '{args}'. Please try a different search term."
             else:
                 error_msg = f"Multiple boards match '{args}'. Please specify a specific ID from the list below:\n{candidate_str}"
-            
-            return {
-                'success': False,
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': error_msg,
-                'candidates': candidates
-            }
+
+            return {'success': False, 'exit_code': 1, 'stdout': '', 'stderr': error_msg, 'candidates': candidates}
 
         # Check if ESP-IDF exists in HAGENT_CACHE_DIR/esp-idf/; Install if missing
         idf_path = os.path.join(os.environ['HAGENT_CACHE_DIR'], 'esp-idf')
@@ -265,9 +250,11 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                     text=True,
                 )
                 stdout = stdout + clone_result.stdout
-            install_script = "./install.sh"
-            install_result = subprocess.run([install_script, selected_board['model']], cwd=idf_path, shell=True, check=True, capture_output=True, text=True)
-            # TODO Install ESP-IDF specific certificates in python 
+            install_script = './install.sh'
+            install_result = subprocess.run(
+                [install_script, selected_board['model']], cwd=idf_path, shell=True, check=True, capture_output=True, text=True
+            )
+            # TODO Install ESP-IDF specific certificates in python
 
             stdout = stdout + install_result.stdout
         except subprocess.CalledProcessError as e:
@@ -281,11 +268,11 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         # Copy board config to $HAGENT_REPO_DIR/AGENTS.md and GEMINI.md
         source_file = selected_board['file_name']
         repo_dir = os.environ['HAGENT_REPO_DIR']
-        
+
         shutil.copyfile(source_file, os.path.join(repo_dir, 'AGENTS.md'))
         shutil.copyfile(source_file, os.path.join(repo_dir, 'GEMINI.md'))
 
-        stdout += f"\nBoard configured: {selected_board['name']}\nConfiguration saved to AGENTS.md"
+        stdout += f'\nBoard configured: {selected_board["name"]}\nConfiguration saved to AGENTS.md'
         # TODO: This instruction should be added to a context MD file for the LLM later.
         stdout += "\n\nIMPORTANT: A new configuration file (AGENTS.md/GEMINI.md) has been created. To ensure Gemini recognizes these new instructions, please ask the user to run the '/refresh' or '/memory refresh' command in the chat interface."
 
@@ -298,10 +285,11 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         'board_config': selected_board,
     }
 
+
 def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     """
     Create a new ESP32 project.
-    WARNING: This function overwrites project files in the repo directory, 
+    WARNING: This function overwrites project files in the repo directory,
     but preserves agent configuration (.gemini, AGENTS.md, etc.) and git history.
 
     Args:
@@ -319,9 +307,9 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     # 7. Run idf.py set-target in HAGENT_REPO_DIR
     # 8. Restore AGENTS.md/GEMINI.md
 
-    idf_path = os.path.join(os.environ["HAGENT_CACHE_DIR"], "esp-idf")
-    repo_dir = os.environ["HAGENT_REPO_DIR"]
-    md_path = os.path.join(repo_dir, "AGENTS.md")
+    idf_path = os.path.join(os.environ['HAGENT_CACHE_DIR'], 'esp-idf')
+    repo_dir = os.environ['HAGENT_REPO_DIR']
+    md_path = os.path.join(repo_dir, 'AGENTS.md')
 
     if not os.path.isdir(idf_path):
         return {
@@ -333,7 +321,7 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
 
     # Read AGENTS.md to get target config
     if not os.path.exists(md_path):
-            return {
+        return {
             'success': False,
             'exit_code': 1,
             'stdout': '',
@@ -344,14 +332,11 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     board_config = _parse_board_config(md_path)
     target_config = board_config['model']
 
-    with open(md_path, "r") as f:
+    with open(md_path, 'r') as f:
         agents_content = f.read()
-    
+
     # Files/Dirs to STRICTLY PRESERVE
-    protected_items = [
-        '.gemini', '.claude', '.git', '.gitignore', '.vscode',
-        'AGENTS.md', 'GEMINI.md', 'CLAUDE.md'
-    ]
+    protected_items = ['.gemini', '.claude', '.git', '.gitignore', '.vscode', 'AGENTS.md', 'GEMINI.md', 'CLAUDE.md']
 
     try:
         # Check if idf.py is in PATH, if not present, source export.sh
@@ -362,17 +347,15 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             # 1. Create Project in Staging (Temp Dir) - Just the scaffolding
-            crt_prj_cmd = f"idf.py create-project -p . {args}"
-            
-            subprocess.run(
-                crt_prj_cmd, cwd=temp_dir, shell=True, check=True, capture_output=True, text=True
-            )
+            crt_prj_cmd = f'idf.py create-project -p . {args}'
+
+            subprocess.run(crt_prj_cmd, cwd=temp_dir, shell=True, check=True, capture_output=True, text=True)
 
             # 2. Selectively Clean Repo Directory
             for item in os.listdir(repo_dir):
                 if item in protected_items:
                     continue
-                
+
                 item_path = os.path.join(repo_dir, item)
                 if os.path.isfile(item_path) or os.path.islink(item_path):
                     os.unlink(item_path)
@@ -384,12 +367,12 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
             for item in os.listdir(temp_dir):
                 s = os.path.join(temp_dir, item)
                 d = os.path.join(repo_dir, item)
-                
+
                 if os.path.isdir(s):
                     shutil.copytree(s, d, dirs_exist_ok=True)
                 else:
                     shutil.copy2(s, d)
-            
+
             # Ensure AGENTS.md/GEMINI.md content matches buffer
             with open(os.path.join(repo_dir, 'AGENTS.md'), 'w') as f:
                 f.write(agents_content)
@@ -398,10 +381,8 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
 
             # 4. Initialize Configuration IN THE REPO
             # This generates sdkconfig and build/ with correct absolute paths
-            set_target_cmd = f"idf.py set-target {target_config}"
-            result = subprocess.run(
-                set_target_cmd, cwd=repo_dir, shell=True, check=True, capture_output=True, text=True
-            )
+            set_target_cmd = f'idf.py set-target {target_config}'
+            result = subprocess.run(set_target_cmd, cwd=repo_dir, shell=True, check=True, capture_output=True, text=True)
 
     except subprocess.CalledProcessError as e:
         return {
@@ -415,7 +396,7 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
             'success': False,
             'exit_code': 1,
             'stdout': '',
-            'stderr': f"Setup failed: {str(e)}",
+            'stderr': f'Setup failed: {str(e)}',
         }
 
     return {
@@ -424,7 +405,7 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
         'stdout': result.stdout,
         'stderr': result.stderr,
         'project_path': repo_dir,
-        'target_config': target_config
+        'target_config': target_config,
     }
 
 
@@ -444,17 +425,17 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
     # 3. Navigate to HAGENT_REPO_DIR
     # 4. Run: idf.py build
     # 5. Capture and return build output
-    
+
     try:
         # Check if idf.py is in PATH; source export.sh/export.bat before build if not in path
         if not shutil.which('idf.py'):
             res = initialize_idf_env()
             if not res['success']:
                 return res
-        
+
         # Ensure project is initialized
-        repo_dir = os.environ["HAGENT_REPO_DIR"]
-        if not os.path.exists(os.path.join(repo_dir, "sdkconfig")):
+        repo_dir = os.environ['HAGENT_REPO_DIR']
+        if not os.path.exists(os.path.join(repo_dir, 'sdkconfig')):
             return {
                 'success': False,
                 'exit_code': 1,
@@ -462,15 +443,14 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
                 'stderr': 'Project not initialized (sdkconfig missing). Please run api_setup() to create project and set target before building.',
             }
 
-        result = subprocess.run(f"idf.py build", cwd=repo_dir, shell=True, capture_output=True, text=True, check=True)
-        binary_location = os.path.join(os.environ["HAGENT_REPO_DIR"], 'build')
+        result = subprocess.run('idf.py build', cwd=repo_dir, shell=True, capture_output=True, text=True, check=True)
+        binary_location = os.path.join(os.environ['HAGENT_REPO_DIR'], 'build')
 
     except subprocess.CalledProcessError as e:
         return {
             'success': False,
             'exit_code': e.returncode,
-            'binary_location': "",
-
+            'binary_location': '',
             'stdout': e.stdout,
             'stderr': e.stderr,
         }
@@ -499,9 +479,8 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
     # 2. Navigate to HAGENT_REPO_DIR
     # 3. Run: idf.py flash (with optional port arg)
     # 4. Capture flash output
-    
-    flash_cmd = "idf.py flash"
 
+    flash_cmd = 'idf.py flash'
 
     try:
         # Check if idf.py is in PATH; source export.sh/export.bat before flash if not in path
@@ -529,61 +508,51 @@ def api_flash(args: Optional[str] = None) -> Dict[str, Any]:
         'flash_result': 'Flash done',
     }
 
+
 def api_check_bootloader(args: Optional[str] = None) -> Dict[str, Any]:
     """
     Verify if the ESP32 board is connected and responsive in bootloader mode.
-    
-    CRITICAL: Call this tool FIRST to verify hardware connectivity. If it fails, 
-    check physical connections (cable, ports), verify that the board is in 
-    bootloader mode, and ensure the necessary USB-to-Serial drivers (e.g., CP210x, 
+
+    CRITICAL: Call this tool FIRST to verify hardware connectivity. If it fails,
+    check physical connections (cable, ports), verify that the board is in
+    bootloader mode, and ensure the necessary USB-to-Serial drivers (e.g., CP210x,
     CH34x) are installed on the host system before troubleshooting software.
 
     Returns:
         Dictionary with check results (success=True if chip is responsive)
     """
-    check_cmd = "esptool chip-id"
-    
+    check_cmd = 'esptool chip-id'
+
     try:
         # Check if esptool is in PATH; source export.sh if not
         if not shutil.which('esptool'):
             res = initialize_idf_env()
             if not res['success']:
                 return res
-            
+
         # Run the chip-id command to handshake with the board
         result = subprocess.run(
-            check_cmd, 
-            cwd=os.environ['HAGENT_REPO_DIR'], 
-            shell=True, 
-            capture_output=True, 
-            text=True, 
-            check=True
+            check_cmd, cwd=os.environ['HAGENT_REPO_DIR'], shell=True, capture_output=True, text=True, check=True
         )
-        
+
         return {
             'success': True,
             'exit_code': 0,
             'stdout': result.stdout,
             'stderr': result.stderr,
-            'status': 'Board connected and responsive'
+            'status': 'Board connected and responsive',
         }
-        
+
     except subprocess.CalledProcessError as e:
         return {
             'success': False,
             'exit_code': e.returncode,
             'stdout': e.stdout,
             'stderr': e.stderr,
-            'status': 'Board not detected or not in bootloader mode'
+            'status': 'Board not detected or not in bootloader mode',
         }
     except Exception as e:
-        return {
-            'success': False,
-            'exit_code': 1,
-            'stdout': '',
-            'stderr': str(e),
-            'status': 'Error checking bootloader'
-        }
+        return {'success': False, 'exit_code': 1, 'stdout': '', 'stderr': str(e), 'status': 'Error checking bootloader'}
 
 
 def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]:
@@ -604,11 +573,10 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
     # 4. Capture output for timeout duration
     # 5. Send CTRL+] to exit monitor
     # 6. Return captured output
-    
-    # TODO: In _run_monitor, check if the process can be made to run without an error-driven exit; program to input ctrl+] and exit after the timout duration.
-    repo_dir = os.environ["HAGENT_REPO_DIR"]
-    return _run_monitor(repo_dir, timeout)
 
+    # TODO: In _run_monitor, check if the process can be made to run without an error-driven exit; program to input ctrl+] and exit after the timout duration.
+    repo_dir = os.environ['HAGENT_REPO_DIR']
+    return _run_monitor(repo_dir, timeout)
 
 
 def api_idf(args: Optional[str] = None) -> Dict[str, Any]:
@@ -626,26 +594,23 @@ def api_idf(args: Optional[str] = None) -> Dict[str, Any]:
     # 2. Navigate to HAGENT_REPO_DIR
     # 3. Run: idf.py <args>
     # 4. Capture and return output
-    
-    # If the string is non-empty, then it's passed down as a valid argument 
-    idf_cmd = "idf.py"
-    if args:
-        idf_cmd += f" {args}"
 
-    try: 
+    # If the string is non-empty, then it's passed down as a valid argument
+    idf_cmd = 'idf.py'
+    if args:
+        idf_cmd += f' {args}'
+
+    try:
         # Check if idf.py is in the PATH, if not then source export.sh before running the command
         if not shutil.which('idf.py'):
             res = initialize_idf_env()
             if not res['success']:
                 return res
-        result = subprocess.run(idf_cmd, cwd=os.environ["HAGENT_REPO_DIR"], shell=True, capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            idf_cmd, cwd=os.environ['HAGENT_REPO_DIR'], shell=True, capture_output=True, text=True, check=True
+        )
     except subprocess.CalledProcessError as e:
-        return {
-            'success': False,
-            'exit_code': e.returncode,
-            'stdout': e.stdout,
-            'stderr': e.stderr
-        }
+        return {'success': False, 'exit_code': e.returncode, 'stdout': e.stdout, 'stderr': e.stderr}
 
     return {
         'success': True,

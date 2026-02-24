@@ -213,12 +213,12 @@ def register_mcp_module_impl(module, mcp_instance):
                 exit_code = result.get('exit_code', 0)
                 stdout = result.get('stdout', '').strip()
                 stderr = result.get('stderr', '').strip()
-                
-                msg = f"✓ Command completed (exit code: {exit_code})"
+
+                msg = f'✓ Command completed (exit code: {exit_code})'
                 if stdout:
-                    msg += f"\n\nSTDOUT:\n{stdout}"
+                    msg += f'\n\nSTDOUT:\n{stdout}'
                 if stderr:
-                    msg += f"\n\nSTDERR:\n{stderr}"
+                    msg += f'\n\nSTDERR:\n{stderr}'
                 return msg
 
             # Fallback for other result types
