@@ -52,9 +52,10 @@ def strip_comments(text: str) -> str:
 def _load_private_tcl_writer():
     try:
         from JG.fpv_tcl_writer import write_jasper_tcl
+
         console.print('[green]✔ Using private JasperGold TCL writer[/green]')
         return write_jasper_tcl
-    except Exception as e:
+    except Exception:
         console.print('[red]✖ ERROR: Private TCL writer not found.[/red]')
         sys.exit(1)
 
@@ -89,50 +90,63 @@ def extract_last_identifier(token: str) -> str | None:
 def is_builtin_sv_type(type_str: str) -> bool:
     """Check if type is built-in SystemVerilog."""
     builtin_types = {
-        'logic', 'bit', 'reg', 'wire', 'byte', 'shortint', 'int', 'longint', 'integer',
-        'time', 'real', 'realtime', 'shortreal', 'string', 'event',
+        'logic',
+        'bit',
+        'reg',
+        'wire',
+        'byte',
+        'shortint',
+        'int',
+        'longint',
+        'integer',
+        'time',
+        'real',
+        'realtime',
+        'shortreal',
+        'string',
+        'event',
     }
-    
+
     base_type = re.sub(r'\s*\[.*?\]\s*', '', type_str).strip()
     base_type = re.sub(r'\s+', ' ', base_type)
-    
+
     if base_type in builtin_types:
         return True
-    
+
     for bt in builtin_types:
         if base_type.startswith(bt + ' ') or base_type == bt:
             return True
-    
+
     return False
 
 
 def extract_custom_types_from_ports(ports: list, sva_top: str) -> set[str]:
     """Extract all custom types needing parameterization."""
     custom_types: set[str] = set()
-    
+
     for p in ports:
         if not isinstance(p, dict):
             continue
-        
+
         type_str = (p.get('type') or '').strip()
         if not type_str or type_str == '-':
             continue
-        
+
         base_type = re.sub(r'\s*\[.*?\]\s*', '', type_str).strip()
-        
+
         if is_builtin_sv_type(base_type):
             continue
-        
+
         if '::' in base_type:  # Package-qualified, skip
             continue
-        
+
         m = re.match(r'^(?P<mod>[A-Za-z_]\w*)\.(?P<name>[A-Za-z_]\w*)$', base_type)
         if m:
             custom_types.add(m.group('name'))
             continue
-        
+
         custom_types.add(base_type)
-    
+
     return custom_types
 
 
@@ -145,7 +159,7 @@ def extract_packages_from_port_types(ports_json: Path) -> list[str]:
         ports = json.loads(ports_json.read_text())
     except Exception:
         return []
-    
+
     packages = set()
     for p in ports:
         if not isinstance(p, dict):
@@ -155,7 +169,7 @@ def extract_packages_from_port_types(ports_json: Path) -> list[str]:
         m = re.match(r'^([A-Za-z_]\w*)::(\w+)', type_str)
         if m:
             packages.add(m.group(1))
-    
+
     return [f'import {pkg}::*;' for pkg in sorted(packages)]
 
 
@@ -170,41 +184,39 @@ def extract_package_imports_from_module(src_file: Path, mod_name: str) -> list[s
         text = src_file.read_text(errors='ignore')
     except Exception:
         return []
-    
+
     # Find the module declaration
-    module_start = re.compile(
-        rf'\bmodule\s+{re.escape(mod_name)}\b',
-        re.DOTALL
-    )
-    
+    module_start = re.compile(rf'\bmodule\s+{re.escape(mod_name)}\b', re.DOTALL)
+
     m = module_start.search(text)
     if not m:
         return []
-    
+
     # Get text from module name to the end of the header
     start_pos = m.end()
     remaining = text[start_pos:]
-    
+
     # Extract just the import section - between module name and #( or (
     header_end = len(remaining)
     for marker in ['#(', '(']:
         idx = remaining.find(marker)
         if idx != -1 and idx < header_end:
             header_end = idx
-    
+
     header = remaining[:header_end]
-    
+
     # Match imports with or without trailing semicolons
     # Pattern handles: import pkg::*; or import pkg::*
     import_pattern = re.compile(r'import\s+([A-Za-z_]\w*)::\*\s*;?')
     imports = import_pattern.findall(header)
-    
+
     return [f'import {pkg}::*;' for pkg in imports]
 
 
 # Type normalization
 def _fix_logic_width_syntax(t: str) -> str:
     return re.sub(r'\b(logic|bit|byte|int|shortint|longint|integer)\s*\[', r'\1 [', t)
+
 
 def normalize_sv_type(type_str: str, sva_top: str, known_type_params: set[str]) -> str:
     """Normalize type strings - preserve package-qualified types and strip module. prefixes."""
@@ -221,7 +233,7 @@ def normalize_sv_type(type_str: str, sva_top: str, known_type_params: set[str]) 
         if not m:
             break
         dims = m.group(1) + dims
-        base = base[:m.start()].rstrip()
+        base = base[: m.start()].rstrip()
 
     # Preserve package-qualified types
     if '::' in base:
@@ -293,24 +305,20 @@ def build_params_text_from_scoped_ast(scoped_ast_json: Path) -> str:
         return ''
 
 
-def build_type_parameters_from_ports(
-    ports_json: Path,
-    sva_top: str,
-    scoped_ast_json: Path | None = None
-) -> str:
+def build_type_parameters_from_ports(ports_json: Path, sva_top: str, scoped_ast_json: Path | None = None) -> str:
     """NEW: Build type parameter declarations from ports."""
     try:
         ports = json.loads(ports_json.read_text())
     except Exception:
         return ''
-    
+
     custom_types = extract_custom_types_from_ports(ports, sva_top)
-    
+
     if not custom_types:
         return ''
-    
+
     type_params = [f'parameter type {t} = logic' for t in sorted(custom_types)]
-    
+
     return ',\n    '.join(type_params)
 
 
@@ -350,7 +358,7 @@ def detect_clk_rst_from_ports_json(ports_json: Path) -> tuple[str, str, str, str
     for p in data:
         if isinstance(p, dict) and p.get('name'):
             names.append(str(p['name']).strip())
-    
+
     seen = set()
     ports = []
     for n in names:
@@ -394,7 +402,7 @@ def detect_clk_rst_from_ports_json(ports_json: Path) -> tuple[str, str, str, str
     rst_expr = ''
     if rst_best:
         low = rst_best.lower()
-        is_active_low = (low.endswith('n') or low.endswith('_n') or low.endswith('ni') or low.endswith('_ni'))
+        is_active_low = low.endswith('n') or low.endswith('_n') or low.endswith('ni') or low.endswith('_ni')
         rst_expr = f'!{rst_best}' if is_active_low else rst_best
 
     return clk_best, rst_best, rst_expr, str(ports_json)
@@ -433,7 +441,7 @@ def ensure_include_file_in_sva_dir(out_root: Path, include_file: str) -> str:
                 shutil.copyfile(src, dest)
             console.print(f'[green]✔[/green] Include file ready: {dest}')
         except Exception:
-            dest.write_text(f'// STUB\n', encoding='utf-8')
+            dest.write_text('// STUB\n', encoding='utf-8')
     else:
         try:
             if not dest.exists():
@@ -452,14 +460,14 @@ def generate_prop_module_min(
     port_decls: list[str],
     include_file: str,
     type_params_text: str = '',
-    package_imports: list[str] | None = None
+    package_imports: list[str] | None = None,
 ):
     """Generate property wrapper with imports and type parameters."""
     lines = []
-    
+
     # Module declaration
     lines.append(f'module {dut_name}_prop')
-    
+
     # Add package imports AFTER module name, BEFORE parameters
     # This is the correct SystemVerilog syntax:
     #   module foo
@@ -468,10 +476,10 @@ def generate_prop_module_min(
     if package_imports:
         for imp in package_imports:
             lines.append(f'  {imp}')
-    
+
     # Collect all parameters
     all_params: list[str] = []
-    
+
     # Extract value/type parameters from params_text
     if params_text:
         param_match = re.search(r'#\s*\((.*?)\)', params_text, re.DOTALL)
@@ -481,14 +489,14 @@ def generate_prop_module_min(
                 line = line.strip().rstrip(',')
                 if line and 'parameter' in line:
                     all_params.append(line)
-    
+
     # Add type parameters from ports
     if type_params_text:
         for line in type_params_text.split('\n'):
             line = line.strip().rstrip(',')
             if line:
                 all_params.append(line)
-    
+
     # Write parameter block
     if all_params:
         lines.append('#(')
@@ -498,19 +506,19 @@ def generate_prop_module_min(
         lines.append(') (')
     else:
         lines.append(' (')
-    
+
     # Write port declarations
     port_lines = ',\n    '.join(port_decls)
     lines.append(f'    {port_lines}')
     lines.append(');\n')
-    
+
     # Module body
     lines.append('// Auto-generated property wrapper. Connect DUT ports as inputs.\n')
     if include_file:
         lines.append(f'`include "{include_file}"\n')
-    
+
     lines.append('endmodule\n')
-    
+
     return '\n'.join(lines)
 
 
@@ -587,7 +595,7 @@ def emit_prop_and_bind_for_module(
     # 1. From module source (import ariane_pkg::*; in module header)
     package_imports = extract_package_imports_from_module(src_file, mod_name)
     console.print(f'[cyan]ℹ Package imports from module source: {package_imports}[/cyan]')
-    
+
     # 2. From port types (ariane_pkg::alu_bypass_t -> import ariane_pkg::*)
     if ports_json and ports_json.is_file():
         type_imports = extract_packages_from_port_types(ports_json)
@@ -598,7 +606,7 @@ def emit_prop_and_bind_for_module(
             if imp not in existing:
                 package_imports.append(imp)
                 existing.add(imp)
-    
+
     console.print(f'[green]✔ Final package imports: {package_imports}[/green]')
 
     # Build type parameters from ports
@@ -669,12 +677,7 @@ def emit_prop_and_bind_for_module(
     bind_path = sva_dir / f'{mod_name}_bind.sv'
 
     prop_sv = generate_prop_module_min(
-        dut_name,
-        params_text,
-        port_decls,
-        include_file,
-        type_params_text=type_params_text,
-        package_imports=package_imports
+        dut_name, params_text, port_decls, include_file, type_params_text=type_params_text, package_imports=package_imports
     )
     bind_sv = generate_bind(dut_name, params_text, port_decls, bind_scope)
 
@@ -757,7 +760,7 @@ def overwrite_files_vc_for_user_filelist(
         lines.append(str(Path(f).resolve()))
 
     vc_path.write_text('\n'.join(lines) + '\n')
-    console.print(f'[green]✔ Overwrote files.vc[/green]')
+    console.print('[green]✔ Overwrote files.vc[/green]')
 
 
 def main():
@@ -778,6 +781,8 @@ def main():
     ap.add_argument('--proofgrid-jobs', type=int, default=180, help='Proofgrid jobs')
     ap.add_argument('--ports-json', help='Slang ports.json')
     ap.add_argument('--scoped-ast-json', help='Slang scoped AST')
+    ap.add_argument('--whitebox', action='store_true', help='Also generate whitebox wrapper/bind/TCL')
+    ap.add_argument('--prop-include-wb', default='properties_wb.sv', help='Whitebox include file')
 
     args = ap.parse_args()
 
@@ -863,7 +868,10 @@ def main():
         for mn in reachable_mods:
             src_file = modules[mn]
             prop_p, bind_p = emit_prop_and_bind_for_module(
-                mn, src_file, out_root, include_basename,
+                mn,
+                src_file,
+                out_root,
+                include_basename,
                 bind_scope if mn == sva_top else None,
                 ports_json=ports_json if mn == sva_top else None,
                 scoped_ast_json=scoped_ast_json if mn == sva_top else None,
@@ -874,15 +882,140 @@ def main():
         target_mod = sva_top
         target_src = modules.get(target_mod)
         if target_src is None:
-            raise SystemExit(f'ERROR: module \'{target_mod}\' not found')
+            raise SystemExit(f"ERROR: module '{target_mod}' not found")
         prop_p, bind_p = emit_prop_and_bind_for_module(
-            target_mod, target_src, out_root, include_basename,
+            target_mod,
+            target_src,
+            out_root,
+            include_basename,
             bind_scope,
             ports_json=ports_json,
             scoped_ast_json=scoped_ast_json,
         )
         if prop_p and bind_p:
             sva_paths.extend([prop_p, bind_p])
+
+    # Whitebox: generate second wrapper/bind for whitebox properties
+    wb_sva_paths: list[Path] = []
+    if args.whitebox:
+        wb_include_basename = ensure_include_file_in_sva_dir(out_root, args.prop_include_wb)
+        target_mod = sva_top
+        target_src = modules.get(target_mod)
+        if target_src is not None:
+            wb_dut_name = f'{target_mod}_wb'
+            sva_dir = (out_root / 'sva').resolve()
+            sva_dir.mkdir(parents=True, exist_ok=True)
+
+            # Re-use the same port declarations but different include file
+            wb_prop_path = sva_dir / f'{wb_dut_name}_prop.sv'
+            wb_bind_path = sva_dir / f'{wb_dut_name}_bind.sv'
+
+            # Build port_decls from ports_json or module header (reuse emit logic)
+            known_tp: set[str] = set()
+            if scoped_ast_json and scoped_ast_json.is_file():
+                known_tp = load_known_type_params_from_scoped_ast(scoped_ast_json)
+
+            wb_port_decls: list[str] = []
+            wb_params_text = ''
+            wb_package_imports: list[str] = []
+
+            m_hdr = find_module_header(target_src.read_text(errors='ignore'), target_mod)
+            if m_hdr:
+                wb_params_text = m_hdr.group('params') or ''
+
+            wb_package_imports = extract_package_imports_from_module(target_src, target_mod)
+            if ports_json and ports_json.is_file():
+                type_imports = extract_packages_from_port_types(ports_json)
+                existing = set(wb_package_imports)
+                for imp in type_imports:
+                    if imp not in existing:
+                        wb_package_imports.append(imp)
+                        existing.add(imp)
+
+            if ports_json and ports_json.is_file():
+                wb_port_decls = port_decls_from_ports_json(ports_json, sva_top=target_mod, known_type_params=known_tp)
+            elif m_hdr:
+                port_body = m_hdr.group('port_body') or ''
+                text_ports = strip_comments(port_body)
+                buf2: list[str] = []
+                dp, db = 0, 0
+                ports_raw2: list[str] = []
+                for ch in text_ports:
+                    if ch == '(':
+                        dp += 1
+                    elif ch == ')':
+                        dp = max(0, dp - 1)
+                    elif ch == '[':
+                        db += 1
+                    elif ch == ']':
+                        db = max(0, db - 1)
+                    if ch == ',' and dp == 0 and db == 0:
+                        t = ''.join(buf2).strip()
+                        if t:
+                            ports_raw2.append(t)
+                        buf2 = []
+                    else:
+                        buf2.append(ch)
+                t = ''.join(buf2).strip()
+                if t:
+                    ports_raw2.append(t)
+                seen2: set[str] = set()
+                for tok in ports_raw2:
+                    tok = tok.strip()
+                    if not tok:
+                        continue
+                    if not re.search(r'\b(input|output|inout)\b', tok):
+                        tok = 'input ' + tok
+                    decl = clean_decl_to_input(tok)
+                    name = extract_last_identifier(decl)
+                    if not name or name in seen2:
+                        continue
+                    seen2.add(name)
+                    if not decl.startswith('input'):
+                        decl = 'input ' + decl
+                    wb_port_decls.append(decl)
+
+            # Load internal signals and add them as ports to whitebox wrapper
+            int_sig_path = out_root / f'{target_mod}_internal_signals.json'
+            if int_sig_path.exists():
+                try:
+                    int_sigs = json.loads(int_sig_path.read_text())
+                    if isinstance(int_sigs, list):
+                        existing_names = set()
+                        for d in wb_port_decls:
+                            m_n = re.search(r'([A-Za-z_]\w*)\s*(\[[^\]]*\]\s*)*$', d.strip().rstrip(','))
+                            if m_n:
+                                existing_names.add(m_n.group(1))
+                        added = 0
+                        for sig in int_sigs:
+                            if sig and sig not in existing_names:
+                                wb_port_decls.append(f'input logic {sig}')
+                                existing_names.add(sig)
+                                added += 1
+                        console.print(f'[cyan]ℹ Whitebox wrapper: added {added} internal signals as ports[/cyan]')
+                except Exception as e:
+                    console.print(f'[yellow]⚠ Failed to load internal signals: {e}[/yellow]')
+
+            if wb_port_decls:
+                wb_type_params_text = ''
+                if ports_json and ports_json.is_file():
+                    wb_type_params_text = build_type_parameters_from_ports(ports_json, target_mod, scoped_ast_json)
+
+                wb_prop_sv = generate_prop_module_min(
+                    wb_dut_name,
+                    wb_params_text,
+                    wb_port_decls,
+                    wb_include_basename,
+                    type_params_text=wb_type_params_text,
+                    package_imports=wb_package_imports,
+                )
+                wb_bind_sv = generate_bind(wb_dut_name, wb_params_text, wb_port_decls, bind_scope or target_mod)
+
+                wb_prop_path.write_text(wb_prop_sv)
+                wb_bind_path.write_text(wb_bind_sv)
+                wb_sva_paths = [wb_prop_path, wb_bind_path]
+                console.print(f'[green]✔ Wrote whitebox wrapper: {wb_prop_path}[/green]')
+                console.print(f'[green]✔ Wrote whitebox bind   : {wb_bind_path}[/green]')
 
     final_files = list(sva_paths) if args.filelist else (list(files_out) + list(sva_paths))
 
@@ -912,6 +1045,41 @@ def main():
             defines=args.defines,
         )
 
+    # Whitebox TCL generation
+    if args.whitebox and wb_sva_paths:
+        wb_tcl_path = out_tcl_path.parent / 'FPV_wb.tcl'
+        if args.filelist:
+            wb_final_files = list(wb_sva_paths)
+        else:
+            bb_names = {f'{sva_top}_prop.sv', f'{sva_top}_bind.sv'}
+            wb_final_files = [f for f in files_out if f.name not in bb_names] + wb_sva_paths
+
+        write_jasper_tcl(
+            out_path=wb_tcl_path,
+            output_dir=out_root,
+            module_name=args.top,
+            files=wb_final_files,
+            incdirs=incdirs_out,
+            defines=args.defines,
+            clock_name=clk_name,
+            reset_expr=rst_expr,
+            prove_time=args.prove_time,
+            proofgrid_jobs=args.proofgrid_jobs,
+            lib_dirs=incdirs_out,
+            lib_files=None,
+            sva_module=f'{sva_top}_wb',
+        )
+        console.print(f'[green]✔ Wrote whitebox TCL: {wb_tcl_path}[/green]')
+
+        if user_filelist_path is not None:
+            overwrite_files_vc_for_user_filelist(
+                vc_path=(out_root / 'files_wb.vc'),
+                user_filelist=user_filelist_path,
+                out_root=out_root,
+                sva_files=wb_sva_paths,
+                defines=args.defines,
+            )
+
     console.print('[bold green]✔ FPV collateral generated[/bold green]')
     console.print(f'[bold green]✔ FPV dir: {out_root}[/bold green]')
 
@@ -922,5 +1090,6 @@ if __name__ == '__main__':
     except Exception as e:
         console.print(f'[red]❌ Fatal Error:[/red] {e}')
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

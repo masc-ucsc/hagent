@@ -1102,6 +1102,7 @@ class SpecBuilder:
         scope_path: Optional[str] = None,
         discover_scope_module: Optional[str] = None,
         discover_only: bool = False,
+        whitebox: bool = False,
     ):
         self.slang_bin = slang_bin
         self.rtl_dir = rtl_dir
@@ -1116,22 +1117,28 @@ class SpecBuilder:
         self.scope_path = scope_path
         self.discover_scope_module = discover_scope_module
         self.discover_only = discover_only
+        self.whitebox = whitebox
 
         _ensure_dir(self.out_dir)
 
-        # AST output (scoped vs full)
+        # Suffix for whitebox outputs
+        wb = '_wb' if self.whitebox else ''
+
+        # AST output (scoped vs full) — AST is shared, no suffix
         self.out_json = self.out_dir / (f'{self.top}_scoped_ast.json' if self.scope_path else f'{self.top}_ast.json')
         self.full_ast_json = self.out_dir / f'{self.design_top}_full_ast.json'
 
-        self.out_md = self.out_dir / f'{self.top}_spec.md'
-        self.out_csv = self.out_dir / f'{self.top}_spec.csv'
+        self.out_md = self.out_dir / f'{self.top}_spec{wb}.md'
+        self.out_csv = self.out_dir / f'{self.top}_spec{wb}.csv'
         self.logic_snap = self.out_dir / f'{self.top}_logic_blocks.json'
 
-        # IR outputs
+        # IR outputs — ports/assignments/io_relations are structural, no suffix
         self.ports_json = self.out_dir / f'{self.top}_ports.json'
         self.assignments_jsonl = self.out_dir / f'{self.top}_assignments.jsonl'
         self.io_relations_json = self.out_dir / f'{self.top}_io_relations.json'
         self.io_influence_csv = self.out_dir / f'{self.top}_io_influence.csv'
+        self.internal_signals_json = self.out_dir / f'{self.top}_internal_signals.json'
+        self.tokens_json = self.out_dir / f'{self.top}_spec{wb}_tokens.json'
 
         if not self.llm_conf.exists():
             console.print(f'[red]❌ LLM config not found: {self.llm_conf}[/red]')
@@ -1324,6 +1331,17 @@ class SpecBuilder:
                 )
         console.print(f'[green]✔ io_influence.csv:[/green] {self.io_influence_csv}')
 
+    @staticmethod
+    def _extract_internal_signals(assigns: List[AssignRecord], port_names: Set[str]) -> List[str]:
+        """Extract internal (non-port) signal names from assignment defs/uses."""
+        internals: Set[str] = set()
+        for a in assigns:
+            for sig in a.defs + a.uses:
+                base = _base_port(sig)
+                if base and base not in port_names:
+                    internals.add(base)
+        return sorted(internals)
+
     def run(self) -> None:
         # 0) optional scope discovery
         if self.discover_scope_module:
@@ -1382,7 +1400,16 @@ class SpecBuilder:
         io_relations = build_io_relations(ports, assigns, max_depth=6)
         self._write_ir_outputs(ports, assigns, io_relations)
 
+        # Extract internal signals and always write them (useful for whitebox runs)
+        port_name_set = {p['name'] for p in ports}
+        internal_signals = self._extract_internal_signals(assigns, port_name_set)
+        _write_json(self.internal_signals_json, internal_signals)
+        console.print(f'[green]✔ internal_signals.json:[/green] {self.internal_signals_json} ({len(internal_signals)} signals)')
+
         allowed_ports = [p['name'] for p in ports]
+        if self.whitebox:
+            allowed_ports = allowed_ports + internal_signals
+            console.print(f'[cyan]ℹ Whitebox mode: allowed signals expanded to {len(allowed_ports)} (ports + internals)[/cyan]')
 
         # 4) prepare LLM context JSON (MATCHES YOUR PROMPT KEYS)
         fsm_summaries: List[Dict[str, Any]] = []
@@ -1414,6 +1441,8 @@ class SpecBuilder:
             'io_relations': io_relations,  # <-- your sva_row_list_csv expects this
             'fsms': fsm_summaries,
             'logic_blocks': logic[:200],
+            'whitebox': self.whitebox,
+            'internal_signals': internal_signals if self.whitebox else [],
         }
 
         # 5) Markdown generation
@@ -1501,9 +1530,17 @@ class SpecBuilder:
                 salvaged = normalize_csv_rows(repaired)
                 _write_text(self.out_csv, salvaged)
                 console.print(f'[green]✔ CSV spec (salvaged):[/green] {self.out_csv}')
+                total_tokens = getattr(self.llm, 'total_tokens', 0)
+                _write_json(self.tokens_json, {'total_tokens': total_tokens})
+                console.print(f'[green]✔ Spec LLM tokens:[/green] {total_tokens}')
                 console.print('[bold yellow]⚠ SPEC BUILDER COMPLETED WITH CSV SALVAGE (no pipeline failure)[/bold yellow]')
                 return
 
         _write_text(self.out_csv, csv_raw)
         console.print(f'[green]✔ CSV spec:[/green] {self.out_csv}')
+
+        # Write token summary
+        total_tokens = getattr(self.llm, 'total_tokens', 0)
+        _write_json(self.tokens_json, {'total_tokens': total_tokens})
+        console.print(f'[green]✔ Spec LLM tokens:[/green] {total_tokens}')
         console.print('[bold green]✅ SPEC BUILDER COMPLETED[/bold green]')

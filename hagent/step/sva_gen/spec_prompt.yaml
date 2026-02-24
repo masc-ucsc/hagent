@@ -142,6 +142,9 @@ default:
         =========================================================
         S0) Allowed identifiers:
             - In pre/post expressions, every signal identifier MUST be from context_json.allowed_signals.
+              * In blackbox mode this equals the IO port names only.
+              * In whitebox mode (context_json.whitebox == true) this also includes
+                context_json.internal_signals — you may freely use those names.
             - You MAY use SystemVerilog operators and ONLY these $functions if needed:
                 $rose, $fell, $stable, $changed, $past
             - NEVER invent identifiers (no "logic", "tmp", "sig", "state", etc).
@@ -194,7 +197,16 @@ default:
         CONTENT GOALS / WHAT TO GENERATE
         =========================================================
         - Balanced mix: assume >= 20, cover >= 20, assert >= 20.
-        - Focus on IO behavior only; do NOT mention internal regs/wires/states.
+        - BLACKBOX MODE (context_json.whitebox == false):
+            Focus on IO behavior only. Do NOT reference internal regs/wires/states —
+            only use names from context_json.allowed_signals (which equals the IO ports).
+        - WHITEBOX MODE (context_json.whitebox == true):
+            You MAY reference internal signals from context_json.internal_signals in
+            pre/post expressions, in ADDITION to IO ports. All allowed identifiers are
+            listed in context_json.allowed_signals (ports UNION internal signals).
+            Prefer properties that link internal state to output behavior
+            (e.g., "when internal FSM state X is active, output Y must be Z").
+            Generate at least 10 rows that exercise internal signal references.
 
         - Use io_relations.hints FIRST for assume/cover ideas.
         - Use io_relations.relationships.control_signals_ranked for environment constraints.

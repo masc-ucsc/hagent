@@ -1058,6 +1058,197 @@ def run_postcheck_if_requested(
 
 
 # -----------------------------------------------------------------------------
+# Whitebox wrapper/bind generation
+# -----------------------------------------------------------------------------
+def _emit_whitebox_wrapper(
+    mod_name: str,
+    src_file: Path,
+    fpv_dir: Path,
+    include_file: str,
+    bind_scope: Optional[str],
+    ports_json: Optional[Path],
+    scoped_ast_json: Optional[Path],
+) -> Tuple[Optional[Path], Optional[Path]]:
+    """
+    Generate a whitebox property wrapper and bind.
+    The wrapper has IO ports AND internal signals as inputs.
+    Internal signals are loaded from {mod_name}_internal_signals.json.
+    The bind attaches it into the DUT scope, connecting both IO ports
+    and internal signals so whitebox properties can reference them.
+    """
+    try:
+        text = src_file.read_text(errors='ignore')
+    except Exception as e:
+        console.print(f'[red]⚠ Cannot read {src_file}: {e}[/red]')
+        return None, None
+
+    m = find_module_header(text, mod_name)
+    params_text = ''
+    port_decls: List[str] = []
+
+    known_type_params: Set[str] = set()
+    if scoped_ast_json and scoped_ast_json.is_file():
+        known_type_params = load_known_type_params_from_scoped_ast(scoped_ast_json)
+
+    if m:
+        dut_name = m.group('name')
+        params_text = m.group('params') or ''
+    else:
+        dut_name = mod_name
+        params_text = build_params_text_from_scoped_ast(scoped_ast_json) if scoped_ast_json and scoped_ast_json.is_file() else ''
+
+    # Package imports
+    package_imports = extract_package_imports_from_module(src_file, mod_name)
+    if ports_json and ports_json.is_file():
+        type_imports = extract_packages_from_port_types(ports_json)
+        existing = set(package_imports)
+        for imp in type_imports:
+            if imp not in existing:
+                package_imports.append(imp)
+                existing.add(imp)
+
+    if ports_json and ports_json.is_file():
+        port_decls = port_decls_from_ports_json(ports_json, sva_top=mod_name, known_type_params=known_type_params)
+    else:
+        if not m:
+            console.print('[red]⚠ No ports.json and no parsable module header for whitebox wrapper.[/red]')
+            return None, None
+        port_body = m.group('port_body') or ''
+        ports_raw: List[str] = []
+        text_ports = strip_comments(port_body)
+        buf: List[str] = []
+        depth_paren = 0
+        depth_brack = 0
+        for ch in text_ports:
+            if ch == '(':
+                depth_paren += 1
+            elif ch == ')':
+                depth_paren = max(0, depth_paren - 1)
+            elif ch == '[':
+                depth_brack += 1
+            elif ch == ']':
+                depth_brack = max(0, depth_brack - 1)
+            if ch == ',' and depth_paren == 0 and depth_brack == 0:
+                token = ''.join(buf).strip()
+                if token:
+                    ports_raw.append(token)
+                buf = []
+            else:
+                buf.append(ch)
+        token = ''.join(buf).strip()
+        if token:
+            ports_raw.append(token)
+        seen: Set[str] = set()
+        for tok in ports_raw:
+            tok = tok.strip()
+            if not tok:
+                continue
+            if not re.search(r'\b(input|output|inout)\b', tok):
+                tok = 'input ' + tok
+            decl = clean_decl_to_input(tok)
+            name = extract_last_identifier(decl)
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            if not decl.startswith('input'):
+                decl = 'input ' + decl
+            port_decls.append(decl)
+
+    if not port_decls:
+        console.print(f'[red]⚠ No ports found for whitebox wrapper of {dut_name}[/red]')
+        return None, None
+
+    # Load internal signals and add them as 'input logic' ports
+    int_sig_path = fpv_dir / f'{mod_name}_internal_signals.json'
+    if int_sig_path.exists():
+        try:
+            int_sigs = json.loads(int_sig_path.read_text())
+            if isinstance(int_sigs, list):
+                existing_names = set()
+                for d in port_decls:
+                    m_n = re.search(r'([A-Za-z_]\w*)\s*(\[[^\]]*\]\s*)*$', d.strip().rstrip(','))
+                    if m_n:
+                        existing_names.add(m_n.group(1))
+                added = 0
+                for sig in int_sigs:
+                    if sig and sig not in existing_names:
+                        port_decls.append(f'input logic {sig}')
+                        existing_names.add(sig)
+                        added += 1
+                console.print(f'[cyan]ℹ Whitebox wrapper: added {added} internal signals as ports[/cyan]')
+        except Exception as e:
+            console.print(f'[yellow]⚠ Failed to load internal signals for whitebox wrapper: {e}[/yellow]')
+    else:
+        console.print(f'[yellow]⚠ No internal_signals.json found at {int_sig_path}; whitebox wrapper has IO ports only[/yellow]')
+
+    sva_dir = fpv_dir / 'sva'
+    ensure_dir(sva_dir)
+
+    wb_name = f'{mod_name}_wb'
+    prop_path = sva_dir / f'{wb_name}_prop.sv'
+    bind_path = sva_dir / f'{wb_name}_bind.sv'
+
+    prop_sv = generate_prop_module_min(f'{dut_name}_wb', params_text, port_decls, include_file, package_imports=package_imports)
+    bind_sv = generate_bind(f'{dut_name}_wb', params_text, port_decls, bind_scope or dut_name)
+
+    prop_path.write_text(prop_sv, encoding='utf-8')
+    bind_path.write_text(bind_sv, encoding='utf-8')
+
+    console.print(f'[green]✔[/green] Wrote whitebox wrapper: {prop_path}')
+    console.print(f'[green]✔[/green] Wrote whitebox bind   : {bind_path}')
+    return prop_path, bind_path
+
+
+# -----------------------------------------------------------------------------
+# Token counting helpers
+# -----------------------------------------------------------------------------
+def _collect_token_counts(fpv_dir: Path, sva_top: str, whitebox: bool) -> Dict[str, int]:
+    """Collect token counts from *_tokens.json files written by spec/property builders."""
+    counts: Dict[str, int] = {}
+    candidates = [
+        ('Spec (blackbox)', fpv_dir / f'{sva_top}_spec_tokens.json'),
+        ('Property (blackbox)', fpv_dir / 'properties_tokens.json'),
+    ]
+    if whitebox:
+        candidates += [
+            ('Spec (whitebox)', fpv_dir / f'{sva_top}_spec_wb_tokens.json'),
+            ('Property (whitebox)', fpv_dir / 'properties_wb_tokens.json'),
+        ]
+    for label, path in candidates:
+        if path.exists():
+            try:
+                data = json.loads(path.read_text())
+                counts[label] = int(data.get('total_tokens', 0))
+            except Exception:
+                counts[label] = 0
+        else:
+            counts[label] = 0
+    return counts
+
+
+def print_token_summary(fpv_dir: Path, sva_top: str, whitebox: bool) -> None:
+    """Print a Rich table of token counts and write token_summary.json."""
+    counts = _collect_token_counts(fpv_dir, sva_top, whitebox)
+    total = sum(counts.values())
+
+    table = Table(title='LLM Token Usage Summary', style='bold cyan')
+    table.add_column('Stage', justify='left', style='white')
+    table.add_column('Tokens', justify='right', style='bold')
+    for label, n in counts.items():
+        table.add_row(label, str(n))
+    table.add_row('[bold]Total[/bold]', f'[bold green]{total}[/bold green]')
+    console.print(table)
+
+    summary = {**counts, 'total': total}
+    summary_path = fpv_dir / 'token_summary.json'
+    try:
+        summary_path.write_text(json.dumps(summary, indent=2), encoding='utf-8')
+        console.print(f'[green]✔[/green] Token summary: {summary_path}')
+    except Exception as e:
+        console.print(f'[yellow]⚠ Failed to write token summary: {e}[/yellow]')
+
+
+# -----------------------------------------------------------------------------
 # Main pipeline
 # -----------------------------------------------------------------------------
 def main() -> int:
@@ -1123,6 +1314,9 @@ def main() -> int:
     ap.add_argument('--postcheck-max-iters', type=int, default=1)
     ap.add_argument('--postcheck-tail-lines', type=int, default=250)
 
+    # Whitebox mode
+    ap.add_argument('--whitebox', action='store_true', help='Generate both blackbox and whitebox SVA properties.')
+
     # Debug flag
     ap.add_argument('--debug', action='store_true', help='Enable debug output')
     args = ap.parse_args()
@@ -1186,6 +1380,9 @@ def main() -> int:
             max_iters=args.postcheck_max_iters,
             tail_lines=args.postcheck_tail_lines,
         )
+
+        # Token summary (if any generation was done previously)
+        print_token_summary(fpv_dir, sva_top, whitebox=args.whitebox)
 
         # Return nonzero if postcheck failed, else reflect Jasper success
         if rc_post != 0:
@@ -1263,6 +1460,41 @@ def main() -> int:
     if not args.skip_spec:
         steps.append((f'🔧 Spec generation (module={sva_top})', _step_spec))
 
+    # Stage 1b: spec whitebox (only if --whitebox)
+    def _step_spec_wb():
+        cmd = [
+            'python3',
+            '-m',
+            'hagent.tool.tests.cli_spec_builder',
+            '--mode',
+            'single',
+            '--slang',
+            args.slang,
+            '--rtl',
+            str(rtl_dir),
+            '--top',
+            sva_top,
+            '--design-top',
+            args.top,
+            '--dir',
+            str(fpv_dir),
+            '--llm-config',
+            str(spec_yaml),
+            '--whitebox',
+        ]
+        if args.scope_path:
+            cmd += ['--scope-path', args.scope_path]
+        if user_filelist:
+            cmd += ['--filelist', str(user_filelist)]
+        for inc in include_dirs:
+            cmd += ['--include', str(inc)]
+        for d in args.defines or []:
+            cmd += ['--defines', d]
+        run_cmd(cmd)
+
+    if not args.skip_spec and args.whitebox:
+        steps.append((f'🔧 Spec generation WHITEBOX (module={sva_top})', _step_spec_wb))
+
     # Stage 2: props
     def _step_props():
         spec_md = fpv_dir / f'{sva_top}_spec.md'
@@ -1300,6 +1532,48 @@ def main() -> int:
 
     if not args.skip_props:
         steps.append((f'🔒 Property generation (module={sva_top})', _step_props))
+
+    # Stage 2b: props whitebox (only if --whitebox)
+    def _step_props_wb():
+        spec_md_wb = fpv_dir / f'{sva_top}_spec_wb.md'
+        spec_csv_wb = fpv_dir / f'{sva_top}_spec_wb.csv'
+        if not spec_md_wb.exists() or not spec_csv_wb.exists():
+            raise SystemExit(f'ERROR: Missing whitebox spec outputs: {spec_md_wb} / {spec_csv_wb}')
+
+        int_sig_json = fpv_dir / f'{sva_top}_internal_signals.json'
+        cmd = [
+            'python3',
+            '-m',
+            'hagent.tool.tests.cli_property_builder',
+            '--spec-md',
+            str(spec_md_wb),
+            '--csv',
+            str(spec_csv_wb),
+            '--rtl',
+            str(rtl_dir),
+            '--dir',
+            str(fpv_dir),
+            '--llm-config',
+            str(prop_yaml),
+            '--design-top',
+            args.top,
+            '--whitebox',
+        ]
+        if int_sig_json.exists():
+            cmd += ['--internal-signals-json', str(int_sig_json)]
+        run_cmd(cmd)
+
+        prop_src_wb = fpv_dir / 'properties_wb.sv'
+        if not prop_src_wb.exists():
+            raise SystemExit('ERROR: properties_wb.sv not found after whitebox property builder.')
+        prop_dst_wb = fpv_dir / 'sva' / 'properties_wb.sv'
+        if prop_dst_wb.exists():
+            prop_dst_wb.unlink()
+        shutil.move(str(prop_src_wb), str(prop_dst_wb))
+        console.print('[green]✔[/green] Moved properties_wb.sv → sva/')
+
+    if not args.skip_props and args.whitebox:
+        steps.append((f'🔒 Property generation WHITEBOX (module={sva_top})', _step_props_wb))
 
     # Stage 3: fpv collateral
     def _step_fpv():
@@ -1363,6 +1637,21 @@ def main() -> int:
         if prop_p and bind_p:
             sva_paths.extend([prop_p, bind_p])
 
+        # Whitebox: generate second wrapper/bind for whitebox properties
+        if args.whitebox:
+            wb_include = 'properties_wb.sv'
+            wb_prop_path, wb_bind_path = _emit_whitebox_wrapper(
+                mod_name=sva_top,
+                src_file=target_src,
+                fpv_dir=fpv_dir,
+                include_file=wb_include,
+                bind_scope=args.bind_scope,
+                ports_json=pj,
+                scoped_ast_json=saj,
+            )
+            if wb_prop_path and wb_bind_path:
+                sva_paths.extend([wb_prop_path, wb_bind_path])
+
         if user_filelist:
             final_files = list(sva_paths)
             incdirs_out: List[Path] = []
@@ -1402,6 +1691,41 @@ def main() -> int:
                 sva_files=sva_paths,
                 defines=args.defines,
             )
+
+        # Generate whitebox TCL (separate FPV_wb.tcl) if whitebox enabled
+        if args.whitebox:
+            wb_sva_paths = [p for p in sva_paths if '_wb' in p.name]
+            wb_final_files = list(final_files) if not user_filelist else list(wb_sva_paths)
+            if not user_filelist:
+                # Replace blackbox SVA files with whitebox ones in the file list
+                bb_names = {f'{sva_top}_prop.sv', f'{sva_top}_bind.sv'}
+                wb_final_files = [f for f in final_files if f.name not in bb_names] + wb_sva_paths
+
+            write_jasper_tcl(
+                out_path=(fpv_dir / 'FPV_wb.tcl'),
+                output_dir=fpv_dir,
+                module_name=args.top,
+                files=wb_final_files,
+                incdirs=incdirs_out,
+                defines=args.defines,
+                clock_name=clk_name,
+                reset_expr=rst_expr,
+                prove_time=args.prove_time,
+                proofgrid_jobs=args.proofgrid_jobs,
+                lib_dirs=incdirs_out,
+                lib_files=None,
+                sva_module=f'{sva_top}_wb',
+            )
+            console.print(f'[green]✔[/green] Wrote whitebox TCL: {fpv_dir / "FPV_wb.tcl"}')
+
+            if user_filelist:
+                overwrite_files_vc_for_user_filelist(
+                    vc_path=(fpv_dir / 'files_wb.vc'),
+                    user_filelist=user_filelist,
+                    fpv_dir=fpv_dir,
+                    sva_files=wb_sva_paths,
+                    defines=args.defines,
+                )
 
         console.print('[bold green]✔ FPV collateral generated[/bold green]')
         console.print(f'[green]✔[/green] FPV dir: {fpv_dir}')
@@ -1461,6 +1785,9 @@ def main() -> int:
     if rc_post != 0:
         return rc_post
 
+    # Token summary (always print after generation stages)
+    print_token_summary(fpv_dir, sva_top, whitebox=args.whitebox)
+
     # Final status:
     # - If Jasper wasn't run, success is based on generation stages.
     # - If Jasper was run and failed, return nonzero (but we still produced summary/coverage/advice).
@@ -1472,7 +1799,8 @@ def main() -> int:
             f'[bold green]DONE[/bold green]\n'
             f'[cyan]fpv_dir:[/cyan] {fpv_dir}\n'
             f'[cyan]ran_jasper:[/cyan] {bool(args.run_jg or args.rerun_jg)}\n'
-            f'[cyan]postcheck:[/cyan] {bool(args.postcheck)}',
+            f'[cyan]postcheck:[/cyan] {bool(args.postcheck)}\n'
+            f'[cyan]whitebox:[/cyan] {bool(args.whitebox)}',
             border_style='green',
         )
     )
