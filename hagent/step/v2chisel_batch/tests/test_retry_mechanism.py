@@ -58,10 +58,6 @@ def setup_test_environment():
     # Environment successfully set up
 
 
-# Set up environment before importing
-setup_test_environment()
-
-
 def test_retry_mechanism():
     """Test that demonstrates the retry loop when applier fails"""
     print('🧪 Testing v2chisel_batch retry mechanism')

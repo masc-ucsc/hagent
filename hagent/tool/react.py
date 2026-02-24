@@ -226,7 +226,7 @@ class React:
                 path = PathManager().get_cache_path(fname)
                 with open(path, 'w') as f:
                     json.dump({'log': self._log, 'last_code': self.last_code}, f, indent=2)
-            except Exception:
+            except BaseException:
                 pass
 
     def get_log(self) -> List[Dict]:
