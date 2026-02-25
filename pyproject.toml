@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13,<4.0"
 dependencies = [
     "pyyaml >=6.0.3",
-    "litellm >=1.80.0",
+    "litellm==1.81.15",
     "diskcache >=5.6.3",
     "pyslang >=9.1.0",
     "numpy >=2.3.5",
