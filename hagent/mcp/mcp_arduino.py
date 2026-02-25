@@ -16,6 +16,10 @@ from typing import Dict, Any, Optional, List, Tuple
 import difflib
 import re
 import json
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from board_sync import fetch_remote_board_configs
 
 def get_mcp_schema() -> Dict[str, Any]:
     """Return MCP tool schema for Arduino development command."""
@@ -30,6 +34,7 @@ def get_mcp_schema() -> Dict[str, Any]:
         'monitor',
         'cli',
         'env',
+        'refresh_config',
     ]
 
     return { 'name': 'hagent_arduino', 'description': 'Arduino development tool for managing boards, sketches, compiling, and uploading. USE THIS TOOL for all Arduino operations; DO NOT run arduino-cli directly in the shell.', 'inputSchema': {
@@ -50,7 +55,8 @@ def get_mcp_schema() -> Dict[str, Any]:
                                    '- compile: (OPTIONAL) Sketch name. Defaults to "Blink". AUTOMATICALLY uses FQBN from installed config. DO NOT pass flags manually.\n'\
                                    '- upload: (OPTIONAL) Sketch name. Defaults to "Blink". AUTOMATICALLY detects port and FQBN from config. DO NOT pass flags manually.\n'\
                                    '- monitor: (NO ARGS) Does not use the `args` parameter. The `timeout` parameter can be used to set the duration (default: 30s).\n'\
-                                   '- cli: (REQUIRED) Arbitrary arduino-cli command string',
+                                   '- cli: (REQUIRED) Arbitrary arduino-cli command string\n'\
+                                   '- refresh_config: (NO ARGS) Fetches latest board configs from the remote repository.',
                 },
                 'timeout': {
                     'type': 'integer',
@@ -315,6 +321,59 @@ def _is_core_installed(core_name: str) -> bool:
 # API FUNCTIONS
 # ==============================================================================
 
+def _fuzzy_match_board(args: str, board_details: list) -> Optional[Dict[str, Any]]:
+    """
+    Find the best board match using fuzzy string matching.
+    Returns a single board item if a good match is found, otherwise None.
+    """
+    if not args:
+        return None
+    
+    # Get a list of board names and short_names to match against
+    names = [b['short_name'] for b in board_details] + [b['name'] for b in board_details]
+    
+    # Find the best match
+    matches = difflib.get_close_matches(args, list(set(names)), n=1, cutoff=0.5)
+    
+    if matches:
+        # Find the full board_detail dictionary for the matched name
+        for b in board_details:
+            if b['short_name'] == matches[0] or b['name'] == matches[0]:
+                return b
+    return None
+
+def api_refresh_config(args: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Refresh board configurations from the remote repository.
+    Returns a list of available Arduino boards after the refresh.
+    """
+    all_boards = fetch_remote_board_configs()
+
+    if not all_boards:
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': 'Failed to fetch board configs from remote. Check network connectivity.',
+        }
+
+    configs_board_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs', 'board')
+    arduino_boards = [b for b in all_boards if b.startswith('board_arduino_')]
+
+    board_details = []
+    for short_name in arduino_boards:
+        info = _parse_board_config(os.path.join(configs_board_path, short_name + '.md'))
+        board_details.append(f"{info['name']} (ID: {info['short_name']})")
+
+    return {
+        'success': True,
+        'exit_code': 0,
+        'stdout': f"Board configs refreshed. Available Arduino boards:\n" + "\n".join(board_details),
+        'stderr': '',
+        'boards': board_details,
+    }
+
+
 def api_install_core(args: Optional[str] = None) -> Dict[str, Any]:
     """
     Install a specific Arduino core.
@@ -413,18 +472,22 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                     'installation_path': toolkit_dir
                 }
     
-    # 2. Board Selection Logic
+    # 2. Refresh board configs from remote (best-effort, non-blocking)
+    fetch_remote_board_configs()
+
+    # 3. Board Selection Logic
     configs_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs')
-    if not os.path.isdir(configs_path):
+    board_configs_path = os.path.join(configs_path, 'board')
+    if not os.path.isdir(board_configs_path):
         # Fallback if configs dir not found (shouldn't happen in prod)
         return { 'success': True, 'stdout': stdout + "\nToolkit installed, but no board configs found.", 'stderr': '' }
 
     # Filter for Arduino boards only (files starting with board_arduino_)
-    board_files = [f for f in os.listdir(configs_path) if f.startswith('board_arduino_') and f.endswith('.md')]
+    board_files = [f for f in os.listdir(board_configs_path) if f.startswith('board_arduino_') and f.endswith('.md')]
     board_details = []
     
     for f in board_files:
-        info = _parse_board_config(os.path.join(configs_path, f))
+        info = _parse_board_config(os.path.join(board_configs_path, f))
         board_details.append(info)
 
     selected_board = None
@@ -435,15 +498,9 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         matches = [b for b in board_details if b['short_name'] == args or b['name'] == args]
         if len(matches) == 1:
             selected_board = matches[0]
-        else:
-            # Fuzzy match
-            names = [b['short_name'] for b in board_details]
-            fuzzy = difflib.get_close_matches(args, names, n=1, cutoff=0.5)
-            if fuzzy:
-                for b in board_details:
-                    if b['short_name'] == fuzzy[0]:
-                        selected_board = b
-                        break
+        # If no exact match, you can uncomment the following line to use fuzzy matching.
+        # else:
+        #     selected_board = _fuzzy_match_board(args, board_details)
 
     # If no args or no match, lists candidates
     if not selected_board:
@@ -840,6 +897,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
             'monitor': lambda args: api_monitor(args, timeout),
             'cli': api_cli,
             'env': api_env,
+            'refresh_config': api_refresh_config,
         }
 
         handler = api_handlers.get(api_name)

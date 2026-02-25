@@ -18,6 +18,10 @@ import difflib
 import platform
 import json
 import re
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from board_sync import fetch_remote_board_configs
 
 def get_mcp_schema() -> Dict[str, Any]:
     """Return MCP tool schema for ESP32 development command."""
@@ -31,6 +35,7 @@ def get_mcp_schema() -> Dict[str, Any]:
         'monitor',
         'idf',
         'env',
+        'refresh_config',
     ]
 
     return { 'name': 'hagent_esp32', 'description': 'ESP32 development tool for managing boards, projects, building, and flashing', 'inputSchema': {
@@ -47,7 +52,8 @@ def get_mcp_schema() -> Dict[str, Any]:
                                    '- install: (REQUIRED) Board name or description (e.g., "rust board", "board_rust_esp32_c3")\n'
                                    '- setup: (REQUIRED) New project name\n'
                                    '- build/flash: (OPTIONAL) Extra flags for idf.py\n'
-                                   '- idf: (REQUIRED) Arbitrary idf.py command string',
+                                   '- idf: (REQUIRED) Arbitrary idf.py command string\n'
+                                   '- refresh_config: (NO ARGS) Fetches latest board configs from the remote repository.',
                 },
                 'timeout': {
                     'type': 'integer',
@@ -139,6 +145,27 @@ def _parse_board_config(file_path: str) -> Dict[str, str]:
             'short_name': os.path.basename(file_path).replace('.md', '')
         }
 
+def _fuzzy_match_board(args: str, board_details: list) -> Optional[Dict[str, Any]]:
+    """
+    Find the best board match using fuzzy string matching.
+    Returns a single board item if a good match is found, otherwise None.
+    """
+    if not args:
+        return None
+    
+    # Get a list of board names and short_names to match against
+    names = [b['short_name'] for b in board_details] + [b['name'] for b in board_details]
+    
+    # Find the best match
+    matches = difflib.get_close_matches(args, list(set(names)), n=1, cutoff=0.5)
+    
+    if matches:
+        # Find the full board_detail dictionary for the matched name
+        for b in board_details:
+            if b['short_name'] == matches[0] or b['name'] == matches[0]:
+                return b
+    return None
+
 def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
     """
     Internal helper to run idf.py monitor in a specific directory.
@@ -186,6 +213,38 @@ def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
 # API FUNCTIONS
 # ==============================================================================
 
+def api_refresh_config(args: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Refresh board configurations from the remote repository.
+    Returns a list of available ESP32 boards after the refresh.
+    """
+    all_boards = fetch_remote_board_configs()
+
+    if not all_boards:
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': 'Failed to fetch board configs from remote. Check network connectivity.',
+        }
+
+    configs_board_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs', 'board')
+    esp32_boards = [b for b in all_boards if b.startswith('board_rust_')]
+
+    board_details = []
+    for short_name in esp32_boards:
+        info = _parse_board_config(os.path.join(configs_board_path, short_name + '.md'))
+        board_details.append(f"{info['name']} (ID: {info['short_name']})")
+
+    return {
+        'success': True,
+        'exit_code': 0,
+        'stdout': f"Board configs refreshed. Available ESP32 boards:\n" + "\n".join(board_details),
+        'stderr': '',
+        'boards': board_details,
+    }
+
+
 def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     """
     Install ESP-IDF toolchain and configure board.
@@ -204,34 +263,29 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     # 5. Run ./install.sh <esp32_model>
     # 6. Copy board config to HAGENT_REPO_DIR/AGENTS.md and GEMINI.md
 
+    # Refresh board configs from remote (best-effort, non-blocking)
+    fetch_remote_board_configs()
+
     configs_path = os.path.join(os.environ['HAGENT_ROOT'], 'hagent', 'mcp', 'configs')
-    if os.path.isdir(configs_path):
-        board_desc_files = [file[:-3] for file in os.listdir(configs_path)]
-        boards, board_details = [], []
-
-        if board_desc_files:
-            if args:
-                boards = difflib.get_close_matches(args, board_desc_files, 3, 0.3)
-
-            boards = board_desc_files if args is None or len(boards) == 0 else boards
-        # Process the filtered the boards
-        for b in boards:
-            file_name = os.path.join(configs_path, f'{b}.md')
-            board_info = _parse_board_config(file_name)
+    board_configs_path = os.path.join(configs_path, 'board')
+    if os.path.isdir(board_configs_path):
+        # Get a list of all available board configurations
+        board_files = [f for f in os.listdir(board_configs_path) if f.endswith('.md')]
+        board_details = []
+        for f in board_files:
+            board_info = _parse_board_config(os.path.join(board_configs_path, f))
             board_details.append(board_info)
-        
+
         selected_board = None
         
-        # Check if args are provided. If yes, then filter the boards using args
-        # If exact match is found or if there is only one matching board, set it as the target and proceed with installation
-        # If there are no matches or if args are not provided, prompt the user to provide one from the candidates returned
+        # If args are provided, try to find an exact match
         if args:
             exact_matches = [b for b in board_details if b['name'].lower() == args.lower() or b['short_name'].lower() == args.lower()]
             if len(exact_matches) == 1:
                 selected_board = exact_matches[0]
-
-            if not selected_board and len(board_details) == 1:
-                selected_board = board_details[0]
+            # If no exact match, you can uncomment the following line to use fuzzy matching.
+            # else:
+            #     selected_board = _fuzzy_match_board(args, board_details)
 
         if not selected_board:
             candidates = [f"{b['name']} (ID: {b['short_name']})" for b in board_details]
@@ -767,6 +821,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
             'monitor': lambda args: api_monitor(args, timeout),
             'idf': api_idf,
             'env': api_env,
+            'refresh_config': api_refresh_config,
         }
 
         handler = api_handlers.get(api_name)
