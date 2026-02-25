@@ -112,7 +112,7 @@ class LLM_wrap:
             required_key = 'FIREWORKS_AI_API_KEY'
         elif model.startswith('openai'):
             required_key = 'OPENAI_API_KEY'
-        elif model.startswith('anthropic'):
+        elif model.startswith('anthropic') or model.startswith('claude'):
             required_key = 'ANTHROPIC_API_KEY'
         elif model.startswith('replicate'):
             required_key = 'REPLICATE_API_KEY'
@@ -326,12 +326,17 @@ class LLM_wrap:
         if 'max_tokens' in self.llm_args:
             llm_call_args['max_output_tokens'] = self.llm_args['max_tokens']
 
+        model = llm_call_args.get('model', '')
+
+        # Anthropic models do not allow both temperature and top_p simultaneously
+        anthropic_model = model.startswith('anthropic') or model.startswith('claude')
+
         # Copy other supported parameters
         for param in ['temperature', 'top_p', 'stream']:
             if param in self.llm_args:
+                if anthropic_model and param == 'top_p':
+                    continue  # Anthropic does not allow both temperature and top_p
                 llm_call_args[param] = self.llm_args[param]
-
-        model = llm_call_args.get('model', '')
         if model == '':
             self._set_error('empty model name. No default model used')
             return []
@@ -369,16 +374,18 @@ class LLM_wrap:
                             call_args['temperature'] = i / (n - 1)
 
                     # Scale top_p intelligently: vary around default with more diversity
-                    if n == 2:
-                        call_args['top_p'] = base_top_p if i == 0 else max(0.1, min(1.0, 1.0 - base_top_p + 0.1))
-                    else:
-                        # For n>2: alternate between higher and lower values around default
-                        if i == n // 2:
-                            call_args['top_p'] = base_top_p  # Keep default for one sample
-                        elif i % 2 == 0:
-                            call_args['top_p'] = max(0.1, base_top_p - (i * 0.15))
+                    # Skip top_p for Anthropic models (cannot use both temperature and top_p)
+                    if not anthropic_model:
+                        if n == 2:
+                            call_args['top_p'] = base_top_p if i == 0 else max(0.1, min(1.0, 1.0 - base_top_p + 0.1))
                         else:
-                            call_args['top_p'] = min(1.0, base_top_p + ((i - 1) * 0.15))
+                            # For n>2: alternate between higher and lower values around default
+                            if i == n // 2:
+                                call_args['top_p'] = base_top_p  # Keep default for one sample
+                            elif i % 2 == 0:
+                                call_args['top_p'] = max(0.1, base_top_p - (i * 0.15))
+                            else:
+                                call_args['top_p'] = min(1.0, base_top_p + ((i - 1) * 0.15))
 
                     # Add variation to input to avoid caching when seeking diversity
                     if i > 0 and last_response:
