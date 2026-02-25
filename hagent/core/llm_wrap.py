@@ -125,6 +125,14 @@ class LLM_wrap:
         elif model.startswith('ollama'):
             # Ollama access is achieved through a URL such as 'http://localhost:11434'
             required_key = 'OLLAMA_API_BASE'
+        elif model.startswith('gemini'):
+            # Gemini accepts either GEMINI_API_KEY or GOOGLE_API_KEY
+            if os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY'):
+                return True
+            error_message = f"Error: Neither 'GEMINI_API_KEY' nor 'GOOGLE_API_KEY' is set for model '{model}'."
+            print(error_message, file=sys.stderr)
+            self._set_error(error_message)
+            return False
         elif model.startswith('bedrock'):
             # AWS Bedrock requires both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
             if os.environ.get('AWS_ACCESS_KEY_ID') is None:

@@ -171,6 +171,8 @@ def test_missing_env_var(tmp_path, monkeypatch):
         'COHERE_API_KEY',
         'TOGETHER_AI_API_KEY',
         'OLLAMA_API_BASE',
+        'GEMINI_API_KEY',
+        'GOOGLE_API_KEY',
     ]
 
     # Remove all LLM provider environment variables
