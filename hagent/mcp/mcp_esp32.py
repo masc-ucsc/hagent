@@ -21,7 +21,7 @@ import re
 import sys as _sys
 import os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from board_sync import fetch_remote_board_configs
+from config_sync import fetch_remote_configs
 
 def get_mcp_schema() -> Dict[str, Any]:
     """Return MCP tool schema for ESP32 development command."""
@@ -215,21 +215,21 @@ def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
 
 def api_refresh_config(args: Optional[str] = None) -> Dict[str, Any]:
     """
-    Refresh board configurations from the remote repository.
+    Refresh board and platform configurations from the remote repository.
     Returns a list of available ESP32 boards after the refresh.
     """
-    all_boards = fetch_remote_board_configs()
+    synced = fetch_remote_configs()
 
-    if not all_boards:
+    if not synced.get('board') and not synced.get('platform'):
         return {
             'success': False,
             'exit_code': 1,
             'stdout': '',
-            'stderr': 'Failed to fetch board configs from remote. Check network connectivity.',
+            'stderr': 'Failed to fetch configs from remote. Check network connectivity.',
         }
 
     configs_board_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs', 'board')
-    esp32_boards = [b for b in all_boards if b.startswith('board_rust_')]
+    esp32_boards = [b for b in synced.get('board', []) if b.startswith('board_rust_')]
 
     board_details = []
     for short_name in esp32_boards:
@@ -239,7 +239,7 @@ def api_refresh_config(args: Optional[str] = None) -> Dict[str, Any]:
     return {
         'success': True,
         'exit_code': 0,
-        'stdout': f"Board configs refreshed. Available ESP32 boards:\n" + "\n".join(board_details),
+        'stdout': "Configs refreshed. Available ESP32 boards:\n" + "\n".join(board_details),
         'stderr': '',
         'boards': board_details,
     }
@@ -263,8 +263,8 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     # 5. Run ./install.sh <esp32_model>
     # 6. Copy board config to HAGENT_REPO_DIR/AGENTS.md and GEMINI.md
 
-    # Refresh board configs from remote (best-effort, non-blocking)
-    fetch_remote_board_configs()
+    # Refresh configs from remote (best-effort, non-blocking)
+    fetch_remote_configs()
 
     configs_path = os.path.join(os.environ['HAGENT_ROOT'], 'hagent', 'mcp', 'configs')
     board_configs_path = os.path.join(configs_path, 'board')
@@ -338,11 +338,10 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         # Read and concatenate config files
         combined_content = ""
         try:
-            for cfg_file in ['CONFIG.md', 'ESP32.md']:
-                cfg_path = os.path.join(configs_path, cfg_file)
-                if os.path.exists(cfg_path):
-                    with open(cfg_path, 'r') as f:
-                        combined_content += f.read() + "\n\n---\n\n"
+            platform_file = os.path.join(configs_path, 'platform', 'platform_esp32.md')
+            if os.path.exists(platform_file):
+                with open(platform_file, 'r') as f:
+                    combined_content += f.read() + "\n\n---\n\n"
             
             # Add the specific board config
             with open(selected_board['file_name'], 'r') as f:

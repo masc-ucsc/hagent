@@ -19,14 +19,13 @@ import json
 import sys as _sys
 import os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from board_sync import fetch_remote_board_configs
+from config_sync import fetch_remote_configs
 
 def get_mcp_schema() -> Dict[str, Any]:
     """Return MCP tool schema for Arduino development command."""
 
     available_apis = [
         'install',
-        'install_core',
         'list_boards',
         'new_sketch',
         'compile',
@@ -48,9 +47,8 @@ def get_mcp_schema() -> Dict[str, Any]:
                 'args': {
                     'type': 'string',
                     'description': 'Arguments for the API command:\n'\
-                                   '- install: (OPTIONAL) Board identifier (e.g., "nanor4"). Lists available boards if ambiguous.\n'\
+                                   '- install: (OPTIONAL) Board identifier (e.g., "nanor4"). Lists available boards if ambiguous. Automatically installs the required core.\n'\
                                    '- list_boards: (NO ARGS) Lists currently connected Arduino boards. Returns a filtered list of identified boards with FQBNs.\n'\
-                                   '- install_core: (REQUIRED) Core identifier (e.g., "arduino:renesas_uno")\n'\
                                    '- new_sketch: (REQUIRED) Sketch name\n'\
                                    '- compile: (OPTIONAL) Sketch name. Defaults to "Blink". AUTOMATICALLY uses FQBN from installed config. DO NOT pass flags manually.\n'\
                                    '- upload: (OPTIONAL) Sketch name. Defaults to "Blink". AUTOMATICALLY detects port and FQBN from config. DO NOT pass flags manually.\n'\
@@ -317,10 +315,6 @@ def _is_core_installed(core_name: str) -> bool:
         pass
     return False
 
-# ==============================================================================
-# API FUNCTIONS
-# ==============================================================================
-
 def _fuzzy_match_board(args: str, board_details: list) -> Optional[Dict[str, Any]]:
     """
     Find the best board match using fuzzy string matching.
@@ -328,13 +322,13 @@ def _fuzzy_match_board(args: str, board_details: list) -> Optional[Dict[str, Any
     """
     if not args:
         return None
-    
+
     # Get a list of board names and short_names to match against
     names = [b['short_name'] for b in board_details] + [b['name'] for b in board_details]
-    
+
     # Find the best match
     matches = difflib.get_close_matches(args, list(set(names)), n=1, cutoff=0.5)
-    
+
     if matches:
         # Find the full board_detail dictionary for the matched name
         for b in board_details:
@@ -342,64 +336,19 @@ def _fuzzy_match_board(args: str, board_details: list) -> Optional[Dict[str, Any
                 return b
     return None
 
-def api_refresh_config(args: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Refresh board configurations from the remote repository.
-    Returns a list of available Arduino boards after the refresh.
-    """
-    all_boards = fetch_remote_board_configs()
-
-    if not all_boards:
-        return {
-            'success': False,
-            'exit_code': 1,
-            'stdout': '',
-            'stderr': 'Failed to fetch board configs from remote. Check network connectivity.',
-        }
-
-    configs_board_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs', 'board')
-    arduino_boards = [b for b in all_boards if b.startswith('board_arduino_')]
-
-    board_details = []
-    for short_name in arduino_boards:
-        info = _parse_board_config(os.path.join(configs_board_path, short_name + '.md'))
-        board_details.append(f"{info['name']} (ID: {info['short_name']})")
-
-    return {
-        'success': True,
-        'exit_code': 0,
-        'stdout': f"Board configs refreshed. Available Arduino boards:\n" + "\n".join(board_details),
-        'stderr': '',
-        'boards': board_details,
-    }
-
-
-def api_install_core(args: Optional[str] = None) -> Dict[str, Any]:
+def _install_core(core_name: str) -> Dict[str, Any]:
     """
     Install a specific Arduino core.
-    
-    Args:
-        args: Core identifier (e.g., "arduino:renesas_uno")
     """
-    if not args:
-        return {
-            'success': False,
-            'exit_code': 1,
-            'stdout': '',
-            'stderr': 'Core identifier is required.',
-        }
-
     if not shutil.which('arduino-cli'):
         res = initialize_arduino_env()
         if not res['success']:
             return res
 
-    print(f"Installing core {args}...")
+    print(f"Installing core {core_name}...")
     try:
-        # Ensure we have the latest index
         subprocess.run("arduino-cli core update-index", shell=True, capture_output=True)
-        
-        cmd = f"arduino-cli core install {args}"
+        cmd = f"arduino-cli core install {core_name}"
         res = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True)
         return {
             'success': True,
@@ -414,6 +363,42 @@ def api_install_core(args: Optional[str] = None) -> Dict[str, Any]:
             'stdout': e.stdout,
             'stderr': e.stderr,
         }
+
+# ==============================================================================
+# API FUNCTIONS
+# ==============================================================================
+
+def api_refresh_config(args: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Refresh board and platform configurations from the remote repository.
+    Returns a list of available Arduino boards after the refresh.
+    """
+    synced = fetch_remote_configs()
+
+    if not synced.get('board') and not synced.get('platform'):
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': 'Failed to fetch configs from remote. Check network connectivity.',
+        }
+
+    configs_board_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs', 'board')
+    arduino_boards = [b for b in synced.get('board', []) if b.startswith('board_arduino_')]
+
+    board_details = []
+    for short_name in arduino_boards:
+        info = _parse_board_config(os.path.join(configs_board_path, short_name + '.md'))
+        board_details.append(f"{info['name']} (ID: {info['short_name']})")
+
+    return {
+        'success': True,
+        'exit_code': 0,
+        'stdout': "Configs refreshed. Available Arduino boards:\n" + "\n".join(board_details),
+        'stderr': '',
+        'boards': board_details,
+    }
+
 
 
 def api_install(args: Optional[str] = None) -> Dict[str, Any]:
@@ -472,8 +457,8 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                     'installation_path': toolkit_dir
                 }
     
-    # 2. Refresh board configs from remote (best-effort, non-blocking)
-    fetch_remote_board_configs()
+    # 2. Refresh configs from remote (best-effort, non-blocking)
+    fetch_remote_configs()
 
     # 3. Board Selection Logic
     configs_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs')
@@ -523,12 +508,11 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     # Read and concatenate config files
     combined_content = ""
     try:
-        for cfg_file in ['CONFIG.md', 'ARDUINO.md']:
-            cfg_path = os.path.join(configs_path, cfg_file)
-            if os.path.exists(cfg_path):
-                with open(cfg_path, 'r') as f:
-                    combined_content += f.read() + "\n\n---\n\n"
-        
+        platform_file = os.path.join(configs_path, 'platform', 'platform_arduino.md')
+        if os.path.exists(platform_file):
+            with open(platform_file, 'r') as f:
+                combined_content += f.read() + "\n\n---\n\n"
+
         # Add the specific board config
         with open(selected_board['file_name'], 'r') as f:
             combined_content += f.read()
@@ -546,15 +530,29 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         }
     
     stdout += f"\nBoard configured: {selected_board['name']}\nConfiguration saved to AGENTS.md, GEMINI.md, and CLAUDE.md"
-    
+
+    # 4. Auto-install core if not present
+    board_info = _get_board_info_from_md()
+    core = board_info.get("core")
+    if core:
+        if _is_core_installed(core):
+            stdout += f"\nCore '{core}' is already installed."
+        else:
+            stdout += f"\nCore '{core}' not found. Installing..."
+            core_result = _install_core(core)
+            if core_result.get('success'):
+                stdout += f"\nCore '{core}' installed successfully."
+            else:
+                stdout += f"\nWarning: Failed to install core '{core}': {core_result.get('stderr', '')}"
+
     stdout += "\n\nIMPORTANT: New configuration files (AGENTS.md, GEMINI.md, CLAUDE.md) have been created. To ensure your agent recognizes these instructions, please perform the following:"
     stdout += "\n- Gemini CLI: Run the '/memory refresh' command."
     stdout += "\n- Claude Code / Codex: Restart your current session."
-    
+
     return {
         'success': True,
         'exit_code': 0,
-        'stdout': stdout, 
+        'stdout': stdout,
         'stderr': '',
         'installation_path': toolkit_dir,
         'board_config': selected_board
@@ -889,7 +887,6 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
 
         api_handlers = {
             'install': api_install,
-            'install_core': api_install_core,
             'list_boards': api_list_boards,
             'new_sketch': api_new_sketch,
             'compile': api_compile,
