@@ -417,7 +417,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
 
     if not os.path.isdir(toolkit_dir):
         try:
-            repo_url = "https://github.com/sri-ucsc/hagent-arduino-toolkit"
+            repo_url = "https://github.com/sri-ucsc/arduino-toolkit"
             print("Cloning arduino-toolkit")
             res = subprocess.run(
                 f"git clone {repo_url}",
@@ -511,7 +511,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     # Read and concatenate config files
     combined_content = ""
     try:
-        platform_file = os.path.join(configs_path, 'platform', 'platform_arduino.md')
+        platform_file = os.path.join(configs_path, 'framework', 'platform_arduino.md')
         if os.path.exists(platform_file):
             with open(platform_file, 'r') as f:
                 combined_content += f.read() + "\n\n---\n\n"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+"""platform
 MCP Command: ESP32
 
 ESP32 development tool with unified CLI and MCP interfaces.
@@ -338,7 +338,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         # Read and concatenate config files
         combined_content = ""
         try:
-            platform_file = os.path.join(configs_path, 'platform', 'platform_esp32.md')
+            platform_file = os.path.join(configs_path, 'framework', 'platform_esp32.md')
             if os.path.exists(platform_file):
                 with open(platform_file, 'r') as f:
                     combined_content += f.read() + "\n\n---\n\n"
