@@ -10,6 +10,11 @@
   - Upload: `arduino-cli upload -p <PORT> --fqbn SiliconLabs:silabs:nano_matter <sketch_name>`
   - Monitor: `arduino-cli monitor -p <PORT>`
 
+## Supported Platforms
+- **Arduino**
+
+> **Note:** This board may not appear with its name and FQBN when using `arduino-cli board list` or the MCP tool that lists connected Arduino boards. It often shows up only as a Serial Port (USB). Flash directly to that port — do not rely on board listing to identify it.
+
 ## Board Overview
 - `board`: nano_matter
 - `model`: Arduino Nano Matter — without headers (ABX00112) / with headers (ABX00137)

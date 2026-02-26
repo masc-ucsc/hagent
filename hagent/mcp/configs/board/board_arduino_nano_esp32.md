@@ -10,6 +10,11 @@
   - Upload: `arduino-cli upload -p <PORT> --fqbn arduino:esp32:nano_nora <sketch_name>`
   - Monitor: `arduino-cli monitor -p <PORT>`
 
+## Supported Platforms
+- **Arduino**
+
+> **Note:** This board may not appear with its name and FQBN when using `arduino-cli board list` or the MCP tool that lists connected Arduino boards. It often shows up only as a Serial Port (USB). Flash directly to that port — do not rely on board listing to identify it.
+
 ## Board Overview
 - `board`: nano_esp32
 - `model`: Arduino Nano ESP32 (ABX00083)
