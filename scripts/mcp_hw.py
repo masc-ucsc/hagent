@@ -23,12 +23,13 @@ Usage:
   python3 mcp_hw.py --platform arduino --api build --args MySketch
   python3 mcp_hw.py --platform esp32   --api flash
 """
+
 import argparse
 import sys
 import json
-import os
 import sys as _sys
 import os as _os
+
 _sys.path.insert(0, _os.path.join(_os.environ['HAGENT_ROOT'], 'hagent', 'mcp'))
 
 # ==============================================================================
@@ -88,20 +89,17 @@ def execute(platform: str, api: str, args: str = None, timeout: int = 30) -> dic
 # CLI
 # ==============================================================================
 
+
 def main():
     parser = argparse.ArgumentParser(
         description='Unified hardware MCP entry point for Arduino and ESP32.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument('--platform', '-p', required=True, choices=PLATFORMS,
-                        help='Target platform: arduino or esp32')
-    parser.add_argument('--api', '-a', required=True,
-                        help='API command to execute (unified or platform-specific)')
+    parser.add_argument('--platform', '-p', required=True, choices=PLATFORMS, help='Target platform: arduino or esp32')
+    parser.add_argument('--api', '-a', required=True, help='API command to execute (unified or platform-specific)')
     parser.add_argument('--args', help='Arguments for the API command')
-    parser.add_argument('--timeout', type=int, default=30,
-                        help='Timeout in seconds for monitor (default: 30)')
-    parser.add_argument('--schema', action='store_true',
-                        help='Print the underlying platform MCP schema as JSON')
+    parser.add_argument('--timeout', type=int, default=30, help='Timeout in seconds for monitor (default: 30)')
+    parser.add_argument('--schema', action='store_true', help='Print the underlying platform MCP schema as JSON')
 
     cli_args = parser.parse_args()
 
