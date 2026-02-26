@@ -417,7 +417,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
 
     if not os.path.isdir(toolkit_dir):
         try:
-            repo_url = "https://github.com/masc-ucsc/arduino-toolkit.git"
+            repo_url = "https://github.com/sri-ucsc/hagent-arduino-toolkit"
             print("Cloning arduino-toolkit")
             res = subprocess.run(
                 f"git clone {repo_url}",
