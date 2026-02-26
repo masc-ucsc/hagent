@@ -9,6 +9,7 @@ Clears the entire configs/ directory on each run to prevent stale files.
 
 Can be run standalone: python3 config_sync.py
 """
+
 import os
 import sys
 import json
@@ -35,7 +36,7 @@ def fetch_remote_configs() -> dict:
     """
     hagent_root = os.environ.get('HAGENT_ROOT')
     if not hagent_root:
-        print("Error: HAGENT_ROOT environment variable is not set.", file=sys.stderr)
+        print('Error: HAGENT_ROOT environment variable is not set.', file=sys.stderr)
         return {'board': [], 'platform': []}
 
     configs_path = os.path.join(hagent_root, 'hagent', 'mcp', 'configs')
@@ -55,8 +56,7 @@ def fetch_remote_configs() -> dict:
     try:
         # Fetch the top-level data/ directory listing
         req = urllib.request.Request(
-            REMOTE_REPO_DATA_API,
-            headers={'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'hagent-mcp'}
+            REMOTE_REPO_DATA_API, headers={'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'hagent-mcp'}
         )
         with urllib.request.urlopen(req) as response:
             entries = json.loads(response.read().decode())
@@ -65,15 +65,14 @@ def fetch_remote_configs() -> dict:
             if entry.get('type') != 'dir':
                 continue
 
-            subdir_name = entry['name']   # e.g. 'board' or 'platform'
+            subdir_name = entry['name']  # e.g. 'board' or 'platform'
             subdir_url = entry['url']
             local_subdir = os.path.join(configs_path, subdir_name)
             os.makedirs(local_subdir, exist_ok=True)
 
             # Fetch the file listing for this subdirectory
             sub_req = urllib.request.Request(
-                subdir_url,
-                headers={'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'hagent-mcp'}
+                subdir_url, headers={'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'hagent-mcp'}
             )
             with urllib.request.urlopen(sub_req) as sub_response:
                 files = json.loads(sub_response.read().decode())
@@ -100,10 +99,10 @@ def fetch_remote_configs() -> dict:
         return result
 
     except urllib.error.URLError as e:
-        print(f"Warning: Failed to fetch remote configs: {e}", file=sys.stderr)
+        print(f'Warning: Failed to fetch remote configs: {e}', file=sys.stderr)
         return {'board': [], 'platform': []}
     except Exception as e:
-        print(f"Warning: Unexpected error fetching remote configs: {e}", file=sys.stderr)
+        print(f'Warning: Unexpected error fetching remote configs: {e}', file=sys.stderr)
         return {'board': [], 'platform': []}
 
 
@@ -111,10 +110,10 @@ if __name__ == '__main__':
     result = fetch_remote_configs()
     total = sum(len(v) for v in result.values())
     if total:
-        print(f"Downloaded {total} config file(s):")
+        print(f'Downloaded {total} config file(s):')
         for subdir, names in result.items():
             for name in names:
-                print(f"  [{subdir}] {name}")
+                print(f'  [{subdir}] {name}')
     else:
-        print("No configs downloaded. Check HAGENT_ROOT and network connectivity.", file=sys.stderr)
+        print('No configs downloaded. Check HAGENT_ROOT and network connectivity.', file=sys.stderr)
         sys.exit(1)
