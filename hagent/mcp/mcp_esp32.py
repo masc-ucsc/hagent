@@ -229,7 +229,7 @@ def api_refresh_config(args: Optional[str] = None) -> Dict[str, Any]:
         }
 
     configs_board_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs', 'board')
-    esp32_boards = [b for b in synced.get('board', []) if b.startswith('board_rust_')]
+    esp32_boards = [b for b in synced.get('board', []) if b.startswith('board_idf_')]
 
     board_details = []
     for short_name in esp32_boards:
@@ -269,8 +269,8 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     configs_path = os.path.join(os.environ['HAGENT_ROOT'], 'hagent', 'mcp', 'configs')
     board_configs_path = os.path.join(configs_path, 'board')
     if os.path.isdir(board_configs_path):
-        # Get a list of all available board configurations
-        board_files = [f for f in os.listdir(board_configs_path) if f.endswith('.md')]
+        # Filter for ESP32 boards only (files starting with board_rust_)
+        board_files = [f for f in os.listdir(board_configs_path) if f.startswith('board_idf_') and f.endswith('.md')]
         board_details = []
         for f in board_files:
             board_info = _parse_board_config(os.path.join(board_configs_path, f))
@@ -296,7 +296,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
             elif not board_details:
                 error_msg = f"No boards found matching '{args}'. Please try a different search term."
             else:
-                error_msg = f"Multiple boards match '{args}'. Please specify a specific ID from the list below:\n{candidate_str}"
+                error_msg = f"No exact match found for '{args}'. Please specify an exact board ID from the list below:\n{candidate_str}"
             
             return {
                 'success': False,
@@ -516,17 +516,25 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
             if not res['success']:
                 return res
         
-        # Ensure project is initialized
         repo_dir = os.environ["HAGENT_REPO_DIR"]
-        if not os.path.exists(os.path.join(repo_dir, "sdkconfig")):
-            return {
-                'success': False,
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': 'Project not initialized (sdkconfig missing). Please run api_setup() to create project and set target before building.',
-            }
 
-        result = subprocess.run(f"idf.py build", cwd=repo_dir, shell=True, capture_output=True, text=True, check=True)
+        # If sdkconfig is missing, auto-run set-target using the installed board config
+        if not os.path.exists(os.path.join(repo_dir, "sdkconfig")):
+            board_config = _parse_board_config(
+                next((os.path.join(repo_dir, f) for f in ["AGENTS.md", "GEMINI.md", "CLAUDE.md"]
+                      if os.path.exists(os.path.join(repo_dir, f))), "")
+            )
+            target = board_config.get('model')
+            if not target:
+                return {
+                    'success': False,
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'sdkconfig and board configuration not found. Run `api_install` to select a board first. Run `api_setup` if the project is not initialized.',
+                }
+            subprocess.run(f"idf.py set-target {target}", cwd=repo_dir, shell=True, check=True, capture_output=True, text=True)
+
+        result = subprocess.run("idf.py build", cwd=repo_dir, shell=True, capture_output=True, text=True, check=True)
         binary_location = os.path.join(os.environ["HAGENT_REPO_DIR"], 'build')
 
     except subprocess.CalledProcessError as e:

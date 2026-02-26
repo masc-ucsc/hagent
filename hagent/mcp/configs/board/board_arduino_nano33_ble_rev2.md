@@ -10,6 +10,9 @@
   - Upload: `arduino-cli upload -p <PORT> --fqbn arduino:mbed_nano:nano33ble <sketch_name>`
   - Monitor: `arduino-cli monitor -p <PORT>`
 
+## Supported Platforms
+- **Arduino**
+
 ## Board Overview
 - `board`: nano33ble_rev2
 - `model`: Arduino Nano 33 BLE Rev2 without headers (ABX00071) / with headers (ABX00072)

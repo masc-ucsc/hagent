@@ -10,6 +10,9 @@
   - Upload: `arduino-cli upload -p <PORT> --fqbn arduino:renesas_uno:minima <sketch_name>`
   - Monitor: `arduino-cli monitor -p <PORT>`
 
+## Supported Platforms
+- **Arduino**
+
 ## Board Overview
 - `board`: uno_r4_minima
 - `model`: Arduino UNO R4 Minima (ABX00080)

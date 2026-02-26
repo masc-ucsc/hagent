@@ -492,7 +492,10 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
         candidates = [f"{b['name']} (ID: {b['short_name']})" for b in board_details]
         candidate_str = "\n".join(candidates)
         
-        final_stdout = "Arduino CLI is installed. Please run 'install' again with a specific board ID to complete the setup.\n\nAvailable boards:\n" + candidate_str
+        if args:
+            final_stdout = f"No exact match found for '{args}'. Please specify an exact board ID from the list below:\n\n" + candidate_str
+        else:
+            final_stdout = "No board specified. Please run 'install' again with a board ID from the list below:\n\n" + candidate_str
 
         return {
             'success': False,
