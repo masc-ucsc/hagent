@@ -17,7 +17,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           # Install a specific version of uv.
-          version: "0.9.30"
+          version: "0.10.7"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -35,7 +35,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           # Install a specific version of uv.
-          version: "0.9.30"
+          version: "0.10.7"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -59,7 +59,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           # Install a specific version of uv.
-          version: "0.9.30"
+          version: "0.10.7"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -126,7 +126,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          version: "0.9.30"
+          version: "0.10.7"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
