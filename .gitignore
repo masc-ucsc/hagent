@@ -30,3 +30,4 @@ setup_run
 .DS_Store
 project_env.sh
 GEMINI.md
+CLAUDE.md

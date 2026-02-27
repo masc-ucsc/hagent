@@ -10,6 +10,9 @@
   - Upload: `arduino-cli upload -p <PORT> --fqbn arduino:renesas_uno:nanor4 <sketch_name>`
   - Monitor: `arduino-cli monitor -p <PORT>`
 
+## Supported Platforms
+- **Arduino**
+
 ## Board Overview
 - `board`: nano_r4
 - `model`: Arduino Nano R4 with Headers (ABX00143)

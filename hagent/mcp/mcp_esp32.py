@@ -16,6 +16,11 @@ from typing import Dict, Any, Optional
 import difflib
 import json
 import re
+import sys as _sys
+import os as _os
+
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from config_sync import fetch_remote_configs
 
 
 def get_mcp_schema() -> Dict[str, Any]:
@@ -30,6 +35,7 @@ def get_mcp_schema() -> Dict[str, Any]:
         'monitor',
         'idf',
         'env',
+        'refresh_config',
     ]
 
     return {
@@ -49,7 +55,8 @@ def get_mcp_schema() -> Dict[str, Any]:
                     '- install: (REQUIRED) Board name or description (e.g., "rust board", "board_rust_esp32_c3")\n'
                     '- setup: (REQUIRED) New project name\n'
                     '- build/flash: (OPTIONAL) Extra flags for idf.py\n'
-                    '- idf: (REQUIRED) Arbitrary idf.py command string',
+                    '- idf: (REQUIRED) Arbitrary idf.py command string\n'
+                    '- refresh_config: (NO ARGS) Fetches latest board configs from the remote repository.',
                 },
                 'timeout': {
                     'type': 'integer',
@@ -134,6 +141,28 @@ def _parse_board_config(file_path: str) -> Dict[str, str]:
         }
 
 
+def _fuzzy_match_board(args: str, board_details: list) -> Optional[Dict[str, Any]]:
+    """
+    Find the best board match using fuzzy string matching.
+    Returns a single board item if a good match is found, otherwise None.
+    """
+    if not args:
+        return None
+
+    # Get a list of board names and short_names to match against
+    names = [b['short_name'] for b in board_details] + [b['name'] for b in board_details]
+
+    # Find the best match
+    matches = difflib.get_close_matches(args, list(set(names)), n=1, cutoff=0.5)
+
+    if matches:
+        # Find the full board_detail dictionary for the matched name
+        for b in board_details:
+            if b['short_name'] == matches[0] or b['name'] == matches[0]:
+                return b
+    return None
+
+
 def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
     """
     Internal helper to run idf.py monitor in a specific directory.
@@ -175,6 +204,38 @@ def _run_monitor(project_dir: str, timeout: int = 30) -> Dict[str, Any]:
 # ==============================================================================
 
 
+def api_refresh_config(args: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Refresh board and platform configurations from the remote repository.
+    Returns a list of available ESP32 boards after the refresh.
+    """
+    synced = fetch_remote_configs()
+
+    if not synced.get('board') and not synced.get('platform'):
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': 'Failed to fetch configs from remote. Check network connectivity.',
+        }
+
+    configs_board_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs', 'board')
+    esp32_boards = [b for b in synced.get('board', []) if b.startswith('board_idf_')]
+
+    board_details = []
+    for short_name in esp32_boards:
+        info = _parse_board_config(os.path.join(configs_board_path, short_name + '.md'))
+        board_details.append(f'{info["name"]} (ID: {info["short_name"]})')
+
+    return {
+        'success': True,
+        'exit_code': 0,
+        'stdout': 'Configs refreshed. Available ESP32 boards:\n' + '\n'.join(board_details),
+        'stderr': '',
+        'boards': board_details,
+    }
+
+
 def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     """
     Install ESP-IDF toolchain and configure board.
@@ -193,36 +254,31 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     # 5. Run ./install.sh <esp32_model>
     # 6. Copy board config to HAGENT_REPO_DIR/AGENTS.md and GEMINI.md
 
+    # Refresh configs from remote (best-effort, non-blocking)
+    fetch_remote_configs()
+
     configs_path = os.path.join(os.environ['HAGENT_ROOT'], 'hagent', 'mcp', 'configs')
-    if os.path.isdir(configs_path):
-        board_desc_files = [file[:-3] for file in os.listdir(configs_path)]
-        boards, board_details = [], []
-
-        if board_desc_files:
-            if args:
-                boards = difflib.get_close_matches(args, board_desc_files, 3, 0.3)
-
-            boards = board_desc_files if args is None or len(boards) == 0 else boards
-        # Process the filtered the boards
-        for b in boards:
-            file_name = os.path.join(configs_path, f'{b}.md')
-            board_info = _parse_board_config(file_name)
+    board_configs_path = os.path.join(configs_path, 'board')
+    if os.path.isdir(board_configs_path):
+        # Filter for ESP32 boards only (files starting with board_rust_)
+        board_files = [f for f in os.listdir(board_configs_path) if f.startswith('board_idf_') and f.endswith('.md')]
+        board_details = []
+        for f in board_files:
+            board_info = _parse_board_config(os.path.join(board_configs_path, f))
             board_details.append(board_info)
 
         selected_board = None
 
-        # Check if args are provided. If yes, then filter the boards using args
-        # If exact match is found or if there is only one matching board, set it as the target and proceed with installation
-        # If there are no matches or if args are not provided, prompt the user to provide one from the candidates returned
+        # If args are provided, try to find an exact match
         if args:
             exact_matches = [
                 b for b in board_details if b['name'].lower() == args.lower() or b['short_name'].lower() == args.lower()
             ]
             if len(exact_matches) == 1:
                 selected_board = exact_matches[0]
-
-            if not selected_board and len(board_details) == 1:
-                selected_board = board_details[0]
+            # If no exact match, you can uncomment the following line to use fuzzy matching.
+            # else:
+            #     selected_board = _fuzzy_match_board(args, board_details)
 
         if not selected_board:
             candidates = [f'{b["name"]} (ID: {b["short_name"]})' for b in board_details]
@@ -233,7 +289,9 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
             elif not board_details:
                 error_msg = f"No boards found matching '{args}'. Please try a different search term."
             else:
-                error_msg = f"Multiple boards match '{args}'. Please specify a specific ID from the list below:\n{candidate_str}"
+                error_msg = (
+                    f"No exact match found for '{args}'. Please specify an exact board ID from the list below:\n{candidate_str}"
+                )
 
             return {'success': False, 'exit_code': 1, 'stdout': '', 'stderr': error_msg, 'candidates': candidates}
 
@@ -265,16 +323,38 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                 'stderr': e.stderr,
             }
 
-        # Copy board config to $HAGENT_REPO_DIR/AGENTS.md and GEMINI.md
-        source_file = selected_board['file_name']
+        # Copy board config to $HAGENT_REPO_DIR/AGENTS.md, GEMINI.md, and CLAUDE.md
         repo_dir = os.environ['HAGENT_REPO_DIR']
 
-        shutil.copyfile(source_file, os.path.join(repo_dir, 'AGENTS.md'))
-        shutil.copyfile(source_file, os.path.join(repo_dir, 'GEMINI.md'))
+        # Read and concatenate config files
+        combined_content = ''
+        try:
+            platform_file = os.path.join(configs_path, 'framework', 'platform_esp32.md')
+            if os.path.exists(platform_file):
+                with open(platform_file, 'r') as f:
+                    combined_content += f.read() + '\n\n---\n\n'
 
-        stdout += f'\nBoard configured: {selected_board["name"]}\nConfiguration saved to AGENTS.md'
-        # TODO: This instruction should be added to a context MD file for the LLM later.
-        stdout += "\n\nIMPORTANT: A new configuration file (AGENTS.md/GEMINI.md) has been created. To ensure Gemini recognizes these new instructions, please ask the user to run the '/refresh' or '/memory refresh' command in the chat interface."
+            # Add the specific board config
+            with open(selected_board['file_name'], 'r') as f:
+                combined_content += f.read()
+
+            # Write to AGENTS.md, GEMINI.md, and CLAUDE.md
+            for filename in ['AGENTS.md', 'GEMINI.md', 'CLAUDE.md']:
+                with open(os.path.join(repo_dir, filename), 'w') as f:
+                    f.write(combined_content)
+        except Exception as e:
+            return {
+                'success': False,
+                'exit_code': 1,
+                'stdout': stdout,
+                'stderr': f'Failed to create configuration files: {str(e)}',
+            }
+
+        stdout += f'\nBoard configured: {selected_board["name"]}\nConfiguration saved to AGENTS.md, GEMINI.md, and CLAUDE.md'
+
+        stdout += '\n\nIMPORTANT: New configuration files (AGENTS.md, GEMINI.md, CLAUDE.md) have been created. To ensure your agent recognizes these instructions, please perform the following:'
+        stdout += "\n- Gemini CLI: Run the '/memory refresh' command."
+        stdout += '\n- Claude Code / Codex: Restart your current session.'
 
     return {
         'success': True,
@@ -307,33 +387,26 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
     # 7. Run idf.py set-target in HAGENT_REPO_DIR
     # 8. Restore AGENTS.md/GEMINI.md
 
-    idf_path = os.path.join(os.environ['HAGENT_CACHE_DIR'], 'esp-idf')
     repo_dir = os.environ['HAGENT_REPO_DIR']
-    md_path = os.path.join(repo_dir, 'AGENTS.md')
+    # Find any of the configuration files
+    md_path = None
+    for filename in ['AGENTS.md', 'GEMINI.md', 'CLAUDE.md']:
+        path = os.path.join(repo_dir, filename)
+        if os.path.exists(path):
+            md_path = path
+            break
 
-    if not os.path.isdir(idf_path):
+    if not md_path:
         return {
             'success': False,
             'exit_code': 1,
             'stdout': '',
-            'stderr': 'ESP-IDF not installed. Run api_install() before running api_setup()',
-        }
-
-    # Read AGENTS.md to get target config
-    if not os.path.exists(md_path):
-        return {
-            'success': False,
-            'exit_code': 1,
-            'stdout': '',
-            'stderr': 'AGENTS.md not found. Run api_install() before running api_setup()',
+            'stderr': 'Board configuration (AGENTS.md, GEMINI.md, or CLAUDE.md) not found. Run api_install() before running api_setup()',
         }
 
     # Use helper to parse target config
     board_config = _parse_board_config(md_path)
     target_config = board_config['model']
-
-    with open(md_path, 'r') as f:
-        agents_content = f.read()
 
     # Files/Dirs to STRICTLY PRESERVE
     protected_items = ['.gemini', '.claude', '.git', '.gitignore', '.vscode', 'AGENTS.md', 'GEMINI.md', 'CLAUDE.md']
@@ -372,12 +445,6 @@ def api_setup(args: Optional[str] = None) -> Dict[str, Any]:
                     shutil.copytree(s, d, dirs_exist_ok=True)
                 else:
                     shutil.copy2(s, d)
-
-            # Ensure AGENTS.md/GEMINI.md content matches buffer
-            with open(os.path.join(repo_dir, 'AGENTS.md'), 'w') as f:
-                f.write(agents_content)
-            with open(os.path.join(repo_dir, 'GEMINI.md'), 'w') as f:
-                f.write(agents_content)
 
             # 4. Initialize Configuration IN THE REPO
             # This generates sdkconfig and build/ with correct absolute paths
@@ -433,15 +500,29 @@ def api_build(args: Optional[str] = None) -> Dict[str, Any]:
             if not res['success']:
                 return res
 
-        # Ensure project is initialized
         repo_dir = os.environ['HAGENT_REPO_DIR']
+
+        # If sdkconfig is missing, auto-run set-target using the installed board config
         if not os.path.exists(os.path.join(repo_dir, 'sdkconfig')):
-            return {
-                'success': False,
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': 'Project not initialized (sdkconfig missing). Please run api_setup() to create project and set target before building.',
-            }
+            board_config = _parse_board_config(
+                next(
+                    (
+                        os.path.join(repo_dir, f)
+                        for f in ['AGENTS.md', 'GEMINI.md', 'CLAUDE.md']
+                        if os.path.exists(os.path.join(repo_dir, f))
+                    ),
+                    '',
+                )
+            )
+            target = board_config.get('model')
+            if not target:
+                return {
+                    'success': False,
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'sdkconfig and board configuration not found. Run `api_install` to select a board first. Run `api_setup` if the project is not initialized.',
+                }
+            subprocess.run(f'idf.py set-target {target}', cwd=repo_dir, shell=True, check=True, capture_output=True, text=True)
 
         result = subprocess.run('idf.py build', cwd=repo_dir, shell=True, capture_output=True, text=True, check=True)
         binary_location = os.path.join(os.environ['HAGENT_REPO_DIR'], 'build')
@@ -721,6 +802,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
             'monitor': lambda args: api_monitor(args, timeout),
             'idf': api_idf,
             'env': api_env,
+            'refresh_config': api_refresh_config,
         }
 
         handler = api_handlers.get(api_name)
