@@ -145,6 +145,17 @@ else
   MODE_EXPORT="export HAGENT_DOCKER=\"${DOCKER_IMAGE}\""
 fi
 
+cat >"${BASE_DIR}/set_env.sh" <<EOF
+#!/bin/bash
+export UV_PROJECT="${HAGENT_ROOT}"
+export HAGENT_ROOT="${HAGENT_ROOT}"
+${MODE_EXPORT}
+export HAGENT_REPO_DIR="${BASE_DIR}/repo"
+export HAGENT_BUILD_DIR="${BASE_DIR}/build"
+export HAGENT_CACHE_DIR="${BASE_DIR}/cache"
+export HAGENT_OUTPUT_DIR="${BASE_DIR}/logs"
+EOF
+
 cat >"${BASE_DIR}/hagent_server.sh" <<EOF
 #!/bin/bash
 export UV_PROJECT="${HAGENT_ROOT}"
@@ -169,6 +180,7 @@ echo "- ${BASE_DIR}/cache (for cached files)"
 echo "- ${BASE_DIR}/cache/mcp (for MCP transaction logs)"
 echo
 echo "Generated files:"
+echo "- ${BASE_DIR}/set_env.sh       (environment variables — source this for testing)"
 echo "- ${BASE_DIR}/hagent_server.sh (executable server launcher)"
 echo
 echo "To use with Gemini:"
@@ -176,4 +188,7 @@ echo "  gemini mcp add hagent ${BASE_DIR}/hagent_server.sh"
 echo
 echo "To test manually:"
 echo "  ${BASE_DIR}/hagent_server.sh"
+echo
+echo "To set up the environment in your shell:"
+echo "  source ${BASE_DIR}/set_env.sh"
 echo

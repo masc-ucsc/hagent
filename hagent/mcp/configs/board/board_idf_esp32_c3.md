@@ -12,6 +12,9 @@
   - Build + Flash: `idf.py build flash`
   - Monitor (note: requires TTY and ctrl+] to exit): `idf.py monitor`
 
+## Supported Platforms
+- **ESP-IDF / ESP32**
+
 ## Board Overview
 - `board`: esp32c3 
 - `model`: ESP32-C3-DevKit-RUST-1
