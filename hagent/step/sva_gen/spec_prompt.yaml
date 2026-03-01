@@ -135,7 +135,7 @@ default:
         - Do NOT put commas inside any field values.
         - Do NOT use quotes unless absolutely necessary.
         - No blank lines.
-        - At least 25 rows.
+        - At least 150 rows total (target: assert ~100, cover >= 25, assume = 1 per distinct input signal up to ~20).
 
         =========================================================
         CRITICAL SIGNAL & SYNTAX RULES (MANDATORY)
@@ -196,7 +196,15 @@ default:
         =========================================================
         CONTENT GOALS / WHAT TO GENERATE
         =========================================================
-        - Balanced mix: assume >= 20, cover >= 20, assert >= 20.
+        TARGET COUNTS (strictly enforce):
+          - assert  : ~100  (the majority; cover RTL behavior, output relationships, state transitions)
+          - cover   : >= 25  (reachability witnesses; exercise interesting scenarios)
+          - assume  : minimal — 1 assume per distinct INPUT signal, up to ~15 total MAX.
+                      FEWER assumes is better. Over-constraining inputs causes unreachable states in Jasper.
+                      Only add an assume when it is strictly necessary to constrain the environment
+                      (e.g., protocol handshakes, one-hot encoding, reset polarity).
+                      DO NOT add assume rows for output signals, internal signals, or obvious defaults.
+
         - BLACKBOX MODE (context_json.whitebox == false):
             Focus on IO behavior only. Do NOT reference internal regs/wires/states —
             only use names from context_json.allowed_signals (which equals the IO ports).
@@ -205,18 +213,43 @@ default:
             pre/post expressions, in ADDITION to IO ports. All allowed identifiers are
             listed in context_json.allowed_signals (ports UNION internal signals).
             Prefer properties that link internal state to output behavior
-            (e.g., "when internal FSM state X is active, output Y must be Z").
-            Generate at least 10 rows that exercise internal signal references.
+            (e.g., “when internal FSM state X is active, output Y must be Z”).
+            Generate at least 30 rows that exercise internal signal references.
 
-        - Use io_relations.hints FIRST for assume/cover ideas.
+        - Use io_relations.hints.assume FIRST for assume ideas.
+        - Use io_relations.hints.cover  FIRST for cover ideas.
+        - Use io_relations.hints.assert FIRST for assert ideas — these are pre-analyzed
+          output-conditioned patterns derived from the RTL.  EACH entry has:
+            'pre'     — boolean precondition (input ports + observable output.valid)
+            'post'    — boolean consequent   (output field == expected constant)
+            'pattern' — 'output_conditioned' means: @(posedge clk) (pre) |-> (post)
+          Generate ONE assert row per hint entry.  Example:
+            pre=”lsu_exception_o.valid && lsu_is_store_i && lsu_valid_i”
+            post=”lsu_exception_o.cause == ST_ACCESS_FAULT”
+          becomes:
+            prop_type=assert  pre=lsu_exception_o.valid && lsu_is_store_i && lsu_valid_i
+            post=lsu_exception_o.cause == ST_ACCESS_FAULT
         - Use io_relations.relationships.control_signals_ranked for environment constraints.
-        - Use io_relations.relationships.per_output_influences for assert relationships.
+        - Use io_relations.relationships.per_output_influences for additional assert relationships.
+        - Use context_json.spec_md (the module's behavioral specification in Markdown) to understand
+          module semantics and generate additional behavioral assertions beyond what hints provide.
 
-        CONSERVATIVE CORRECTNESS:
-        - Only generate ASSERT rows when the relationship is directly suggested by io_relations/per_output_influences
-          or explicitly indicated by context. Otherwise prefer assume/cover.
-        - Avoid over-constraining assumptions. Do not require “eventually” progress unless it’s a necessary fairness
-          assumption for convergence and the interface suggests it (handshakes, grants, ready/valid).
+        BEHAVIORAL ASSERTIONS (mandatory for exception/access-control outputs):
+        - For any output that is a struct with a .valid field (e.g., lsu_exception_o, ex_o):
+          a) Generate output-conditioned assertions for EVERY cause/tval/pc field using the
+             output_conditioned pattern from hints.assert (if present) or io_relations.
+          b) When a cause field can take multiple values depending on an input flag (e.g.,
+             lsu_is_store_i), generate one assert per case:
+               - valid && store_flag  |-> cause == STORE_FAULT_CONSTANT
+               - valid && !store_flag |-> cause == LOAD_FAULT_CONSTANT
+          c) Generate at least 5 output-behavior assertions conditioned on output.valid being
+             active.  Do NOT generate only passthrough or signal-independence assertions.
+        - In BLACKBOX MODE: replace references to internal signals with observable output ports.
+          The canonical proxy is: replace “!internal_allow_signal” with “output_struct.valid”.
+        - Avoid over-constraining assumptions. Do not require “eventually” progress unless a
+          necessary fairness assumption (handshakes, grants, ready/valid).
+        - NEVER assume output or bidirectional signals.
+        - NEVER add assumes that duplicate or conflict with each other.
 
         =========================================================
         IMPORTANT EXCLUSION (REMOVE CONTRADICTION)
