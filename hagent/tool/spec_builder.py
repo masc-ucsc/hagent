@@ -773,7 +773,7 @@ def build_io_relations(
     control_signals_ranked = [k for k, _ in ranked][:30]
 
     # very conservative hints (your prompt can use them, but it already has safe patterns)
-    hints = {
+    hints: Dict[str, List[Any]] = {
         'assume': [],
         'cover': [],
         'assert': [],
@@ -786,6 +786,75 @@ def build_io_relations(
             hints['cover'].append({'idea': 'observe valid toggling', 'signal': s})
         if 'ready' in low or 'gnt' in low or 'grant' in low:
             hints['cover'].append({'idea': 'observe handshake acceptance', 'signal': s})
+
+    # Behavioral assertion hints: output-conditioned patterns derived from guarded
+    # struct-field assignments.  When a guard mixes input ports and internal signals,
+    # replace the internal-signal part with the observable "output_struct.valid" proxy
+    # so the LLM can write a blackbox-friendly assertion.
+    #
+    # Example for pmp_data_if:
+    #   lhs=lsu_exception_o.cause  rhs=ST_ACCESS_FAULT
+    #   guards=['(lsu_valid_i && !data_allow_o)', 'lsu_is_store_i']
+    # →  pre  = "lsu_exception_o.valid && lsu_is_store_i && lsu_valid_i"
+    #    post = "lsu_exception_o.cause == ST_ACCESS_FAULT"
+    #
+    #   lhs=lsu_exception_o.cause  rhs=LD_ACCESS_FAULT
+    #   guards=['(lsu_valid_i && !data_allow_o)', '!(lsu_is_store_i)']
+    # →  pre  = "!lsu_is_store_i && lsu_exception_o.valid && lsu_valid_i"
+    #    post = "lsu_exception_o.cause == LD_ACCESS_FAULT"
+
+    def _try_simple_guard(g: str) -> Optional[str]:
+        """Return '!signal' or 'signal' if guard is a single (possibly negated) input.
+        Returns None for complex multi-term guards."""
+        # Strip ALL whitespace and parentheses to get the bare expression
+        s = re.sub(r'[\s()]', '', g or '')
+        m = re.fullmatch(r'(!?)([A-Za-z_]\w*)', s)
+        if m and m.group(2) in inputs:
+            return m.group(1) + m.group(2)
+        return None
+
+    seen_hints: set = set()
+    for a in assigns:
+        if '.' not in a.lhs_text:
+            continue
+        base = _base_port(a.lhs_text)
+        if base not in outputs or a.lhs_text.endswith('.valid'):
+            continue
+        rhs = a.rhs_text.strip()
+        # Skip complex or empty RHS (keep named constants and simple literals)
+        if not rhs or len(rhs) > 60 or any(op in rhs for op in ['(', '?', '+', '-', '<<', '>>']):
+            continue
+        input_parts: List[str] = []
+        has_internal = False
+        for g in a.guards:
+            simple = _try_simple_guard(g)
+            if simple is not None:
+                # Guard is a single input token, possibly negated — preserve negation
+                input_parts.append(simple)
+            else:
+                # Complex guard: extract base identifiers (best-effort, no negation)
+                for tok in re.findall(r'\b[A-Za-z_]\w*\b', g or ''):
+                    if tok in inputs:
+                        input_parts.append(tok)
+                    elif tok and tok not in outputs and not tok[0].isdigit():
+                        has_internal = True
+        if not input_parts:
+            continue
+        pre_list = sorted(set(input_parts) | ({f'{base}.valid'} if has_internal else set()))
+        pre = ' && '.join(pre_list)
+        post = f'{a.lhs_text} == {rhs}'
+        key = (pre, post)
+        if key in seen_hints:
+            continue
+        seen_hints.add(key)
+        hints['assert'].append(
+            {
+                'idea': f'When {pre}: assert {post}',
+                'pre': pre,
+                'post': post,
+                'pattern': 'output_conditioned',
+            }
+        )
 
     return {
         'hints': hints,
@@ -1212,7 +1281,7 @@ class SpecBuilder:
         for inc in self.include_dirs:
             cmd += ['-I', str(inc)]
         for d in self.defines:
-            cmd.append(f'--define={d}')
+            cmd += ['-D', d]
 
         if self.filelist:
             cmd += ['-f', str(self.filelist)]
@@ -1232,6 +1301,16 @@ class SpecBuilder:
         if res.returncode != 0 or not out_json.exists():
             console.print(f'[red]❌ Slang failed (code={res.returncode}); AST not produced: {out_json}[/red]')
             raise SystemExit(2)
+        # If scoped AST is empty, --disable-analysis may have prevented scope resolution.
+        # Retry without --disable-analysis (slower but handles modules like cva6_icache).
+        if self.scope_path and self.disable_analysis and out_json.stat().st_size == 0:
+            console.print('[yellow]⚠ Scoped AST is empty — retrying without --disable-analysis[/yellow]')
+            cmd_retry = [c for c in cmd if c != '--disable-analysis']
+            res2 = subprocess.run(cmd_retry)
+            if res2.returncode != 0 or not out_json.exists() or out_json.stat().st_size == 0:
+                console.print(f'[red]❌ Retry also returned empty AST for scope: {self.scope_path}[/red]')
+                raise SystemExit(2)
+            console.print('[green]✔ Retry succeeded (analysis enabled)[/green]')
         console.print(f'[green]✔ AST written:[/green] {out_json}')
 
     def _get_scoped_body(self, ast: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
@@ -1491,6 +1570,10 @@ class SpecBuilder:
         md_text = '\n\n'.join([p for p in md_parts if p.strip()]) or f'## Spec for Module: {self.top}\n'
         _write_text(self.out_md, md_text)
         console.print(f'[green]✔ Spec Markdown:[/green] {self.out_md}')
+
+        # Enrich context with spec markdown so the CSV LLM call understands module semantics
+        # and can generate behavioral (access-control / exception-cause) assertions.
+        context['spec_md'] = md_text
 
         # 6) CSV generation + validate + repair (ROBUST)
         console.print('[cyan]• LLM: sva_row_list_csv[/cyan]')

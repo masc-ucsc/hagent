@@ -12,6 +12,7 @@ Stage 4: run Jasper (only if --run-jg or --rerun-jg)
 Stage 5: summarize results into results_summary.csv (after Jasper)
 Stage 6: ALWAYS best-effort run private coverage summarizer (never fails run)
 Stage 7: optional postcheck repair (only if --postcheck ...)
+Stage 7b: optional bug detection cross-reference (only if --bug-detect)
 
 Feedback loop policy:
   - We NEVER auto-run postcheck.
@@ -623,6 +624,108 @@ def overwrite_files_vc_for_user_filelist(
 
 
 # -----------------------------------------------------------------------------
+# Property deduplication (no LLM needed)
+# -----------------------------------------------------------------------------
+def _fix_sva_syntax(text: str) -> tuple[str, int]:
+    """Fix common LLM SVA syntax errors in a properties.sv string.
+
+    Fixes applied (no LLM needed):
+    1. ``!(A or B)`` → ``!(A || B)`` — 'or' is a sequence op, not boolean-or.
+    2. ``!(A and B)`` → ``!(A && B)`` — same issue with 'and'.
+
+    Returns (fixed_text, n_fixes).
+    """
+    import re as _re
+
+    n_fixes = 0
+
+    # Replace `or` / `and` used inside !(…) boolean context.
+    # Match !(...) where the content contains the keyword 'or'/'and' surrounded
+    # by whitespace (not part of an identifier).
+    def _replace_bool_ops(m: '_re.Match[str]') -> str:
+        inner = m.group(1)
+        new_inner, n = _re.subn(r'\bor\b', '||', inner)
+        new_inner, n2 = _re.subn(r'\band\b', '&&', new_inner)
+        return f'!({new_inner})'
+
+    # Iteratively replace to handle nested parens; limit to 20 passes.
+    for _ in range(20):
+        new_text, n = re.subn(r'!\(([^()]*(?:\bor\b|\band\b)[^()]*)\)', _replace_bool_ops, text)
+        if n == 0:
+            break
+        n_fixes += n
+        text = new_text
+
+    return text, n_fixes
+
+
+def dedup_properties_sv(prop_path: Path) -> int:
+    """Remove duplicate SVA property blocks and fix common syntax errors.
+
+    Operations performed (no LLM needed):
+    1. **Dedup**: duplicate ``property <name>`` blocks are removed (first wins).
+    2. **Syntax fixes**: ``!(A or B)`` → ``!(A || B)``, ``!(A and B)`` → ``!(A && B)``.
+
+    Returns the total number of changes (duplicates removed + lines fixed).
+    """
+    text = prop_path.read_text(encoding='utf-8')
+
+    # Pass 1: fix SVA syntax errors
+    text, n_syntax = _fix_sva_syntax(text)
+
+    # Pass 2: remove duplicate property blocks
+    lines = text.splitlines(keepends=True)
+    seen_names: set[str] = set()
+    out_lines: list[str] = []
+    skip_until_endproperty = False
+    skip_label = False
+    n_dupes = 0
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Detect start of a property block
+        if stripped.startswith('property '):
+            prop_name = stripped.split()[1].rstrip(';')
+            if prop_name in seen_names:
+                # Skip this property block and its label line
+                skip_until_endproperty = True
+                skip_label = True
+                n_dupes += 1
+                i += 1
+                continue
+            seen_names.add(prop_name)
+
+        if skip_until_endproperty:
+            if stripped == 'endproperty':
+                skip_until_endproperty = False
+                # Also drop the blank line after endproperty if present
+                i += 1
+                if i < len(lines) and lines[i].strip() == '':
+                    i += 1
+            else:
+                i += 1
+            continue
+
+        if skip_label:
+            # Skip the label line (assert_name: assert property(...);)
+            skip_label = False
+            i += 1
+            continue
+
+        out_lines.append(line)
+        i += 1
+
+    total_changes = n_syntax + n_dupes
+    if total_changes:
+        prop_path.write_text(''.join(out_lines), encoding='utf-8')
+
+    return total_changes
+
+
+# -----------------------------------------------------------------------------
 # Jasper runner (only if asked)
 # -----------------------------------------------------------------------------
 def run_jasper(fpv_dir: Path, jasper_bin: str) -> Tuple[bool, Optional[int]]:
@@ -1058,6 +1161,61 @@ def run_postcheck_if_requested(
 
 
 # -----------------------------------------------------------------------------
+# Bug detection cross-reference (auto-run after Jasper completes)
+# -----------------------------------------------------------------------------
+def run_bug_detect_if_requested(
+    enabled: bool,
+    fpv_dir: Path,
+    sva_top: str,
+    out_root: Path,
+    label: str = 'Type:Bug',
+    max_issues: int = 100,
+    html_out: str = '',
+    json_out: str = '',
+) -> None:
+    """
+    Run cli_bug_detect.py against the build directory after FPV completes.
+    Scans out_root.parent (the directory containing blackbox_* dirs) for FPV results,
+    then cross-references open GitHub issues.
+    """
+    if not enabled:
+        return
+    console.print('\n[bold cyan]═══ Bug Detection Cross-Reference ═══[/bold cyan]')
+
+    # The scan dir is the parent of out_root (contains blackbox_* siblings)
+    scan_dir = out_root.parent
+
+    cli_detect = Path(__file__).parent / 'cli_bug_detect.py'
+    if not cli_detect.exists():
+        console.print(f'[yellow]⚠ cli_bug_detect.py not found at {cli_detect}; skipping.[/yellow]')
+        return
+
+    effective_html = html_out if html_out else str(fpv_dir / f'{sva_top}_bug_detect.html')
+    effective_json = json_out if json_out else str(fpv_dir / f'{sva_top}_bug_detect.json')
+
+    cmd = [
+        sys.executable,
+        str(cli_detect),
+        '--out-dir',
+        str(scan_dir),
+        '--label',
+        label,
+        '--max-issues',
+        str(max_issues),
+        '--html-out',
+        effective_html,
+        '--out-json',
+        effective_json,
+    ]
+    console.print(f'[dim]→ {" ".join(cmd)}[/dim]')
+    try:
+        subprocess.run(cmd, check=False)
+        console.print(f'[green]✔[/green] Bug report: {effective_html}')
+    except Exception as exc:
+        console.print(f'[yellow]⚠ Bug detection failed: {exc}[/yellow]')
+
+
+# -----------------------------------------------------------------------------
 # Whitebox wrapper/bind generation
 # -----------------------------------------------------------------------------
 def _emit_whitebox_wrapper(
@@ -1319,6 +1477,54 @@ def main() -> int:
 
     # Debug flag
     ap.add_argument('--debug', action='store_true', help='Enable debug output')
+
+    # Bug detection (auto-run after Jasper completes)
+    ap.add_argument(
+        '--bug-detect',
+        action='store_true',
+        help='Run cli_bug_detect.py after FPV to cross-reference GitHub issues with FPV results.',
+    )
+    ap.add_argument('--bug-detect-label', default='Type:Bug', help='GitHub label filter (default: Type:Bug).')
+    ap.add_argument('--bug-detect-max-issues', type=int, default=100, help='Max GitHub issues to fetch (default: 100).')
+    ap.add_argument(
+        '--bug-detect-html-out', default='', help='HTML output path for bug report (default: fpv_dir/<sva_top>_bug_detect.html).'
+    )
+    ap.add_argument(
+        '--bug-detect-json-out', default='', help='JSON output path for bug report (default: fpv_dir/<sva_top>_bug_detect.json).'
+    )
+
+    # CEX classification (Stage 7c) — auto-classifies FAILs after Jasper
+    ap.add_argument(
+        '--cex-classify',
+        action='store_true',
+        help='Stage 7c: classify each CEX as SPEC_ERROR / BEHAVIORAL_CANDIDATE / CONFLICT / UNCERTAIN using heuristics.',
+    )
+    ap.add_argument(
+        '--cex-classify-llm-conf',
+        default='',
+        help='LLM config YAML for Stage 7c deep analysis of BEHAVIORAL_CANDIDATE entries (optional; requires API key).',
+    )
+
+    # Bug-targeted SVA generation (Stage 3.5) — inject GitHub-issue-targeted assertions before Jasper
+    ap.add_argument(
+        '--bug-target-gen',
+        action='store_true',
+        help='Stage 3.5: fetch GitHub issues and generate targeted SVA assertions appended to properties.sv before Jasper.',
+    )
+    ap.add_argument(
+        '--bug-target-gen-llm-conf',
+        default='',
+        help='LLM config YAML for Stage 3.5 bug-targeted assertion generation (required with --bug-target-gen).',
+    )
+    ap.add_argument(
+        '--bug-target-gen-label', default='Type:Bug',
+        help='GitHub label filter for bug-targeted gen (default: Type:Bug).',
+    )
+    ap.add_argument(
+        '--bug-target-gen-max-issues', type=int, default=30,
+        help='Max GitHub issues to fetch for bug-targeted gen (default: 30).',
+    )
+
     args = ap.parse_args()
 
     banner()
@@ -1365,6 +1571,18 @@ def main() -> int:
             jasper_ok=jasper_ok,
             jasper_exit=jasper_exit,
             counts=counts,
+        )
+
+        # Stage 8: Bug detection (optional, auto-run after Jasper)
+        run_bug_detect_if_requested(
+            enabled=args.bug_detect,
+            fpv_dir=fpv_dir,
+            sva_top=sva_top,
+            out_root=out_root,
+            label=args.bug_detect_label,
+            max_issues=args.bug_detect_max_issues,
+            html_out=args.bug_detect_html_out,
+            json_out=args.bug_detect_json_out,
         )
 
         # Postcheck if explicitly requested (manual). Rerun only after postcheck + only if asked.
@@ -1524,6 +1742,14 @@ def main() -> int:
         prop_src = fpv_dir / 'properties.sv'
         if not prop_src.exists():
             raise SystemExit('ERROR: properties.sv not found after property builder.')
+
+        # Deduplicate + fix SVA syntax errors (no LLM needed)
+        n_fixed = dedup_properties_sv(prop_src)
+        if n_fixed:
+            console.print(f'[yellow]⚠ Auto-fixed {n_fixed} issue(s) in properties.sv (dupes/syntax)[/yellow]')
+        else:
+            console.print('[green]✔[/green] No duplicate/syntax issues in properties.sv.')
+
         prop_dst = fpv_dir / 'sva' / 'properties.sv'
         if prop_dst.exists():
             prop_dst.unlink()
@@ -1566,6 +1792,12 @@ def main() -> int:
         prop_src_wb = fpv_dir / 'properties_wb.sv'
         if not prop_src_wb.exists():
             raise SystemExit('ERROR: properties_wb.sv not found after whitebox property builder.')
+
+        # Deduplicate + fix SVA syntax errors in whitebox props (no LLM needed)
+        n_removed_wb = dedup_properties_sv(prop_src_wb)
+        if n_removed_wb:
+            console.print(f'[yellow]⚠ Auto-fixed {n_removed_wb} issue(s) in properties_wb.sv (dupes/syntax)[/yellow]')
+
         prop_dst_wb = fpv_dir / 'sva' / 'properties_wb.sv'
         if prop_dst_wb.exists():
             prop_dst_wb.unlink()
@@ -1574,6 +1806,26 @@ def main() -> int:
 
     if not args.skip_props and args.whitebox:
         steps.append((f'🔒 Property generation WHITEBOX (module={sva_top})', _step_props_wb))
+
+    # Stage 3.5: bug-targeted SVA generation (inject targeted assertions from GitHub issues)
+    def _step_bug_target_gen():
+        from hagent.tool.cli_cex_classify import run_bug_target_gen  # type: ignore
+
+        btg_llm_conf_path = Path(args.bug_target_gen_llm_conf).resolve() if args.bug_target_gen_llm_conf else None
+        if btg_llm_conf_path is None or not btg_llm_conf_path.exists():
+            console.print('[yellow]⚠ --bug-target-gen-llm-conf not set or not found; skipping Stage 3.5.[/yellow]')
+            return
+        n = run_bug_target_gen(
+            fpv_dir=fpv_dir,
+            sva_top=sva_top,
+            llm_conf=btg_llm_conf_path,
+            label=args.bug_target_gen_label,
+            max_issues=args.bug_target_gen_max_issues,
+        )
+        console.print(f'[green]✔[/green] Stage 3.5: {n} bug-targeted assertions appended to properties.sv')
+
+    if args.bug_target_gen:
+        steps.append((f'🎯 Bug-targeted SVA generation (module={sva_top})', _step_bug_target_gen))
 
     # Stage 3: fpv collateral
     def _step_fpv():
@@ -1768,6 +2020,39 @@ def main() -> int:
             jasper_exit=jasper_exit,
             counts=counts,
         )
+
+    # Stage 7b: Bug detection (optional, auto-run after Jasper + summary)
+    if args.run_jg:
+        run_bug_detect_if_requested(
+            enabled=args.bug_detect,
+            fpv_dir=fpv_dir,
+            sva_top=sva_top,
+            out_root=out_root,
+            label=args.bug_detect_label,
+            max_issues=args.bug_detect_max_issues,
+            html_out=args.bug_detect_html_out,
+            json_out=args.bug_detect_json_out,
+        )
+
+    # Stage 7c: CEX classification (heuristic + optional LLM — runs whenever Jasper was run and FAILs > 0)
+    if (args.run_jg or args.rerun_jg) and (args.cex_classify or counts.get('FAIL', 0) > 0 and args.cex_classify):
+        try:
+            from hagent.tool.cli_cex_classify import run_cex_classify  # type: ignore
+
+            cex_llm_conf_path = (
+                Path(os.path.expanduser(args.cex_classify_llm_conf)).resolve()
+                if args.cex_classify_llm_conf
+                else None
+            )
+            run_cex_classify(
+                fpv_dir=fpv_dir,
+                sva_top=sva_top,
+                llm_conf=cex_llm_conf_path,
+                html_out=fpv_dir / f'{sva_top}_cex_classify.html',
+                json_out=fpv_dir / f'{sva_top}_cex_classify.json',
+            )
+        except Exception as exc:
+            console.print(f'[yellow]⚠ Stage 7c CEX classification failed: {exc}[/yellow]')
 
     # Stage 7: Postcheck ONLY if user explicitly requested (manual feedback loop)
     rc_post = run_postcheck_if_requested(
