@@ -108,15 +108,37 @@ def _backup_tree(fpv_dir: Path) -> Path:
         shutil.rmtree(bdir)
     bdir.mkdir(parents=True, exist_ok=True)
 
-    for rel in ['FPV.tcl', 'files.vc', 'results_summary.csv', 'jg.stderr.log', 'jg.stdout.log', 'jgproject', 'sva']:
+    # Only back up stable inputs/outputs and the SVA sources we may patch.
+    # Avoid copying Jasper's volatile session directories (jgproject/sessionLogs*),
+    # which can change during/after a run and cause copytree to fail.
+    rel_files = [
+        'FPV.tcl',
+        'files.vc',
+        'results_summary.csv',
+        'jg.stderr.log',
+        'jg.stdout.log',
+        'formal_coverage_summary.txt',
+    ]
+    rel_dirs = ['sva']
+    rel_optional_files = [
+        'jgproject/jg.log',
+        'jgproject/config.tcl',
+    ]
+
+    for rel in rel_files + rel_optional_files:
         src = fpv_dir / rel
-        if src.exists():
-            dst = bdir / rel
-            if src.is_dir():
-                shutil.copytree(src, dst)
-            else:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
+        if not src.exists() or not src.is_file():
+            continue
+        dst = bdir / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+
+    for rel in rel_dirs:
+        src = fpv_dir / rel
+        if not src.exists() or not src.is_dir():
+            continue
+        dst = bdir / rel
+        shutil.copytree(src, dst)
     return bdir
 
 
@@ -201,7 +223,7 @@ def run_postcheck_repair(
         llm = LLM_wrap(
             name='default',
             conf_file=str(llm_conf),
-            log_file=str(fpv_dir / 'jg_post_repair_llm.log'),
+            log_file=str('postcheck/jg_post_repair_llm.log'),
         )
 
         try:
