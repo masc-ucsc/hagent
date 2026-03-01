@@ -201,6 +201,9 @@ def extract_packages_from_port_types(ports_json: Path) -> List[str]:
         if not isinstance(p, dict):
             continue
         type_str = (p.get('type') or '').strip()
+        # Some Slang dumps prefix type strings with a numeric internal id.
+        # Example: "3768648076360 branch_unit.fu_data_t".
+        type_str = re.sub(r'^\d+\s+', '', type_str)
         # Match pkg::type patterns
         m = re.match(r'^([A-Za-z_]\w*)::(\w+)', type_str)
         if m:
@@ -314,6 +317,10 @@ def normalize_sv_type(type_str: str, sva_top: str, known_type_params: set[str]) 
         return 'logic'
 
     t = _fix_logic_width_syntax(type_str.strip())
+
+    # Slang sometimes prefixes type strings with a numeric internal id.
+    # Example: "3768648076360 branch_unit.fu_data_t".
+    t = re.sub(r'^\d+\s+', '', t).strip()
 
     # Split trailing dimensions (e.g. issue_stage.foo_t[0:0][31:0])
     base = t

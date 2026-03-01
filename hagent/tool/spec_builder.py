@@ -290,6 +290,13 @@ def _expr_text(n: Any) -> str:
 def extract_ports_from_body(body: Dict[str, Any]) -> List[Dict[str, str]]:
     ports: List[Dict[str, str]] = []
 
+    def norm_type(t: Any) -> str:
+        s = str(t or '-').strip()
+        # Slang sometimes prefixes pretty-printed types with a numeric internal id.
+        # Example: "3768648076360 branch_unit.fu_data_t".
+        s = re.sub(r'^\d+\s+', '', s)
+        return s.strip() or '-'
+
     def norm_dir(d: Any) -> str:
         if not d:
             return '-'
@@ -310,9 +317,9 @@ def extract_ports_from_body(body: Dict[str, Any]) -> List[Dict[str, str]]:
             continue
         name = m.get('name')
         direction = norm_dir(m.get('direction'))
-        dtype = m.get('type') or '-'
+        dtype = norm_type(m.get('type'))
         if name:
-            ports.append({'name': name, 'dir': direction, 'type': str(dtype), 'desc': '-'})
+            ports.append({'name': name, 'dir': direction, 'type': dtype, 'desc': '-'})
 
     # Fallback walker if needed (older dumps)
     if not ports:
@@ -329,7 +336,12 @@ def extract_ports_from_body(body: Dict[str, Any]) -> List[Dict[str, str]]:
             k = (n.get('kind') or '').lower()
             if 'port' in k and n.get('name') and n.get('direction'):
                 ports.append(
-                    {'name': n.get('name'), 'dir': norm_dir(n.get('direction')), 'type': str(n.get('type') or '-'), 'desc': '-'}
+                    {
+                        'name': n.get('name'),
+                        'dir': norm_dir(n.get('direction')),
+                        'type': norm_type(n.get('type')),
+                        'desc': '-',
+                    }
                 )
             for v in n.values():
                 walk(v)
@@ -1177,6 +1189,9 @@ class SpecBuilder:
         self.rtl_dir = rtl_dir
         self.top = top  # spec target module name (load_unit)
         self.design_top = design_top or top  # design top (cva6)
+        self.clk = ''
+        self.rst = ''
+        self.rst_expr = ''
         self.out_dir = out_dir
         self.llm_conf = llm_conf
         self.include_dirs = include_dirs or []
@@ -1223,8 +1238,6 @@ class SpecBuilder:
                 console.print(f"[red]❌ Required prompt '{req}' missing in: {self.llm_conf}[/red]")
                 raise SystemExit(2)
 
-        self.clk, self.rst, self.rst_expr = detect_clk_rst_for_top(self.rtl_dir, self.design_top)
-
     def _llm(self, prompt_index: str, payload: dict) -> str:
         try:
             out = self.llm.inference(payload, prompt_index=prompt_index, n=1)
@@ -1261,6 +1274,8 @@ class SpecBuilder:
     def _run_slang(self, out_json: Path, full: bool) -> None:
         top_for_slang = self.design_top if (full or self.scope_path) else self.top
 
+        scope_for_slang = (self.scope_path or '').strip()
+
         cmd = [
             str(self.slang_bin),
             '--top',
@@ -1271,12 +1286,13 @@ class SpecBuilder:
             '--ignore-unknown-modules',
             '--allow-use-before-declare',
             '--diag-abs-paths',
+            '--ast-json-scope',
+            scope_for_slang 
         ]
-        if self.disable_analysis:
+        # Scoped AST extraction needs elaboration/semantic resolution (especially under generate blocks).
+        # Disabling analysis can result in empty output even if Slang exits 0.
+        if self.disable_analysis and not scope_for_slang and not full:
             cmd.append('--disable-analysis')
-
-        if (not full) and self.scope_path:
-            cmd += ['--ast-json-scope', self.scope_path]
 
         for inc in self.include_dirs:
             cmd += ['-I', str(inc)]
@@ -1301,6 +1317,7 @@ class SpecBuilder:
         if res.returncode != 0 or not out_json.exists():
             console.print(f'[red]❌ Slang failed (code={res.returncode}); AST not produced: {out_json}[/red]')
             raise SystemExit(2)
+<<<<<<< HEAD
         # If scoped AST is empty, --disable-analysis may have prevented scope resolution.
         # Retry without --disable-analysis (slower but handles modules like cva6_icache).
         if self.scope_path and self.disable_analysis and out_json.stat().st_size == 0:
@@ -1311,6 +1328,9 @@ class SpecBuilder:
                 console.print(f'[red]❌ Retry also returned empty AST for scope: {self.scope_path}[/red]')
                 raise SystemExit(2)
             console.print('[green]✔ Retry succeeded (analysis enabled)[/green]')
+=======
+                
+>>>>>>> 1105d51 (Fix Slang dumping prefix type strings with a numeric internal id error && removing clk/rst property generation for pure combinational modules)
         console.print(f'[green]✔ AST written:[/green] {out_json}')
 
     def _get_scoped_body(self, ast: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
@@ -1456,22 +1476,43 @@ class SpecBuilder:
             console.print('[red]❌ No ports extracted. Check --scope-path (or discovery results).[/red]')
             raise SystemExit(2)
 
-        # Override clk/rst from top-level port names (authoritative)
         clk2, rst2, rst_expr2 = detect_clk_rst_from_ports(ports)
-        if clk2 and rst2 and rst_expr2:
-            self.clk, self.rst, self.rst_expr = clk2, rst2, rst_expr2
-            console.print(
-                f'[green]✔ Clock/Reset overridden from extracted ports:[/green] clock={self.clk}, reset={self.rst} (expr={self.rst_expr})'
-            )
-        else:
-            console.print(
-                f'[yellow]⚠ Could not infer clk/rst from ports; keeping fallback clock={self.clk}, reset={self.rst} (expr={self.rst_expr}).[/yellow]'
-            )
+        no_clk_rst_ports = not (clk2 and rst2 and rst_expr2)
 
         params = extract_parameters_from_body(body)
         assigns = extract_assignments_with_guards(body)
+        has_sequential = any(a.kind == 'AlwaysFF' for a in assigns)
+        is_combinational = no_clk_rst_ports and not has_sequential
         logic = extract_logic_blocks(body)
         fsms = parse_case_blocks(body)
+
+        if is_combinational:
+            console.print("[yellow]⚠ Combintional module doesn't have clock or reset signal[/yellow]")
+            self.clk, self.rst, self.rst_expr = '', '', ''
+        else:
+            # Prefer direct port-based detection for the scoped module (authoritative)
+            if clk2 and rst2 and rst_expr2:
+                self.clk, self.rst, self.rst_expr = clk2, rst2, rst_expr2
+                console.print(
+                    f'[green]✔ Clock/Reset overridden from extracted ports:[/green] clock={self.clk}, reset={self.rst} (expr={self.rst_expr})'
+                )
+            else:
+                # Fallback: infer from design_top RTL only for sequential blocks.
+                self.clk, self.rst, self.rst_expr = detect_clk_rst_for_top(
+                    self.rtl_dir,
+                    self.design_top,
+                    allow_rtl_fallback=True,
+                )
+                console.print(
+                    f'[yellow]⚠ Could not infer clk/rst from ports; using fallback clock={self.clk}, reset={self.rst} (expr={self.rst_expr}).[/yellow]'
+                )
+        #else:
+        #    console.print(
+        #        f'[yellow]⚠ Could not infer clk/rst from ports; keeping fallback clock={self.clk}, reset={self.rst} (expr={self.rst_expr}).[/yellow]'
+        #    )
+
+        #if is_combinational:
+        #    self.clk, self.rst, self.rst_expr = '', '', ''
 
         _write_json(self.logic_snap, logic)
         console.print(f'[green]✔ logic_blocks.json:[/green] {self.logic_snap}')
@@ -1514,6 +1555,7 @@ class SpecBuilder:
             'clock': self.clk,
             'reset': self.rst,
             'reset_expr': self.rst_expr,
+            'is_combinational': is_combinational,
             'ports': ports,
             'allowed_signals': allowed_ports,
             'params': params,

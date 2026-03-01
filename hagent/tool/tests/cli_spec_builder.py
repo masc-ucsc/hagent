@@ -62,6 +62,20 @@ def _sanitize_incdirs(dirs: List[str]) -> List[str]:
     return out
 
 
+def _flatten_str_lists(v: Any) -> List[str]:
+    """Flatten argparse values that may be a list[str] or list[list[str]]."""
+    if not v:
+        return []
+    if isinstance(v, list) and v and isinstance(v[0], list):
+        out: List[str] = []
+        for it in v:
+            out.extend([x for x in (it or []) if x is not None])
+        return out
+    if isinstance(v, list):
+        return [x for x in v if x is not None]
+    return [str(v)]
+
+
 def _resolve_filelist(path: Optional[str]) -> Optional[Path]:
     if not path:
         return None
@@ -83,8 +97,8 @@ def _run_one_top(args: argparse.Namespace, top: str) -> Dict[str, Any]:
         design_top=design_top,
         out_dir=out_dir,
         llm_conf=Path(args.llm_config).resolve(),
-        include_dirs=[Path(i).resolve() for i in (args.include or [])],
-        defines=args.defines or [],
+        include_dirs=[Path(i).resolve() for i in _flatten_str_lists(args.include)],
+        defines=_flatten_str_lists(args.defines),
         disable_analysis=not args.no_disable_analysis,
         filelist=filelist_path,
         scope_path=args.scope_path,
@@ -151,13 +165,21 @@ def main() -> int:
     )
     parser.add_argument('--discover-scope-module', help='Find instance scope paths for this module name (e.g., load_unit)')
     parser.add_argument('--discover-only', action='store_true', help='Only print discovered scope paths and exit')
-    parser.add_argument('--include', '-I', nargs='*', default=[], help='Include directories')
+    parser.add_argument(
+        '--include',
+        '-I',
+        action='append',
+        nargs='+',
+        default=[],
+        help='Include directories (repeatable; e.g. -I dir1 -I dir2)',
+    )
     parser.add_argument(
         '--defines',
         '-D',
-        nargs='*',
+        action='append',
+        nargs='+',
         default=[],
-        help='Defines to pass to Slang (e.g., FOO=1)',
+        help='Defines to pass to Slang (repeatable; e.g. -D FOO=1 -D BAR)',
     )
     parser.add_argument('--dir', default='out_spec', help='Output directory for spec artifacts')
     parser.add_argument(
@@ -188,7 +210,7 @@ def main() -> int:
     args = merge_config(args, args.config_file)
 
     args.rtl = os.path.expanduser(args.rtl)
-    args.include = _sanitize_incdirs(args.include)
+    args.include = _sanitize_incdirs(_flatten_str_lists(args.include))
     args.llm_config = os.path.expanduser(args.llm_config)
 
     if not os.path.isfile(args.slang):

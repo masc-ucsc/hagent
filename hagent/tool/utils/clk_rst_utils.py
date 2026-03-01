@@ -750,7 +750,12 @@ def _rank_rst_text(cands: list[str], port_names: set[str]) -> str:
 # --------------------------------------------------------------------
 
 
-def detect_clk_rst_for_top(src_root, top: str, ports_json: Path | None = None):
+def detect_clk_rst_for_top(
+    src_root,
+    top: str,
+    ports_json: Path | None = None,
+    allow_rtl_fallback: bool = True,
+):
     """
     Auto-detect (clock_name, reset_name, reset_expr) for a given top module.
 
@@ -780,6 +785,16 @@ def detect_clk_rst_for_top(src_root, top: str, ports_json: Path | None = None):
                 console.print(f'[green]✔ Top module clock={clk}, reset={rst} (expression: {rst_expr}) from ports.json[/green]')
                 return clk, rst, rst_expr
             console.print(f'[yellow]⚠ ports.json provided but clk/rst not found in it: {pj}[/yellow]')
+
+        if not allow_rtl_fallback:
+            console.print(
+                f'[yellow]⚠ RTL fallback disabled; not scanning RTL for clk/rst for module {top}.[/yellow]'
+            )
+            return '', '', ''
+
+    if not allow_rtl_fallback:
+        console.print(f'[yellow]⚠ RTL fallback disabled; not scanning RTL for clk/rst for module {top}.[/yellow]')
+        return '', '', ''
 
     # 2) RTL heuristics fallback
     console.print(f'[cyan]🔍 Scanning for top module {top} under {src_root}[/cyan]')

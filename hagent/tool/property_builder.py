@@ -527,9 +527,9 @@ class PropertyBuilder:
         return ports, 'csv_signals_fallback'
 
     # ------------------------------------------------------------------
-    def _find_clk_rst(self, rows: List[Dict[str, str]]) -> Tuple[str, str, str, str, str]:
+    def _find_clk_rst(self, rows: List[Dict[str, str]]) -> Tuple[str, str, str, str, str, bool]:
         """
-        Returns (clk, rst, disable_cond, spec_top, prop_top_used)
+        Returns (clk, rst, disable_cond, spec_top, prop_top_used, is_combinational)
         """
         spec_top = self._infer_spec_top()
         prop_top = self.property_top or spec_top
@@ -544,13 +544,45 @@ class PropertyBuilder:
             reset_expr_override=self.reset_expr_override,
         )
 
+        # Conservative combinational heuristic:
+        # - no clk/rst inferred from ports (and no overrides)
+        # - and no AlwaysFF blocks found in assignments.jsonl if available
+        no_clk_rst_ports = not (clk and rst and (rst_expr or '').strip())
+        has_sequential = False
+        try:
+            asn_path = Path(self.out_dir) / f'{prop_top}_assignments.jsonl'
+            if asn_path.is_file():
+                for ln in asn_path.read_text(encoding='utf-8', errors='ignore').splitlines():
+                    if not ln.strip():
+                        continue
+                    try:
+                        obj = json.loads(ln)
+                        if (obj.get('kind') or '') == 'AlwaysFF':
+                            has_sequential = True
+                            break
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        is_combinational = (
+            no_clk_rst_ports
+            and not has_sequential
+            and not self.clock_name_override
+            and not self.reset_name_override
+            and not self.reset_expr_override
+        )
+
         # If heuristics didn't find anything and no overrides, fallback to clk_rst_utils
         if (not clk or not rst) and (
             not self.clock_name_override and not self.reset_name_override and not self.reset_expr_override
         ):
             try:
                 cr = detect_clk_rst_for_top(
-                    Path(self.rtl_dir), prop_top, ports_json=Path(self.out_dir) / f'{prop_top}_ports.json'
+                    Path(self.rtl_dir),
+                    prop_top,
+                    ports_json=Path(self.out_dir) / f'{prop_top}_ports.json',
+                    allow_rtl_fallback=not is_combinational,
                 )
                 if isinstance(cr, (list, tuple)) and len(cr) >= 3:
                     clk2, rst2, rst_expr2 = cr[0], cr[1], cr[2]
@@ -560,7 +592,7 @@ class PropertyBuilder:
                         rst = str(rst2)
                     if (not rst_expr or not rst_expr.strip()) and rst_expr2:
                         rst_expr = str(rst_expr2)
-                    cr_src = 'clk_rst_utils_fallback'
+                    cr_src = 'clk_rst_utils_fallback' if not is_combinational else 'clk_rst_utils_ports_only'
             except Exception:
                 pass
 
@@ -578,7 +610,7 @@ class PropertyBuilder:
                 f'[INFO] Note: design_top="{self.design_top}" differs from property_top="{prop_top}" (expected when top!=sva_top).'
             )
 
-        return clk, rst, disable_cond, spec_top, prop_top
+        return clk, rst, disable_cond, spec_top, prop_top, is_combinational
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -705,7 +737,17 @@ class PropertyBuilder:
         body_expr_fixed = re.sub(r'\bor\b', '||', body_expr)
         body_expr_fixed = re.sub(r'\band\b', '&&', body_expr_fixed)
 
-        # If clk is missing, we must still emit something deterministic -> block generation caller should have prevented.
+        # For combinational modules (dummy_clk), emit immediate assertions without clocking
+        if clk == 'dummy_clk':
+            return (
+                f'// {sid}: {name or prop_name}\n'
+                f'property {prop_name};\n'
+                f'    {body_expr_fixed};\n'
+                f'endproperty\n'
+                f'{label}: {ptype} property({prop_name});'
+            )
+
+        # Normal clocked properties
         return (
             f'// {sid}: {name or prop_name}\n'
             f'property {prop_name};\n'
@@ -1043,14 +1085,36 @@ class PropertyBuilder:
         if 'property' not in sv:
             return None
 
-        # Ensure disable iff exists; if not, inject after @(posedge clk)
-        if 'disable iff' not in sv:
+        # For combinational modules (dummy_clk), strip out any clocking constructs
+        if clk == 'dummy_clk':
+            # Remove @(posedge ...) and disable iff (...) clauses
+            # Match patterns like: @(posedge dummy_clk) disable iff (...)
             sv = re.sub(
-                rf'(@\(\s*posedge\s+{re.escape(clk)}\s*\))',
-                rf'\1 disable iff ({disable_cond})',
+                r'@\s*\(\s*posedge\s+\w+\s*\)\s*disable\s+iff\s*\([^)]*\)\s*',
+                '',
                 sv,
-                count=1,
             )
+            # Also handle just @(posedge ...) without disable iff
+            sv = re.sub(
+                r'@\s*\(\s*posedge\s+\w+\s*\)\s*',
+                '',
+                sv,
+            )
+            # Also handle standalone disable iff clauses that might remain
+            sv = re.sub(
+                r'\s*disable\s+iff\s*\([^)]*\)\s*',
+                '',
+                sv,
+            )
+        else:
+            # For clocked modules, ensure disable iff exists; if not, inject after @(posedge clk)
+            if 'disable iff' not in sv:
+                sv = re.sub(
+                    rf'(@\(\s*posedge\s+{re.escape(clk)}\s*\))',
+                    rf'\1 disable iff ({disable_cond})',
+                    sv,
+                    count=1,
+                )
 
         # Reject tautologies
         flat = re.sub(r'\s+', '', sv)
@@ -1081,7 +1145,7 @@ class PropertyBuilder:
         rows, csv_parse_report = self._read_csv_rows()
         md = self._read_markdown()
 
-        clk, rst, disable_cond, spec_top_module, prop_top_used = self._find_clk_rst(rows)
+        clk, rst, disable_cond, spec_top_module, prop_top_used, is_combinational = self._find_clk_rst(rows)
 
         strict_log: Dict[str, Any] = {
             'inputs': {
@@ -1168,12 +1232,24 @@ class PropertyBuilder:
 
         print(f'[INFO] Allowed signals for checks ({prop_top_used}): {len(ports)} signals (whitebox={self.whitebox})')
 
-        # If we still don't have a clock, we cannot generate correct properties
+        # If we still don't have a clock, check if it's a combinational module
         if not clk:
-            raise SystemExit(
-                f"ERROR: Could not determine property clock for property_top='{prop_top_used}'. "
-                f'Provide --clock-name or ensure {prop_top_used}_ports.json exists.'
-            )
+            # For combinational modules (no clk/rst), we can't generate temporal properties.
+            # Check if this is combinational by seeing if we explicitly disabled RTL fallback.
+            if is_combinational:
+                print(
+                    f"[WARN] Combinational module '{prop_top_used}' has no clock/reset; "
+                    f"skipping temporal property generation (only immediate assertions are valid)."
+                )
+                # For now, we'll use a dummy clock to allow the code to proceed,
+                # but properties should be pure combinational (no temporal operators).
+                clk = 'dummy_clk'
+                disable_cond = "1'b0"
+            else:
+                raise SystemExit(
+                    f"ERROR: Could not determine property clock for property_top='{prop_top_used}'. "
+                    f'Provide --clock-name or ensure {prop_top_used}_ports.json exists.'
+                )
         if not disable_cond:
             # Still allow, but warn; disable iff () is illegal, so we need something.
             print("[WARN] Could not determine reset/disable iff condition; defaulting to 1'b0 (no disable).")
