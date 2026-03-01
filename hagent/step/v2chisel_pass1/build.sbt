@@ -2,7 +2,7 @@ name := "SimpleRISCVCpu"
 
 version := "0.1"
 
-scalaVersion := "2.13.18"
+scalaVersion := "3.8.2"
 
 libraryDependencies ++= Seq(
   "edu.berkeley.cs" %% "chisel3" % "3.6.1",
