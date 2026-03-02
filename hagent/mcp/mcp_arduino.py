@@ -17,10 +17,11 @@ import re
 import json
 import sys as _sys
 import os as _os
-
+import pty
+import select
+import time
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from config_sync import fetch_remote_configs
-
 
 def get_mcp_schema() -> Dict[str, Any]:
     """Return MCP tool schema for Arduino development command."""
@@ -119,8 +120,10 @@ def initialize_arduino_env() -> Dict[str, Any]:
 
 def _run_monitor(port: str, fqbn: str, timeout: int = 30) -> Dict[str, Any]:
     """
-    Internal helper to run arduino-cli monitor.
+    Internal helper to run arduino-cli monitor using a PTY so the process
+    thinks it has a real terminal, preventing immediate EOF-driven exit.
     """
+
     if not port:
         return {
             'success': False,
@@ -130,7 +133,6 @@ def _run_monitor(port: str, fqbn: str, timeout: int = 30) -> Dict[str, Any]:
         }
 
     monitor_cmd = f'arduino-cli monitor -p {port} --fqbn {fqbn}'
-    repo_dir = os.environ.get('HAGENT_REPO_DIR', '.')
 
     try:
         if not shutil.which('arduino-cli'):
@@ -138,32 +140,43 @@ def _run_monitor(port: str, fqbn: str, timeout: int = 30) -> Dict[str, Any]:
             if not res['success']:
                 return res
 
+        master_fd, slave_fd = pty.openpty()
+
         proc = subprocess.Popen(
             monitor_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            stdin=subprocess.PIPE,
-            text=True,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            stdin=slave_fd,
+            close_fds=True,
             shell=True,
-            cwd=repo_dir,
         )
+        os.close(slave_fd)
 
-        try:
-            out, err = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            out, err = proc.communicate()
-            return {'success': True, 'exit_code': 0, 'stdout': out, 'stderr': err if err else ''}
+        chunks = []
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            r, _, _ = select.select([master_fd], [], [], remaining)
+            if r:
+                try:
+                    data = os.read(master_fd, 1024).decode('utf-8', errors='replace')
+                    chunks.append(data)
+                except OSError:
+                    break
+
+        proc.kill()
+        proc.wait()
+        os.close(master_fd)
+
+        return {
+            'success': True,
+            'exit_code': 0,
+            'stdout': ''.join(chunks),
+            'stderr': '',
+        }
 
     except Exception as e:
         return {'success': False, 'exit_code': 1, 'stdout': '', 'stderr': str(e)}
-
-    return {
-        'success': False,
-        'exit_code': 1,
-        'stdout': out if 'out' in locals() else '',
-        'stderr': err if 'err' in locals() else '',
-    }
 
 
 def _get_connected_boards() -> List[Dict[str, Any]]:
@@ -802,6 +815,15 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
 
     board_info = _get_board_info_from_md()
     fqbn = board_info.get('fqbn')
+
+    if not fqbn:
+        return {
+            'success': False,
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': 'No board configuration found. Please run the "install" tool to select a target board first.',
+        }
+
     _, port = _resolve_board_info(fqbn)
 
     if not port:
