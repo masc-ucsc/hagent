@@ -198,15 +198,14 @@ def register_mcp_module_impl(module, mcp_instance):
             if isinstance(result, dict) and not result.get('success', True):
                 # Use the error_message from mcp_execute if available
                 if 'error_message' in result:
-                    # Return a special error marker that our custom run_with_logging can detect
-                    return {'_mcp_error': True, 'error_message': result['error_message']}
+                    return result['error_message']
                 else:
                     # Fallback if no error_message was provided
                     exit_code = result.get('exit_code', 'unknown')
                     stderr = result.get('stderr', '')
                     stdout = result.get('stdout', '')
-                    fallback_msg = f'❌ COMMAND FAILED (exit code: {exit_code})\n\nSTDERR:\n{stderr}\n\nSTDOUT:\n{stdout}'
-                    return {'_mcp_error': True, 'error_message': fallback_msg}
+                    fallback_msg = f'COMMAND FAILED (exit code: {exit_code})\n\nSTDERR:\n{stderr}\n\nSTDOUT:\n{stdout}'
+                    return fallback_msg
 
             # For successful executions, return exit code, stdout, and stderr
             if isinstance(result, dict):
@@ -214,7 +213,7 @@ def register_mcp_module_impl(module, mcp_instance):
                 stdout = result.get('stdout', '').strip()
                 stderr = result.get('stderr', '').strip()
 
-                msg = f'✓ Command completed (exit code: {exit_code})'
+                msg = f'Command completed (exit code: {exit_code})'
                 if stdout:
                     msg += f'\n\nSTDOUT:\n{stdout}'
                 if stderr:
