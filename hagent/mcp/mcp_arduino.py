@@ -235,6 +235,29 @@ def _resolve_board_info(target_fqbn: Optional[str] = None) -> Tuple[Optional[str
     return detected_fqbn, detected_port
 
 
+def _get_available_ports_hint() -> str:
+    """
+    Build a human-readable hint of available serial ports for error messages.
+    """
+    connected = _get_connected_boards()
+    lines = []
+    for item in connected:
+        addr = item.get('port', {}).get('address') or item.get('address', '')
+        label = item.get('port', {}).get('protocol_label') or item.get('protocol_label', '')
+        props = item.get('port', {}).get('properties') or item.get('properties', {})
+        vid = props.get('vid', '')
+        pid = props.get('pid', '')
+        detail = label
+        if vid:
+            detail += f', VID:{vid}'
+            if pid:
+                detail += f' PID:{pid}'
+        lines.append(f'  {addr}  [{detail}]' if detail else f'  {addr}')
+    if not lines:
+        return '  (no serial ports detected)'
+    return '\n'.join(lines)
+
+
 def _get_board_info_from_md() -> Dict[str, str]:
     """
     Extract board metadata from AGENTS.md, GEMINI.md, or CLAUDE.md in the repo directory.
@@ -772,15 +795,31 @@ def api_upload(args: Optional[str] = None) -> Dict[str, Any]:
             'stderr': f"Core '{core}' is not installed.\nPlease run: install_core '{core}'",
         }
 
-    # 4. Resolve Port
-    _, port = _resolve_board_info(fqbn)
+    # 4. Resolve Port — allow explicit override via args='port=/dev/...'
+    explicit_port = None
+    if args and 'port=' in args:
+        for part in args.split():
+            if part.startswith('port='):
+                explicit_port = part.split('=', 1)[1]
+                break
+
+    if explicit_port:
+        port = explicit_port
+    else:
+        _, port = _resolve_board_info(fqbn)
 
     if not port:
+        hints = _get_available_ports_hint()
         return {
             'success': False,
             'exit_code': 1,
             'stdout': '',
-            'stderr': f"No connected board found matching FQBN '{fqbn}'. Please connect your board.",
+            'stderr': (
+                f"No connected board matched FQBN '{fqbn}'.\n"
+                f"Ensure the board is connected and powered on.\n"
+                f"If the board is connected but not detected, retry with an explicit port using args='port=/dev/...'.\n"
+                f"Available ports:\n{hints}"
+            ),
         }
 
     # 5. Upload
@@ -824,14 +863,31 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
             'stderr': 'No board configuration found. Please run the "install" tool to select a target board first.',
         }
 
-    _, port = _resolve_board_info(fqbn)
+    # Allow explicit port override via args='port=/dev/...'
+    explicit_port = None
+    if args and 'port=' in args:
+        for part in args.split():
+            if part.startswith('port='):
+                explicit_port = part.split('=', 1)[1]
+                break
+
+    if explicit_port:
+        port = explicit_port
+    else:
+        _, port = _resolve_board_info(fqbn)
 
     if not port:
+        hints = _get_available_ports_hint()
         return {
             'success': False,
             'exit_code': 1,
             'stdout': '',
-            'stderr': f"No connected board found matching FQBN '{fqbn}'. Please connect your board.",
+            'stderr': (
+                f"No connected board matched FQBN '{fqbn}'.\n"
+                f"Ensure the board is connected and powered on.\n"
+                f"If the board is connected but not detected, retry with an explicit port using args='port=/dev/...'.\n"
+                f"Available ports:\n{hints}"
+            ),
         }
 
     return _run_monitor(port=port, timeout=timeout, fqbn=fqbn)
