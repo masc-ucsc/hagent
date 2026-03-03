@@ -130,6 +130,8 @@ The ESP32-S3 supports four reset levels: CPU reset, Core reset (preserves RTC pe
 
 ## Factory Reset / Board Recovery
 
+If the board does not show up in the listed ports after basic checks (cable, power, driver, reset), you may need to reset the bootloader. See: https://support.arduino.cc/hc/en-us/articles/9810414060188-Reset-the-Arduino-bootloader-on-the-Nano-ESP32
+
 If the board is unresponsive or not reachable via USB, it can be recovered using the built-in bootloader:
 
 1. Double-tap the **RESET** button (PB1) right after power-up to enter bootloader mode.

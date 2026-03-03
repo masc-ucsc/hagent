@@ -190,7 +190,7 @@ echo "To use with Claude Code:"
 echo "  claude mcp add hagent ${BASE_DIR}/hagent_server.sh"
 echo
 echo "To use with Codex:"
-echo "  codex --mcp-server hagent=${BASE_DIR}/hagent_server.sh"
+echo "  codex mcp add hagent ${BASE_DIR}/hagent_server.sh"
 echo
 echo "To test manually:"
 echo "  ${BASE_DIR}/hagent_server.sh"

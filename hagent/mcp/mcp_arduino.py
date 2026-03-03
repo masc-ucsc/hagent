@@ -57,7 +57,7 @@ def get_mcp_schema() -> Dict[str, Any]:
                     '- new_sketch: (REQUIRED) Sketch name\n'
                     '- compile: (OPTIONAL) Sketch name. Defaults to "Blink". AUTOMATICALLY uses FQBN from installed config. DO NOT pass flags manually.\n'
                     '- upload: (OPTIONAL) Sketch name. Defaults to "Blink". AUTOMATICALLY detects port and FQBN from config. DO NOT pass flags manually.\n'
-                    '- monitor: (NO ARGS) Does not use the `args` parameter. The `timeout` parameter can be used to set the duration (default: 30s).\n'
+                    '- monitor: (NO ARGS) Does not use the `args` parameter. The `timeout` and `baudrate` parameters can be used to set the duration and speed.\n'
                     '- cli: (REQUIRED) Arbitrary arduino-cli command string\n'
                     '- refresh_config: (NO ARGS) Fetches latest board configs from the remote repository.',
                 },
@@ -65,6 +65,10 @@ def get_mcp_schema() -> Dict[str, Any]:
                     'type': 'integer',
                     'description': 'Timeout in seconds for monitor command (default: 30)',
                     'default': 30,
+                },
+                'baudrate': {
+                    'type': 'integer',
+                    'description': 'Baud rate for monitor command (e.g., 9600, 115200). Defaults to board default.',
                 },
             },
             'required': ['api'],
@@ -118,7 +122,7 @@ def initialize_arduino_env() -> Dict[str, Any]:
         return {'success': False, 'exit_code': 1, 'stdout': '', 'stderr': f'Failed to initialize Arduino environment: {stderr}'}
 
 
-def _run_monitor(port: str, fqbn: str, timeout: int = 30) -> Dict[str, Any]:
+def _run_monitor(port: str, fqbn: str, timeout: int = 30, baudrate: Optional[int] = None) -> Dict[str, Any]:
     """
     Internal helper to run arduino-cli monitor using a PTY so the process
     thinks it has a real terminal, preventing immediate EOF-driven exit.
@@ -133,6 +137,8 @@ def _run_monitor(port: str, fqbn: str, timeout: int = 30) -> Dict[str, Any]:
         }
 
     monitor_cmd = f'arduino-cli monitor -p {port} --fqbn {fqbn}'
+    if baudrate:
+        monitor_cmd += f' --config baudrate={baudrate}'
 
     try:
         if not shutil.which('arduino-cli'):
@@ -488,7 +494,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                 }
 
     # 2. Refresh configs from remote (best-effort, non-blocking)
-    fetch_remote_configs()
+    # fetch_remote_configs()
 
     # 3. Board Selection Logic
     configs_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs')
@@ -845,7 +851,7 @@ def api_upload(args: Optional[str] = None) -> Dict[str, Any]:
         }
 
 
-def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]:
+def api_monitor(args: Optional[str] = None, timeout: int = 30, baudrate: Optional[int] = None) -> Dict[str, Any]:
     """Monitor serial output."""
     if not shutil.which('arduino-cli'):
         res = initialize_arduino_env()
@@ -890,7 +896,7 @@ def api_monitor(args: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]
             ),
         }
 
-    return _run_monitor(port=port, timeout=timeout, fqbn=fqbn)
+    return _run_monitor(port=port, timeout=timeout, fqbn=fqbn, baudrate=baudrate)
 
 
 def api_cli(args: Optional[str] = None) -> Dict[str, Any]:
@@ -952,6 +958,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
         api_name = params.get('api')
         args = params.get('args')
         timeout = params.get('timeout', 30)
+        baudrate = params.get('baudrate')
 
         if not api_name:
             return {
@@ -968,7 +975,7 @@ def mcp_execute(params: Dict[str, Any]) -> Dict[str, Any]:
             'new_sketch': api_new_sketch,
             'compile': api_compile,
             'upload': api_upload,
-            'monitor': lambda args: api_monitor(args, timeout),
+            'monitor': lambda args: api_monitor(args, timeout, baudrate),
             'cli': api_cli,
             'env': api_env,
             'refresh_config': api_refresh_config,
@@ -1011,6 +1018,7 @@ def create_argument_parser():
     parser.add_argument('--api', '-a', required=False, help='API command to execute')
     parser.add_argument('--args', help='Arguments for the API command')
     parser.add_argument('--timeout', type=int, default=30, help='Timeout in seconds for monitor (default: 30)')
+    parser.add_argument('--baudrate', type=int, help='Baud rate for monitor (e.g., 9600, 115200)')
 
     return parser
 
@@ -1036,6 +1044,7 @@ def main():
             'api': args.api,
             'args': args.args,
             'timeout': args.timeout,
+            'baudrate': args.baudrate,
         }
 
         result = mcp_execute(params)
