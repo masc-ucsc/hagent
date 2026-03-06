@@ -750,7 +750,7 @@ class Equiv_check:
             'miter -equiv -flatten -make_outputs -ignore_gold_x gold gate miter',
             'async2sync',
             'hierarchy -top miter',
-            f'sat -dump_json {fail_json_path} -seq 4 -prove trigger 0 -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -ignore_unknown_cells -show-ports miter',
+            f'sat -dump_json {fail_json_path} -ignore_unknown_cells -seq 4 -set-at 4 trigger 1 -prove trigger 0 -prove trigger 0 -set-init-zero -set-def-inputs -show-ports miter',
         ]
         full_cmd = ';\n'.join(cmd)
 
