@@ -163,9 +163,12 @@ default:
             - MUST be SPACE-SEPARATED signal names only (no commas).
             - MUST include all signals referenced in pre or post, and no extras.
 
-        S3) No package params / internal constants:
-            - Do NOT reference package constants/params in pre/post (e.g., CVA6Cfg.*).
-            - If you need a slice width, only use literal ranges that are valid from the port widths IF known.
+        S3) Package constants — ALLOWED for named enums/causes from imported packages:
+            - YOU MAY use named constants from ariane_pkg::*, riscv::*, config_pkg::*
+              (e.g., ariane_pkg::LD_ACCESS_FAULT, ariane_pkg::ST_ACCESS_FAULT, ariane_pkg::FU_ALU).
+            - PREFER named constants over magic numbers.
+            - Do NOT use CVA6Cfg.* parameterized fields.
+            - If you need a slice width, only use literal ranges valid from known port widths.
               If width is unknown, avoid slices and instead assert a simpler IO relationship.
 
         S4) Temporal operator rule:
@@ -192,6 +195,39 @@ default:
         - When writing properties that talk about "reset assertion":
             * active-low: use $fell(rst_ni)
             * active-high: use $rose(rst_i)
+
+        =========================================================
+        ANTI-VACUOUS RULES (MANDATORY — violations cause UNREACHABLE witnesses)
+        =========================================================
+        A property whose antecedent can NEVER be true in JasperGold bounded proof is
+        VACUOUSLY PROVEN (false positive) and wastes a proof slot.  Avoid ALL of:
+
+        FORBIDDEN PATTERN 1 — disable iff vs. antecedent conflict:
+          WRONG (disable iff disables exactly when antecedent fires):
+            @(posedge clk_i) disable iff (!rst_ni)
+              (!rst_ni == 1'b0) |-> !output;      // rst_ni==1 always when enabled → vacuous
+          RIGHT — use $rose to catch reset release:
+            @(posedge clk_i) $rose(rst_ni) |-> !output;
+          RIGHT — remove disable iff and check during reset:
+            @(posedge clk_i) (rst_ni == 1'b0) |-> !output;
+
+        FORBIDDEN PATTERN 2 — internal signals in blackbox antecedent:
+          WRONG (internal_reg not visible/stimulable in blackbox):
+            (internal_reg && valid_i) |-> output_o.valid
+          RIGHT — use only input ports OR observable outputs in antecedent:
+            (valid_i && output_o.valid) |-> output_o.field == expected
+            output_o.valid |-> output_o.field == expected
+
+        FORBIDDEN PATTERN 3 — complex multi-signal antecedent unreachable in bounded proof:
+          WRONG: (a && b && c && d && e) |-> result   (5 conditions rarely all true simultaneously)
+          RIGHT: condense to 1-2 most important conditions, or use output-conditioned pattern
+
+        MANDATORY SELF-CHECK before emitting each assert row:
+          1. Can the antecedent (pre field) be TRUE by freely varying only the INPUT ports?
+             If NO — change to an output-conditioned form or remove the blocking condition.
+          2. Does the property use ONLY signals from context_json.allowed_signals?
+             If NO — replace internal signals with the nearest observable output.
+          3. Is this a reset-state check? If YES — use $rose/fell, NOT disable-iff + rst antecedent.
 
         =========================================================
         CONTENT GOALS / WHAT TO GENERATE

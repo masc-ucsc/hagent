@@ -1295,6 +1295,11 @@ class SpecBuilder:
                 raise SystemExit(2)
             cmd += [str(f) for f in sorted(files)]
 
+        # Skip slang if AST already exists and is non-empty (e.g. pre-placed for complex scopes)
+        if out_json.exists() and out_json.stat().st_size > 0:
+            console.print(f'[green]✔ Reusing existing AST (skipping Slang):[/green] {out_json}')
+            return
+
         console.print('[cyan]• Running Slang to emit AST JSON[/cyan]')
         console.print('  ' + ' '.join(cmd))
         res = subprocess.run(cmd)

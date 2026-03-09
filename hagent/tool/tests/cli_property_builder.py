@@ -19,6 +19,8 @@ def main():
         'If omitted, clk/rst are detected from the module inferred '
         'from --spec-md (<name>_spec.* -> <name>).',
     )
+    parser.add_argument('--clock-name', default=None, help='Override detected clock name.')
+    parser.add_argument('--reset-expr', default=None, help='Override detected reset expression (e.g. "!PRESETn").')
     parser.add_argument('--debug', action='store_true', help='Enable debug output')
     parser.add_argument('--whitebox', action='store_true', help='Whitebox mode: allow internal signals in properties.')
     parser.add_argument('--internal-signals-json', default=None, help='Path to internal_signals.json.')
@@ -39,6 +41,8 @@ def main():
         out_dir=args.dir,
         llm_conf=args.llm_config,
         design_top=args.design_top,
+        clock_name=getattr(args, 'clock_name', None),
+        reset_expr=getattr(args, 'reset_expr', None),
         whitebox=getattr(args, 'whitebox', False),
         internal_signals_json=getattr(args, 'internal_signals_json', None),
     )

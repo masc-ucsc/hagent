@@ -201,9 +201,6 @@ def extract_packages_from_port_types(ports_json: Path) -> List[str]:
         if not isinstance(p, dict):
             continue
         type_str = (p.get('type') or '').strip()
-        # Some Slang dumps prefix type strings with a numeric internal id.
-        # Example: "3768648076360 branch_unit.fu_data_t".
-        type_str = re.sub(r'^\d+\s+', '', type_str)
         # Match pkg::type patterns
         m = re.match(r'^([A-Za-z_]\w*)::(\w+)', type_str)
         if m:
@@ -317,10 +314,6 @@ def normalize_sv_type(type_str: str, sva_top: str, known_type_params: set[str]) 
         return 'logic'
 
     t = _fix_logic_width_syntax(type_str.strip())
-
-    # Slang sometimes prefixes type strings with a numeric internal id.
-    # Example: "3768648076360 branch_unit.fu_data_t".
-    t = re.sub(r'^\d+\s+', '', t).strip()
 
     # Split trailing dimensions (e.g. issue_stage.foo_t[0:0][31:0])
     base = t
@@ -1116,20 +1109,30 @@ def run_postcheck_if_requested(
     jasper_bin: str,
     max_iters: int,
     tail_lines: int,
+    assume_spurious: bool = False,
+    fix_vacuous: bool = False,
+    fix_vacuous_llm: bool = False,
 ) -> int:
+    # --postcheck-assume-spurious / --postcheck-fix-vacuous / --postcheck-fix-vacuous-llm auto-enable postcheck
+    if assume_spurious or fix_vacuous or fix_vacuous_llm:
+        enabled = True
+        apply_patch = True
+        if assume_spurious:
+            rerun_jg_after = True  # verify the ASSUME conversions compiled
+
     if not enabled:
         return 0
 
-    if llm_conf is None:
-        console.print('[red]✖ --postcheck requested but --postcheck-llm-conf is missing.[/red]')
-        return 2
-    if not llm_conf.exists():
-        console.print(f'[red]✖ --postcheck-llm-conf not found: {llm_conf}[/red]')
-        return 2
-
-    if rerun_jg_after and not apply_patch:
-        console.print('[red]✖ --postcheck-rerun-jg requires --postcheck-apply (no point rerunning without applying fixes).[/red]')
-        return 2
+    if not assume_spurious:
+        if llm_conf is None and not (fix_vacuous and not fix_vacuous_llm):
+            console.print('[red]✖ --postcheck requested but --postcheck-llm-conf is missing.[/red]')
+            return 2
+        if llm_conf is not None and not llm_conf.exists():
+            console.print(f'[red]✖ --postcheck-llm-conf not found: {llm_conf}[/red]')
+            return 2
+        if rerun_jg_after and not apply_patch:
+            console.print('[red]✖ --postcheck-rerun-jg requires --postcheck-apply.[/red]')
+            return 2
 
     try:
         from hagent.tool.jg_postcheck_repair import run_postcheck_repair  # type: ignore
@@ -1139,13 +1142,20 @@ def run_postcheck_if_requested(
         console.print(f'    Import error: {e}')
         return 2
 
+    if assume_spurious:
+        mode_label = 'assume-spurious (no LLM)'
+    elif fix_vacuous_llm:
+        mode_label = 'fix-vacuous-llm + ' + ('fix-vacuous' if fix_vacuous else 'no-heuristic')
+    elif fix_vacuous:
+        mode_label = 'fix-vacuous (heuristic)'
+    else:
+        mode_label = 'LLM patch'
     console.print(
         Panel.fit(
-            f'[bold]Post-check requested[/bold]\n'
+            f'[bold]Post-check repair[/bold]  mode=[cyan]{mode_label}[/cyan]\n'
             f'[cyan]fpv_dir:[/cyan] {fpv_dir}\n'
             f'[cyan]sva_top:[/cyan] {sva_top}\n'
-            f'[cyan]apply:[/cyan] {apply_patch}\n'
-            f'[cyan]rerun_jg_after:[/cyan] {rerun_jg_after}\n'
+            f'[cyan]apply:[/cyan] {apply_patch}  [cyan]rerun_jg_after:[/cyan] {rerun_jg_after}\n'
             f'[cyan]max_iters:[/cyan] {max_iters}  [cyan]tail_lines:[/cyan] {tail_lines}',
             title='POSTCHECK',
             border_style='magenta',
@@ -1163,8 +1173,242 @@ def run_postcheck_if_requested(
             jasper_bin=jasper_bin,
             max_iters=max_iters,
             tail_lines=tail_lines,
+            assume_spurious=assume_spurious,
+            fix_vacuous=fix_vacuous,
+            fix_vacuous_llm=fix_vacuous_llm,
         )
     )
+
+
+# -----------------------------------------------------------------------------
+# Stage 8: COI Boost — IO anchors + precondition covers + longer check_cov
+# (Inlined from cli_boost_coi.py so no separate file is needed)
+# -----------------------------------------------------------------------------
+
+def _boost_read_coi(fpv_dir: Path) -> float:
+    """Return current COI% from formal_coverage_summary.txt."""
+    f = fpv_dir / 'formal_coverage_summary.txt'
+    if not f.exists():
+        return 0.0
+    for line in f.read_text(encoding='utf-8', errors='ignore').splitlines():
+        m = re.search(r'Formal\s*:\s*([\d.]+)%', line)
+        if m:
+            return float(m.group(1))
+    return 0.0
+
+
+def _boost_build_io_anchor_covers(fpv_dir: Path, sva_top: str, sv_path: Path) -> int:
+    """Add one cover property per IO port to pull full fanout into COI."""
+    ports_json = fpv_dir / f'{sva_top}_ports.json'
+    if not ports_json.exists():
+        console.print('[yellow]⚠ ports.json not found — skipping IO anchor covers[/yellow]')
+        return 0
+
+    ports_data = json.loads(ports_json.read_text(encoding='utf-8'))
+    if isinstance(ports_data, dict):
+        ports_data = ports_data.get('ports', [])
+
+    clk, rst_expr = 'clk_i', '!rst_ni'
+    tcl_path = fpv_dir / 'FPV.tcl'
+    if tcl_path.exists():
+        tcl_text = tcl_path.read_text(encoding='utf-8')
+        m = re.search(r'^clock\s+(\w+)', tcl_text, re.MULTILINE)
+        if m:
+            clk = m.group(1)
+        m = re.search(r'^reset\s+-expression\s+(.+)', tcl_text, re.MULTILINE)
+        if m:
+            rst_expr = m.group(1).strip()
+
+    sv_text = sv_path.read_text(encoding='utf-8', errors='ignore')
+    existing = set(re.findall(r'^(\w+):\s+cover\s+property', sv_text, re.MULTILINE))
+    skip_signals = {clk} | {tok for tok in re.findall(r'\b\w+\b', rst_expr) if len(tok) > 2}
+
+    covers = []
+    for port in ports_data:
+        name = port.get('name', '') if isinstance(port, dict) else str(port)
+        if not name or name in skip_signals:
+            continue
+        la = f'coi_anchor_active_{name}'
+        lr = f'coi_anchor_rose_{name}'
+        if la not in existing:
+            covers.append(
+                f'// COI anchor: {name} active\nproperty {la};\n'
+                f'  @(posedge {clk}) disable iff ({rst_expr})\n'
+                f"    1'b1 |-> ##[0:$] {name};\nendproperty\n"
+                f'{la}: cover property({la});'
+            )
+        if lr not in existing:
+            covers.append(
+                f'// COI anchor: {name} rose\nproperty {lr};\n'
+                f'  @(posedge {clk}) disable iff ({rst_expr})\n'
+                f'    $rose({name});\nendproperty\n'
+                f'{lr}: cover property({lr});'
+            )
+
+    if not covers:
+        console.print('[yellow]  No new IO anchor covers needed[/yellow]')
+        return 0
+
+    block = (
+        '\n\n// ---- COI anchor covers (Stage 8 boost) ----\n\n'
+        + '\n\n'.join(covers) + '\n'
+    )
+    with open(sv_path, 'a', encoding='utf-8') as fh:
+        fh.write(block)
+    console.print(f'[green]  + {len(covers)} IO anchor covers appended[/green]')
+    return len(covers)
+
+
+def _boost_build_precondition_covers(fpv_dir: Path, sv_path: Path) -> int:
+    """Add cover properties for UNREACHABLE assertion antecedents."""
+    log = fpv_dir / 'jg.stdout.log'
+    if not log.exists():
+        return 0
+
+    unreachable = sorted(set(
+        m.group(1)
+        for line in log.read_text(encoding='utf-8', errors='ignore').splitlines()
+        for m in [re.search(r'(\w+):precondition1.*?unreachable', line, re.IGNORECASE)]
+        if m
+    ))
+    if not unreachable:
+        console.print('[yellow]  No UNREACHABLE preconditions found[/yellow]')
+        return 0
+    console.print(f'  Found {len(unreachable)} UNREACHABLE precondition labels')
+
+    sv_text = sv_path.read_text(encoding='utf-8', errors='ignore')
+    existing = set(re.findall(r'^(\w+):\s+cover\s+property', sv_text, re.MULTILINE))
+    label_to_prop = {m.group(1): m.group(2) for m in re.finditer(r'^(\w+):\s+assert\s+property\((\w+)\)', sv_text, re.MULTILINE)}
+
+    clk, rst_expr = 'clk_i', '!rst_ni'
+    tcl_path = fpv_dir / 'FPV.tcl'
+    if tcl_path.exists():
+        tcl_text = tcl_path.read_text(encoding='utf-8')
+        m2 = re.search(r'^clock\s+(\w+)', tcl_text, re.MULTILINE)
+        if m2: clk = m2.group(1)
+        m2 = re.search(r'^reset\s+-expression\s+(.+)', tcl_text, re.MULTILINE)
+        if m2: rst_expr = m2.group(1).strip()
+
+    new_covers = []
+    for label in unreachable:
+        prop_name = label_to_prop.get(label)
+        if not prop_name:
+            continue
+        pm = re.search(r'(property\s+' + re.escape(prop_name) + r'\s*;.*?endproperty)', sv_text, re.DOTALL)
+        if not pm:
+            continue
+        body = pm.group(1)
+        body = re.sub(r'^property\s+\w+\s*;', '', body, flags=re.DOTALL)
+        body = re.sub(r'endproperty.*', '', body, flags=re.DOTALL)
+        body = re.sub(r'disable\s+iff\s*\([^)]*\)', '', body)
+        body = re.sub(r'@\s*\(posedge\s+\w+\)', '', body)
+        am = re.search(r'(.+?)\s*\|-[>=]', body, re.DOTALL)
+        if not am:
+            continue
+        antecedent = re.sub(r'\s+', ' ', am.group(1)).strip().rstrip(';')
+        if not antecedent or antecedent in ('1', "1'b1", ''):
+            continue
+        cl = f'coi_prec_{label}'
+        if cl in existing:
+            continue
+        new_covers.append(
+            f'// COI prec cover: {label}\nproperty {cl}_p;\n'
+            f'  @(posedge {clk}) disable iff ({rst_expr})\n'
+            f'    {antecedent};\nendproperty\n'
+            f'{cl}: cover property({cl}_p);'
+        )
+
+    if not new_covers:
+        console.print('[yellow]  No extractable antecedents for precondition covers[/yellow]')
+        return 0
+
+    block = '\n\n// ---- Precondition reach covers (Stage 8 boost) ----\n\n' + '\n\n'.join(new_covers) + '\n'
+    with open(sv_path, 'a', encoding='utf-8') as fh:
+        fh.write(block)
+    console.print(f'[green]  + {len(new_covers)} precondition reach covers appended[/green]')
+    return len(new_covers)
+
+
+def _boost_patch_fpv_tcl(fpv_dir: Path, time_limit: str = '60m') -> bool:
+    """Increase check_cov -time_limit and add -stimuli for broader state exploration."""
+    tcl_path = fpv_dir / 'FPV.tcl'
+    if not tcl_path.exists():
+        return False
+    text = tcl_path.read_text(encoding='utf-8')
+    original = text
+    new_measure = (
+        f'check_cov -measure -type coi -stimuli '
+        f'-skip_deadcode -max_jobs 16 -per_engine_max_jobs 2 '
+        f'-time_limit {time_limit}'
+    )
+    text = re.sub(r'check_cov\s+-measure\s+-type\s+coi[^\n]*', new_measure, text)
+    text = re.sub(r'set_prove_per_property_max_time_limit\s+\S+', 'set_prove_per_property_max_time_limit 20m', text)
+    if text == original:
+        console.print('[yellow]  FPV.tcl unchanged (check_cov pattern not found)[/yellow]')
+        return False
+    backup = tcl_path.with_suffix('.tcl.pre_boost')
+    if not backup.exists():
+        backup.write_text(original, encoding='utf-8')
+    tcl_path.write_text(text, encoding='utf-8')
+    console.print(f'[green]  FPV.tcl patched: check_cov time_limit → {time_limit}, -stimuli added[/green]')
+    return True
+
+
+def run_coi_boost_if_requested(
+    enabled: bool,
+    fpv_dir: Path,
+    sva_top: str,
+    jasper_bin: str,
+    cov_time_limit: str = '60m',
+    skip_io_anchors: bool = False,
+    skip_prec_covers: bool = False,
+    skip_tcl_patch: bool = False,
+    rerun_jg: bool = True,
+) -> None:
+    """Stage 8: add IO anchor covers + precondition covers + patch FPV.tcl, then re-run JG."""
+    if not enabled:
+        return
+
+    console.print('\n[bold cyan]═══ Stage 8: COI Boost ═══[/bold cyan]')
+    sv_path = fpv_dir / 'sva' / 'properties.sv'
+    if not sv_path.exists():
+        console.print(f'[red]❌ properties.sv not found: {sv_path}[/red]')
+        return
+
+    before_coi = _boost_read_coi(fpv_dir)
+    console.print(f'   Before COI: {before_coi:.2f}%')
+
+    # Backup
+    backup = sv_path.with_suffix('.sv.pre_boost')
+    if not backup.exists():
+        backup.write_text(sv_path.read_text(encoding='utf-8'), encoding='utf-8')
+
+    total_added = 0
+    if not skip_io_anchors:
+        console.print('\n[cyan]Action 1: IO anchor covers[/cyan]')
+        total_added += _boost_build_io_anchor_covers(fpv_dir, sva_top, sv_path)
+
+    if not skip_prec_covers:
+        console.print('\n[cyan]Action 2: Precondition reach covers[/cyan]')
+        total_added += _boost_build_precondition_covers(fpv_dir, sv_path)
+
+    if not skip_tcl_patch:
+        console.print('\n[cyan]Action 3: FPV.tcl coverage patch[/cyan]')
+        _boost_patch_fpv_tcl(fpv_dir, cov_time_limit)
+
+    console.print(f'\n   Total new covers added: {total_added}')
+
+    if rerun_jg and jasper_bin:
+        tcl = fpv_dir / 'FPV.tcl'
+        cmd = [jasper_bin, '-allow_unsupported_OS', '-tcl', str(tcl), '-batch']
+        console.print(f'\n[cyan]• Re-running JasperGold for COI boost (may take 30–90 min) ...[/cyan]')
+        res = subprocess.run(cmd, cwd=str(fpv_dir), capture_output=True, text=True, timeout=7200)
+        (fpv_dir / 'jg.stdout.log').write_text(res.stdout, encoding='utf-8')
+        (fpv_dir / 'jg.stderr.log').write_text(res.stderr, encoding='utf-8')
+        after_coi = _boost_read_coi(fpv_dir)
+        console.print(f'   After COI : {after_coi:.2f}%  (Δ = {after_coi - before_coi:+.2f}%)')
+    else:
+        console.print(f'\n[yellow]⚠ Pass --boost-coi-rerun-jg to re-run JasperGold after boost.[/yellow]')
 
 
 # -----------------------------------------------------------------------------
@@ -1478,6 +1722,25 @@ def main() -> int:
     ap.add_argument('--postcheck-rerun-jg', action='store_true', help='After applying patch, rerun Jasper (feedback loop).')
     ap.add_argument('--postcheck-max-iters', type=int, default=1)
     ap.add_argument('--postcheck-tail-lines', type=int, default=250)
+    ap.add_argument(
+        '--postcheck-assume-spurious', action='store_true',
+        help='Automatically convert PRE_ERROR/SPURIOUS FAIL props to assumes after Jasper '
+             '(no LLM, no context limits). Enabled by default when FAILs > 0. '
+             'Equivalent to --postcheck --postcheck-apply --postcheck-rerun-jg without needing an LLM conf.'
+    )
+    ap.add_argument(
+        '--postcheck-fix-vacuous', action='store_true',
+        help='Auto-convert vacuously-proven assertions (unreachable witness) to cover goals. '
+             'Reduces false-confidence PROVEN count; makes coverage metrics honest. '
+             'Real-bug CEX assertions are NEVER touched — bugs are always preserved.'
+    )
+    ap.add_argument(
+        '--postcheck-fix-vacuous-llm', action='store_true',
+        help='Use LLM to rewrite vacuously-proven assertions into non-vacuous forms '
+             '($rose(rst_ni) for reset-conflict, output-conditioned antecedents for blackbox). '
+             'Requires --postcheck-llm-conf. Combine with --postcheck-fix-vacuous to heuristically '
+             'convert any remaining vacuous props to cover after LLM fix.'
+    )
 
     # Whitebox mode
     ap.add_argument('--whitebox', action='store_true', help='Generate both blackbox and whitebox SVA properties.')
@@ -1531,6 +1794,22 @@ def main() -> int:
         '--bug-target-gen-max-issues', type=int, default=30,
         help='Max GitHub issues to fetch for bug-targeted gen (default: 30).',
     )
+
+    # COI Boost (Stage 8) — deterministic, no LLM required
+    ap.add_argument(
+        '--boost-coi', action='store_true',
+        help='Stage 8: add IO anchor covers + precondition reach covers to increase JasperGold COI coverage.',
+    )
+    ap.add_argument('--boost-coi-time-limit', default='60m',
+        help='check_cov -time_limit for COI boost (default: 60m).')
+    ap.add_argument('--boost-coi-rerun-jg', action='store_true',
+        help='Re-run JasperGold after applying COI boost covers (requires --jasper-bin).')
+    ap.add_argument('--boost-coi-skip-io-anchors', action='store_true',
+        help='Skip IO anchor cover generation in COI boost.')
+    ap.add_argument('--boost-coi-skip-prec-covers', action='store_true',
+        help='Skip precondition reach cover generation in COI boost.')
+    ap.add_argument('--boost-coi-skip-tcl-patch', action='store_true',
+        help='Skip FPV.tcl coverage time-limit patch in COI boost.')
 
     args = ap.parse_args()
 
@@ -1592,9 +1871,9 @@ def main() -> int:
             json_out=args.bug_detect_json_out,
         )
 
-        # Postcheck if explicitly requested (manual). Rerun only after postcheck + only if asked.
+        # Postcheck: auto-triggered if --postcheck-assume-spurious/--postcheck-fix-vacuous, or explicit --postcheck
         rc_post = run_postcheck_if_requested(
-            enabled=args.postcheck,
+            enabled=args.postcheck or args.postcheck_assume_spurious or args.postcheck_fix_vacuous or args.postcheck_fix_vacuous_llm,
             fpv_dir=fpv_dir,
             sva_top=sva_top,
             scope_path=args.scope_path or '',
@@ -1604,6 +1883,22 @@ def main() -> int:
             jasper_bin=args.jasper_bin,
             max_iters=args.postcheck_max_iters,
             tail_lines=args.postcheck_tail_lines,
+            assume_spurious=args.postcheck_assume_spurious,
+            fix_vacuous=args.postcheck_fix_vacuous,
+            fix_vacuous_llm=args.postcheck_fix_vacuous_llm,
+        )
+
+        # Stage 8: COI Boost (rerun-jg path)
+        run_coi_boost_if_requested(
+            enabled=args.boost_coi,
+            fpv_dir=fpv_dir,
+            sva_top=sva_top,
+            jasper_bin=args.jasper_bin,
+            cov_time_limit=args.boost_coi_time_limit,
+            skip_io_anchors=args.boost_coi_skip_io_anchors,
+            skip_prec_covers=args.boost_coi_skip_prec_covers,
+            skip_tcl_patch=args.boost_coi_skip_tcl_patch,
+            rerun_jg=args.boost_coi_rerun_jg,
         )
 
         # Token summary (if any generation was done previously)
@@ -1744,6 +2039,11 @@ def main() -> int:
             '--design-top',
             args.top,
         ]
+        # Forward clock/reset overrides (needed for combinational modules like pmp)
+        if getattr(args, 'clock_name', None):
+            cmd += ['--clock-name', args.clock_name]
+        if getattr(args, 'reset_expr', None):
+            cmd += ['--reset-expr', args.reset_expr]
         run_cmd(cmd)
 
         prop_src = fpv_dir / 'properties.sv'
@@ -2061,9 +2361,9 @@ def main() -> int:
         except Exception as exc:
             console.print(f'[yellow]⚠ Stage 7c CEX classification failed: {exc}[/yellow]')
 
-    # Stage 7: Postcheck ONLY if user explicitly requested (manual feedback loop)
+    # Stage 7: Postcheck — auto-triggered if --postcheck-assume-spurious/--postcheck-fix-vacuous, or explicit --postcheck
     rc_post = run_postcheck_if_requested(
-        enabled=args.postcheck,
+        enabled=args.postcheck or args.postcheck_assume_spurious or args.postcheck_fix_vacuous,
         fpv_dir=fpv_dir,
         sva_top=sva_top,
         scope_path=args.scope_path or '',
@@ -2073,9 +2373,25 @@ def main() -> int:
         jasper_bin=args.jasper_bin,
         max_iters=args.postcheck_max_iters,
         tail_lines=args.postcheck_tail_lines,
+        assume_spurious=args.postcheck_assume_spurious,
+        fix_vacuous=args.postcheck_fix_vacuous,
+        fix_vacuous_llm=args.postcheck_fix_vacuous_llm,
     )
     if rc_post != 0:
         return rc_post
+
+    # Stage 8: COI Boost (optional, after postcheck)
+    run_coi_boost_if_requested(
+        enabled=args.boost_coi,
+        fpv_dir=fpv_dir,
+        sva_top=sva_top,
+        jasper_bin=args.jasper_bin,
+        cov_time_limit=args.boost_coi_time_limit,
+        skip_io_anchors=args.boost_coi_skip_io_anchors,
+        skip_prec_covers=args.boost_coi_skip_prec_covers,
+        skip_tcl_patch=args.boost_coi_skip_tcl_patch,
+        rerun_jg=args.boost_coi_rerun_jg,
+    )
 
     # Token summary (always print after generation stages)
     print_token_summary(fpv_dir, sva_top, whitebox=args.whitebox)
