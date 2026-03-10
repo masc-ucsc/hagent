@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Tuple
 
 from hagent.core.step import Step
 from hagent.inou.locator import Locator, RepresentationType
+from hagent.pipe.frequency_opt.steps.common_utilities import get_clock_signal
 from hagent.pipe.frequency_opt.schema import (
     BenchmarkConfig,
     RTLSourceConfig,
@@ -88,7 +89,7 @@ class ExtractCriticalStep(Step):
         if not self.locator.setup():
             self.error(f'Locator setup failed: {self.locator.get_error()}')
 
-        # Step 1: Extract critical path module names from timing report
+        # Extract critical path module names from timing report
         critical_path_modules, start_flop, end_flop = self._locate_modules_and_launch_capture_flops()
         print(f'  Critical path modules: {critical_path_modules}')
 
@@ -96,23 +97,20 @@ class ExtractCriticalStep(Step):
         tools = ToolsConfig.from_data_optional(data, 'tools')
         synalign_mapping = None
         if tools and tools.run_synalign:
-            synalign_mapping = self._run_synalign(data, tools, critical_path_modules)
+            synalign_mapping = self._run_synalign(tools, critical_path_modules)
 
-        # Step 2-5: Determine modules to optimize and copy RTL files
+        # Determine modules to optimize and copy RTL files
         work_dir = Path(self.storage.output_dir) / 'critical_modules'
         if os.path.exists(work_dir):
             shutil.rmtree(work_dir)
             print('  Removed existing critical modules dir')
         os.makedirs(work_dir)
-            
+
         hierarchy = self._get_hierarchy_from_locator()
 
         if synalign_mapping is not None:
             # Synalign provides file_path directly — extract unique files and module names
-            synalign_files = sorted(set(
-                m['file_path'] for m in synalign_mapping.get('mappings', [])
-                if m.get('file_path')
-            ))
+            synalign_files = sorted(set(m['file_path'] for m in synalign_mapping.get('mappings', []) if m.get('file_path')))
 
             # Filter: only include files whose module (stem) exists in the hierarchy.
             # This excludes packages and other non-module files that synalign may annotate.
@@ -161,6 +159,13 @@ class ExtractCriticalStep(Step):
 
         # Build output
         output = data.copy()
+        # TODO: use just critical_path_info.dir that contains either:
+        # 1) just start flop and end flop or;
+        # 2) with more info (such as LCA, yosys -select aliasing)
+        # Delete:
+        # 1) critical_path.start/end as we always embed them in the annotated files
+        # 2) commented_rtl_dir
+        # 3) run_synalign
         set_field(output, 'critical_path_info.dir', str(work_dir))
         set_field(output, 'critical_path_info.module_names', list(modules_to_optimize))
         set_field(output, 'critical_path_info.critical_path.start', start_flop)
@@ -181,6 +186,42 @@ class ExtractCriticalStep(Step):
 
         return output
 
+    def _locate_external_input_port_flop(self, clock_signal: str) -> Optional[str]:
+        """Try to find an external input port as the launch point from the timing report.
+
+        Returns:
+            The base port name if found, or None.
+        """
+        # matches the next line after "input external delay"
+        # group(1) = full token e.g. input_data_i[132]
+        input_ext_delay_nextline_re = re.compile(
+            r'(?m)^[^\n]*\binput\s+external\s+delay\s*$\n'  # marker line
+            r'^\s*[\d.]+\s+[\d.]+\s+[\d.]+\s+[v^]\s+([^\s(]+)'  # next line, capture "signal token"
+        )
+
+        def base_port_name(token: str) -> str:
+            # input_data_i[132] -> input_data_i
+            return re.sub(r'\[\d+\]$', '', token)
+
+        try:
+            content = self.report_path.read_text()
+            sections = re.split(r'(?=Startpoint:)', content)
+
+            for section in sections:
+                if not section.strip():
+                    continue
+                path_group_match = re.search(r'Path Group:\s*\**(\S+)\**', section)
+                if not path_group_match or path_group_match.group(1) != clock_signal:
+                    continue
+                input_ext_delay_match = input_ext_delay_nextline_re.search(section)
+                if input_ext_delay_match:
+                    port_name = input_ext_delay_match.group(1)
+                    return base_port_name(port_name)
+        except Exception as e:
+            print(f'    Warning: Failed to parse timing log: {e}')
+
+        return None
+
     def _locate_modules_and_launch_capture_flops(self) -> Tuple[List[str], str, str]:
         """
         Get the source module names that constitute the critical path.
@@ -198,8 +239,11 @@ class ExtractCriticalStep(Step):
 
         # Pattern to match flip-flop instance references like: _105621_/Q (sky130_fd_sc_hd__dfrtp_1)
         # The cell type must contain "df" (delay flop, hardcoded for now) to verify it's actually a flip-flop
-        launch_capture_pattern = re.compile(r'(_\d+_)/(Q|D)\s*\((.*?)\)')
-        matches = launch_capture_pattern.findall(timing_text)
+        clock_signal = get_clock_signal(self.netlist_path)
+        assert clock_signal is not None
+
+        q_d_pattern = re.compile(r'(_\d+_)/(Q|D)\s*\((.*?)\)')
+        matches = q_d_pattern.findall(timing_text)
 
         launch = None
         capture = None
@@ -217,9 +261,8 @@ class ExtractCriticalStep(Step):
         launch_q_signal = ''
         capture_d_signal = ''
 
-        if launch is None:
-            print('  Warning: Could not find launch flip-flops in timing report {self.report_path}')
-        else:
+        # Launch: try Q flop first, then fall back to external input port
+        if launch is not None:
             print(f'  Launch flop: {launch[0]} ({launch[1]})')
             try:
                 launch_q_signal = self._extract_q_signal(netlist_text, launch[0])
@@ -227,9 +270,16 @@ class ExtractCriticalStep(Step):
             except RuntimeError as e:
                 print(f'  Warning: {e}')
 
-        if capture is None:
-            print('  Warning: Could not find capture flip-flops in timing report {self.report_path}')
-        else:
+        if not launch_q_signal:
+            ext_port = self._locate_external_input_port_flop(clock_signal)
+            if ext_port:
+                launch_q_signal = ext_port
+                print(f'  Launch from external input port: {launch_q_signal}')
+            else:
+                print(f'  Warning: Could not find launch flip-flops in timing report {self.report_path}')
+
+        # Capture: try D flop first (external output port not implemented yet)
+        if capture is not None:
             print(f'  Capture flop: {capture[0]} ({capture[1]})')
             try:
                 # We also use `extract_q_signal` as the capture D signal is often a randomly named wire
@@ -237,6 +287,9 @@ class ExtractCriticalStep(Step):
                 print(f'  Capture D signal: {capture_d_signal}')
             except RuntimeError as e:
                 print(f'  Warning: {e}')
+
+        if not capture_d_signal:
+            print(f'  Warning: Could not find capture flip-flops in timing report {self.report_path}')
 
         # Find source modules using Locator directly
         source_modules = []
@@ -272,7 +325,7 @@ class ExtractCriticalStep(Step):
 
         return source_modules, launch_q_signal, capture_d_signal
 
-    def _run_synalign(self, data: Dict, tools: ToolsConfig, critical_path_modules: List[str]) -> Optional[Dict]:
+    def _run_synalign(self, tools: ToolsConfig, critical_path_modules: List[str]) -> Optional[Dict]:
         """
         Run SynAlign to map all timing report nets back to original RTL source.
 
@@ -308,7 +361,7 @@ class ExtractCriticalStep(Step):
             manifest_file = self.rtl.manifest_file
 
         synth_top = self.benchmark.effective_output_module
-        orig_top = self.benchmark.synth_top_module or synth_top
+        orig_top = self.benchmark.effective_synth_top or synth_top
         if '\\$' in orig_top:
             orig_top = orig_top.replace('\\$', '$')
         elab_top = self.benchmark.top_module
@@ -317,15 +370,24 @@ class ExtractCriticalStep(Step):
 
         # Build command
         cmd = [
-            sys.executable, str(synalign_script),
-            '--timing-report', str(self.report_path),
-            '--netlist', str(self.netlist_path),
-            '--liberty', tools.liberty_file,
-            '--lgshell', tools.lgshell_path,
-            '--synth-top', synth_top,
-            '--orig-top', orig_top,
-            '--elab-top', elab_top,
-            '--output-dir', output_dir,
+            sys.executable,
+            str(synalign_script),
+            '--timing-report',
+            str(self.report_path),
+            '--netlist',
+            str(self.netlist_path),
+            '--liberty',
+            tools.liberty_file,
+            '--lgshell',
+            tools.lgshell_path,
+            '--synth-top',
+            synth_top,
+            '--orig-top',
+            orig_top,
+            '--elab-top',
+            elab_top,
+            '--output-dir',
+            output_dir,
         ]
 
         if standalone_files:
@@ -342,10 +404,10 @@ class ExtractCriticalStep(Step):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=1200,
+                timeout=3600,
             )
         except subprocess.TimeoutExpired:
-            print('  Warning: synalign timed out after 1200s')
+            print('  Warning: synalign timed out after 3600s')
             return None
         except Exception as e:
             print(f'  Warning: synalign failed: {e}')
@@ -371,9 +433,7 @@ class ExtractCriticalStep(Step):
 
         # Sanity check: read synalign file_paths and grep for module declarations
         if mappings and critical_path_modules:
-            synalign_files = sorted(set(
-                m['file_path'] for m in mappings if m.get('file_path')
-            ))
+            synalign_files = sorted(set(m['file_path'] for m in mappings if m.get('file_path')))
             # Collect all module names declared in synalign's files
             module_decl_re = re.compile(r'^\s*module\s+(\w+)', re.MULTILINE)
             synalign_declared_modules: set = set()
@@ -410,8 +470,9 @@ class ExtractCriticalStep(Step):
             raise RuntimeError(f'.Q port not found for {instance_name}')
 
         raw_signal = q_match.group(1)
-        # Cleanup: remove backslash, truncate at whitespace or '['
-        cleaned = re.sub(r'\\?([^\s\[]+).*', r'\1', raw_signal).strip()
+        # Cleanup: remove backslash, truncate at whitespace or '[',
+        # eg '\\pipeA_ex_mem.reg_nextpc [63]' -> `pipeA_ex_mem.reg_nextpc`
+        cleaned = raw_signal.lstrip('\\').split('[')[0].strip()
         return cleaned
 
     def _get_hierarchy_from_locator(self) -> Dict[str, List[str]]:
@@ -615,8 +676,8 @@ class ExtractCriticalStep(Step):
         name = match.group(1)
         # For those pin-number names (like p0, p1) produced by LiveHD,
         # we don't provide specific signal names in the annotation
-        if re.fullmatch(r'p\d+', name) or name == "empty":
-            return ""
+        if re.fullmatch(r'p\d+', name) or name == 'empty':
+            return ''
         return name
 
     def _annotate_rtl_with_critical_comments(self, synalign_result: Dict) -> Optional[Path]:

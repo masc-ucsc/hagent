@@ -81,13 +81,19 @@ class SynthSTAStep(Step):
         # STA command (note that synth.py's run-sta includes elab, synthesis, and sta)
         synth_top = benchmark.effective_synth_top
         cmd = [
-            sys.executable, str(synth_script),
-            '--dir', str(output_dir),
-            '--elab-method', tools.elab_method,
-            '--top-synthesis', synth_top,
+            sys.executable,
+            str(synth_script),
+            '--dir',
+            str(output_dir),
+            '--elab-method',
+            tools.elab_method,
+            '--top-synthesis',
+            synth_top,
             '--run-sta',
-            '--liberty', tools.liberty_file,
-            '--tag', tag,
+            '--liberty',
+            tools.liberty_file,
+            '--tag',
+            tag,
         ]
 
         if benchmark.output_module is not None:
@@ -126,7 +132,7 @@ class SynthSTAStep(Step):
         print(f'  Command: {" ".join(cmd[:8])}...')
 
         # Run synthesis
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
 
         if result.returncode != 0:
             print(f'Synthesis + STA stderr:\n{result.stderr}')

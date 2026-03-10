@@ -21,7 +21,9 @@ Usage in steps:
     set_field(output, 'sta.frequency_mhz', 450.5)
 """
 
-from typing import Optional, List, Dict, Any
+from __future__ import annotations
+
+from typing import Optional, List, Dict, Any, Self
 from pydantic import BaseModel, Field
 
 
@@ -118,7 +120,7 @@ class ConfigGroup(BaseModel):
         extra = 'forbid'  # Raise error on unexpected fields
 
     @classmethod
-    def from_data(cls, data: Dict[str, Any], key: str) -> 'ConfigGroup':
+    def from_data(cls, data: Dict[str, Any], key: str) -> Self:
         """
         Parse this config group from pipeline data.
 
@@ -138,7 +140,7 @@ class ConfigGroup(BaseModel):
         return cls(**subset)
 
     @classmethod
-    def from_data_optional(cls, data: Dict[str, Any], key: str) -> Optional['ConfigGroup']:
+    def from_data_optional(cls, data: Dict[str, Any], key: str) -> Optional[Self]:
         """Parse this config group, returning None if section is missing."""
         subset = data.get(key)
         if subset is None:
@@ -199,9 +201,10 @@ class RTLSourceConfig(ConfigGroup):
     """
 
     source_dir: str
-    manifest_file: Optional[str] = None
+    manifest_file: str
     file_patterns: List[str] = Field(default_factory=lambda: ['*.sv', '*.v'])
     standalone_files: Optional[List[str]] = None
+    hierarchy_file: str
 
 
 class ToolsConfig(ConfigGroup):
@@ -212,12 +215,14 @@ class ToolsConfig(ConfigGroup):
         tools:
           liberty_file: "/path/to/lib.lib"
           elab_method: "slang"
+          run_synalign: "false"
     """
 
     liberty_file: str = ''
     elab_method: str = 'auto'
     run_synalign: bool = False
-    lgshell_path: str = ''
+    lgshell_path: Optional[str] = None
+    open_ware_path: Optional[str] = None
 
 
 class ThresholdsConfig(ConfigGroup):
@@ -226,12 +231,16 @@ class ThresholdsConfig(ConfigGroup):
 
     YAML structure:
         thresholds:
-          lec_retry_max: 3
+          compile_fix_max: 3
+          lec_fix_max: 3
+          freq_refine_max: 3
           optimize_redo_max: 5
           min_improvement_pct: 5.0
     """
 
-    lec_retry_max: int = 3
+    compile_fix_max: int = 3
+    lec_fix_max: int = 3
+    freq_refine_max: int = 3
     optimize_redo_max: int = 5
     min_improvement_pct: float = 5.0
 
@@ -240,14 +249,18 @@ class LLMConfig(ConfigGroup):
     """
     LLM configuration - used by optimization step.
 
+    All agents (architecture_timing_optimizer, module_timing_optimizer,
+    syntax_fixer, lec_fixer) share a single conf_file.  LLM_wrap looks
+    up its section by `name`.
+
     YAML structure:
         llm:
-          conf_file: ""
-          max_variants: 2
+          conf_file: "/path/to/llm_agents.yaml"
+          max_num_candidates: 5
     """
 
     conf_file: str = ''
-    max_variants: int = 0
+    max_num_candidates: int = 5
 
 
 class StorageConfig(ConfigGroup):
