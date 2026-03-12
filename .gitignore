@@ -35,3 +35,5 @@ CLAUDE.md
 **/*_ast.json
 **/cva6_full_ast.json
 **/scoped_ast.json
+**/html_files/
+**/backup_runs/
