@@ -1,0 +1,23 @@
+unknown package 'ariane_pkg':
+  fix_question: |
+    // Imported packages
+    // FIXME_HINT: unknown package 'ariane_pkg'
+    // FIXME_HINT: import ariane_pkg::*;
+    // FIXME_HINT:        ^
+    import ariane_pkg::*;
+    import riscv::*;
+    import std_cache_pkg::*; 
+
+    module cache_ctrl_prop(input  logic                                 clk_i,
+    input  logic                                 rst_ni,
+  fix_answer: |
+    // Imported packages
+    // FIXME_HINT: unknown package 'ariane_pkg'
+    // FIXME_HINT: import ariane_pkg::*;
+    // FIXME_HINT:        ^
+    import ariane_pkg::*;
+    import riscv::*;
+    import std_cache_pkg::*; 
+
+    module cache_ctrl_prop(input  logic                                 clk_i,
+    input  logic                                 rst_ni,

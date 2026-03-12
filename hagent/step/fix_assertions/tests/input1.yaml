@@ -1,0 +1,18 @@
+description: |
+  input.yaml for GenSVA fix assertion agent
+
+
+sva_files: |
+  "/soe/czeng14/projects/SVA/jg_proj/load_unit/sva/files.vc"
+
+set_env_vars:
+  ROOT: "/soe/czeng14/projects/SVA/jg_proj/load_unit/sva"
+  DUT_ROOT: "/soe/czeng14/projects/SVA/ariane"
+  DUT_PATH: "/soe/czeng14/projects/SVA/ariane/src"
+  SRC_PATH0: "/soe/czeng14/projects/SVA/ariane/src/risc-dbg/src"
+  INC_PATH: "/soe/czeng14/projects/SVA/ariane/include"
+  PROP_PATH: "/soe/czeng14/projects/SVA/jg_proj/load_unit/sva"
+
+llm:
+  model: "fireworks_ai/accounts/fireworks/models/llama-v3p2-3b-instruct" # Cheap fireworks model
+

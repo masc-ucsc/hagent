@@ -170,6 +170,109 @@ def _run_jasper(fpv_dir: Path, jasper_bin: str) -> bool:
         return False
 
 
+def _session_log_path(fpv_dir: Path) -> Path:
+    return fpv_dir / 'jgproject' / 'sessionLogs' / 'session_0' / 'jg_session_0.log'
+
+
+def _has_was006_in_session0(fpv_dir: Path) -> bool:
+    p = _session_log_path(fpv_dir)
+    if not p.exists():
+        return False
+    try:
+        text = p.read_text(errors='ignore')
+        return 'WAS006' in text
+    except Exception:
+        return False
+
+
+def _write_check_assumptions_only_tcl(fpv_dir: Path) -> Path:
+    out_tcl = fpv_dir / 'FPV_check_assumptions_only.tcl'
+    filelist = fpv_dir / 'files.vc'
+    tcl = f"""# ----------------------------------------------------------------------------
+# JasperGold TCL — check_assumptions only (fast)
+# Purpose: localize overconstraint (WAS006) by generating :noConflict/:noDeadEnd
+# traces and minimized needed-assumption sets.
+# ----------------------------------------------------------------------------
+
+set OUT_DIR {fpv_dir}
+set FILELIST {filelist}
+
+set_elaborate_single_run_mode off
+set_automatic_library_search on
+set_analyze_libunboundsearch on
+set_analyze_librescan on
+
+analyze -clear
+analyze -sv12 -f $FILELIST
+
+elaborate -top cva6 -create_related_covers {{witness precondition}}
+
+clock clk_i
+reset -expression !rst_ni
+
+puts "=== check_assumptions: generating conflict/dead_end traces ==="
+# NOTE: The main FPV run can report WAS006 at cycle ~201 (see hunt :noConflict).
+# If max_length is smaller than that, check_assumptions may report "sanity" simply
+# because it never explores deep enough to hit the inconsistency/dead-end.
+set CA_MAX_LENGTH 300
+set CA_TIME_LIMIT 10m
+
+catch {{check_assumptions -conflict -verbosity 2 -max_length $CA_MAX_LENGTH -time_limit $CA_TIME_LIMIT}} ca_conflict_err
+if {{[info exists ca_conflict_err] && $ca_conflict_err ne ""}} {{ puts "INFO: conflict run msg: $ca_conflict_err" }}
+catch {{check_assumptions -dead_end -verbosity 2 -max_length $CA_MAX_LENGTH -time_limit $CA_TIME_LIMIT}} ca_deadend_err
+if {{[info exists ca_deadend_err] && $ca_deadend_err ne ""}} {{ puts "INFO: dead_end run msg: $ca_deadend_err" }}
+
+puts "=== check_assumptions: minimizing needed assumptions (from reset) ==="
+set CA_MIN_CONFLICT_RPT "$OUT_DIR/check_assumptions_minimize_conflict.txt"
+set fp [open $CA_MIN_CONFLICT_RPT w]
+puts $fp "=== check_assumptions -minimize -from_reset -conflict ==="
+set rc [catch {{puts $fp [check_assumptions -minimize -from_reset -conflict -verbosity 2 -max_length $CA_MAX_LENGTH -attempts 30 -attempts_time_limit 10m]}} err]
+if {{$rc != 0}} {{ puts $fp "ERROR: $err" }}
+close $fp
+puts "INFO: wrote $CA_MIN_CONFLICT_RPT"
+
+set CA_MIN_DEADEND_RPT "$OUT_DIR/check_assumptions_minimize_dead_end.txt"
+set fp [open $CA_MIN_DEADEND_RPT w]
+puts $fp "=== check_assumptions -minimize -from_reset -dead_end ==="
+set rc [catch {{puts $fp [check_assumptions -minimize -from_reset -dead_end -verbosity 2 -max_length $CA_MAX_LENGTH -attempts 30 -attempts_time_limit 10m]}} err]
+if {{$rc != 0}} {{ puts $fp "ERROR: $err" }}
+close $fp
+puts "INFO: wrote $CA_MIN_DEADEND_RPT"
+
+puts "=== done ==="
+exit
+"""
+    out_tcl.write_text(tcl, encoding='utf-8')
+    return out_tcl
+
+
+def _run_check_assumptions_only(fpv_dir: Path, jasper_bin: str) -> bool:
+    cmd = [jasper_bin, '-allow_unsupported_OS', '-tcl', 'FPV_check_assumptions_only.tcl', '-batch']
+    out_log = fpv_dir / 'jg.check_assumptions.stdout.log'
+    err_log = fpv_dir / 'jg.check_assumptions.stderr.log'
+    try:
+        with out_log.open('w') as fo, err_log.open('w') as fe:
+            subprocess.run(cmd, cwd=fpv_dir, stdout=fo, stderr=fe, check=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def _run_was006_check_assumptions_if_needed(fpv_dir: Path, jasper_bin: str) -> bool:
+    if not _has_was006_in_session0(fpv_dir):
+        return False
+
+    tcl_path = _write_check_assumptions_only_tcl(fpv_dir)
+    print(f'[POSTCHECK] WAS006 detected in {_session_log_path(fpv_dir)}')
+    print(f'[POSTCHECK] Generated: {tcl_path}')
+    ok = _run_check_assumptions_only(fpv_dir, jasper_bin)
+    if ok:
+        print('[POSTCHECK] check_assumptions-only run completed.')
+    else:
+        print('[POSTCHECK] check_assumptions-only run failed. See jg.check_assumptions.stdout.log / jg.check_assumptions.stderr.log')
+    return ok
+
+
 def run_postcheck_repair(
     fpv_dir: Path,
     sva_top: str,
@@ -183,6 +286,11 @@ def run_postcheck_repair(
     also_read_csv_spec: bool = True,
 ) -> int:
     fpv_dir = fpv_dir.resolve()
+
+    # If the latest Jasper session reports WAS006, run a focused check_assumptions
+    # pass before postcheck repair logic.
+    _run_was006_check_assumptions_if_needed(fpv_dir, jasper_bin)
+
     counts = _read_results_summary(fpv_dir / 'results_summary.csv')
     need, reason = _needs_repair(counts)
 
@@ -260,6 +368,7 @@ def run_postcheck_repair(
 
         if rerun_jg:
             ok2 = _run_jasper(fpv_dir, jasper_bin)
+            _run_was006_check_assumptions_if_needed(fpv_dir, jasper_bin)
             if ok2:
                 print('[POSTCHECK] Jasper rerun succeeded after patch.')
                 return 0

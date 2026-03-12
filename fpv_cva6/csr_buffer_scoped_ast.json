@@ -1,0 +1,1615 @@
+{
+  "name": "csr_buffer_i",
+  "kind": "Instance",
+  "source_file": "../cva6/core/ex_stage.sv",
+  "source_line": 368,
+  "source_column": 5,
+  "addr": 5501660614672,
+  "body": {
+    "name": "csr_buffer",
+    "kind": "InstanceBody",
+    "source_file": "../cva6/core/csr_buffer.sv",
+    "source_line": 17,
+    "source_column": 8,
+    "addr": 5501660614808,
+    "members": [
+      {
+        "name": "",
+        "kind": "WildcardImport",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 18,
+        "source_column": 22,
+        "addr": 5501660614992,
+        "isFromExport": false,
+        "package": "5501656791152 ariane_pkg"
+      },
+      {
+        "name": "CVA6Cfg",
+        "kind": "Parameter",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 20,
+        "source_column": 38,
+        "addr": 5501660615096,
+        "type": "5501656823000 config_pkg::cva6_cfg_t",
+        "initializer": {
+          "source_file_start": "../cva6/core/ex_stage.sv",
+          "source_file_end": "../cva6/core/ex_stage.sv",
+          "source_line_start": 366,
+          "source_line_end": 366,
+          "source_column_start": 18,
+          "source_column_end": 25,
+          "kind": "NamedValue",
+          "type": "5501656823000 config_pkg::cva6_cfg_t",
+          "symbol": "5501659009624 CVA6Cfg",
+          "constant": "17215'h10000000100000001100000011400000004000000020000000240000000200000002000000010000000000000000000000200000002000000002000000100000000200000001012880000000800000004000000020000000040000000080000001400000000000000800000000000000080800000002000000000000001000000001800000010000000140000008000000028000000040000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000040000000000000000400000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000001c00000000080000000400000028000000600000020000000201000000008000000100000000800000050000000c00000040000000400000001000000002000000200000000800000000200000010000000400000000300000020000000020000000200000001000000010000000900000007000000160000001610000002000000022000000020000000200000020000000200000000100000020000000000000000000000000"
+        },
+        "value": "17215'h10000000100000001100000011400000004000000020000000240000000200000002000000010000000000000000000000200000002000000002000000100000000200000001012880000000800000004000000020000000040000000080000001400000000000000800000000000000080800000002000000000000001000000001800000010000000140000008000000028000000040000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000040000000000000000400000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000001c00000000080000000400000028000000600000020000000201000000008000000100000000800000050000000c00000040000000400000001000000002000000200000000800000000200000010000000400000000300000020000000020000000200000001000000010000000900000007000000160000001610000002000000022000000020000000200000020000000200000000100000020000000000000000000000000",
+        "isLocal": false,
+        "isPort": true,
+        "isBody": false
+      },
+      {
+        "name": "fu_data_t",
+        "kind": "TypeParameter",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 21,
+        "source_column": 20,
+        "addr": 5501660615272,
+        "type": "5501659012008 ex_stage.fu_data_t",
+        "isLocal": false,
+        "isPort": true,
+        "isBody": false
+      },
+      {
+        "name": "clk_i",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 24,
+        "source_column": 17,
+        "addr": 5501660974256,
+        "type": "logic",
+        "direction": "In",
+        "internalSymbol": "5501660974384 clk_i"
+      },
+      {
+        "name": "clk_i",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 24,
+        "source_column": 17,
+        "addr": 5501660974384,
+        "type": "logic",
+        "lifetime": "Static"
+      },
+      {
+        "name": "rst_ni",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 26,
+        "source_column": 17,
+        "addr": 5501660974528,
+        "type": "logic",
+        "direction": "In",
+        "internalSymbol": "5501660974656 rst_ni"
+      },
+      {
+        "name": "rst_ni",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 26,
+        "source_column": 17,
+        "addr": 5501660974656,
+        "type": "logic",
+        "lifetime": "Static"
+      },
+      {
+        "name": "flush_i",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 28,
+        "source_column": 17,
+        "addr": 5501660974800,
+        "type": "logic",
+        "direction": "In",
+        "internalSymbol": "5501660974928 flush_i"
+      },
+      {
+        "name": "flush_i",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 28,
+        "source_column": 17,
+        "addr": 5501660974928,
+        "type": "logic",
+        "lifetime": "Static"
+      },
+      {
+        "name": "fu_data_i",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 30,
+        "source_column": 21,
+        "addr": 5501660983312,
+        "type": "5501660615440 csr_buffer.fu_data_t",
+        "direction": "In",
+        "internalSymbol": "5501660983440 fu_data_i"
+      },
+      {
+        "name": "fu_data_i",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 30,
+        "source_column": 21,
+        "addr": 5501660983440,
+        "type": "5501660615440 csr_buffer.fu_data_t",
+        "lifetime": "Static"
+      },
+      {
+        "name": "csr_ready_o",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 32,
+        "source_column": 18,
+        "addr": 5501660983584,
+        "type": "logic",
+        "direction": "Out",
+        "internalSymbol": "5501660983712 csr_ready_o"
+      },
+      {
+        "name": "csr_ready_o",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 32,
+        "source_column": 18,
+        "addr": 5501660983712,
+        "type": "logic",
+        "lifetime": "Static"
+      },
+      {
+        "name": "csr_valid_i",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 34,
+        "source_column": 17,
+        "addr": 5501660983856,
+        "type": "logic",
+        "direction": "In",
+        "internalSymbol": "5501660983984 csr_valid_i"
+      },
+      {
+        "name": "csr_valid_i",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 34,
+        "source_column": 17,
+        "addr": 5501660983984,
+        "type": "logic",
+        "lifetime": "Static"
+      },
+      {
+        "name": "csr_result_o",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 36,
+        "source_column": 37,
+        "addr": 5501660984128,
+        "type": "logic[31:0]",
+        "direction": "Out",
+        "internalSymbol": "5501660984256 csr_result_o"
+      },
+      {
+        "name": "csr_result_o",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 36,
+        "source_column": 37,
+        "addr": 5501660984256,
+        "type": "logic[31:0]",
+        "lifetime": "Static"
+      },
+      {
+        "name": "csr_commit_i",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 38,
+        "source_column": 17,
+        "addr": 5501660984400,
+        "type": "logic",
+        "direction": "In",
+        "internalSymbol": "5501660984528 csr_commit_i"
+      },
+      {
+        "name": "csr_commit_i",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 38,
+        "source_column": 17,
+        "addr": 5501660984528,
+        "type": "logic",
+        "lifetime": "Static"
+      },
+      {
+        "name": "csr_addr_o",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 40,
+        "source_column": 25,
+        "addr": 5501660984672,
+        "type": "logic[11:0]",
+        "direction": "Out",
+        "internalSymbol": "5501660984800 csr_addr_o"
+      },
+      {
+        "name": "csr_addr_o",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 40,
+        "source_column": 25,
+        "addr": 5501660984800,
+        "type": "logic[11:0]",
+        "lifetime": "Static"
+      },
+      {
+        "name": "csr_reg_n",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 48,
+        "source_column": 7,
+        "addr": 5501660615752,
+        "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$27",
+        "lifetime": "Static"
+      },
+      {
+        "name": "csr_reg_q",
+        "kind": "Variable",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 48,
+        "source_column": 18,
+        "addr": 5501660615896,
+        "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$28",
+        "lifetime": "Static"
+      },
+      {
+        "name": "",
+        "kind": "ContinuousAssign",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 51,
+        "source_column": 10,
+        "addr": 5501660985016,
+        "assignment": {
+          "source_file_start": "../cva6/core/csr_buffer.sv",
+          "source_file_end": "../cva6/core/csr_buffer.sv",
+          "source_line_start": 51,
+          "source_line_end": 51,
+          "source_column_start": 10,
+          "source_column_end": 44,
+          "kind": "Assignment",
+          "type": "logic[31:0]",
+          "left": {
+            "source_file_start": "../cva6/core/csr_buffer.sv",
+            "source_file_end": "../cva6/core/csr_buffer.sv",
+            "source_line_start": 51,
+            "source_line_end": 51,
+            "source_column_start": 10,
+            "source_column_end": 22,
+            "kind": "NamedValue",
+            "type": "logic[31:0]",
+            "symbol": "5501660984256 csr_result_o"
+          },
+          "right": {
+            "source_file_start": "../cva6/core/csr_buffer.sv",
+            "source_file_end": "../cva6/core/csr_buffer.sv",
+            "source_line_start": 51,
+            "source_line_end": 51,
+            "source_column_start": 25,
+            "source_column_end": 44,
+            "kind": "MemberAccess",
+            "type": "logic[31:0]",
+            "member": "5501660777504 operand_a",
+            "value": {
+              "source_file_start": "../cva6/core/csr_buffer.sv",
+              "source_file_end": "../cva6/core/csr_buffer.sv",
+              "source_line_start": 51,
+              "source_line_end": 51,
+              "source_column_start": 25,
+              "source_column_end": 34,
+              "kind": "NamedValue",
+              "type": "5501660615440 csr_buffer.fu_data_t",
+              "symbol": "5501660983440 fu_data_i"
+            }
+          },
+          "isNonBlocking": false
+        }
+      },
+      {
+        "name": "",
+        "kind": "ContinuousAssign",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 52,
+        "source_column": 10,
+        "addr": 5501660985104,
+        "assignment": {
+          "source_file_start": "../cva6/core/csr_buffer.sv",
+          "source_file_end": "../cva6/core/csr_buffer.sv",
+          "source_line_start": 52,
+          "source_line_end": 52,
+          "source_column_start": 10,
+          "source_column_end": 46,
+          "kind": "Assignment",
+          "type": "logic[11:0]",
+          "left": {
+            "source_file_start": "../cva6/core/csr_buffer.sv",
+            "source_file_end": "../cva6/core/csr_buffer.sv",
+            "source_line_start": 52,
+            "source_line_end": 52,
+            "source_column_start": 10,
+            "source_column_end": 20,
+            "kind": "NamedValue",
+            "type": "logic[11:0]",
+            "symbol": "5501660984800 csr_addr_o"
+          },
+          "right": {
+            "source_file_start": "../cva6/core/csr_buffer.sv",
+            "source_file_end": "../cva6/core/csr_buffer.sv",
+            "source_line_start": 52,
+            "source_line_end": 52,
+            "source_column_start": 25,
+            "source_column_end": 46,
+            "kind": "MemberAccess",
+            "type": "logic[11:0]",
+            "member": "5501660979216 csr_address",
+            "value": {
+              "source_file_start": "../cva6/core/csr_buffer.sv",
+              "source_file_end": "../cva6/core/csr_buffer.sv",
+              "source_line_start": 52,
+              "source_line_end": 52,
+              "source_column_start": 25,
+              "source_column_end": 34,
+              "kind": "NamedValue",
+              "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$28",
+              "symbol": "5501660615896 csr_reg_q"
+            }
+          },
+          "isNonBlocking": false
+        }
+      },
+      {
+        "name": "write",
+        "kind": "StatementBlock",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 55,
+        "source_column": 23,
+        "addr": 5501660616296
+      },
+      {
+        "name": "",
+        "kind": "ProceduralBlock",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 55,
+        "source_column": 3,
+        "addr": 5501660616184,
+        "procedureKind": "AlwaysComb",
+        "body": {
+          "source_file_start": "../cva6/core/csr_buffer.sv",
+          "source_file_end": "../cva6/core/csr_buffer.sv",
+          "source_line_start": 55,
+          "source_line_end": 73,
+          "source_column_start": 15,
+          "source_column_end": 6,
+          "kind": "Block",
+          "blockKind": "Sequential",
+          "block": "5501660616296 write",
+          "body": {
+            "source_file_start": "../cva6/core/csr_buffer.sv",
+            "source_file_end": "../cva6/core/csr_buffer.sv",
+            "source_line_start": 55,
+            "source_line_end": 73,
+            "source_column_start": 15,
+            "source_column_end": 6,
+            "kind": "List",
+            "list": [
+              {
+                "source_file_start": "../cva6/core/csr_buffer.sv",
+                "source_file_end": "../cva6/core/csr_buffer.sv",
+                "source_line_start": 56,
+                "source_line_end": 56,
+                "source_column_start": 5,
+                "source_column_end": 29,
+                "kind": "ExpressionStatement",
+                "expr": {
+                  "source_file_start": "../cva6/core/csr_buffer.sv",
+                  "source_file_end": "../cva6/core/csr_buffer.sv",
+                  "source_line_start": 56,
+                  "source_line_end": 56,
+                  "source_column_start": 5,
+                  "source_column_end": 28,
+                  "kind": "Assignment",
+                  "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$27",
+                  "left": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 56,
+                    "source_line_end": 56,
+                    "source_column_start": 5,
+                    "source_column_end": 14,
+                    "kind": "NamedValue",
+                    "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$27",
+                    "symbol": "5501660615752 csr_reg_n"
+                  },
+                  "right": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 56,
+                    "source_line_end": 56,
+                    "source_column_start": 19,
+                    "source_column_end": 28,
+                    "kind": "NamedValue",
+                    "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$28",
+                    "symbol": "5501660615896 csr_reg_q"
+                  },
+                  "isNonBlocking": false
+                }
+              },
+              {
+                "source_file_start": "../cva6/core/csr_buffer.sv",
+                "source_file_end": "../cva6/core/csr_buffer.sv",
+                "source_line_start": 58,
+                "source_line_end": 58,
+                "source_column_start": 5,
+                "source_column_end": 24,
+                "kind": "ExpressionStatement",
+                "expr": {
+                  "source_file_start": "../cva6/core/csr_buffer.sv",
+                  "source_file_end": "../cva6/core/csr_buffer.sv",
+                  "source_line_start": 58,
+                  "source_line_end": 58,
+                  "source_column_start": 5,
+                  "source_column_end": 23,
+                  "kind": "Assignment",
+                  "type": "logic",
+                  "left": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 58,
+                    "source_line_end": 58,
+                    "source_column_start": 5,
+                    "source_column_end": 16,
+                    "kind": "NamedValue",
+                    "type": "logic",
+                    "symbol": "5501660983712 csr_ready_o"
+                  },
+                  "right": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 58,
+                    "source_line_end": 58,
+                    "source_column_start": 19,
+                    "source_column_end": 23,
+                    "kind": "Conversion",
+                    "type": "logic",
+                    "operand": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 58,
+                      "source_line_end": 58,
+                      "source_column_start": 19,
+                      "source_column_end": 23,
+                      "kind": "IntegerLiteral",
+                      "type": "bit[0:0]",
+                      "value": "1'b1",
+                      "constant": "1'b1"
+                    },
+                    "constant": "1'b1"
+                  },
+                  "isNonBlocking": false
+                }
+              },
+              {
+                "source_file_start": "../cva6/core/csr_buffer.sv",
+                "source_file_end": "../cva6/core/csr_buffer.sv",
+                "source_line_start": 60,
+                "source_line_end": 60,
+                "source_column_start": 5,
+                "source_column_end": 79,
+                "kind": "Conditional",
+                "conditions": [
+                  {
+                    "expr": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 60,
+                      "source_line_end": 60,
+                      "source_column_start": 9,
+                      "source_column_end": 58,
+                      "kind": "BinaryOp",
+                      "type": "logic",
+                      "op": "LogicalAnd",
+                      "left": {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 60,
+                        "source_line_end": 60,
+                        "source_column_start": 10,
+                        "source_column_end": 40,
+                        "kind": "BinaryOp",
+                        "type": "logic",
+                        "op": "LogicalOr",
+                        "left": {
+                          "source_file_start": "../cva6/core/csr_buffer.sv",
+                          "source_file_end": "../cva6/core/csr_buffer.sv",
+                          "source_line_start": 60,
+                          "source_line_end": 60,
+                          "source_column_start": 10,
+                          "source_column_end": 25,
+                          "kind": "MemberAccess",
+                          "type": "logic",
+                          "member": "5501660979376 valid",
+                          "value": {
+                            "source_file_start": "../cva6/core/csr_buffer.sv",
+                            "source_file_end": "../cva6/core/csr_buffer.sv",
+                            "source_line_start": 60,
+                            "source_line_end": 60,
+                            "source_column_start": 10,
+                            "source_column_end": 19,
+                            "kind": "NamedValue",
+                            "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$28",
+                            "symbol": "5501660615896 csr_reg_q"
+                          }
+                        },
+                        "right": {
+                          "source_file_start": "../cva6/core/csr_buffer.sv",
+                          "source_file_end": "../cva6/core/csr_buffer.sv",
+                          "source_line_start": 60,
+                          "source_line_end": 60,
+                          "source_column_start": 29,
+                          "source_column_end": 40,
+                          "kind": "NamedValue",
+                          "type": "logic",
+                          "symbol": "5501660983984 csr_valid_i"
+                        }
+                      },
+                      "right": {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 60,
+                        "source_line_end": 60,
+                        "source_column_start": 45,
+                        "source_column_end": 58,
+                        "kind": "UnaryOp",
+                        "type": "logic",
+                        "op": "BitwiseNot",
+                        "operand": {
+                          "source_file_start": "../cva6/core/csr_buffer.sv",
+                          "source_file_end": "../cva6/core/csr_buffer.sv",
+                          "source_line_start": 60,
+                          "source_line_end": 60,
+                          "source_column_start": 46,
+                          "source_column_end": 58,
+                          "kind": "NamedValue",
+                          "type": "logic",
+                          "symbol": "5501660984528 csr_commit_i"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "check": "None",
+                "ifTrue": {
+                  "source_file_start": "../cva6/core/csr_buffer.sv",
+                  "source_file_end": "../cva6/core/csr_buffer.sv",
+                  "source_line_start": 60,
+                  "source_line_end": 60,
+                  "source_column_start": 60,
+                  "source_column_end": 79,
+                  "kind": "ExpressionStatement",
+                  "expr": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 60,
+                    "source_line_end": 60,
+                    "source_column_start": 60,
+                    "source_column_end": 78,
+                    "kind": "Assignment",
+                    "type": "logic",
+                    "left": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 60,
+                      "source_line_end": 60,
+                      "source_column_start": 60,
+                      "source_column_end": 71,
+                      "kind": "NamedValue",
+                      "type": "logic",
+                      "symbol": "5501660983712 csr_ready_o"
+                    },
+                    "right": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 60,
+                      "source_line_end": 60,
+                      "source_column_start": 74,
+                      "source_column_end": 78,
+                      "kind": "Conversion",
+                      "type": "logic",
+                      "operand": {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 60,
+                        "source_line_end": 60,
+                        "source_column_start": 74,
+                        "source_column_end": 78,
+                        "kind": "IntegerLiteral",
+                        "type": "bit[0:0]",
+                        "value": "1'b0",
+                        "constant": "1'b0"
+                      },
+                      "constant": "1'b0"
+                    },
+                    "isNonBlocking": false
+                  }
+                }
+              },
+              {
+                "source_file_start": "../cva6/core/csr_buffer.sv",
+                "source_file_end": "../cva6/core/csr_buffer.sv",
+                "source_line_start": 63,
+                "source_line_end": 66,
+                "source_column_start": 5,
+                "source_column_end": 8,
+                "kind": "Conditional",
+                "conditions": [
+                  {
+                    "expr": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 63,
+                      "source_line_end": 63,
+                      "source_column_start": 9,
+                      "source_column_end": 20,
+                      "kind": "NamedValue",
+                      "type": "logic",
+                      "symbol": "5501660983984 csr_valid_i"
+                    }
+                  }
+                ],
+                "check": "None",
+                "ifTrue": {
+                  "source_file_start": "../cva6/core/csr_buffer.sv",
+                  "source_file_end": "../cva6/core/csr_buffer.sv",
+                  "source_line_start": 63,
+                  "source_line_end": 66,
+                  "source_column_start": 22,
+                  "source_column_end": 8,
+                  "kind": "Block",
+                  "blockKind": "Sequential",
+                  "body": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 63,
+                    "source_line_end": 66,
+                    "source_column_start": 22,
+                    "source_column_end": 8,
+                    "kind": "List",
+                    "list": [
+                      {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 64,
+                        "source_line_end": 64,
+                        "source_column_start": 7,
+                        "source_column_end": 57,
+                        "kind": "ExpressionStatement",
+                        "expr": {
+                          "source_file_start": "../cva6/core/csr_buffer.sv",
+                          "source_file_end": "../cva6/core/csr_buffer.sv",
+                          "source_line_start": 64,
+                          "source_line_end": 64,
+                          "source_column_start": 7,
+                          "source_column_end": 56,
+                          "kind": "Assignment",
+                          "type": "logic[11:0]",
+                          "left": {
+                            "source_file_start": "../cva6/core/csr_buffer.sv",
+                            "source_file_end": "../cva6/core/csr_buffer.sv",
+                            "source_line_start": 64,
+                            "source_line_end": 64,
+                            "source_column_start": 7,
+                            "source_column_end": 28,
+                            "kind": "MemberAccess",
+                            "type": "logic[11:0]",
+                            "member": "5501660986752 csr_address",
+                            "value": {
+                              "source_file_start": "../cva6/core/csr_buffer.sv",
+                              "source_file_end": "../cva6/core/csr_buffer.sv",
+                              "source_line_start": 64,
+                              "source_line_end": 64,
+                              "source_column_start": 7,
+                              "source_column_end": 16,
+                              "kind": "NamedValue",
+                              "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$27",
+                              "symbol": "5501660615752 csr_reg_n"
+                            }
+                          },
+                          "right": {
+                            "source_file_start": "../cva6/core/csr_buffer.sv",
+                            "source_file_end": "../cva6/core/csr_buffer.sv",
+                            "source_line_start": 64,
+                            "source_line_end": 64,
+                            "source_column_start": 31,
+                            "source_column_end": 56,
+                            "kind": "RangeSelect",
+                            "type": "logic[11:0]",
+                            "selectionKind": "Simple",
+                            "value": {
+                              "source_file_start": "../cva6/core/csr_buffer.sv",
+                              "source_file_end": "../cva6/core/csr_buffer.sv",
+                              "source_line_start": 64,
+                              "source_line_end": 64,
+                              "source_column_start": 31,
+                              "source_column_end": 50,
+                              "kind": "MemberAccess",
+                              "type": "logic[31:0]",
+                              "member": "5501660778096 operand_b",
+                              "value": {
+                                "source_file_start": "../cva6/core/csr_buffer.sv",
+                                "source_file_end": "../cva6/core/csr_buffer.sv",
+                                "source_line_start": 64,
+                                "source_line_end": 64,
+                                "source_column_start": 31,
+                                "source_column_end": 40,
+                                "kind": "NamedValue",
+                                "type": "5501660615440 csr_buffer.fu_data_t",
+                                "symbol": "5501660983440 fu_data_i"
+                              }
+                            },
+                            "left": {
+                              "source_file_start": "../cva6/core/csr_buffer.sv",
+                              "source_file_end": "../cva6/core/csr_buffer.sv",
+                              "source_line_start": 64,
+                              "source_line_end": 64,
+                              "source_column_start": 51,
+                              "source_column_end": 53,
+                              "kind": "IntegerLiteral",
+                              "type": "int",
+                              "value": "11",
+                              "constant": "11"
+                            },
+                            "right": {
+                              "source_file_start": "../cva6/core/csr_buffer.sv",
+                              "source_file_end": "../cva6/core/csr_buffer.sv",
+                              "source_line_start": 64,
+                              "source_line_end": 64,
+                              "source_column_start": 54,
+                              "source_column_end": 55,
+                              "kind": "IntegerLiteral",
+                              "type": "int",
+                              "value": "0",
+                              "constant": "0"
+                            }
+                          },
+                          "isNonBlocking": false
+                        }
+                      },
+                      {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 65,
+                        "source_line_end": 65,
+                        "source_column_start": 7,
+                        "source_column_end": 36,
+                        "kind": "ExpressionStatement",
+                        "expr": {
+                          "source_file_start": "../cva6/core/csr_buffer.sv",
+                          "source_file_end": "../cva6/core/csr_buffer.sv",
+                          "source_line_start": 65,
+                          "source_line_end": 65,
+                          "source_column_start": 7,
+                          "source_column_end": 35,
+                          "kind": "Assignment",
+                          "type": "logic",
+                          "left": {
+                            "source_file_start": "../cva6/core/csr_buffer.sv",
+                            "source_file_end": "../cva6/core/csr_buffer.sv",
+                            "source_line_start": 65,
+                            "source_line_end": 65,
+                            "source_column_start": 7,
+                            "source_column_end": 22,
+                            "kind": "MemberAccess",
+                            "type": "logic",
+                            "member": "5501660986912 valid",
+                            "value": {
+                              "source_file_start": "../cva6/core/csr_buffer.sv",
+                              "source_file_end": "../cva6/core/csr_buffer.sv",
+                              "source_line_start": 65,
+                              "source_line_end": 65,
+                              "source_column_start": 7,
+                              "source_column_end": 16,
+                              "kind": "NamedValue",
+                              "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$27",
+                              "symbol": "5501660615752 csr_reg_n"
+                            }
+                          },
+                          "right": {
+                            "source_file_start": "../cva6/core/csr_buffer.sv",
+                            "source_file_end": "../cva6/core/csr_buffer.sv",
+                            "source_line_start": 65,
+                            "source_line_end": 65,
+                            "source_column_start": 31,
+                            "source_column_end": 35,
+                            "kind": "Conversion",
+                            "type": "logic",
+                            "operand": {
+                              "source_file_start": "../cva6/core/csr_buffer.sv",
+                              "source_file_end": "../cva6/core/csr_buffer.sv",
+                              "source_line_start": 65,
+                              "source_line_end": 65,
+                              "source_column_start": 31,
+                              "source_column_end": 35,
+                              "kind": "IntegerLiteral",
+                              "type": "bit[0:0]",
+                              "value": "1'b1",
+                              "constant": "1'b1"
+                            },
+                            "constant": "1'b1"
+                          },
+                          "isNonBlocking": false
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "source_file_start": "../cva6/core/csr_buffer.sv",
+                "source_file_end": "../cva6/core/csr_buffer.sv",
+                "source_line_start": 68,
+                "source_line_end": 70,
+                "source_column_start": 5,
+                "source_column_end": 8,
+                "kind": "Conditional",
+                "conditions": [
+                  {
+                    "expr": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 68,
+                      "source_line_end": 68,
+                      "source_column_start": 9,
+                      "source_column_end": 37,
+                      "kind": "BinaryOp",
+                      "type": "logic",
+                      "op": "LogicalAnd",
+                      "left": {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 68,
+                        "source_line_end": 68,
+                        "source_column_start": 9,
+                        "source_column_end": 21,
+                        "kind": "NamedValue",
+                        "type": "logic",
+                        "symbol": "5501660984528 csr_commit_i"
+                      },
+                      "right": {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 68,
+                        "source_line_end": 68,
+                        "source_column_start": 25,
+                        "source_column_end": 37,
+                        "kind": "UnaryOp",
+                        "type": "logic",
+                        "op": "BitwiseNot",
+                        "operand": {
+                          "source_file_start": "../cva6/core/csr_buffer.sv",
+                          "source_file_end": "../cva6/core/csr_buffer.sv",
+                          "source_line_start": 68,
+                          "source_line_end": 68,
+                          "source_column_start": 26,
+                          "source_column_end": 37,
+                          "kind": "NamedValue",
+                          "type": "logic",
+                          "symbol": "5501660983984 csr_valid_i"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "check": "None",
+                "ifTrue": {
+                  "source_file_start": "../cva6/core/csr_buffer.sv",
+                  "source_file_end": "../cva6/core/csr_buffer.sv",
+                  "source_line_start": 69,
+                  "source_line_end": 69,
+                  "source_column_start": 7,
+                  "source_column_end": 30,
+                  "kind": "Block",
+                  "blockKind": "Sequential",
+                  "body": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 69,
+                    "source_line_end": 69,
+                    "source_column_start": 7,
+                    "source_column_end": 30,
+                    "kind": "ExpressionStatement",
+                    "expr": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 69,
+                      "source_line_end": 69,
+                      "source_column_start": 7,
+                      "source_column_end": 29,
+                      "kind": "Assignment",
+                      "type": "logic",
+                      "left": {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 69,
+                        "source_line_end": 69,
+                        "source_column_start": 7,
+                        "source_column_end": 22,
+                        "kind": "MemberAccess",
+                        "type": "logic",
+                        "member": "5501660986912 valid",
+                        "value": {
+                          "source_file_start": "../cva6/core/csr_buffer.sv",
+                          "source_file_end": "../cva6/core/csr_buffer.sv",
+                          "source_line_start": 69,
+                          "source_line_end": 69,
+                          "source_column_start": 7,
+                          "source_column_end": 16,
+                          "kind": "NamedValue",
+                          "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$27",
+                          "symbol": "5501660615752 csr_reg_n"
+                        }
+                      },
+                      "right": {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 69,
+                        "source_line_end": 69,
+                        "source_column_start": 25,
+                        "source_column_end": 29,
+                        "kind": "Conversion",
+                        "type": "logic",
+                        "operand": {
+                          "source_file_start": "../cva6/core/csr_buffer.sv",
+                          "source_file_end": "../cva6/core/csr_buffer.sv",
+                          "source_line_start": 69,
+                          "source_line_end": 69,
+                          "source_column_start": 25,
+                          "source_column_end": 29,
+                          "kind": "IntegerLiteral",
+                          "type": "bit[0:0]",
+                          "value": "1'b0",
+                          "constant": "1'b0"
+                        },
+                        "constant": "1'b0"
+                      },
+                      "isNonBlocking": false
+                    }
+                  }
+                }
+              },
+              {
+                "source_file_start": "../cva6/core/csr_buffer.sv",
+                "source_file_end": "../cva6/core/csr_buffer.sv",
+                "source_line_start": 72,
+                "source_line_end": 72,
+                "source_column_start": 5,
+                "source_column_end": 41,
+                "kind": "Conditional",
+                "conditions": [
+                  {
+                    "expr": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 72,
+                      "source_line_end": 72,
+                      "source_column_start": 9,
+                      "source_column_end": 16,
+                      "kind": "NamedValue",
+                      "type": "logic",
+                      "symbol": "5501660974928 flush_i"
+                    }
+                  }
+                ],
+                "check": "None",
+                "ifTrue": {
+                  "source_file_start": "../cva6/core/csr_buffer.sv",
+                  "source_file_end": "../cva6/core/csr_buffer.sv",
+                  "source_line_start": 72,
+                  "source_line_end": 72,
+                  "source_column_start": 18,
+                  "source_column_end": 41,
+                  "kind": "ExpressionStatement",
+                  "expr": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 72,
+                    "source_line_end": 72,
+                    "source_column_start": 18,
+                    "source_column_end": 40,
+                    "kind": "Assignment",
+                    "type": "logic",
+                    "left": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 72,
+                      "source_line_end": 72,
+                      "source_column_start": 18,
+                      "source_column_end": 33,
+                      "kind": "MemberAccess",
+                      "type": "logic",
+                      "member": "5501660986912 valid",
+                      "value": {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 72,
+                        "source_line_end": 72,
+                        "source_column_start": 18,
+                        "source_column_end": 27,
+                        "kind": "NamedValue",
+                        "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$27",
+                        "symbol": "5501660615752 csr_reg_n"
+                      }
+                    },
+                    "right": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 72,
+                      "source_line_end": 72,
+                      "source_column_start": 36,
+                      "source_column_end": 40,
+                      "kind": "Conversion",
+                      "type": "logic",
+                      "operand": {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 72,
+                        "source_line_end": 72,
+                        "source_column_start": 36,
+                        "source_column_end": 40,
+                        "kind": "IntegerLiteral",
+                        "type": "bit[0:0]",
+                        "value": "1'b0",
+                        "constant": "1'b0"
+                      },
+                      "constant": "1'b0"
+                    },
+                    "isNonBlocking": false
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "",
+        "kind": "ProceduralBlock",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 75,
+        "source_column": 3,
+        "addr": 5501660616456,
+        "procedureKind": "AlwaysFF",
+        "body": {
+          "source_file_start": "../cva6/core/csr_buffer.sv",
+          "source_file_end": "../cva6/core/csr_buffer.sv",
+          "source_line_start": 75,
+          "source_line_end": 81,
+          "source_column_start": 13,
+          "source_column_end": 6,
+          "kind": "Timed",
+          "timing": {
+            "source_file_start": "../cva6/core/csr_buffer.sv",
+            "source_file_end": "../cva6/core/csr_buffer.sv",
+            "source_line_start": 75,
+            "source_line_end": 75,
+            "source_column_start": 14,
+            "source_column_end": 47,
+            "kind": "EventList",
+            "events": [
+              {
+                "source_file_start": "../cva6/core/csr_buffer.sv",
+                "source_file_end": "../cva6/core/csr_buffer.sv",
+                "source_line_start": 75,
+                "source_line_end": 75,
+                "source_column_start": 15,
+                "source_column_end": 28,
+                "kind": "SignalEvent",
+                "expr": {
+                  "source_file_start": "../cva6/core/csr_buffer.sv",
+                  "source_file_end": "../cva6/core/csr_buffer.sv",
+                  "source_line_start": 75,
+                  "source_line_end": 75,
+                  "source_column_start": 23,
+                  "source_column_end": 28,
+                  "kind": "NamedValue",
+                  "type": "logic",
+                  "symbol": "5501660974384 clk_i"
+                },
+                "edge": "PosEdge"
+              },
+              {
+                "source_file_start": "../cva6/core/csr_buffer.sv",
+                "source_file_end": "../cva6/core/csr_buffer.sv",
+                "source_line_start": 75,
+                "source_line_end": 75,
+                "source_column_start": 32,
+                "source_column_end": 46,
+                "kind": "SignalEvent",
+                "expr": {
+                  "source_file_start": "../cva6/core/csr_buffer.sv",
+                  "source_file_end": "../cva6/core/csr_buffer.sv",
+                  "source_line_start": 75,
+                  "source_line_end": 75,
+                  "source_column_start": 40,
+                  "source_column_end": 46,
+                  "kind": "NamedValue",
+                  "type": "logic",
+                  "symbol": "5501660974656 rst_ni"
+                },
+                "edge": "NegEdge"
+              }
+            ]
+          },
+          "stmt": {
+            "source_file_start": "../cva6/core/csr_buffer.sv",
+            "source_file_end": "../cva6/core/csr_buffer.sv",
+            "source_line_start": 76,
+            "source_line_end": 80,
+            "source_column_start": 5,
+            "source_column_end": 8,
+            "kind": "Block",
+            "blockKind": "Sequential",
+            "body": {
+              "source_file_start": "../cva6/core/csr_buffer.sv",
+              "source_file_end": "../cva6/core/csr_buffer.sv",
+              "source_line_start": 76,
+              "source_line_end": 80,
+              "source_column_start": 5,
+              "source_column_end": 8,
+              "kind": "Conditional",
+              "conditions": [
+                {
+                  "expr": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 76,
+                    "source_line_end": 76,
+                    "source_column_start": 9,
+                    "source_column_end": 16,
+                    "kind": "UnaryOp",
+                    "type": "logic",
+                    "op": "BitwiseNot",
+                    "operand": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 76,
+                      "source_line_end": 76,
+                      "source_column_start": 10,
+                      "source_column_end": 16,
+                      "kind": "NamedValue",
+                      "type": "logic",
+                      "symbol": "5501660974656 rst_ni"
+                    }
+                  }
+                }
+              ],
+              "check": "None",
+              "ifTrue": {
+                "source_file_start": "../cva6/core/csr_buffer.sv",
+                "source_file_end": "../cva6/core/csr_buffer.sv",
+                "source_line_start": 77,
+                "source_line_end": 77,
+                "source_column_start": 7,
+                "source_column_end": 34,
+                "kind": "Block",
+                "blockKind": "Sequential",
+                "body": {
+                  "source_file_start": "../cva6/core/csr_buffer.sv",
+                  "source_file_end": "../cva6/core/csr_buffer.sv",
+                  "source_line_start": 77,
+                  "source_line_end": 77,
+                  "source_column_start": 7,
+                  "source_column_end": 34,
+                  "kind": "ExpressionStatement",
+                  "expr": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 77,
+                    "source_line_end": 77,
+                    "source_column_start": 7,
+                    "source_column_end": 33,
+                    "kind": "Assignment",
+                    "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$28",
+                    "left": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 77,
+                      "source_line_end": 77,
+                      "source_column_start": 7,
+                      "source_column_end": 16,
+                      "kind": "NamedValue",
+                      "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$28",
+                      "symbol": "5501660615896 csr_reg_q"
+                    },
+                    "right": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 77,
+                      "source_line_end": 77,
+                      "source_column_start": 20,
+                      "source_column_end": 33,
+                      "kind": "StructuredAssignmentPattern",
+                      "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$28",
+                      "defaultSetter": {
+                        "source_file_start": "../cva6/core/csr_buffer.sv",
+                        "source_file_end": "../cva6/core/csr_buffer.sv",
+                        "source_line_start": 77,
+                        "source_line_end": 77,
+                        "source_column_start": 31,
+                        "source_column_end": 32,
+                        "kind": "IntegerLiteral",
+                        "type": "int",
+                        "value": "0"
+                      }
+                    },
+                    "isNonBlocking": true
+                  }
+                }
+              },
+              "ifFalse": {
+                "source_file_start": "../cva6/core/csr_buffer.sv",
+                "source_file_end": "../cva6/core/csr_buffer.sv",
+                "source_line_start": 79,
+                "source_line_end": 79,
+                "source_column_start": 7,
+                "source_column_end": 30,
+                "kind": "Block",
+                "blockKind": "Sequential",
+                "body": {
+                  "source_file_start": "../cva6/core/csr_buffer.sv",
+                  "source_file_end": "../cva6/core/csr_buffer.sv",
+                  "source_line_start": 79,
+                  "source_line_end": 79,
+                  "source_column_start": 7,
+                  "source_column_end": 30,
+                  "kind": "ExpressionStatement",
+                  "expr": {
+                    "source_file_start": "../cva6/core/csr_buffer.sv",
+                    "source_file_end": "../cva6/core/csr_buffer.sv",
+                    "source_line_start": 79,
+                    "source_line_end": 79,
+                    "source_column_start": 7,
+                    "source_column_end": 29,
+                    "kind": "Assignment",
+                    "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$28",
+                    "left": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 79,
+                      "source_line_end": 79,
+                      "source_column_start": 7,
+                      "source_column_end": 16,
+                      "kind": "NamedValue",
+                      "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$28",
+                      "symbol": "5501660615896 csr_reg_q"
+                    },
+                    "right": {
+                      "source_file_start": "../cva6/core/csr_buffer.sv",
+                      "source_file_end": "../cva6/core/csr_buffer.sv",
+                      "source_line_start": 79,
+                      "source_line_end": 79,
+                      "source_column_start": 20,
+                      "source_column_end": 29,
+                      "kind": "NamedValue",
+                      "type": "struct packed{logic[11:0] csr_address;logic valid;}csr_buffer.s$27",
+                      "symbol": "5501660615752 csr_reg_n"
+                    },
+                    "isNonBlocking": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "definition": "5501655876864 csr_buffer"
+  },
+  "connections": [
+    {
+      "port": {
+        "name": "clk_i",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 24,
+        "source_column": 17,
+        "addr": 5501660974256,
+        "type": "logic",
+        "direction": "In",
+        "internalSymbol": "5501660974384 clk_i"
+      },
+      "expr": {
+        "source_file_start": "../cva6/core/ex_stage.sv",
+        "source_file_end": "../cva6/core/ex_stage.sv",
+        "source_line_start": 369,
+        "source_line_end": 369,
+        "source_column_start": 8,
+        "source_column_end": 13,
+        "kind": "NamedValue",
+        "type": "logic",
+        "symbol": "5501660578984 clk_i"
+      }
+    },
+    {
+      "port": {
+        "name": "rst_ni",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 26,
+        "source_column": 17,
+        "addr": 5501660974528,
+        "type": "logic",
+        "direction": "In",
+        "internalSymbol": "5501660974656 rst_ni"
+      },
+      "expr": {
+        "source_file_start": "../cva6/core/ex_stage.sv",
+        "source_file_end": "../cva6/core/ex_stage.sv",
+        "source_line_start": 370,
+        "source_line_end": 370,
+        "source_column_start": 8,
+        "source_column_end": 14,
+        "kind": "NamedValue",
+        "type": "logic",
+        "symbol": "5501660579256 rst_ni"
+      }
+    },
+    {
+      "port": {
+        "name": "flush_i",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 28,
+        "source_column": 17,
+        "addr": 5501660974800,
+        "type": "logic",
+        "direction": "In",
+        "internalSymbol": "5501660974928 flush_i"
+      },
+      "expr": {
+        "source_file_start": "../cva6/core/ex_stage.sv",
+        "source_file_end": "../cva6/core/ex_stage.sv",
+        "source_line_start": 371,
+        "source_line_end": 371,
+        "source_column_start": 8,
+        "source_column_end": 15,
+        "kind": "NamedValue",
+        "type": "logic",
+        "symbol": "5501660579528 flush_i"
+      }
+    },
+    {
+      "port": {
+        "name": "fu_data_i",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 30,
+        "source_column": 21,
+        "addr": 5501660983312,
+        "type": "5501660615440 csr_buffer.fu_data_t",
+        "direction": "In",
+        "internalSymbol": "5501660983440 fu_data_i"
+      },
+      "expr": {
+        "source_file_start": "../cva6/core/ex_stage.sv",
+        "source_file_end": "../cva6/core/ex_stage.sv",
+        "source_line_start": 372,
+        "source_line_end": 372,
+        "source_column_start": 21,
+        "source_column_end": 35,
+        "kind": "NamedValue",
+        "type": "5501659012008 ex_stage.fu_data_t",
+        "symbol": "5501660578424 one_cycle_data"
+      }
+    },
+    {
+      "port": {
+        "name": "csr_ready_o",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 32,
+        "source_column": 18,
+        "addr": 5501660983584,
+        "type": "logic",
+        "direction": "Out",
+        "internalSymbol": "5501660983712 csr_ready_o"
+      },
+      "expr": {
+        "source_file_start": "../cva6/core/ex_stage.sv",
+        "source_file_end": "../cva6/core/ex_stage.sv",
+        "source_line_start": 374,
+        "source_line_end": 374,
+        "source_column_start": 21,
+        "source_column_end": 30,
+        "kind": "Assignment",
+        "type": "logic",
+        "left": {
+          "source_file_start": "../cva6/core/ex_stage.sv",
+          "source_file_end": "../cva6/core/ex_stage.sv",
+          "source_line_start": 374,
+          "source_line_end": 374,
+          "source_column_start": 21,
+          "source_column_end": 30,
+          "kind": "NamedValue",
+          "type": "logic",
+          "symbol": "5501659017664 csr_ready"
+        },
+        "right": {
+          "source_file_start": "../cva6/core/ex_stage.sv",
+          "source_file_end": "../cva6/core/ex_stage.sv",
+          "source_line_start": 374,
+          "source_line_end": 374,
+          "source_column_start": 21,
+          "source_column_end": 30,
+          "kind": "EmptyArgument",
+          "type": "logic"
+        },
+        "isNonBlocking": false
+      }
+    },
+    {
+      "port": {
+        "name": "csr_valid_i",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 34,
+        "source_column": 17,
+        "addr": 5501660983856,
+        "type": "logic",
+        "direction": "In",
+        "internalSymbol": "5501660983984 csr_valid_i"
+      },
+      "expr": {
+        "source_file_start": "../cva6/core/ex_stage.sv",
+        "source_file_end": "../cva6/core/ex_stage.sv",
+        "source_line_start": 373,
+        "source_line_end": 373,
+        "source_column_start": 21,
+        "source_column_end": 33,
+        "kind": "UnaryOp",
+        "type": "logic",
+        "op": "BitwiseOr",
+        "operand": {
+          "source_file_start": "../cva6/core/ex_stage.sv",
+          "source_file_end": "../cva6/core/ex_stage.sv",
+          "source_line_start": 373,
+          "source_line_end": 373,
+          "source_column_start": 22,
+          "source_column_end": 33,
+          "kind": "NamedValue",
+          "type": "logic[0:0]",
+          "symbol": "5501660585296 csr_valid_i"
+        }
+      }
+    },
+    {
+      "port": {
+        "name": "csr_result_o",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 36,
+        "source_column": 37,
+        "addr": 5501660984128,
+        "type": "logic[31:0]",
+        "direction": "Out",
+        "internalSymbol": "5501660984256 csr_result_o"
+      },
+      "expr": {
+        "source_file_start": "../cva6/core/ex_stage.sv",
+        "source_file_end": "../cva6/core/ex_stage.sv",
+        "source_line_start": 375,
+        "source_line_end": 375,
+        "source_column_start": 21,
+        "source_column_end": 31,
+        "kind": "Assignment",
+        "type": "logic[31:0]",
+        "left": {
+          "source_file_start": "../cva6/core/ex_stage.sv",
+          "source_file_end": "../cva6/core/ex_stage.sv",
+          "source_line_start": 375,
+          "source_line_end": 375,
+          "source_column_start": 21,
+          "source_column_end": 31,
+          "kind": "NamedValue",
+          "type": "logic[31:0]",
+          "symbol": "5501659016952 csr_result"
+        },
+        "right": {
+          "source_file_start": "../cva6/core/ex_stage.sv",
+          "source_file_end": "../cva6/core/ex_stage.sv",
+          "source_line_start": 375,
+          "source_line_end": 375,
+          "source_column_start": 21,
+          "source_column_end": 31,
+          "kind": "EmptyArgument",
+          "type": "logic[31:0]"
+        },
+        "isNonBlocking": false
+      }
+    },
+    {
+      "port": {
+        "name": "csr_commit_i",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 38,
+        "source_column": 17,
+        "addr": 5501660984400,
+        "type": "logic",
+        "direction": "In",
+        "internalSymbol": "5501660984528 csr_commit_i"
+      },
+      "expr": {
+        "source_file_start": "../cva6/core/ex_stage.sv",
+        "source_file_end": "../cva6/core/ex_stage.sv",
+        "source_line_start": 376,
+        "source_line_end": 376,
+        "source_column_start": 8,
+        "source_column_end": 20,
+        "kind": "NamedValue",
+        "type": "logic",
+        "symbol": "5501660585840 csr_commit_i"
+      }
+    },
+    {
+      "port": {
+        "name": "csr_addr_o",
+        "kind": "Port",
+        "source_file": "../cva6/core/csr_buffer.sv",
+        "source_line": 40,
+        "source_column": 25,
+        "addr": 5501660984672,
+        "type": "logic[11:0]",
+        "direction": "Out",
+        "internalSymbol": "5501660984800 csr_addr_o"
+      },
+      "expr": {
+        "source_file_start": "../cva6/core/ex_stage.sv",
+        "source_file_end": "../cva6/core/ex_stage.sv",
+        "source_line_start": 377,
+        "source_line_end": 377,
+        "source_column_start": 8,
+        "source_column_end": 18,
+        "kind": "Assignment",
+        "type": "logic[11:0]",
+        "left": {
+          "source_file_start": "../cva6/core/ex_stage.sv",
+          "source_file_end": "../cva6/core/ex_stage.sv",
+          "source_line_start": 377,
+          "source_line_end": 377,
+          "source_column_start": 8,
+          "source_column_end": 18,
+          "kind": "NamedValue",
+          "type": "logic[11:0]",
+          "symbol": "5501660585568 csr_addr_o"
+        },
+        "right": {
+          "source_file_start": "../cva6/core/ex_stage.sv",
+          "source_file_end": "../cva6/core/ex_stage.sv",
+          "source_line_start": 377,
+          "source_line_end": 377,
+          "source_column_start": 8,
+          "source_column_end": 18,
+          "kind": "EmptyArgument",
+          "type": "logic[11:0]"
+        },
+        "isNonBlocking": false
+      }
+    }
+  ]
+}

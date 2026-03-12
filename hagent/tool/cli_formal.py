@@ -38,6 +38,7 @@ import json
 import shutil
 import subprocess
 import importlib.util
+import datetime
 from pathlib import Path
 from typing import Optional, List, Set, Dict, Any, Tuple
 
@@ -735,7 +736,44 @@ def dedup_properties_sv(prop_path: Path) -> int:
 # -----------------------------------------------------------------------------
 # Jasper runner (only if asked)
 # -----------------------------------------------------------------------------
-def run_jasper(fpv_dir: Path, jasper_bin: str) -> Tuple[bool, Optional[int]]:
+def _archive_existing_jasper_session_logs(fpv_dir: Path) -> Optional[Path]:
+    """Best-effort archive of Jasper's volatile session log directories.
+
+    Jasper commonly writes logs under:
+      <fpv_dir>/jgproject/sessionLogs*/session_*/jg_session_*.log
+
+    If previous runs exist in the same fpv_dir, these directories can accumulate.
+    This helper moves them to a timestamped archive directory so a new run starts
+    with a fresh sessionLogs* tree.
+
+    Returns the archive directory path if any logs were moved, else None.
+    """
+    jgproject = fpv_dir / 'jgproject'
+    if not jgproject.exists() or not jgproject.is_dir():
+        return None
+
+    session_dirs = sorted(jgproject.glob('sessionLogs*'))
+    session_dirs = [p for p in session_dirs if p.is_dir()]
+    if not session_dirs:
+        return None
+
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S')
+    archive_root = jgproject / 'sessionLogs_archive' / ts
+    archive_root.mkdir(parents=True, exist_ok=True)
+
+    moved_any = False
+    for sd in session_dirs:
+        try:
+            shutil.move(str(sd), str(archive_root / sd.name))
+            moved_any = True
+        except Exception:
+            # Best-effort: don't fail the whole run if we cannot move logs.
+            pass
+
+    return archive_root if moved_any else None
+
+
+def run_jasper(fpv_dir: Path, jasper_bin: str, archive_session_logs: bool = False) -> Tuple[bool, Optional[int]]:
     """
     Runs Jasper and writes logs:
       jg.stdout.log / jg.stderr.log
@@ -747,6 +785,11 @@ def run_jasper(fpv_dir: Path, jasper_bin: str) -> Tuple[bool, Optional[int]]:
     if not (fpv_dir / 'FPV.tcl').exists():
         console.print(f'[red]✖ Missing FPV.tcl in {fpv_dir}[/red]')
         return False, None
+
+    if archive_session_logs:
+        archived_to = _archive_existing_jasper_session_logs(fpv_dir)
+        if archived_to is not None:
+            console.print(f'[cyan]ℹ[/cyan] Archived previous Jasper session logs to: {archived_to}')
 
     cmd = [jasper_bin, '-allow_unsupported_OS', '-tcl', 'FPV.tcl', '-batch']
     console.print(
@@ -1019,6 +1062,7 @@ def run_llm_advisor_if_needed(
     sva_top: str,
     scope_path: str,
     advisor_llm_conf: Optional[Path],
+    advisor_log_file: str,
     jasper_ok: bool,
     jasper_exit: Optional[int],
     counts: Dict[str, int],
@@ -1074,7 +1118,7 @@ def run_llm_advisor_if_needed(
     llm = LLM_wrap(
         name='default',
         conf_file=str(advisor_llm_conf),
-        log_file='jg_advisor_llm.log',
+        log_file=advisor_log_file,
     )
 
     try:
@@ -1455,6 +1499,11 @@ def main() -> int:
     ap.add_argument('--run-jg', action='store_true', help='Run Jasper after generation.')
     ap.add_argument('--rerun-jg', action='store_true', help='Rerun Jasper only (no regeneration).')
     ap.add_argument('--jasper-bin', default='jg', help='Jasper executable (default: jg).')
+    ap.add_argument(
+        '--jg-archive-sessionlogs',
+        action='store_true',
+        help='Before running Jasper, archive any existing jgproject/sessionLogs* under fpv_dir into a timestamped folder.',
+    )
 
     # TCL knobs forwarded to private writer
     ap.add_argument('--clock-name', help='Override detected clock name.')
@@ -1469,6 +1518,14 @@ def main() -> int:
     # Advisor config (used only when trouble detected)
     ap.add_argument(
         '--advisor-llm-conf', help='LLM prompt yaml for advisor recommendations (runs only on FAIL/UNKNOWN/ERROR/CEX).'
+    )
+    ap.add_argument(
+        '--advisor-log-file',
+        default='jg_advisor_llm.log',
+        help=(
+            'Advisor LLM interaction log path (relative to HAGENT cache dir). '
+            'May include subdirs, e.g. ras/run_20260302_120000/jg_advisor_llm.log'
+        ),
     )
 
     # Postcheck (optional, manual)
@@ -1558,7 +1615,11 @@ def main() -> int:
     # RERUN-ONLY (no regeneration)
     # -------------------------
     if args.rerun_jg:
-        jasper_ok, jasper_exit = run_jasper(fpv_dir=fpv_dir, jasper_bin=args.jasper_bin)
+        jasper_ok, jasper_exit = run_jasper(
+            fpv_dir=fpv_dir,
+            jasper_bin=args.jasper_bin,
+            archive_session_logs=args.jg_archive_sessionlogs,
+        )
 
         # Stage 5 summary (always after Jasper attempt)
         jg_log = fpv_dir / 'jgproject' / 'jg.log'
@@ -1575,6 +1636,7 @@ def main() -> int:
             sva_top=sva_top,
             scope_path=args.scope_path or '',
             advisor_llm_conf=advisor_conf,
+            advisor_log_file=args.advisor_log_file,
             jasper_ok=jasper_ok,
             jasper_exit=jasper_exit,
             counts=counts,
@@ -2006,7 +2068,11 @@ def main() -> int:
     counts: Dict[str, int] = {'PROVEN': 0, 'FAIL': 0, 'UNKNOWN': 0, 'COVER': 0, 'UNREACHABLE': 0}
 
     if args.run_jg:
-        jasper_ok, jasper_exit = run_jasper(fpv_dir=fpv_dir, jasper_bin=args.jasper_bin)
+        jasper_ok, jasper_exit = run_jasper(
+            fpv_dir=fpv_dir,
+            jasper_bin=args.jasper_bin,
+            archive_session_logs=args.jg_archive_sessionlogs,
+        )
 
         # Stage 5 summary (always after Jasper attempt)
         jg_log = fpv_dir / 'jgproject' / 'jg.log'
@@ -2023,6 +2089,7 @@ def main() -> int:
             sva_top=sva_top,
             scope_path=args.scope_path or '',
             advisor_llm_conf=advisor_conf,
+            advisor_log_file=args.advisor_log_file,
             jasper_ok=jasper_ok,
             jasper_exit=jasper_exit,
             counts=counts,

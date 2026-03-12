@@ -1,0 +1,75 @@
+unknown package 'ariane_pkg':
+  fix_question: |
+    // Imported packages
+    // FIXME_HINT: unknown package 'ariane_pkg'
+    // FIXME_HINT: import ariane_pkg::*;
+    // FIXME_HINT:        ^
+    import ariane_pkg::*;
+    import riscv::*;
+    import std_cache_pkg::*; 
+
+    module cache_ctrl_prop(input  logic                                 clk_i,
+    input  logic                                 rst_ni,
+  fix_answer: |
+    // Imported packages
+    // FIXME_HINT: unknown package 'ariane_pkg'
+    // FIXME_HINT: import ariane_pkg::*;
+    // FIXME_HINT:        ^
+    import ariane_pkg::*;
+    import riscv::*;
+    import std_cache_pkg::*; 
+
+    module cache_ctrl_prop(input  logic                                 clk_i,
+    input  logic                                 rst_ni,
+expected member:
+  fix_question: |2
+
+    // FIXME_HINT: expected member
+    // FIXME_HINT: +libext+.v
+    // FIXME_HINT: ^
+    +libext+.v
+    +libext+.h
+    +libext+.sv
+    +libext+.tmp.v
+    +librescan
+    +incdir+${DUT_PATH}
+  fix_answer: |2
+
+    // FIXME_HINT: expected member
+    // FIXME_HINT: +libext+.v
+    // FIXME_HINT: ^
+    +libext+.v
+    +libext+.h
+    +libext+.sv
+    +libext+.tmp.v
+    +librescan
+    +incdir+${DUT_PATH}
+use of undeclared identifier 'lsu_ctrl_t':
+  fix_question: |
+    module load_unit_prop(input  logic                     clk_i,
+                             input  logic                     rst_ni,
+                             input  logic                     flush_i,
+                             input  logic                     valid_i,
+    // FIXME_HINT: use of undeclared identifier 'lsu_ctrl_t'
+    // FIXME_HINT:                          input  lsu_ctrl_t                lsu_ctrl_i,
+    // FIXME_HINT:                                 ^~~~~~~~~~
+                             input  lsu_ctrl_t                lsu_ctrl_i,
+                             input  logic [riscv::PLEN-1:0]   paddr_i,
+                             input  exception_t               ex_i,
+                             input  logic                     dtlb_hit_i,
+                             input  logic [riscv::PLEN-13:0]  dtlb_ppn_i,
+                             input  logic                     page_offset_matches_i,
+  fix_answer: |
+    module load_unit_prop(input  logic                     clk_i,
+                             input  logic                     rst_ni,
+                             input  logic                     flush_i,
+                             input  logic                     valid_i,
+    // FIXME_HINT: use of undeclared identifier 'lsu_ctrl_t'
+    // FIXME_HINT:                          input  lsu_ctrl_t                lsu_ctrl_i,
+    // FIXME_HINT:                                 ^~~~~~~~~~
+                             input  lsu_ctrl_t                lsu_ctrl_i,
+                             input  logic [riscv::PLEN-1:0]   paddr_i,
+                             input  exception_t               ex_i,
+                             input  logic                     dtlb_hit_i,
+                             input  logic [riscv::PLEN-13:0]  dtlb_ppn_i,
+                             input  logic                     page_offset_matches_i,
