@@ -44,6 +44,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set, Iterable
 from io import StringIO
 
+try:
+    import yaml
+except Exception:  # pragma: no cover
+    yaml = None
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Optional rich console
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1199,6 +1204,9 @@ class SpecBuilder:
 
         self.out_md = self.out_dir / f'{self.top}_spec{wb}.md'
         self.out_csv = self.out_dir / f'{self.top}_spec{wb}.csv'
+        self.out_assumptions_csv = self.out_dir / f'{self.top}_assumptions{wb}.csv'
+        self.out_covers_csv = self.out_dir / f'{self.top}_covers{wb}.csv'
+        self.out_assertions_csv = self.out_dir / f'{self.top}_assertions{wb}.csv'
         self.logic_snap = self.out_dir / f'{self.top}_logic_blocks.json'
 
         # IR outputs — ports/assignments/io_relations are structural, no suffix
@@ -1218,10 +1226,18 @@ class SpecBuilder:
         self.tmpl = LLM_template(str(self.llm_conf))
         self.template_dict = getattr(self.tmpl, 'template_dict', {}) or {}
 
-        for req in ('doc_sections', 'fsm_specification', 'sva_row_list_csv'):
+        for req in ('doc_sections', 'fsm_specification'):
             if not (self.template_dict.get('default', {}).get(req)):
                 console.print(f"[red]❌ Required prompt '{req}' missing in: {self.llm_conf}[/red]")
                 raise SystemExit(2)
+
+        has_staged_assertions = bool(self.template_dict.get('default', {}).get('assertions_csv'))
+        has_legacy_csv = bool(self.template_dict.get('default', {}).get('sva_row_list_csv'))
+        if not (has_staged_assertions or has_legacy_csv):
+            console.print(
+                "[red]❌ Missing assertion CSV prompt: expected either 'assertions_csv' or 'sva_row_list_csv'.[/red]"
+            )
+            raise SystemExit(2)
 
         self.clk, self.rst, self.rst_expr = detect_clk_rst_for_top(self.rtl_dir, self.design_top)
 
@@ -1254,6 +1270,107 @@ class SpecBuilder:
         }
         fixed = self._llm('csv_repair', payload)
         return _ensure_csv_header(_strip_code_fences(fixed))
+
+    def _load_module_profile(self) -> Dict[str, Any]:
+        if yaml is None:
+            return {}
+
+        profile_path = self.llm_conf.parent / 'cpu_module_profiles.yaml'
+        if not profile_path.exists():
+            return {}
+
+        try:
+            raw = yaml.safe_load(profile_path.read_text(encoding='utf-8')) or {}
+        except Exception as e:
+            console.print(f'[yellow]⚠ Failed to parse module profile file {profile_path}: {e}[/yellow]')
+            return {}
+
+        out: Dict[str, Any] = {}
+        if isinstance(raw, dict):
+            defaults = raw.get('defaults') or {}
+            modules = raw.get('modules') or {}
+            mod = modules.get(self.top) if isinstance(modules, dict) else {}
+            if isinstance(defaults, dict):
+                out.update(defaults)
+            if isinstance(mod, dict):
+                out.update(mod)
+
+        if out:
+            console.print(f'[green]✔ Loaded module profile for {self.top} from {profile_path}[/green]')
+        return out
+
+    @staticmethod
+    def _csv_rows_only(csv_text: str) -> List[str]:
+        lines = [ln for ln in csv_text.splitlines() if ln.strip()]
+        if not lines:
+            return []
+        hdr = ','.join(CSV_HEADER).lower().replace(' ', '')
+        first = lines[0].strip().lower().replace(' ', '')
+        return lines[1:] if first == hdr else lines
+
+    def _generate_and_validate_csv(
+        self,
+        prompt_index: str,
+        context: Dict[str, Any],
+        allowed_ports: List[str],
+        out_path: Path,
+        report_suffix: str,
+    ) -> str:
+        console.print(f'[cyan]• LLM: {prompt_index}[/cyan]')
+        csv_raw = self._llm(prompt_index, {'context_json': json.dumps(context, ensure_ascii=False)}).strip()
+        csv_raw = _ensure_csv_header(_strip_code_fences(csv_raw))
+        csv_raw = normalize_csv_rows(csv_raw)
+
+        if not csv_raw.strip():
+            return ''
+
+        report = validate_csv_text(csv_raw, allowed_ports)
+        report_path = self.out_dir / f'{self.top}_{report_suffix}.validation.json'
+        _write_json(report_path, report)
+
+        if not report.get('ok', False):
+            console.print(f'[yellow]⚠ {prompt_index} validation failed. Attempting repair...[/yellow]')
+            broken_path = self.out_dir / f'{self.top}_{report_suffix}.broken'
+            _write_text(broken_path, csv_raw)
+
+            repaired = csv_raw
+            for attempt in range(1, 3):
+                repaired = self._repair_csv_with_llm(repaired, allowed_ports, report)
+                repaired = normalize_csv_rows(repaired)
+                report = validate_csv_text(repaired, allowed_ports)
+                _write_json(report_path, report)
+                if report.get('ok', False):
+                    console.print(f'[green]✔ {prompt_index} repaired on attempt {attempt}.[/green]')
+                    csv_raw = repaired
+                    break
+                console.print(f'[yellow]⚠ {prompt_index} repair attempt {attempt} still invalid.[/yellow]')
+
+            if not report.get('ok', False):
+                console.print(f'[yellow]⚠ {prompt_index} still invalid after repairs; keeping salvaged CSV.[/yellow]')
+                csv_raw = normalize_csv_rows(repaired)
+
+        if csv_raw.strip():
+            _write_text(out_path, csv_raw)
+            console.print(f'[green]✔ CSV ({prompt_index}):[/green] {out_path}')
+        return csv_raw
+
+    @staticmethod
+    def _merge_and_renumber_csv(csv_texts: List[str]) -> str:
+        rows: List[List[str]] = []
+        for txt in csv_texts:
+            if not txt.strip():
+                continue
+            for ln in SpecBuilder._csv_rows_only(txt):
+                cols = _split_csv_line(ln)
+                if len(cols) == len(CSV_HEADER):
+                    rows.append(cols)
+
+        for idx, cols in enumerate(rows, start=1):
+            cols[0] = f'SVA{idx:03d}'
+
+        out_lines = [','.join(CSV_HEADER)]
+        out_lines.extend([','.join(c) for c in rows])
+        return '\n'.join(out_lines)
 
     def _read_json(self, p: Path) -> Dict[str, Any]:
         return json.loads(p.read_text(encoding='utf-8'))
@@ -1524,6 +1641,10 @@ class SpecBuilder:
             'internal_signals': internal_signals if self.whitebox else [],
         }
 
+        module_profile = self._load_module_profile()
+        if module_profile:
+            context['module_profile'] = module_profile
+
         # 5) Markdown generation
         md_parts: List[str] = []
         console.print('[cyan]• LLM: doc_sections[/cyan]')
@@ -1575,52 +1696,53 @@ class SpecBuilder:
         # and can generate behavioral (access-control / exception-cause) assertions.
         context['spec_md'] = md_text
 
-        # 6) CSV generation + validate + repair (ROBUST)
-        console.print('[cyan]• LLM: sva_row_list_csv[/cyan]')
-        csv_raw = self._llm('sva_row_list_csv', {'context_json': json.dumps(context, ensure_ascii=False)}).strip()
-        csv_raw = _ensure_csv_header(_strip_code_fences(csv_raw))
-        csv_raw = normalize_csv_rows(csv_raw)
+        # 6) Staged CSV generation (assumptions -> covers -> assertions)
+        assumptions_csv = ''
+        covers_csv = ''
+        assertions_csv = ''
 
-        if not csv_raw.strip():
-            console.print('[red]❌ LLM produced empty CSV text.[/red]')
+        if self.template_dict.get('default', {}).get('assumptions_csv'):
+            assumptions_csv = self._generate_and_validate_csv(
+                'assumptions_csv',
+                context,
+                allowed_ports,
+                self.out_assumptions_csv,
+                'assumptions.csv',
+            )
+
+        if self.template_dict.get('default', {}).get('covers_csv'):
+            cov_ctx = dict(context)
+            if assumptions_csv:
+                cov_ctx['assumptions_csv'] = assumptions_csv
+            covers_csv = self._generate_and_validate_csv(
+                'covers_csv',
+                cov_ctx,
+                allowed_ports,
+                self.out_covers_csv,
+                'covers.csv',
+            )
+
+        assert_prompt = 'assertions_csv' if self.template_dict.get('default', {}).get('assertions_csv') else 'sva_row_list_csv'
+        assert_ctx = dict(context)
+        if assumptions_csv:
+            assert_ctx['assumptions_csv'] = assumptions_csv
+        if covers_csv:
+            assert_ctx['covers_csv'] = covers_csv
+        assertions_csv = self._generate_and_validate_csv(
+            assert_prompt,
+            assert_ctx,
+            allowed_ports,
+            self.out_assertions_csv,
+            'assertions.csv',
+        )
+
+        if not any([assumptions_csv.strip(), covers_csv.strip(), assertions_csv.strip()]):
+            console.print('[red]❌ LLM produced empty CSV text for all stages.[/red]')
             raise SystemExit(2)
 
-        report = validate_csv_text(csv_raw, allowed_ports)
-        report_path = self.out_dir / f'{self.top}_spec.csv.validation.json'
-        _write_json(report_path, report)
-
-        if not report.get('ok', False):
-            console.print('[yellow]⚠ CSV validation failed. Attempting repair...[/yellow]')
-            broken_path = self.out_dir / f'{self.top}_spec.csv.broken'
-            _write_text(broken_path, csv_raw)
-
-            repaired = csv_raw
-            for attempt in range(1, 3):
-                repaired = self._repair_csv_with_llm(repaired, allowed_ports, report)
-                repaired = normalize_csv_rows(repaired)
-                report = validate_csv_text(repaired, allowed_ports)
-                _write_json(report_path, report)
-                if report.get('ok', False):
-                    console.print(f'[green]✔ CSV repaired on attempt {attempt}.[/green] Broken backup: {broken_path}')
-                    csv_raw = repaired
-                    break
-                console.print(f'[yellow]⚠ Repair attempt {attempt} still invalid.[/yellow]')
-
-            if not report.get('ok', False):
-                console.print(
-                    '[yellow]⚠ CSV still invalid after repair attempts; salvaging best-effort CSV and continuing.[/yellow]'
-                )
-                salvaged = normalize_csv_rows(repaired)
-                _write_text(self.out_csv, salvaged)
-                console.print(f'[green]✔ CSV spec (salvaged):[/green] {self.out_csv}')
-                total_tokens = getattr(self.llm, 'total_tokens', 0)
-                _write_json(self.tokens_json, {'total_tokens': total_tokens})
-                console.print(f'[green]✔ Spec LLM tokens:[/green] {total_tokens}')
-                console.print('[bold yellow]⚠ SPEC BUILDER COMPLETED WITH CSV SALVAGE (no pipeline failure)[/bold yellow]')
-                return
-
-        _write_text(self.out_csv, csv_raw)
-        console.print(f'[green]✔ CSV spec:[/green] {self.out_csv}')
+        merged_csv = self._merge_and_renumber_csv([assumptions_csv, covers_csv, assertions_csv])
+        _write_text(self.out_csv, merged_csv)
+        console.print(f'[green]✔ CSV spec (merged):[/green] {self.out_csv}')
 
         # Write token summary
         total_tokens = getattr(self.llm, 'total_tokens', 0)

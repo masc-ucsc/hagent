@@ -113,6 +113,129 @@ default:
         ```
 
   # ========= 5. CSV property generation =========
+  assumptions_csv:
+    - role: system
+      content: |
+        You generate ONLY environment assumptions for formal verification.
+
+        Output ONLY CSV text with header:
+        sid,prop_type,module,name,scenario,pre,post,signals,param_ok,notes
+
+        Hard constraints:
+        - prop_type must always be assume.
+        - Use identifiers only from context_json.allowed_signals.
+        - Use only $rose $fell $stable $changed $past.
+        - pre/post must be compile-ready SVA expressions.
+        - signals column must list all referenced BASE signals space-separated.
+        - Do not use commas inside fields.
+        - No markdown fences or prose.
+
+        Assumption policy:
+        - Around 10 assumptions.
+        - Assume only true input/environment behavior. Never constrain outputs.
+        - Prefer protocol legality and stability while waiting/backpressured.
+        - Do not force functional outcomes like output changes.
+        - No fairness/liveness assumptions unless a handshake would otherwise be meaningless.
+        - Avoid vacuity traps:
+          * do not use reset-asserted antecedent assumptions that can be disabled by reset gating.
+          * avoid tautologies.
+
+        RAS override (when context_json.top_module == ras):
+        - Ignore reset completely for generated rows:
+          * do NOT reference rst/reset signals in pre/post/signals/name/scenario.
+          * do NOT generate reset assumptions.
+        - Keep assumptions minimal (0-2 preferred):
+          * allow only non-stuck control assumptions such as flush pulse behavior.
+          * no assumptions on data_o behavior.
+
+        Use context_json.module_profile (if present) as module-specific guidance.
+    - role: user
+      content: |
+        Context JSON:
+        {context_json}
+
+  covers_csv:
+    - role: system
+      content: |
+        You generate ONLY cover properties for reachability and input-space exploration.
+
+        Output ONLY CSV text with header:
+        sid,prop_type,module,name,scenario,pre,post,signals,param_ok,notes
+
+        Hard constraints:
+        - prop_type must always be cover.
+        - Use identifiers only from context_json.allowed_signals.
+        - Use only $rose $fell $stable $changed $past.
+        - pre/post must be compile-ready SVA expressions.
+        - signals column must list all referenced BASE signals space-separated.
+        - No commas inside fields. No markdown/prose.
+
+        Cover goals:
+        - High coverage with realistic scenarios; avoid impossible conditions.
+        - Include sanity covers first: reset release, activity on key control inputs, representative idle case.
+        - Include sequence covers (e.g., req->gnt, flush then op, op then op).
+        - Explore input space:
+          * 1-bit inputs: both 0/1 through events.
+          * small enums/buses: hit representative values.
+          * wider buses: include zero/all-ones/onehot-like and one mixed pattern.
+        - Do not encode assertions as covers.
+
+        RAS override (when context_json.top_module == ras):
+        - Ignore reset completely for generated rows:
+          * do NOT reference rst/reset signals in pre/post/signals/name/scenario.
+          * do NOT generate reset covers.
+        - Prioritize reachable covers:
+          * single-event activity covers for push pop flush.
+          * short-window sequence covers using ##[1:3] (not strict ##1 unless necessary).
+          * representative data_i patterns only when guarded by push activity.
+        - Avoid brittle covers that require exact cycle coincidence without protocol reason.
+
+        Use context_json.assumptions_csv (if provided) and context_json.module_profile.
+    - role: user
+      content: |
+        Context JSON:
+        {context_json}
+
+  assertions_csv:
+    - role: system
+      content: |
+        You generate ONLY assertions for formal verification.
+
+        Output ONLY CSV text with header:
+        sid,prop_type,module,name,scenario,pre,post,signals,param_ok,notes
+
+        Hard constraints:
+        - prop_type must always be assert.
+        - Use identifiers only from context_json.allowed_signals.
+        - Use only $rose $fell $stable $changed $past.
+        - pre/post must be compile-ready SVA expressions.
+        - signals column must list all referenced BASE signals space-separated.
+        - No commas inside fields. No markdown/prose.
+
+        Assertion policy:
+        - Prefer safety invariants, priority rules, and handshake correctness.
+        - Do not generate tautologies (e.g., pre -> 1).
+        - Do not require output change unless preconditions make change unavoidable.
+        - Avoid reset-asserted antecedents that become vacuous under disable iff reset.
+        - Use io_relations hints first, then conservative behavioral assertions.
+
+        RAS override (when context_json.top_module == ras):
+        - Ignore reset completely for generated rows:
+          * do NOT reference rst/reset signals in pre/post/signals/name/scenario.
+          * do NOT generate reset assertions.
+        - Generate only deterministic and high-hit assertions:
+          * idle stability: when !push_i && !pop_i && !flush_bp_i then data_o remains stable next cycle.
+          * flush dominance over idle/other controls only when behavior is explicit from I/O relation hints.
+          * no "must change" assertions for push/pop unless change is logically guaranteed by preconditions.
+        - Never generate tautological assertions like (!$stable(data_o) or $stable(data_o)).
+        - Target 4-8 high-quality assertions instead of many weak ones.
+
+        Use context_json.assumptions_csv, context_json.covers_csv, and context_json.module_profile when present.
+    - role: user
+      content: |
+        Context JSON:
+        {context_json}
+
   sva_row_list_csv:
     - role: system
       content: |
@@ -195,6 +318,16 @@ default:
         =========================================================
         - Balanced mix: assume >= 20, cover >= 20, assert >= 20.
         - Focus on IO behavior only; do NOT mention internal regs/wires/states.
+
+        RAS override (when context_json.top_module == ras):
+        - Ignore reset completely for generated rows:
+          * do NOT reference rst/reset signals in pre/post/signals/name/scenario.
+          * do NOT emit reset-only assume/cover/assert rows.
+        - Bias toward high-hit and non-vacuous properties:
+          * avoid exact-cycle sequence constraints unless required.
+          * avoid "must change output" assertions for push/pop unless preconditions guarantee change.
+          * forbid tautological assertions.
+        - For ras, prefer a small set of strong assertions and more realistic covers.
 
         - Use io_relations.hints FIRST for assume/cover ideas.
         - Use io_relations.relationships.control_signals_ranked for environment constraints.

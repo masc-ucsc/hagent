@@ -765,6 +765,25 @@ class PropertyBuilder:
 
     # ------------------------------------------------------------------
     @staticmethod
+    def _norm_expr_for_cmp(expr: str) -> str:
+        e = (expr or '').strip()
+        while e.startswith('(') and e.endswith(')') and len(e) >= 2:
+            e2 = e[1:-1].strip()
+            if not e2:
+                break
+            e = e2
+        return re.sub(r'\s+', '', e)
+
+    # ------------------------------------------------------------------
+    def _is_pre_reset_disable_vacuous(self, pre: str, disable_cond: str) -> bool:
+        if not (pre or '').strip() or not (disable_cond or '').strip():
+            return False
+        pre_n = self._norm_expr_for_cmp(pre)
+        dis_n = self._norm_expr_for_cmp(disable_cond)
+        return bool(pre_n and dis_n and pre_n == dis_n)
+
+    # ------------------------------------------------------------------
+    @staticmethod
     def _pre_is_missing(pre_raw: str, pre_norm: str) -> bool:
         """
         Treat empty / 1 / 1'b1 as 'no real precondition'.
@@ -885,6 +904,21 @@ class PropertyBuilder:
                 )
 
         pre_missing = self._pre_is_missing(pre_raw, pre)
+
+        if self._is_pre_reset_disable_vacuous(pre, disable_cond):
+            if self.strict:
+                strict_log['skipped'].append(
+                    {
+                        'sid': sid,
+                        'name': name,
+                        'line': line_no,
+                        'prop_type': ptype,
+                        'reason': 'pre_equals_disable_cond_vacuous',
+                        'pre_norm': pre,
+                        'disable_cond': disable_cond,
+                    }
+                )
+            return None
 
         if not pre and not post:
             if self.strict:

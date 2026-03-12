@@ -1,0 +1,192 @@
+defaults:
+  objective: "Generate realistic assumptions and high-value covers with minimal vacuity and low false assertions"
+  assumptions:
+    - "Assume only environment obligations on true inputs"
+    - "Do not constrain outputs or internal-only behavior"
+    - "Prefer stability/protocol legality over functional forcing"
+    - "Avoid reset-asserted antecedents that become vacuous under disable iff"
+  covers:
+    - "Include sanity covers: reset release, control activity, idle case"
+    - "Include sequence covers for protocol progress where applicable"
+    - "Exercise representative input values"
+  assertions:
+    - "Prefer safety invariants and priority rules"
+    - "No tautologies or trivially true consequents"
+    - "No must-change output asserts without strong preconditions"
+
+modules:
+  cache_ctrl:
+    assumptions:
+      - "Request bundle stable until accepted"
+      - "No spurious grants without pending request"
+    covers:
+      - "Read hit path and miss request path"
+      - "Bypass path and flush activity"
+
+  cva6_icache:
+    assumptions:
+      - "Fetch request fields stable while request is active"
+      - "Refill response valid implies stable payload"
+    covers:
+      - "Cache hit and refill scenarios"
+      - "Flush and replay-related scenarios"
+
+  miss_handler:
+    assumptions:
+      - "Response corresponds to outstanding request"
+      - "Per-port request fields stable until grant"
+    covers:
+      - "Bypass grant/valid path"
+      - "Miss serve and critical-word return"
+
+  wt_dcache_mem:
+    assumptions:
+      - "Read port request/address stable through ack window"
+      - "Only legal write-port usage patterns"
+    covers:
+      - "Read hit and write update activity"
+      - "Bank collision and arbitration scenarios"
+
+  cva6_mme:
+    alias_of: "cva6_mmu"
+
+  cva6_mmu:
+    assumptions:
+      - "Translation context inputs stable during in-flight translation"
+      - "Flush control inputs are legal and stable when asserted"
+    covers:
+      - "ITLB/DTLB hit and miss outcomes"
+      - "PTW activity and exception-visible paths"
+
+  cva6_ptw:
+    assumptions:
+      - "Request/response handshake legality on PTW memory interface"
+      - "Walk context stable while request is active"
+    covers:
+      - "Walk start, walk completion, and flush interruption"
+      - "Access-error and page-fault observable outcomes"
+
+  cva6_tlb:
+    assumptions:
+      - "Lookup/update fields stable on access/update"
+      - "Flush parameters stable when flush asserted"
+    covers:
+      - "Lookup hit/miss and update insertion"
+      - "Flush by ASID/VMID/address conditions"
+
+  bht:
+    assumptions:
+      - "Update payload stable when update valid"
+      - "Debug mode gating respected"
+    covers:
+      - "Prediction valid set and update after flush"
+      - "Index diversity scenarios"
+
+  btb:
+    assumptions:
+      - "Update payload stable when update valid"
+      - "Flush behavior only synchronous"
+    covers:
+      - "Prediction creation and reuse"
+      - "Flush then relearn scenario"
+
+  frontend:
+    assumptions:
+      - "Icache response bundle stable while valid"
+      - "Downstream ready can backpressure without violating validity rules"
+    covers:
+      - "Redirect/flush/halt transitions"
+      - "Successful fetch enqueue under backpressure"
+
+  instr_queue:
+    assumptions:
+      - "Incoming instruction packet stable while valid"
+      - "Exception sideband corresponds to same packet"
+    covers:
+      - "Queue fill, drain, replay, and flush"
+      - "Branch-taken packet truncation behavior"
+
+  instr_scan:
+    assumptions:
+      - "Input instruction stable during combinational evaluation"
+    covers:
+      - "RVI and RVC branch/jump classification cases"
+
+  ras:
+    assumptions:
+      - "Prefer zero assumptions; optional non-stuck flush only"
+    covers:
+      - "push, pop, flush, push+pop same-cycle"
+      - "post-reset sequences"
+    assertions:
+      - "flush dominance and idle stability"
+      - "avoid must-change output assertions"
+
+  aes:
+    assumptions:
+      - "Operation inputs stable when evaluated"
+    covers:
+      - "Representative opclasses and operand boundary values"
+
+  alu:
+    assumptions:
+      - "Operation inputs stable when evaluated"
+    covers:
+      - "Arithmetic/logic/shift/compare opclasses"
+      - "Boundary operands and sign cases"
+
+  amo_buffer:
+    assumptions:
+      - "AMO response ack only when AMO request outstanding"
+      - "Commit qualifiers coherent when requesting AMO"
+    covers:
+      - "AMO enqueue, commit-ready, response-ack flow"
+      - "Flush interaction with speculative AMO"
+
+  branch_unit:
+    assumptions:
+      - "Branch decision inputs stable when branch_valid"
+      - "Prediction metadata stable for the resolved branch"
+    covers:
+      - "Taken/not-taken and mispredict paths"
+      - "JALR target and alignment exception-visible cases"
+
+  commit_stage:
+    assumptions:
+      - "Commit entry stable while valid and not acknowledged"
+      - "LSU/CSR ready treated as legitimate backpressure"
+    covers:
+      - "GPR/FPR commit, store commit, CSR commit"
+      - "Fence/sfence flush-trigger conditions"
+
+  id_stage:
+    assumptions:
+      - "Fetch entry bundle stable while valid and unaccepted"
+      - "External async controls sampled synchronously in this abstraction"
+    covers:
+      - "Decode valid/ready handshakes"
+      - "Compressed and macro decode paths"
+
+  instr_realign:
+    assumptions:
+      - "Address/data tuple coherence from fetch source"
+      - "Flush synchronous to clock domain"
+    covers:
+      - "Aligned and unaligned service cases"
+      - "Compressed/uncompressed boundary transitions"
+
+  issue_stage:
+    assumptions:
+      - "Decoded bundle stable until ack"
+      - "Writeback id/data/exception stable when wb valid"
+    covers:
+      - "Issue to each FU class"
+      - "Stall/backpressure and flush-unissued behavior"
+
+  scoreboard:
+    assumptions:
+      - "Writeback transaction ids in-range and stable when valid"
+      - "Commit ack only for presented entries"
+    covers:
+      - "Issue queue occupancy transitions"
+      - "Cancel/drop and commit progression"
