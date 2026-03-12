@@ -31,3 +31,7 @@ setup_run
 project_env.sh
 GEMINI.md
 CLAUDE.md
+**/formal_coverage_detailed.html
+**/*_ast.json
+**/cva6_full_ast.json
+**/scoped_ast.json
