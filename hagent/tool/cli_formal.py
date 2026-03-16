@@ -1787,11 +1787,14 @@ def main() -> int:
         help='LLM config YAML for Stage 3.5 bug-targeted assertion generation (required with --bug-target-gen).',
     )
     ap.add_argument(
-        '--bug-target-gen-label', default='Type:Bug',
+        '--bug-target-gen-label',
+        default='Type:Bug',
         help='GitHub label filter for bug-targeted gen (default: Type:Bug).',
     )
     ap.add_argument(
-        '--bug-target-gen-max-issues', type=int, default=30,
+        '--bug-target-gen-max-issues',
+        type=int,
+        default=30,
         help='Max GitHub issues to fetch for bug-targeted gen (default: 30).',
     )
 
@@ -2347,9 +2350,7 @@ def main() -> int:
             from hagent.tool.cli_cex_classify import run_cex_classify  # type: ignore
 
             cex_llm_conf_path = (
-                Path(os.path.expanduser(args.cex_classify_llm_conf)).resolve()
-                if args.cex_classify_llm_conf
-                else None
+                Path(os.path.expanduser(args.cex_classify_llm_conf)).resolve() if args.cex_classify_llm_conf else None
             )
             run_cex_classify(
                 fpv_dir=fpv_dir,

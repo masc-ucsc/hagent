@@ -35,6 +35,7 @@ dependencies = [
     "boto3 >=1.42.26",
     "pexpect >=4.9.0",
     "graphviz >=0.21",
+    "pyosys>=0.63",
 ]
 
 [project.optional-dependencies]

@@ -787,9 +787,7 @@ def detect_clk_rst_for_top(
             console.print(f'[yellow]⚠ ports.json provided but clk/rst not found in it: {pj}[/yellow]')
 
         if not allow_rtl_fallback:
-            console.print(
-                f'[yellow]⚠ RTL fallback disabled; not scanning RTL for clk/rst for module {top}.[/yellow]'
-            )
+            console.print(f'[yellow]⚠ RTL fallback disabled; not scanning RTL for clk/rst for module {top}.[/yellow]')
             return '', '', ''
 
     if not allow_rtl_fallback:
