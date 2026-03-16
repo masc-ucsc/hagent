@@ -255,7 +255,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
     # 6. Copy board config to HAGENT_REPO_DIR/AGENTS.md and GEMINI.md
 
     # Refresh configs from remote (best-effort, non-blocking)
-    # fetch_remote_configs()
+    fetch_remote_configs()
 
     configs_path = os.path.join(os.environ['HAGENT_ROOT'], 'hagent', 'mcp', 'configs')
     board_configs_path = os.path.join(configs_path, 'board')

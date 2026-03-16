@@ -494,7 +494,7 @@ def api_install(args: Optional[str] = None) -> Dict[str, Any]:
                 }
 
     # 2. Refresh configs from remote (best-effort, non-blocking)
-    # fetch_remote_configs()
+    fetch_remote_configs()
 
     # 3. Board Selection Logic
     configs_path = os.path.join(os.environ.get('HAGENT_ROOT', '.'), 'hagent', 'mcp', 'configs')
