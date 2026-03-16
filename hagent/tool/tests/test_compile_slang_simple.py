@@ -308,6 +308,7 @@ class TestCompileSlang(unittest.TestCase):
         self.assertEqual(compiler.error_message, '')
         self.assertIsNone(compiler._compiler)
         self.assertIsNone(compiler._top_module)
+        self.assertFalse(compiler._has_sources)
 
     def test_setup_no_pyslang(self):
         """Test setup when pyslang is not available."""
@@ -566,6 +567,22 @@ class TestCompileSlang(unittest.TestCase):
 
         result = compiler.get_ios('nonexistent_module')
         self.assertEqual(result, [])
+
+    def test_get_ios_without_sources_does_not_lookup(self):
+        """Test get_ios on an empty compilation avoids native symbol lookup."""
+        compiler = Compile_slang()
+
+        mock_compilation = MagicMock()
+        mock_root = MagicMock()
+        mock_compilation.getRoot.return_value = mock_root
+
+        compiler._compiler = mock_compilation
+        compiler._has_sources = False
+
+        with patch.object(compiler, '_can_query_symbols', return_value=False):
+            result = compiler.get_ios('nonexistent_module')
+            self.assertEqual(result, [])
+            mock_compilation.getRoot.assert_not_called()
 
     def test_get_ios_attribute_error(self):
         """Test get_ios when an AttributeError occurs."""
