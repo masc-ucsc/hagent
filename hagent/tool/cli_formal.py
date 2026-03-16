@@ -1185,6 +1185,7 @@ def run_postcheck_if_requested(
 # (Inlined from cli_boost_coi.py so no separate file is needed)
 # -----------------------------------------------------------------------------
 
+
 def _boost_read_coi(fpv_dir: Path) -> float:
     """Return current COI% from formal_coverage_summary.txt."""
     f = fpv_dir / 'formal_coverage_summary.txt'
@@ -1249,10 +1250,7 @@ def _boost_build_io_anchor_covers(fpv_dir: Path, sva_top: str, sv_path: Path) ->
         console.print('[yellow]  No new IO anchor covers needed[/yellow]')
         return 0
 
-    block = (
-        '\n\n// ---- COI anchor covers (Stage 8 boost) ----\n\n'
-        + '\n\n'.join(covers) + '\n'
-    )
+    block = '\n\n// ---- COI anchor covers (Stage 8 boost) ----\n\n' + '\n\n'.join(covers) + '\n'
     with open(sv_path, 'a', encoding='utf-8') as fh:
         fh.write(block)
     console.print(f'[green]  + {len(covers)} IO anchor covers appended[/green]')
@@ -1265,12 +1263,14 @@ def _boost_build_precondition_covers(fpv_dir: Path, sv_path: Path) -> int:
     if not log.exists():
         return 0
 
-    unreachable = sorted(set(
-        m.group(1)
-        for line in log.read_text(encoding='utf-8', errors='ignore').splitlines()
-        for m in [re.search(r'(\w+):precondition1.*?unreachable', line, re.IGNORECASE)]
-        if m
-    ))
+    unreachable = sorted(
+        set(
+            m.group(1)
+            for line in log.read_text(encoding='utf-8', errors='ignore').splitlines()
+            for m in [re.search(r'(\w+):precondition1.*?unreachable', line, re.IGNORECASE)]
+            if m
+        )
+    )
     if not unreachable:
         console.print('[yellow]  No UNREACHABLE preconditions found[/yellow]')
         return 0
@@ -1285,9 +1285,11 @@ def _boost_build_precondition_covers(fpv_dir: Path, sv_path: Path) -> int:
     if tcl_path.exists():
         tcl_text = tcl_path.read_text(encoding='utf-8')
         m2 = re.search(r'^clock\s+(\w+)', tcl_text, re.MULTILINE)
-        if m2: clk = m2.group(1)
+        if m2:
+            clk = m2.group(1)
         m2 = re.search(r'^reset\s+-expression\s+(.+)', tcl_text, re.MULTILINE)
-        if m2: rst_expr = m2.group(1).strip()
+        if m2:
+            rst_expr = m2.group(1).strip()
 
     new_covers = []
     for label in unreachable:
@@ -1337,9 +1339,7 @@ def _boost_patch_fpv_tcl(fpv_dir: Path, time_limit: str = '60m') -> bool:
     text = tcl_path.read_text(encoding='utf-8')
     original = text
     new_measure = (
-        f'check_cov -measure -type coi -stimuli '
-        f'-skip_deadcode -max_jobs 16 -per_engine_max_jobs 2 '
-        f'-time_limit {time_limit}'
+        f'check_cov -measure -type coi -stimuli -skip_deadcode -max_jobs 16 -per_engine_max_jobs 2 -time_limit {time_limit}'
     )
     text = re.sub(r'check_cov\s+-measure\s+-type\s+coi[^\n]*', new_measure, text)
     text = re.sub(r'set_prove_per_property_max_time_limit\s+\S+', 'set_prove_per_property_max_time_limit 20m', text)
@@ -1401,14 +1401,14 @@ def run_coi_boost_if_requested(
     if rerun_jg and jasper_bin:
         tcl = fpv_dir / 'FPV.tcl'
         cmd = [jasper_bin, '-allow_unsupported_OS', '-tcl', str(tcl), '-batch']
-        console.print(f'\n[cyan]• Re-running JasperGold for COI boost (may take 30–90 min) ...[/cyan]')
+        console.print('\n[cyan]• Re-running JasperGold for COI boost (may take 30–90 min) ...[/cyan]')
         res = subprocess.run(cmd, cwd=str(fpv_dir), capture_output=True, text=True, timeout=7200)
         (fpv_dir / 'jg.stdout.log').write_text(res.stdout, encoding='utf-8')
         (fpv_dir / 'jg.stderr.log').write_text(res.stderr, encoding='utf-8')
         after_coi = _boost_read_coi(fpv_dir)
         console.print(f'   After COI : {after_coi:.2f}%  (Δ = {after_coi - before_coi:+.2f}%)')
     else:
-        console.print(f'\n[yellow]⚠ Pass --boost-coi-rerun-jg to re-run JasperGold after boost.[/yellow]')
+        console.print('\n[yellow]⚠ Pass --boost-coi-rerun-jg to re-run JasperGold after boost.[/yellow]')
 
 
 # -----------------------------------------------------------------------------
@@ -1723,23 +1723,26 @@ def main() -> int:
     ap.add_argument('--postcheck-max-iters', type=int, default=1)
     ap.add_argument('--postcheck-tail-lines', type=int, default=250)
     ap.add_argument(
-        '--postcheck-assume-spurious', action='store_true',
+        '--postcheck-assume-spurious',
+        action='store_true',
         help='Automatically convert PRE_ERROR/SPURIOUS FAIL props to assumes after Jasper '
-             '(no LLM, no context limits). Enabled by default when FAILs > 0. '
-             'Equivalent to --postcheck --postcheck-apply --postcheck-rerun-jg without needing an LLM conf.'
+        '(no LLM, no context limits). Enabled by default when FAILs > 0. '
+        'Equivalent to --postcheck --postcheck-apply --postcheck-rerun-jg without needing an LLM conf.',
     )
     ap.add_argument(
-        '--postcheck-fix-vacuous', action='store_true',
+        '--postcheck-fix-vacuous',
+        action='store_true',
         help='Auto-convert vacuously-proven assertions (unreachable witness) to cover goals. '
-             'Reduces false-confidence PROVEN count; makes coverage metrics honest. '
-             'Real-bug CEX assertions are NEVER touched — bugs are always preserved.'
+        'Reduces false-confidence PROVEN count; makes coverage metrics honest. '
+        'Real-bug CEX assertions are NEVER touched — bugs are always preserved.',
     )
     ap.add_argument(
-        '--postcheck-fix-vacuous-llm', action='store_true',
+        '--postcheck-fix-vacuous-llm',
+        action='store_true',
         help='Use LLM to rewrite vacuously-proven assertions into non-vacuous forms '
-             '($rose(rst_ni) for reset-conflict, output-conditioned antecedents for blackbox). '
-             'Requires --postcheck-llm-conf. Combine with --postcheck-fix-vacuous to heuristically '
-             'convert any remaining vacuous props to cover after LLM fix.'
+        '($rose(rst_ni) for reset-conflict, output-conditioned antecedents for blackbox). '
+        'Requires --postcheck-llm-conf. Combine with --postcheck-fix-vacuous to heuristically '
+        'convert any remaining vacuous props to cover after LLM fix.',
     )
 
     # Whitebox mode
@@ -1800,19 +1803,23 @@ def main() -> int:
 
     # COI Boost (Stage 8) — deterministic, no LLM required
     ap.add_argument(
-        '--boost-coi', action='store_true',
+        '--boost-coi',
+        action='store_true',
         help='Stage 8: add IO anchor covers + precondition reach covers to increase JasperGold COI coverage.',
     )
-    ap.add_argument('--boost-coi-time-limit', default='60m',
-        help='check_cov -time_limit for COI boost (default: 60m).')
-    ap.add_argument('--boost-coi-rerun-jg', action='store_true',
-        help='Re-run JasperGold after applying COI boost covers (requires --jasper-bin).')
-    ap.add_argument('--boost-coi-skip-io-anchors', action='store_true',
-        help='Skip IO anchor cover generation in COI boost.')
-    ap.add_argument('--boost-coi-skip-prec-covers', action='store_true',
-        help='Skip precondition reach cover generation in COI boost.')
-    ap.add_argument('--boost-coi-skip-tcl-patch', action='store_true',
-        help='Skip FPV.tcl coverage time-limit patch in COI boost.')
+    ap.add_argument('--boost-coi-time-limit', default='60m', help='check_cov -time_limit for COI boost (default: 60m).')
+    ap.add_argument(
+        '--boost-coi-rerun-jg',
+        action='store_true',
+        help='Re-run JasperGold after applying COI boost covers (requires --jasper-bin).',
+    )
+    ap.add_argument('--boost-coi-skip-io-anchors', action='store_true', help='Skip IO anchor cover generation in COI boost.')
+    ap.add_argument(
+        '--boost-coi-skip-prec-covers', action='store_true', help='Skip precondition reach cover generation in COI boost.'
+    )
+    ap.add_argument(
+        '--boost-coi-skip-tcl-patch', action='store_true', help='Skip FPV.tcl coverage time-limit patch in COI boost.'
+    )
 
     args = ap.parse_args()
 
@@ -1876,7 +1883,10 @@ def main() -> int:
 
         # Postcheck: auto-triggered if --postcheck-assume-spurious/--postcheck-fix-vacuous, or explicit --postcheck
         rc_post = run_postcheck_if_requested(
-            enabled=args.postcheck or args.postcheck_assume_spurious or args.postcheck_fix_vacuous or args.postcheck_fix_vacuous_llm,
+            enabled=args.postcheck
+            or args.postcheck_assume_spurious
+            or args.postcheck_fix_vacuous
+            or args.postcheck_fix_vacuous_llm,
             fpv_dir=fpv_dir,
             sva_top=sva_top,
             scope_path=args.scope_path or '',

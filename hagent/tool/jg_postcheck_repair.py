@@ -25,6 +25,7 @@ BEHAVIORAL_BOUND_THRESHOLD = 10
 # Utilities
 # ---------------------------------------------------------------------------
 
+
 def _tail_text(p: Path, n_lines: int = 250) -> str:
     if not p.exists():
         return f'<missing: {p}>'
@@ -85,6 +86,7 @@ def _needs_repair(counts: Dict[str, int]) -> Tuple[bool, str]:
 # CEX classification
 # ---------------------------------------------------------------------------
 
+
 def _classify_fails_structured(log_path: Path) -> Dict[str, Dict]:
     """Parse jg.stdout.log and return structured classification of all FAIL (cex) properties.
 
@@ -136,20 +138,18 @@ def _classify_fails_structured(log_path: Path) -> Dict[str, Dict]:
 def _format_classification_summary(classified: Dict[str, Dict]) -> str:
     """Return human-readable classification table for LLM prompt."""
     lines = [
-        f"{'Property':<30} {'Engine':<6} {'Bound':<12} {'Category'}",
+        f'{"Property":<30} {"Engine":<6} {"Bound":<12} {"Category"}',
         '-' * 65,
     ]
     for prop, info in sorted(classified.items()):
-        lines.append(
-            f"{prop:<30} {info['engine']:<6} {info['bound']:<12} {info['category']}"
-        )
+        lines.append(f'{prop:<30} {info["engine"]:<6} {info["bound"]:<12} {info["category"]}')
 
     counts: Dict[str, int] = {}
     for info in classified.values():
         counts[info['category']] = counts.get(info['category'], 0) + 1
 
     lines.append('')
-    lines.append('Summary: ' + ', '.join(f"{k}={v}" for k, v in sorted(counts.items())))
+    lines.append('Summary: ' + ', '.join(f'{k}={v}' for k, v in sorted(counts.items())))
     lines.append('')
     lines.append(
         'NOTE: BEHAVIORAL props (real RTL bugs) have been auto-converted to cover — '
@@ -161,6 +161,7 @@ def _format_classification_summary(classified: Dict[str, Dict]) -> str:
 # ---------------------------------------------------------------------------
 # Detect vacuously-proven assertions (unreachable witness)
 # ---------------------------------------------------------------------------
+
 
 def _find_vacuous_asserts(log_path: Path) -> set:
     """Return short names of assertions whose :witness1 cover is proven unreachable.
@@ -198,6 +199,7 @@ def _find_vacuous_asserts(log_path: Path) -> set:
 # COI / port context loading for LLM vacuous fix
 # ---------------------------------------------------------------------------
 
+
 def _load_coi_context(fpv_dir: Path, sva_top: str) -> Tuple[str, str]:
     """Load io_relations.json and ports.json and return (ports_summary, coi_graph) strings."""
     io_rel_path = fpv_dir / f'{sva_top}_io_relations.json'
@@ -215,7 +217,7 @@ def _load_coi_context(fpv_dir: Path, sva_top: str) -> Tuple[str, str]:
                 direction = p.get('dir', p.get('direction', '?'))
                 name = p.get('name', '?')
                 width = p.get('width', p.get('type', ''))
-                lines.append(f'  {direction:<8} {name}{"  "+str(width) if width and width not in ("logic", "?", "-") else ""}')
+                lines.append(f'  {direction:<8} {name}{"  " + str(width) if width and width not in ("logic", "?", "-") else ""}')
             ports_summary = '\n'.join(lines) if lines else str(ports_data)[:2000]
         except Exception as exc:
             ports_summary = f'<failed to parse ports.json: {exc}>'
@@ -304,10 +306,7 @@ def _llm_fix_vacuous_properties(
     ports_summary, coi_graph = _load_coi_context(fpv_dir, sva_top)
     prop_bodies = _extract_property_bodies(props_sv, safe_vacuous)
 
-    vacuous_bodies_text = '\n\n'.join(
-        f'--- {name} ---\n{body}'
-        for name, body in sorted(prop_bodies.items())
-    )
+    vacuous_bodies_text = '\n\n'.join(f'--- {name} ---\n{body}' for name, body in sorted(prop_bodies.items()))
     if len(vacuous_bodies_text) > 10_000:
         vacuous_bodies_text = vacuous_bodies_text[:10_000] + '\n... [truncated — too many props]'
 
@@ -357,6 +356,7 @@ def _llm_fix_vacuous_properties(
 # Auto-convert BEHAVIORAL asserts → covers (no LLM needed)
 # ---------------------------------------------------------------------------
 
+
 def _auto_convert_behavioral_to_cover(fpv_dir: Path, classified: Dict[str, Dict]) -> List[str]:
     """In sva/properties.sv, change assert_svaXXX → cover_svaXXX for BEHAVIORAL props.
 
@@ -382,8 +382,10 @@ def _auto_convert_behavioral_to_cover(fpv_dir: Path, classified: Dict[str, Dict]
 
     if converted:
         props_sv.write_text(content, encoding='utf-8')
-        print(f'[POSTCHECK] Auto-converted {len(converted)} BEHAVIORAL assert→cover: '
-              f'{", ".join(converted[:5])}{"..." if len(converted) > 5 else ""}')
+        print(
+            f'[POSTCHECK] Auto-converted {len(converted)} BEHAVIORAL assert→cover: '
+            f'{", ".join(converted[:5])}{"..." if len(converted) > 5 else ""}'
+        )
 
     return converted
 
@@ -426,12 +428,16 @@ def _auto_convert_vacuous_to_cover(
 
     if converted:
         props_sv.write_text(content, encoding='utf-8')
-        print(f'[POSTCHECK] Converted {len(converted)} vacuous assert→cover (witness unreachable): '
-              f'{", ".join(converted[:5])}{"..." if len(converted) > 5 else ""}')
+        print(
+            f'[POSTCHECK] Converted {len(converted)} vacuous assert→cover (witness unreachable): '
+            f'{", ".join(converted[:5])}{"..." if len(converted) > 5 else ""}'
+        )
     if fail_props & vacuous_props:
         skipped = fail_props & vacuous_props
-        print(f'[POSTCHECK] PRESERVED {len(skipped)} real-bug CEX props (not converted): '
-              f'{", ".join(sorted(skipped)[:5])}{"..." if len(skipped) > 5 else ""}')
+        print(
+            f'[POSTCHECK] PRESERVED {len(skipped)} real-bug CEX props (not converted): '
+            f'{", ".join(sorted(skipped)[:5])}{"..." if len(skipped) > 5 else ""}'
+        )
 
     return converted
 
@@ -439,6 +445,7 @@ def _auto_convert_vacuous_to_cover(
 # ---------------------------------------------------------------------------
 # Auto-convert PRE_ERROR/SPURIOUS asserts → assumes (no LLM needed)
 # ---------------------------------------------------------------------------
+
 
 def _auto_convert_spurious_to_assume(fpv_dir: Path, classified: Dict[str, Dict]) -> List[str]:
     """In sva/properties.sv, change assert_xxx → assume_xxx_pre + assume_xxx for
@@ -462,8 +469,7 @@ def _auto_convert_spurious_to_assume(fpv_dir: Path, classified: Dict[str, Dict])
             continue
         sva_id = re.sub(r'^assert_', '', prop)  # e.g. 'sva011' or 'store_buffer_empty_implies_no_data_req'
         old = f'assert_{sva_id}: assert property({sva_id})'
-        new = (f'assume_{sva_id}_pre: assume property({sva_id})\n'
-               f'assume_{sva_id}: assume property({sva_id})')
+        new = f'assume_{sva_id}_pre: assume property({sva_id})\nassume_{sva_id}: assume property({sva_id})'
         if old in content:
             content = content.replace(old, new)
             converted.append(prop)
@@ -472,8 +478,10 @@ def _auto_convert_spurious_to_assume(fpv_dir: Path, classified: Dict[str, Dict])
 
     if converted:
         props_sv.write_text(content, encoding='utf-8')
-        print(f'[POSTCHECK] Auto-converted {len(converted)} PRE_ERROR/SPURIOUS assert→assume: '
-              f'{", ".join(converted[:5])}{"..." if len(converted) > 5 else ""}')
+        print(
+            f'[POSTCHECK] Auto-converted {len(converted)} PRE_ERROR/SPURIOUS assert→assume: '
+            f'{", ".join(converted[:5])}{"..." if len(converted) > 5 else ""}'
+        )
 
     return converted
 
@@ -481,6 +489,7 @@ def _auto_convert_spurious_to_assume(fpv_dir: Path, classified: Dict[str, Dict])
 # ---------------------------------------------------------------------------
 # Targeted TCL generation
 # ---------------------------------------------------------------------------
+
 
 def _write_targeted_tcl(fpv_dir: Path, fail_prop_shorts: List[str]) -> Path:
     """Write FPV_repair.tcl that only proves the specified failing properties.
@@ -504,24 +513,22 @@ def _write_targeted_tcl(fpv_dir: Path, fail_prop_shorts: List[str]) -> Path:
     )
 
     # Tighten per-property limits for faster repair iterations
-    targeted = re.sub(r'set_prove_per_property_max_time_limit\s+\S+',
-                      'set_prove_per_property_max_time_limit 3m', targeted)
-    targeted = re.sub(r'set_prove_time_limit\s+\S+',
-                      'set_prove_time_limit 30m', targeted)
+    targeted = re.sub(r'set_prove_per_property_max_time_limit\s+\S+', 'set_prove_per_property_max_time_limit 3m', targeted)
+    targeted = re.sub(r'set_prove_time_limit\s+\S+', 'set_prove_time_limit 30m', targeted)
     # Skip coverage measurement in repair runs (saves ~5-10 min)
     targeted = re.sub(r'\ncheck_cov\s+-measure[^\n]*', '\n# check_cov skipped in repair run', targeted)
     targeted = re.sub(r'\ncheck_cov\s+-report[^\n]*', '\n# check_cov skipped in repair run', targeted)
 
     repair_tcl = fpv_dir / 'FPV_repair.tcl'
     repair_tcl.write_text(targeted, encoding='utf-8')
-    print(f'[POSTCHECK] Wrote targeted FPV_repair.tcl for {len(fail_prop_shorts)} props: '
-          f'{fail_prop_shorts}')
+    print(f'[POSTCHECK] Wrote targeted FPV_repair.tcl for {len(fail_prop_shorts)} props: {fail_prop_shorts}')
     return repair_tcl
 
 
 # ---------------------------------------------------------------------------
 # Parse targeted JG log to update results_summary.csv
 # ---------------------------------------------------------------------------
+
 
 def _parse_targeted_log(log_path: Path, targeted_props: List[str]) -> Dict[str, str]:
     """Parse jg.stdout.log for the targeted props only.
@@ -574,14 +581,17 @@ def _update_results_csv(
             counts['UNKNOWN'] = counts.get('UNKNOWN', 0) + 1
 
     _write_results_summary(fpv_dir / 'results_summary.csv', counts)
-    print(f'[POSTCHECK] Updated results_summary.csv: '
-          f"PROVEN={counts.get('PROVEN', 0)} FAIL={counts.get('FAIL', 0)} "
-          f"COVER={counts.get('COVER', 0)} UNKNOWN={counts.get('UNKNOWN', 0)}")
+    print(
+        f'[POSTCHECK] Updated results_summary.csv: '
+        f'PROVEN={counts.get("PROVEN", 0)} FAIL={counts.get("FAIL", 0)} '
+        f'COVER={counts.get("COVER", 0)} UNKNOWN={counts.get("UNKNOWN", 0)}'
+    )
 
 
 # ---------------------------------------------------------------------------
 # File collection for LLM context
 # ---------------------------------------------------------------------------
+
 
 def _collect_files(fpv_dir: Path, sva_top: str) -> List[Path]:
     # Intentionally exclude files.vc and FPV.tcl — the LLM must ONLY edit sva/properties.sv
@@ -617,14 +627,14 @@ def _files_blob(paths: List[Path]) -> str:
 # Backup
 # ---------------------------------------------------------------------------
 
+
 def _backup_tree(fpv_dir: Path, it: int = 0) -> Path:
     bdir = fpv_dir / f'backup_before_post_repair_iter{it + 1}'
     if bdir.exists():
         shutil.rmtree(bdir)
     bdir.mkdir(parents=True, exist_ok=True)
 
-    for rel in ['FPV.tcl', 'FPV_repair.tcl', 'files.vc', 'results_summary.csv',
-                'jg.stderr.log', 'jg.stdout.log', 'sva']:
+    for rel in ['FPV.tcl', 'FPV_repair.tcl', 'files.vc', 'results_summary.csv', 'jg.stderr.log', 'jg.stdout.log', 'sva']:
         src = fpv_dir / rel
         if src.exists():
             dst = bdir / rel
@@ -639,6 +649,7 @@ def _backup_tree(fpv_dir: Path, it: int = 0) -> Path:
 # ---------------------------------------------------------------------------
 # Pure-Python unified diff applier (robust against LLM line-number errors)
 # ---------------------------------------------------------------------------
+
 
 def _apply_patch(patch_text: str, patch_path: Path) -> bool:
     """Apply a unified diff in pure Python — robust against LLM line-number/count errors."""
@@ -674,16 +685,19 @@ def _apply_patch(patch_text: str, patch_path: Path) -> bool:
         hunk_num += 1
 
         raw_hunk: List[str] = []
-        while i < len(diff_lines) and not diff_lines[i].startswith('@@') \
-                and not (diff_lines[i].startswith('---') and len(raw_hunk) > 0):
+        while (
+            i < len(diff_lines)
+            and not diff_lines[i].startswith('@@')
+            and not (diff_lines[i].startswith('---') and len(raw_hunk) > 0)
+        ):
             raw_hunk.append(diff_lines[i])
             i += 1
 
-        old_lines = [l[1:] for l in raw_hunk if not l.startswith('+')]
-        new_lines = [l[1:] for l in raw_hunk if not l.startswith('-')]
+        old_lines = [line_text[1:] for line_text in raw_hunk if not line_text.startswith('+')]
+        new_lines = [line_text[1:] for line_text in raw_hunk if not line_text.startswith('-')]
 
         def _norm(ls: List[str]) -> List[str]:
-            return [l if l.endswith('\n') else l + '\n' for l in ls]
+            return [line_text if line_text.endswith('\n') else line_text + '\n' for line_text in ls]
 
         old_norm = _norm(old_lines)
         new_norm = _norm(new_lines)
@@ -711,10 +725,12 @@ def _apply_patch(patch_text: str, patch_path: Path) -> bool:
             print(f'[POSTCHECK] hunk {hunk_num}: context not found near line {hint + 1} — skipping hunk')
             continue
 
-        file_lines[found:found + len(old_norm)] = new_norm
+        file_lines[found : found + len(old_norm)] = new_norm
         delta = len(new_norm) - len(old_norm)
         offset += delta
-        print(f'[POSTCHECK] hunk {hunk_num}: applied at line {found + 1} ({len(old_norm)}→{len(new_norm)} lines, delta={delta:+d})')
+        print(
+            f'[POSTCHECK] hunk {hunk_num}: applied at line {found + 1} ({len(old_norm)}→{len(new_norm)} lines, delta={delta:+d})'
+        )
 
     target.write_text(''.join(file_lines), encoding='utf-8')
     return True
@@ -723,6 +739,7 @@ def _apply_patch(patch_text: str, patch_path: Path) -> bool:
 # ---------------------------------------------------------------------------
 # JasperGold runner
 # ---------------------------------------------------------------------------
+
 
 def _run_jasper(fpv_dir: Path, jasper_bin: str, tcl_file: str = 'FPV.tcl') -> bool:
     """Run JasperGold. Returns True if the run completed (jg.stdout.log was written).
@@ -765,6 +782,7 @@ def _run_jasper(fpv_dir: Path, jasper_bin: str, tcl_file: str = 'FPV.tcl') -> bo
 # ---------------------------------------------------------------------------
 # Main repair loop
 # ---------------------------------------------------------------------------
+
 
 def run_postcheck_repair(
     fpv_dir: Path,
@@ -818,8 +836,10 @@ def run_postcheck_repair(
                                 # Re-read counts after full re-run
                                 new_vac = _find_vacuous_asserts(fpv_dir / 'jg.stdout.log')
                                 fixed_count = len(vacuous) - len(new_vac)
-                                print(f'[POSTCHECK] LLM vacuous fix: {fixed_count} props '
-                                      f'no longer vacuous, {len(new_vac)} still vacuous.')
+                                print(
+                                    f'[POSTCHECK] LLM vacuous fix: {fixed_count} props '
+                                    f'no longer vacuous, {len(new_vac)} still vacuous.'
+                                )
                             else:
                                 print('[POSTCHECK] WARNING: JG produced no proof results after LLM vacuous fix.')
                     else:
@@ -837,16 +857,17 @@ def run_postcheck_repair(
         fail_classified = _classify_fails_structured(log_path)
         fail_prop_names = set(fail_classified.keys())
         if vacuous:
-            print(f'[POSTCHECK] Found {len(vacuous)} vacuously-proven assertions '
-                  f'(unreachable witness). Converting to cover (real-bug CEX preserved).')
+            print(
+                f'[POSTCHECK] Found {len(vacuous)} vacuously-proven assertions '
+                f'(unreachable witness). Converting to cover (real-bug CEX preserved).'
+            )
             vac_converted = _auto_convert_vacuous_to_cover(fpv_dir, vacuous, fail_prop_names)
             if vac_converted:
                 # Vacuous→cover: remove from PROVEN, add to COVER
                 counts['PROVEN'] = max(0, counts.get('PROVEN', 0) - len(vac_converted))
                 counts['COVER'] = counts.get('COVER', 0) + len(vac_converted)
                 _write_results_summary(fpv_dir / 'results_summary.csv', counts)
-                print(f'[POSTCHECK] After vacuous fix: PROVEN={counts.get("PROVEN", 0)} '
-                      f'COVER={counts.get("COVER", 0)}')
+                print(f'[POSTCHECK] After vacuous fix: PROVEN={counts.get("PROVEN", 0)} COVER={counts.get("COVER", 0)}')
         else:
             print('[POSTCHECK] No vacuously-proven assertions found.')
 
@@ -878,8 +899,7 @@ def run_postcheck_repair(
     behavioral = {k: v for k, v in classified.items() if v['category'] == 'BEHAVIORAL'}
     fixable = {k: v for k, v in classified.items() if v['category'] != 'BEHAVIORAL'}
 
-    print(f'[POSTCHECK] Classification: {len(behavioral)} BEHAVIORAL (→cover), '
-          f'{len(fixable)} fixable (PRE_ERROR/SPURIOUS → LLM)')
+    print(f'[POSTCHECK] Classification: {len(behavioral)} BEHAVIORAL (→cover), {len(fixable)} fixable (PRE_ERROR/SPURIOUS → LLM)')
 
     # ---- Step 1: Auto-convert BEHAVIORAL asserts → covers ------------------
     behavioral_converted: List[str] = []
@@ -942,7 +962,7 @@ def run_postcheck_repair(
                     counts['FAIL'] = max(0, counts.get('FAIL', 0) - len(newly_conv))
                     counts['COVER'] = counts.get('COVER', 0) + len(newly_conv)
                     _write_results_summary(fpv_dir / 'results_summary.csv', counts)
-                    print(f'[POSTCHECK] Iter {it+1}: converted {len(newly_conv)} new BEHAVIORAL→cover')
+                    print(f'[POSTCHECK] Iter {it + 1}: converted {len(newly_conv)} new BEHAVIORAL→cover')
             fixable = {k: v for k, v in classified.items() if v['category'] != 'BEHAVIORAL'}
             fail_short_names = list(fixable.keys())
             classification_text = _format_classification_summary(classified)
@@ -950,8 +970,9 @@ def run_postcheck_repair(
                 print('[POSTCHECK] No more fixable FAIL props. Done.')
                 break
 
-        print(f'[POSTCHECK] Repair iteration {it + 1}/{max_iters} — '
-              f'{len(fail_short_names)} fixable FAIL props: {fail_short_names}')
+        print(
+            f'[POSTCHECK] Repair iteration {it + 1}/{max_iters} — {len(fail_short_names)} fixable FAIL props: {fail_short_names}'
+        )
 
         # Write targeted TCL (only proves fixable props, tighter time limits)
         if apply and rerun_jg and fail_short_names:
@@ -966,9 +987,9 @@ def run_postcheck_repair(
             'results_summary': _read_text(fpv_dir / 'results_summary.csv'),
             'fail_classification': classification_text,
             'fail_properties': '\n'.join(
-                f"{p}  engine={v['engine']}  bound={v['bound']}  [{v['category']}]"
-                for p, v in fixable.items()
-            ) or '<none>',
+                f'{p}  engine={v["engine"]}  bound={v["bound"]}  [{v["category"]}]' for p, v in fixable.items()
+            )
+            or '<none>',
             'jg_stderr_tail': _tail_text(fpv_dir / 'jg.stderr.log', tail_lines),
             'jg_stdout_tail': _tail_text(fpv_dir / 'jg.stdout.log', tail_lines),
             'jg_log_tail': _tail_text(fpv_dir / 'jgproject' / 'jg.log', tail_lines),
@@ -1081,32 +1102,45 @@ def run_postcheck_repair(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main(argv: Optional[List[str]] = None) -> int:
     import argparse
 
-    ap = argparse.ArgumentParser(
-        description='Post-Jasper triage + LLM repair with automatic BEHAVIORAL→cover conversion.')
+    ap = argparse.ArgumentParser(description='Post-Jasper triage + LLM repair with automatic BEHAVIORAL→cover conversion.')
     ap.add_argument('--fpv-dir', required=True, help='Path to the FPV output directory')
     ap.add_argument('--sva-top', required=True, help='SVA module top name (e.g. load_unit)')
     ap.add_argument('--scope-path', default='', help='DUT scope path for context')
     ap.add_argument('--llm-conf', default=None, help='Path to jg_post_repair_prompt.yaml (not needed with --assume-spurious)')
-    ap.add_argument('--assume-spurious', action='store_true',
-                    help='Auto-convert PRE_ERROR/SPURIOUS asserts to assumes (no LLM, no context limits)')
+    ap.add_argument(
+        '--assume-spurious',
+        action='store_true',
+        help='Auto-convert PRE_ERROR/SPURIOUS asserts to assumes (no LLM, no context limits)',
+    )
     ap.add_argument('--apply', action='store_true', help='Apply patch/conversion to properties.sv')
     ap.add_argument('--rerun-jg', action='store_true', help='Rerun Jasper after applying patch')
     ap.add_argument('--jasper-bin', default='jg', help='Path to jg binary')
     ap.add_argument('--max-iters', type=int, default=1, help='Max LLM repair iterations')
     ap.add_argument('--tail-lines', type=int, default=250, help='Lines of log tail for LLM context')
     ap.add_argument('--no-csv', action='store_true', help='Do not include *_spec.csv in context')
-    ap.add_argument('--behavioral-threshold', type=int, default=BEHAVIORAL_BOUND_THRESHOLD,
-                    help=f'Ht/L bound >= this → BEHAVIORAL (auto-convert to cover, default={BEHAVIORAL_BOUND_THRESHOLD})')
-    ap.add_argument('--fix-vacuous', action='store_true',
-                    help='Auto-convert vacuously-proven assertions (unreachable witness) to cover. '
-                         'Real-bug CEX assertions are NEVER touched.')
-    ap.add_argument('--fix-vacuous-llm', action='store_true',
-                    help='Use LLM to rewrite vacuously-proven assertions into non-vacuous forms '
-                         '(e.g., $rose(rst_ni), output-conditioned antecedents). Requires --llm-conf. '
-                         'Combine with --fix-vacuous to heuristically convert any remaining ones to cover.')
+    ap.add_argument(
+        '--behavioral-threshold',
+        type=int,
+        default=BEHAVIORAL_BOUND_THRESHOLD,
+        help=f'Ht/L bound >= this → BEHAVIORAL (auto-convert to cover, default={BEHAVIORAL_BOUND_THRESHOLD})',
+    )
+    ap.add_argument(
+        '--fix-vacuous',
+        action='store_true',
+        help='Auto-convert vacuously-proven assertions (unreachable witness) to cover. '
+        'Real-bug CEX assertions are NEVER touched.',
+    )
+    ap.add_argument(
+        '--fix-vacuous-llm',
+        action='store_true',
+        help='Use LLM to rewrite vacuously-proven assertions into non-vacuous forms '
+        '(e.g., $rose(rst_ni), output-conditioned antecedents). Requires --llm-conf. '
+        'Combine with --fix-vacuous to heuristically convert any remaining ones to cover.',
+    )
     args = ap.parse_args(argv)
 
     return run_postcheck_repair(

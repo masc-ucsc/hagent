@@ -132,9 +132,17 @@ else
 
   # Copy from cache to target
   mkdir -p "${BASE_DIR}"
-  for d in repo build cache logs; do
+  for d in repo build logs; do
     cp -a "${CACHE_TEMPLATE_DIR}/${d}" "${BASE_DIR}/" 2>/dev/null || mkdir -p "${BASE_DIR}/${d}"
   done
+  mkdir -p "${BASE_DIR}/cache"
+
+  # The cached template may contain a prebuilt virtualenv that is several GB.
+  # Reusing that shared venv via copy is unnecessary for MCP setup and makes
+  # per-test setup painfully slow, so only copy the lightweight cache contents.
+  if [[ -d "${CACHE_TEMPLATE_DIR}/cache/reference" ]]; then
+    cp -a "${CACHE_TEMPLATE_DIR}/cache/reference" "${BASE_DIR}/cache/"
+  fi
   mkdir -p "${BASE_DIR}/cache/mcp"
 fi
 
