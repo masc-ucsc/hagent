@@ -175,6 +175,7 @@ class LLM_wrap:
 
         self.last_error = ''
         self.chat_history = []  # Stores messages as [{"role": "...", "content": "..."}]
+        self._last_formatted_messages = []  # Last formatted template messages (for callers to capture)
         self.responses = []  # Stores the complete litellm response for tracing LLM calls.
         self.total_cost = 0.0
         self.total_tokens = 0
@@ -297,8 +298,10 @@ class LLM_wrap:
 
         # Format prompt
         try:
+            # format the system/user prompt by replacing the placeholders in the provided template
             formatted = template.format(prompt_dict)
             assert isinstance(formatted, list), 'Data should be a list'
+            self._last_formatted_messages = formatted
         except Exception as e:
             self._set_error(f'template formatting error: {e}')
             data = {'error': self.last_error}
@@ -313,18 +316,15 @@ class LLM_wrap:
             return []
 
         if max_history > 0:
-            messages = self.chat_history[:max_history]
+            history_slice = self.chat_history[-max_history:]
         else:
-            messages = []
-        messages += formatted
-
-        # Convert messages to input string for responses API
-        input_text = self._messages_to_input(messages)
+            history_slice = []
+        messages = formatted + history_slice
 
         # Build llm_call_args for responses API
         llm_call_args = {}
         llm_call_args['model'] = self.llm_args.get('model', '')
-        llm_call_args['input'] = input_text
+        llm_call_args['input'] = messages
 
         # Convert max_tokens to max_output_tokens for responses API
         if 'max_tokens' in self.llm_args:
@@ -341,6 +341,23 @@ class LLM_wrap:
                 if anthropic_model and param == 'top_p':
                     continue  # Anthropic does not allow both temperature and top_p
                 llm_call_args[param] = self.llm_args[param]
+
+        # Map reasoning_effort to provider-specific parameters
+        if 'reasoning_effort' in self.llm_args:
+            effort = self.llm_args['reasoning_effort']
+            if anthropic_model:
+                # For Anthropic, pass 'thinking' directly as a kwarg.
+                # It flows through responses() -> **kwargs -> completion()
+                # where Anthropic's handler picks it up natively.
+                # budget_tokens must be < max_tokens to leave room for the response.
+                max_tok = self.llm_args.get('max_tokens', 65568)
+                budget_map = {'high': 0.80, 'medium': 0.50, 'low': 0.20}
+                ratio = budget_map.get(effort, 0.80)
+                budget = max(1024, int(max_tok * ratio))
+                llm_call_args['thinking'] = {'type': 'enabled', 'budget_tokens': budget}
+            else:
+                # For Gemini/OpenAI, use the responses API 'reasoning' parameter
+                llm_call_args['reasoning'] = {'effort': effort}
         if model == '':
             self._set_error('empty model name. No default model used')
             return []
@@ -353,11 +370,9 @@ class LLM_wrap:
         try:
             model_name = llm_call_args.get('model', '')
             oai_reasoning_models = {'o1', 'o1-pro', 'o1-mini', 'o3', 'o3-mini', 'o4-mini'}
-            oai_agentic_models = {'gpt-5.1-codex-mini', 'codex-mini-latest'}
-            
-            does_not_support_temp_topp = any(
-                rm in model_name.lower() for rm in (oai_reasoning_models | oai_agentic_models)
-            )
+            oai_agentic_models = {'gpt-5.2-codex', 'gpt-5.1-codex-mini', 'codex-mini-latest'}
+
+            does_not_support_temp_topp = any(rm in model_name.lower() for rm in (oai_reasoning_models | oai_agentic_models))
 
             start = time.time()
 
@@ -406,14 +421,22 @@ class LLM_wrap:
                     # Add variation to input to avoid caching when seeking diversity
                     if i > 0 and last_response:
                         # Truncate last response to 2KB if needed
-                        prev_response = last_response
-                        if len(prev_response) > 2048:
-                            prev_response = prev_response[:2048] + '...'
-                        call_args['input'] += (
-                            f'\n\nThe last response answer was: """{prev_response}""" please try something different.'
-                        )
+                        prev_response = last_response.text if hasattr(last_response, 'text') else last_response
+                        if len(prev_response) > 4096:
+                            prev_response = prev_response[:4096] + '...'
+                        call_args['input'] = list(call_args['input']) + [
+                            {
+                                'role': 'user',
+                                'content': f'The last response answer was: """{prev_response}""" please try something different.',
+                            }
+                        ]
 
                     r = litellm.responses(**call_args)
+                    if r is None:
+                        data = {'warning': f'litellm returns None in turn {i}'}
+                        self._log_event(event_type=f'{self.name}:LLM_wrap.error', data=data)
+                        continue
+
                     responses.append(r)
 
                     # Store only the last response for next iteration's variation
@@ -421,8 +444,11 @@ class LLM_wrap:
                     if hasattr(r, 'output') and r.output:
                         try:
                             last_response = r.output[1].content[0].text
-                        except (IndexError, AttributeError):
-                            pass
+                        except IndexError:
+                            try:
+                                last_response = r.output[0].content[0]
+                            except (IndexError, AttributeError):
+                                pass
 
                 # For responses API, we collect answers directly instead of combining choices
                 answers = []
@@ -435,8 +461,13 @@ class LLM_wrap:
                             text = resp.output[1].content[0].text
                             if text:
                                 answers.append(text)
-                        except (IndexError, AttributeError):
-                            pass
+                        except IndexError:
+                            try:
+                                text = resp.output[0].content[0].text
+                                if text:
+                                    answers.append(text)
+                            except (IndexError, AttributeError):
+                                pass
                     if hasattr(resp, 'usage'):
                         total_tokens += getattr(resp.usage, 'total_tokens', 0)
                     try:
@@ -449,7 +480,16 @@ class LLM_wrap:
                 tokens = total_tokens
                 cost = total_cost
             else:
+                if does_not_support_temp_topp:
+                    llm_call_args.pop('temperature', None)
+                    llm_call_args.pop('top_p', None)
+
                 r = litellm.responses(**llm_call_args)
+
+                if r is None:
+                    data = {'warning': f'litellm returns None'}
+                    self._log_event(event_type=f'{self.name}:LLM_wrap.error', data=data)
+                    raise RuntimeError("litellm returned None")
 
                 end = time.time()
                 response = {'created': start, 'elapsed': end - start}
@@ -458,11 +498,31 @@ class LLM_wrap:
                 answers = []
                 if hasattr(r, 'output') and r.output:
                     try:
+                        # some models like gpt-5 has to index `output[1]`
+                        status = r.output[1].status
+                        if status == 'incomplete':
+                            self._set_error(
+                                f'litellm call status incomplete, the token might reached the limit {self.llm_args["max_tokens"]}, please investigate'
+                            )
+                        if r.output[1].content is None:
+                            # investigate what will the `status` be if `content` is None
+                            breakpoint()
                         text = r.output[1].content[0].text
                         if text:
                             answers.append(text)
-                    except (IndexError, AttributeError):
-                        pass
+                    except IndexError:
+                        try:
+                            # some models like gpt-4 has to index `output[0]`
+                            status = r.output[0].status
+                            if status == 'incomplete':
+                                self._set_error(
+                                    f'litellm call status incomplete, the token might reached the limit {self.llm_args["max_tokens"]}, please investigate'
+                                )
+                            text = r.output[0].content[0].text
+                            if text:
+                                answers.append(text)
+                        except (IndexError, AttributeError):
+                            pass
 
                 # Get tokens and cost
                 tokens = 0
