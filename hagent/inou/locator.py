@@ -236,6 +236,15 @@ class Locator:
             self._debug_print(f'locate_code() failed: {e!s}')
             return []
 
+    def get_hierarchy(self) -> dict:
+        """Get the instance-to-module hierarchy mapping (runs slang-hier if not cached).
+
+        Returns:
+            Dict mapping instance_path -> {'module': str, 'file': str, 'instance': str},
+            plus a '_metadata' key with cache info. Empty dict on failure.
+        """
+        return self._build_hierarchy_cache()
+
     def invalidate_cache(self, force: bool = False) -> None:
         """Invalidate cached data for the current profile.
 
@@ -375,6 +384,8 @@ class Locator:
             exit_code, stdout, stderr = self.builder.runner.run_cmd(dry_run_cmd, cwd=cwd, quiet=(not self.debug))
 
             if exit_code != 0:
+                self._error = f'{stderr}'
+                print(self._error)
                 return None
 
             # Parse the output to extract "Slang arguments: ..." line
@@ -1026,6 +1037,8 @@ class Locator:
         # Extract variable name from hierarchical path (last component)
         parts = hier_path.split('.')
         var_name = parts[-1] if parts else hier_path
+        # sometimes the specific index number comes with an array of flops, we discard `[*]`
+        var_name = re.sub(r'\s*\[\d+\]$', '', var_name)
 
         # Extract module hierarchy (all but last component)
         # e.g., "top.cpu.alu.result" → "top.cpu.alu"
@@ -1166,6 +1179,7 @@ class Locator:
                 import re as re_module
 
                 netlist_match = re_module.search(r'--netlist\s+(\S+)', base_command)
+
                 if netlist_match:
                     netlist_file = netlist_match.group(1)
 
