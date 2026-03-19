@@ -79,11 +79,12 @@ def build_lgshell_command(
     """Build the lgshell pipeline command string for synalign."""
     # Note that we always add double quotes around the top name to allow lgshell
     # to read names with special characters inserte by yosys like '$'
-    parts = [
+    first = [
         f'inou.liberty files:{liberty_file}',
         f'inou.yosys.tolg top:"{synth_top}" files:{netlist_path}',
         f'inou.attr.load files:{color_json}',
     ]
+    first_pipe = ' |> '.join(first)
 
     # Build the original RTL load command
     orig_cmd = f'inou.yosys.tolg top:"{orig_top}" elab_top:"{elab_top}" frontend:slang slang_flags:--keep-hierarchy'
@@ -93,12 +94,17 @@ def build_lgshell_command(
     if manifest_file:
         orig_cmd += f' filelist_file:{manifest_file}'
 
-    parts.append(orig_cmd)
-    parts.append(f'lgraph.open name:"{orig_top}"')
-    parts.append(f'lgraph.open name:"{synth_top}"')
-    parts.append(f'inou.traverse_lg LGorig:"{orig_top}" LGsynth:"{synth_top}"')
+    second = [
+        orig_cmd,
+        f'lgraph.open name:"{orig_top}"',
+        f'lgraph.open name:"{synth_top}"',
+        f'inou.traverse_lg LGorig:"{orig_top}" LGsynth:"{synth_top}"',
+    ]
+    second_pipe = ' |> '.join(second)
 
-    return ' |> '.join(parts)
+    # we break after color.json because it will otherwise be
+    # fed as an input verilog file to inou.yosys.tolg
+    return first_pipe + '\n' + second_pipe
 
 
 def parse_synalign_output(stdout: str) -> dict:
@@ -234,13 +240,13 @@ def run_synalign(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=1800,
+            timeout=36000,
         )
     except FileNotFoundError:
         print(f'Error: lgshell not found at {lgshell_path}', file=sys.stderr)
         return {'mappings': [], 'raw_output': ''}
     except subprocess.TimeoutExpired:
-        print('Error: lgshell timed out after 1800s', file=sys.stderr)
+        print('Error: lgshell timed out after 3600s', file=sys.stderr)
         return {'mappings': [], 'raw_output': ''}
 
     if result.returncode != 0:
