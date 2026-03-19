@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -363,7 +364,7 @@ class LLMOptimizeWithLECStep(Step):
         original_code: str,
         strategies: Dict[str, str],
     ) -> Dict:
-        """Optimize a single module by trying each strategy (1 candidate each).
+        """Optimize a single module by trying each strategy in parallel.
 
         For each strategy proposed by the arch agent:
           1. Build prompt with strategy hint + conditional RAG
@@ -371,10 +372,13 @@ class LLMOptimizeWithLECStep(Step):
           3. Verify (compile + LEC with fix loops)
         Then evaluate timing on all verified candidates and pick the best.
 
+        Each strategy runs in its own thread with thread-local LLM_wrap
+        instances to avoid shared mutable state.
+
         Returns:
             {'success': bool, 'code': str, 'reason': str, 'frequency': float}
         """
-        print(f'    Optimizing {module_name} ({len(strategies)} strategies)')
+        print(f'    Optimizing {module_name} ({len(strategies)} strategies in parallel)')
 
         module_dir = self.output_dir / module_name
         module_dir.mkdir(parents=True, exist_ok=True)
@@ -394,75 +398,42 @@ class LLMOptimizeWithLECStep(Step):
         if not gold_elab_path:
             self.error(f'{gold_error}')
 
-        # Try each strategy: generate 1 candidate, verify, collect
+        # Run all strategies in parallel
+        max_workers = min(len(strategies), 4)
+        candidates: List[CandidateState] = []
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {}
+            for strat_name, strat_prompt in strategies.items():
+                normed_strat = strat_name.replace(' ', '_')
+                strat_dir = module_dir / f'{normed_strat}'
+                future = executor.submit(
+                    self._run_single_strategy,
+                    strat_name=strat_name,
+                    strat_prompt=strat_prompt,
+                    module_name=module_name,
+                    original_code=original_code,
+                    gold_elab_path=gold_elab_path,
+                    strat_dir=strat_dir,
+                )
+                futures[future] = strat_name
+
+            for future in as_completed(futures):
+                strat_name = futures[future]
+                try:
+                    candidate = future.result()
+                    if candidate is not None:
+                        candidates.append(candidate)
+                except Exception as e:
+                    print(f'      Strategy "{strat_name}" raised exception: {e}')
+
+        # Pick best from all candidates
         best_candidate = CandidateState()
         improving: List[CandidateState] = []
-        for strat_name, strat_prompt in strategies.items():
-            print(f'    Strategy: {strat_name}')
-            normed_strat = strat_name.replace(' ', '_')
-            strat_dir = module_dir / f'{normed_strat}'
-
-            # Fresh session per strategy
-            opt_session = LLMSession.create(opt_llm)
-
-            # Build prompt with strategy hint + conditional RAG augmentation
-            strategy_hint = self._augment_with_rag(strat_prompt, original_code, strat_name)
-
-            prompt_dict = {
-                'module_name': module_name,
-                'original_code': original_code,
-                'strategy_hint': strategy_hint,
-            }
-
-            # Generate strategy candidate
-            try:
-                responses = opt_session.call_with_history(
-                    prompt_dict,
-                    'optimize_timing_prompt',
-                    n=1,
-                    max_history=8,
-                )
-            except Exception as e:
-                print(f'      LLM call failed: {e}')
-                continue
-
-            # Pre-check: ensure optimizer response contains valid patch format
-            ok_patch, fmt_err = self._ensure_search_replace_patch(
-                opt_session,
-                code_to_patch=original_code,
-                patch=responses[0],
-                prompt_dict=prompt_dict,
-                prompt_index='optimize_timing_prompt',
-                max_format_rounds=2,
-            )
-            if ok_patch is None:
-                print(f'      Strategy "{strat_name}" failed format check: {fmt_err}')
-                continue
-            response_patch = ok_patch
-
-            # Verify (compile + LEC with fix loops)
-            candidate = self._verify_and_fix(
-                proposed_patch=response_patch,
-                original_code=original_code,
-                output_dir=strat_dir,
-                module_name=module_name,
-                strat_name=strat_name,
-                gold_elab_path=gold_elab_path,
-            )
-
-            if not candidate.compile_ok or not candidate.lec_ok:
-                print(f'      Strategy "{strat_name}" candidate failed verification')
-                continue
-
-            candidate_freq = self._evaluate_timing(candidate, module_name, strat_dir)
-
-            if candidate_freq > self.baseline_freq:
-                if not best_candidate.frequency:
-                    best_candidate = candidate
-                    continue
-
+        for candidate in candidates:
+            if candidate.frequency is not None and candidate.frequency > self.baseline_freq:
                 improving.append(candidate)
-                if candidate_freq > best_candidate.frequency:
+                if best_candidate.frequency is None or candidate.frequency > best_candidate.frequency:
                     best_candidate = candidate
 
         if len(improving) > 0:
@@ -476,6 +447,96 @@ class LLMOptimizeWithLECStep(Step):
 
         return {'success': False, 'code': '', 'reason': 'no improvement after refinement'}
 
+    def _run_single_strategy(
+        self,
+        strat_name: str,
+        strat_prompt: str,
+        module_name: str,
+        original_code: str,
+        gold_elab_path: Path,
+        strat_dir: Path,
+    ) -> Optional[CandidateState]:
+        """Run a single strategy end-to-end (generate, verify, evaluate).
+
+        Creates thread-local LLM_wrap instances so strategies can run
+        concurrently without shared mutable state.
+        """
+        print(f'    Strategy: {strat_name}')
+
+        # Thread-local LLM instances — each thread gets its own
+        conf = self.llm_config.conf_file
+        local_opt_llm = LLM_wrap(
+            name='module_timing_optimizer',
+            log_file=f'module_opt_{strat_name}.log',
+            conf_file=conf,
+        )
+        local_syntax_llm = LLM_wrap(
+            name='syntax_fixer',
+            log_file=f'syntax_fix_{strat_name}.log',
+            conf_file=conf,
+        )
+        local_lec_llm = LLM_wrap(
+            name='lec_fixer',
+            log_file=f'lec_fix_{strat_name}.log',
+            conf_file=conf,
+        )
+
+        opt_session = LLMSession.create(local_opt_llm)
+
+        # Build prompt with strategy hint + conditional RAG augmentation
+        strategy_hint = self._augment_with_rag(strat_prompt, original_code, strat_name)
+
+        prompt_dict = {
+            'module_name': module_name,
+            'original_code': original_code,
+            'strategy_hint': strategy_hint,
+        }
+
+        # Generate strategy candidate
+        try:
+            responses = opt_session.call_with_history(
+                prompt_dict,
+                'optimize_timing_prompt',
+                n=1,
+                max_history=8,
+            )
+        except Exception as e:
+            print(f'      [{strat_name}] LLM call failed: {e}')
+            return None
+
+        # Pre-check: ensure optimizer response contains valid patch format
+        ok_patch, fmt_err = self._ensure_search_replace_patch(
+            opt_session,
+            code_to_patch=original_code,
+            patch=responses[0],
+            prompt_dict=prompt_dict,
+            prompt_index='optimize_timing_prompt',
+            max_format_rounds=2,
+        )
+        if ok_patch is None:
+            print(f'      [{strat_name}] failed format check: {fmt_err}')
+            return None
+
+        # Verify (compile + LEC with fix loops)
+        candidate = self._verify_and_fix(
+            proposed_patch=ok_patch,
+            original_code=original_code,
+            output_dir=strat_dir,
+            module_name=module_name,
+            strat_name=strat_name,
+            gold_elab_path=gold_elab_path,
+            syntax_fix_llm=local_syntax_llm,
+            lec_fix_llm=local_lec_llm,
+        )
+
+        if not candidate.compile_ok or not candidate.lec_ok:
+            print(f'      [{strat_name}] candidate failed verification')
+            return candidate
+
+        candidate_freq = self._evaluate_timing(candidate, module_name, strat_dir)
+        print(f'      [{strat_name}] frequency: {candidate_freq:.2f} MHz')
+        return candidate
+
     def _verify_and_fix(
         self,
         proposed_patch: str,
@@ -484,6 +545,8 @@ class LLMOptimizeWithLECStep(Step):
         module_name: str,
         strat_name: str,
         gold_elab_path: Path,
+        syntax_fix_llm: Optional[LLM_wrap] = None,
+        lec_fix_llm: Optional[LLM_wrap] = None,
     ) -> CandidateState:
         """
         Verify a proposed strategy patch by checking syntax and logical equivalence,
@@ -495,11 +558,18 @@ class LLMOptimizeWithLECStep(Step):
 
         Each phase uses its own disposable fix-agent, feedback builder, and
         RAG memory to avoid contaminating the optimizer's conversation.
+
+        Args:
+            syntax_fix_llm: Thread-local syntax fixer LLM (falls back to self.syntax_fix_llm).
+            lec_fix_llm: Thread-local LEC fixer LLM (falls back to self.lec_fix_llm).
         """
+        syntax_fix_llm = syntax_fix_llm or self.syntax_fix_llm
+        lec_fix_llm = lec_fix_llm or self.lec_fix_llm
+
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Phase 1: Compile and fix potential issues
-        elab_res = self._elab_react(proposed_patch, original_code, module_name, output_dir / 'syntax_check')
+        elab_res = self._elab_react(proposed_patch, original_code, module_name, output_dir / 'syntax_check', syntax_fix_llm=syntax_fix_llm)
 
         if not elab_res.ok:
             print(f'    {module_name} with strategy {strat_name} failed compilation with {elab_res.error_msg}')
@@ -526,6 +596,8 @@ class LLMOptimizeWithLECStep(Step):
             gold_elab_path,
             module_name,
             output_dir=output_dir / 'lec',
+            lec_fix_llm=lec_fix_llm,
+            syntax_fix_llm=syntax_fix_llm,
         )
 
         if lec_ok:
@@ -573,13 +645,20 @@ class LLMOptimizeWithLECStep(Step):
         original_code: str,
         module_name: str,
         output_dir: Path,
+        syntax_fix_llm: Optional[LLM_wrap] = None,
     ) -> ElabResult:
         """
         Run the elaboration ReAct loop on a proposed candidate patch;
         fix the proposed patch if it fails to compile.
+
+        Args:
+            syntax_fix_llm: Thread-local syntax fixer LLM (falls back to self.syntax_fix_llm).
+
         Returns:
             (elab_ok, fixed_patch, error_msg, res_elab_path)
         """
+        syntax_fix_llm = syntax_fix_llm or self.syntax_fix_llm
+
         if not self.rtl.manifest_file:
             res = ElabResult(patch=None, elab_path=None, error_msg='No manifest file specified in the input config file')
             res.assert_valid()
@@ -593,7 +672,7 @@ class LLMOptimizeWithLECStep(Step):
         error_msg: Optional[str] = None
         # Prepare output directory and SyntaxFixer that will potentially be used
         output_dir.mkdir(parents=True, exist_ok=True)
-        fix_session = LLMSession.create(self.syntax_fix_llm)
+        fix_session = LLMSession.create(syntax_fix_llm)
 
         num_compile_attempts = (
                     self.thresholds.compile_fix_max 
@@ -713,6 +792,8 @@ class LLMOptimizeWithLECStep(Step):
         gold_elab_path: Path,
         module_name: str,
         output_dir: Path,
+        lec_fix_llm: Optional[LLM_wrap] = None,
+        syntax_fix_llm: Optional[LLM_wrap] = None,
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Run logical equivalence check ReAct loop on the elaborated result of
@@ -721,12 +802,18 @@ class LLMOptimizeWithLECStep(Step):
         avoid re-elab in the first run.
         Fix the proposed patch if LEC fails.
 
+        Args:
+            lec_fix_llm: Thread-local LEC fixer LLM (falls back to self.lec_fix_llm).
+            syntax_fix_llm: Thread-local syntax fixer LLM (passed to _elab_react).
+
         Returns:
             (lec_ok, patch, error_msg)
         """
+        lec_fix_llm = lec_fix_llm or self.lec_fix_llm
+
         # Prepare output directory and SyntaxFixer that will potentially be used
         output_dir.mkdir(parents=True, exist_ok=True)
-        fix_session = LLMSession.create(self.lec_fix_llm)
+        fix_session = LLMSession.create(lec_fix_llm)
 
         num_lec_attempts = self.thresholds.lec_fix_max if self.thresholds.lec_fix_max is not None else 1
 
@@ -759,8 +846,9 @@ class LLMOptimizeWithLECStep(Step):
                 elab_res = self._elab_react(
                     current_patch,
                     original_code,
-                    module_name, 
-                    curr_attempt_dir / 'syntax_check'
+                    module_name,
+                    curr_attempt_dir / 'syntax_check',
+                    syntax_fix_llm=syntax_fix_llm,
                 )
 
                 if not elab_res.ok:
@@ -951,6 +1039,19 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
 
         cmd.extend(['-f', str(flist_path)])
 
+        ####### HACK BEGIN
+        # Glob RTL files from source_dir
+        source_dir = Path(self.rtl.source_dir)
+        file_patterns = ['*.sv', '*.v']
+        rtl_files = []
+        for pattern in file_patterns:
+            rtl_files.extend([str(f) for f in source_dir.glob(pattern)])
+        if not rtl_files:
+            print('=== Synthesis + STA Results ===')
+            print('Status: FAILED')
+            self.error(f'Error: No RTL files found in {source_dir}')
+        cmd.extend(rtl_files)
+
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         except subprocess.TimeoutExpired:
@@ -1097,6 +1198,19 @@ sat -tempinduct -prove trigger 0 -set-init-undef -enable_undef -set-def-inputs -
             elab_cmd.extend(standalone_files)
 
         elab_cmd.extend(['-f', str(flist_path)])
+        
+        ####### HACK BEGIN
+        # Glob RTL files from source_dir
+        source_dir = Path(self.rtl.source_dir)
+        file_patterns = ['*.sv', '*.v']
+        rtl_files = []
+        for pattern in file_patterns:
+            rtl_files.extend([str(f) for f in source_dir.glob(pattern)])
+        if not rtl_files:
+            print('=== Synthesis + STA Results ===')
+            print('Status: FAILED')
+            self.error(f'Error: No RTL files found in {source_dir}')
+        elab_cmd.extend(rtl_files)
 
         try:
             result = subprocess.run(elab_cmd, capture_output=True, text=True, timeout=600)
