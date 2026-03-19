@@ -242,6 +242,7 @@ class ThresholdsConfig(ConfigGroup):
     lec_fix_max: int = 3
     freq_refine_max: int = 3
     optimize_redo_max: int = 5
+    arch_refine_max: int = 1
     min_improvement_pct: float = 5.0
 
 
