@@ -1,0 +1,10 @@
+#!/bin/bash
+''':'
+exec uv run python -m hagent.runner "$@"
+'''
+
+import sys
+
+from hagent.runner.__main__ import main
+
+sys.exit(main())
