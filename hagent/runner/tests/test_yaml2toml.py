@@ -55,7 +55,7 @@ SIMPLE_YAML = {
                 {
                     'name': 'synth_asic',
                     'description': 'ASIC synthesis GCD using Yosys',
-                    'command': '/code/hagent/scripts/synth.py --run-sta --run-synth {{tag}} --dir build_gcd --top GCD -- -F build_gcd/filelist.f',
+                    'command': '/code/hagent/scripts/synth.py --run-sta',
                     'cwd': '$HAGENT_BUILD_DIR',
                     'options': [
                         {
@@ -71,6 +71,42 @@ SIMPLE_YAML = {
     ]
 }
 
+# YAML with shared env + shared api cwd to test [default] extraction
+SHARED_YAML = {
+    'profiles': [
+        {
+            'name': 'alpha',
+            'description': 'Alpha profile',
+            'configuration': {
+                'environment': {
+                    'SCALA_HOME': '/usr/local/scala',
+                    'SBT_OPTS': '-Xmx2G',
+                    'ALPHA_ONLY': 'yes',
+                },
+            },
+            'apis': [
+                {'name': 'compile', 'description': 'compile alpha', 'command': 'make alpha', 'cwd': '$HAGENT_REPO_DIR'},
+                {'name': 'lint', 'description': 'lint alpha', 'command': 'lint alpha', 'cwd': '$HAGENT_REPO_DIR'},
+            ],
+        },
+        {
+            'name': 'beta',
+            'description': 'Beta profile',
+            'configuration': {
+                'environment': {
+                    'SCALA_HOME': '/usr/local/scala',
+                    'SBT_OPTS': '-Xmx2G',
+                    'BETA_ONLY': 'yes',
+                },
+            },
+            'apis': [
+                {'name': 'compile', 'description': 'compile beta', 'command': 'make beta', 'cwd': '$HAGENT_REPO_DIR'},
+                {'name': 'lint', 'description': 'lint beta', 'command': 'lint beta', 'cwd': '$HAGENT_REPO_DIR'},
+            ],
+        },
+    ]
+}
+
 
 @pytest.fixture
 def yaml_file(tmp_path):
@@ -78,6 +114,15 @@ def yaml_file(tmp_path):
     p = tmp_path / 'hagent.yaml'
     with open(p, 'w') as f:
         yaml.dump(SIMPLE_YAML, f)
+    return str(p)
+
+
+@pytest.fixture
+def shared_yaml_file(tmp_path):
+    """Write SHARED_YAML to a temporary file and return its path."""
+    p = tmp_path / 'hagent_shared.yaml'
+    with open(p, 'w') as f:
+        yaml.dump(SHARED_YAML, f)
     return str(p)
 
 
@@ -130,7 +175,7 @@ def test_list_profiles(yaml_file):
     assert names == ['echo', 'gcd']
 
 
-# --------------- profile_to_toml_dict ---------------
+# --------------- profile_to_toml_dict (tag config) ---------------
 
 
 def test_toml_dict_meta(yaml_file):
@@ -139,7 +184,6 @@ def test_toml_dict_meta(yaml_file):
     doc = profile_to_toml_dict(prof, yaml_file)
     assert doc['meta']['schema_version'] == 1
     assert 'created' in doc['meta']
-    assert yaml_file in doc['meta']['source_yaml'] or Path(yaml_file).name in doc['meta']['source_yaml']
 
 
 def test_toml_dict_profile_fields(yaml_file):
@@ -160,23 +204,21 @@ def test_toml_dict_configuration(yaml_file):
     assert 'output' in doc['configuration']['tracking']
 
 
-def test_toml_dict_apis(yaml_file):
+def test_toml_dict_named_apis(yaml_file):
+    """APIs should be named tables: [api.compile], [api.synth_asic]."""
     data = load_yaml(yaml_file)
     prof = find_profile(data, 'gcd')
     doc = profile_to_toml_dict(prof, yaml_file)
-    apis = doc['apis']
-    assert len(apis) == 2
-    assert apis[0]['name'] == 'compile'
-    assert apis[1]['name'] == 'synth_asic'
+    assert 'compile' in doc['api']
+    assert 'synth_asic' in doc['api']
+    assert doc['api']['compile']['command'] == 'sbt "runMain gcd.GCD"'
 
 
-def test_toml_dict_options(yaml_file):
+def test_toml_dict_api_options(yaml_file):
     data = load_yaml(yaml_file)
     prof = find_profile(data, 'gcd')
     doc = profile_to_toml_dict(prof, yaml_file)
-    synth_api = doc['apis'][1]
-    assert 'options' in synth_api
-    opts = synth_api['options']
+    opts = doc['api']['synth_asic']['options']
     assert len(opts) == 1
     assert opts[0]['name'] == 'tag'
     assert opts[0]['format'] == '--tag {value}'
@@ -217,11 +259,12 @@ def test_toml_dict_no_configuration(yaml_file):
 
 
 def test_roundtrip_toml_parse(yaml_file):
-    """Verify the TOML string can be parsed back."""
+    """Verify the TOML string can be parsed back with named APIs."""
     toml_str = yaml_to_tag_toml(yaml_file, 'gcd')
     parsed = tomlkit.parse(toml_str)
     assert parsed['profile']['name'] == 'gcd'
-    assert len(parsed['apis']) == 2
+    assert 'compile' in parsed['api']
+    assert 'synth_asic' in parsed['api']
 
 
 def test_roundtrip_simple_profile(yaml_file):
@@ -229,7 +272,7 @@ def test_roundtrip_simple_profile(yaml_file):
     toml_str = yaml_to_tag_toml(yaml_file, 'echo')
     parsed = tomlkit.parse(toml_str)
     assert parsed['profile']['name'] == 'echo'
-    assert len(parsed['apis']) == 1
+    assert 'build_dir' in parsed['api']
 
 
 # --------------- setup_tag ---------------
@@ -246,14 +289,12 @@ def test_setup_tag(yaml_file, tmp_path):
     )
     assert Path(path).exists()
     assert Path(path).name == 'config.toml'
-
-    # Verify tag directory structure
     tag_dir = Path(path).parent
     assert (tag_dir / 'logs').is_dir()
 
-    # Verify content
     parsed = tomlkit.parse(Path(path).read_text())
     assert parsed['profile']['name'] == 'gcd'
+    assert 'compile' in parsed['api']
 
 
 def test_setup_tag_already_exists(yaml_file, tmp_path):
@@ -269,8 +310,6 @@ def test_setup_tag_force(yaml_file, tmp_path):
     cache = tmp_path / 'cache'
     cache.mkdir()
     setup_tag(yaml_path=yaml_file, tag_name='tst1', profile_name='gcd', cache_dir=str(cache))
-
-    # Should succeed with --force
     path = setup_tag(yaml_path=yaml_file, tag_name='tst1', profile_name='gcd', cache_dir=str(cache), force=True)
     assert Path(path).exists()
 
@@ -290,7 +329,6 @@ def test_setup_tag_with_inputs(yaml_file, tmp_path):
 
 
 def test_setup_tag_env_fallback(yaml_file, tmp_path, monkeypatch):
-    """setup_tag should use HAGENT_CACHE_DIR when cache_dir is None."""
     cache = tmp_path / 'cache_env'
     cache.mkdir()
     monkeypatch.setenv('HAGENT_CACHE_DIR', str(cache))
@@ -300,10 +338,107 @@ def test_setup_tag_env_fallback(yaml_file, tmp_path, monkeypatch):
 
 
 def test_setup_tag_no_cache_dir(yaml_file, monkeypatch):
-    """setup_tag should fail when no cache dir is available."""
     monkeypatch.delenv('HAGENT_CACHE_DIR', raising=False)
     with pytest.raises(EnvironmentError, match='HAGENT_CACHE_DIR'):
         setup_tag(yaml_path=yaml_file, tag_name='tst_fail', profile_name='echo')
+
+
+# --------------- all-profiles conversion (runner.toml) ---------------
+
+
+def test_yaml_to_runner_toml(yaml_file):
+    """All profiles should appear as top-level keys."""
+    toml_str = yaml_to_runner_toml(yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    assert parsed['meta']['schema_version'] == 1
+    assert 'echo' in parsed
+    assert 'gcd' in parsed
+
+
+def test_runner_toml_named_apis(yaml_file):
+    """APIs should be named tables: [gcd.api.compile]."""
+    toml_str = yaml_to_runner_toml(yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    assert 'compile' in parsed['gcd']['api']
+    assert 'synth_asic' in parsed['gcd']['api']
+    assert parsed['gcd']['api']['synth_asic']['options'][0]['name'] == 'tag'
+
+
+def test_runner_toml_environment(yaml_file):
+    """Environment should be direct child of profile."""
+    toml_str = yaml_to_runner_toml(yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    assert parsed['gcd']['environment']['SCALA_HOME'] == '/usr/local/scala'
+    assert 'source' in parsed['gcd']['tracking']
+
+
+def test_runner_toml_simple_profile(yaml_file):
+    toml_str = yaml_to_runner_toml(yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    assert parsed['echo']['description'] == 'Just print HAGENT_ environment variables'
+    assert 'build_dir' in parsed['echo']['api']
+
+
+# --------------- [default] extraction ---------------
+
+
+def test_default_common_env(shared_yaml_file):
+    """Common env vars should be extracted into [default.environment]."""
+    toml_str = yaml_to_runner_toml(shared_yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    assert 'default' in parsed
+    assert parsed['default']['environment']['SCALA_HOME'] == '/usr/local/scala'
+    assert parsed['default']['environment']['SBT_OPTS'] == '-Xmx2G'
+
+
+def test_default_unique_env_not_in_default(shared_yaml_file):
+    """Profile-unique env vars should NOT appear in [default]."""
+    toml_str = yaml_to_runner_toml(shared_yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    assert 'ALPHA_ONLY' not in parsed['default']['environment']
+    assert 'BETA_ONLY' not in parsed['default']['environment']
+
+
+def test_default_unique_env_stays_in_profile(shared_yaml_file):
+    """Profile-unique env vars should remain in the profile."""
+    toml_str = yaml_to_runner_toml(shared_yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    assert parsed['alpha']['environment']['ALPHA_ONLY'] == 'yes'
+    assert parsed['beta']['environment']['BETA_ONLY'] == 'yes'
+
+
+def test_default_common_env_removed_from_profile(shared_yaml_file):
+    """Common env vars should be removed from per-profile sections."""
+    toml_str = yaml_to_runner_toml(shared_yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    # SCALA_HOME is in default, so should not be in alpha/beta
+    alpha_env = parsed['alpha'].get('environment', {})
+    assert 'SCALA_HOME' not in alpha_env
+    assert 'SBT_OPTS' not in alpha_env
+
+
+def test_default_common_api_cwd(shared_yaml_file):
+    """Common API cwd should be extracted into [default.api.compile]."""
+    toml_str = yaml_to_runner_toml(shared_yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    assert parsed['default']['api']['compile']['cwd'] == '$HAGENT_REPO_DIR'
+    assert parsed['default']['api']['lint']['cwd'] == '$HAGENT_REPO_DIR'
+
+
+def test_default_api_cwd_removed_from_profile(shared_yaml_file):
+    """When cwd is in [default.api.compile], profiles should omit it."""
+    toml_str = yaml_to_runner_toml(shared_yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    assert 'cwd' not in parsed['alpha']['api']['compile']
+    assert 'cwd' not in parsed['beta']['api']['lint']
+
+
+def test_no_default_when_nothing_shared(yaml_file):
+    """SIMPLE_YAML has only one profile with env — no [default] should appear."""
+    toml_str = yaml_to_runner_toml(yaml_file)
+    parsed = tomlkit.parse(toml_str)
+    # echo has no env, gcd has env — nothing to share
+    assert 'default' not in parsed
 
 
 # --------------- CLI (main) ---------------
@@ -327,6 +462,7 @@ def test_cli_convert_stdout(yaml_file, capsys):
     out = capsys.readouterr().out
     parsed = tomlkit.parse(out)
     assert parsed['profile']['name'] == 'gcd'
+    assert 'compile' in parsed['api']
 
 
 def test_cli_convert_to_file(yaml_file, tmp_path):
@@ -335,7 +471,6 @@ def test_cli_convert_to_file(yaml_file, tmp_path):
     out_file = tmp_path / 'out.toml'
     rc = main([yaml_file, '--name', 'gcd', '-o', str(out_file)])
     assert rc == 0
-    assert out_file.exists()
     parsed = tomlkit.parse(out_file.read_text())
     assert parsed['profile']['name'] == 'gcd'
 
@@ -359,45 +494,7 @@ def test_cli_tag_requires_name(yaml_file, capsys):
     assert '--tag requires --name' in err
 
 
-# --------------- all-profiles conversion ---------------
-
-
-def test_yaml_to_runner_toml(yaml_file):
-    """yaml_to_runner_toml should produce valid TOML with all profiles as top-level keys."""
-    toml_str = yaml_to_runner_toml(yaml_file)
-    parsed = tomlkit.parse(toml_str)
-    assert parsed['meta']['schema_version'] == 1
-    assert 'echo' in parsed
-    assert 'gcd' in parsed
-
-
-def test_yaml_to_runner_toml_preserves_apis(yaml_file):
-    """All APIs should survive the round-trip under [[name.api]]."""
-    toml_str = yaml_to_runner_toml(yaml_file)
-    parsed = tomlkit.parse(toml_str)
-    assert len(parsed['gcd']['api']) == 2
-    assert parsed['gcd']['api'][1]['name'] == 'synth_asic'
-    assert parsed['gcd']['api'][1]['options'][0]['name'] == 'tag'
-
-
-def test_yaml_to_runner_toml_preserves_config(yaml_file):
-    """Environment and tracking should be direct children of the profile."""
-    toml_str = yaml_to_runner_toml(yaml_file)
-    parsed = tomlkit.parse(toml_str)
-    assert parsed['gcd']['environment']['SCALA_HOME'] == '/usr/local/scala'
-    assert 'source' in parsed['gcd']['tracking']
-
-
-def test_yaml_to_runner_toml_simple_profile(yaml_file):
-    """Profile without configuration should still work."""
-    toml_str = yaml_to_runner_toml(yaml_file)
-    parsed = tomlkit.parse(toml_str)
-    assert parsed['echo']['description'] == 'Just print HAGENT_ environment variables'
-    assert len(parsed['echo']['api']) == 1
-
-
 def test_cli_all_profiles_stdout(yaml_file, capsys):
-    """No --name should dump all profiles to stdout."""
     from hagent.runner.yaml2toml import main
 
     rc = main([yaml_file])
@@ -409,7 +506,6 @@ def test_cli_all_profiles_stdout(yaml_file, capsys):
 
 
 def test_cli_all_profiles_to_file(yaml_file, tmp_path):
-    """No --name with -o should write all profiles to file."""
     from hagent.runner.yaml2toml import main
 
     out_file = tmp_path / 'runner.toml'

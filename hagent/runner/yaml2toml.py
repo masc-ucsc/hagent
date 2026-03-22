@@ -9,6 +9,10 @@ TOML format.  Two modes:
   ``hagent.yaml`` into a single ``runner.toml`` — the migration path
   from YAML to the future TOML-only config.
 
+When converting all profiles, common values across profiles are extracted
+into a ``[default]`` section so that per-profile tables only contain what
+is unique.
+
 Usage as a library:
 
     from hagent.runner.yaml2toml import yaml_to_tag_toml, yaml_to_runner_toml
@@ -34,6 +38,8 @@ import tomlkit
 import yaml
 
 SCHEMA_VERSION = 1
+
+RESERVED_KEYS = {'meta', 'default', 'overrides', 'inputs', 'tag'}
 
 
 def load_yaml(yaml_path: str) -> dict:
@@ -72,32 +78,106 @@ def list_profiles(data: dict) -> List[str]:
     return [p.get('name', '<unnamed>') for p in data.get('profiles', [])]
 
 
+# --------------- internal helpers ---------------
+
+
 def _convert_options(options_list: List[dict]) -> List[dict]:
     """Convert a YAML options list into a list of plain dicts for TOML."""
     result = []
     for opt in options_list:
         entry: Dict[str, str] = {}
-        if 'name' in opt:
-            entry['name'] = opt['name']
-        if 'description' in opt:
-            entry['description'] = opt['description']
-        if 'format' in opt:
-            entry['format'] = opt['format']
-        if 'default' in opt:
-            entry['default'] = opt['default']
+        for key in ('name', 'description', 'format', 'default'):
+            if key in opt:
+                entry[key] = opt[key]
         result.append(entry)
     return result
 
 
-def _convert_api(api: dict) -> dict:
-    """Convert a single YAML API entry to a TOML-friendly dict."""
-    entry: Dict = {}
-    for key in ('name', 'description', 'command', 'cwd'):
+def _api_to_toml_table(api: dict) -> tomlkit.items.Table:
+    """Convert a single YAML API entry to a tomlkit Table."""
+    tbl = tomlkit.table()
+    for key in ('description', 'command', 'cwd'):
         if key in api:
-            entry[key] = api[key]
+            tbl[key] = api[key]
     if 'options' in api and api['options']:
-        entry['options'] = _convert_options(api['options'])
-    return entry
+        opts_aot = tomlkit.aot()
+        for opt in _convert_options(api['options']):
+            opt_item = tomlkit.table()
+            for ok, ov in opt.items():
+                opt_item[ok] = ov
+            opts_aot.append(opt_item)
+        tbl.append('options', opts_aot)
+    return tbl
+
+
+def _strip_defaults(api_tbl: tomlkit.items.Table, defaults: dict) -> tomlkit.items.Table:
+    """Return a copy of *api_tbl* with entries that match *defaults* removed."""
+    out = tomlkit.table()
+    for k, v in api_tbl.items():
+        if k in defaults and defaults[k] == v:
+            continue
+        out[k] = v
+    return out
+
+
+# --------------- default extraction ---------------
+
+
+def _extract_common_env(profiles: List[dict]) -> Dict[str, str]:
+    """Find environment variables common to every profile that has a configuration."""
+    profiles_with_env = []
+    for p in profiles:
+        cfg = p.get('configuration', {})
+        if isinstance(cfg, dict):
+            env = cfg.get('environment')
+            if isinstance(env, dict) and env:
+                profiles_with_env.append(env)
+
+    if len(profiles_with_env) < 2:
+        return {}
+
+    common = {}
+    # Start with keys from the first profile's environment
+    for k, v in profiles_with_env[0].items():
+        if all(pe.get(k) == v for pe in profiles_with_env[1:]):
+            common[k] = v
+    return common
+
+
+def _extract_common_api_fields(profiles: List[dict]) -> Dict[str, dict]:
+    """Find API-level fields common across all profiles that define that API name.
+
+    Returns {api_name: {field: value, ...}} for fields shared by every profile
+    that contains that API name (minimum 2 profiles).
+    """
+    # Collect per-api-name field values across profiles
+    api_fields: Dict[str, List[dict]] = {}
+    for p in profiles:
+        for api in p.get('apis', []):
+            name = api.get('name')
+            if not name:
+                continue
+            fields = {}
+            for key in ('cwd',):  # Only extract fields that commonly repeat
+                if key in api:
+                    fields[key] = api[key]
+            if fields:
+                api_fields.setdefault(name, []).append(fields)
+
+    common = {}
+    for api_name, field_list in api_fields.items():
+        if len(field_list) < 2:
+            continue
+        shared = {}
+        for k, v in field_list[0].items():
+            if all(f.get(k) == v for f in field_list[1:]):
+                shared[k] = v
+        if shared:
+            common[api_name] = shared
+    return common
+
+
+# --------------- tag config (single profile, --name) ---------------
 
 
 def profile_to_toml_dict(
@@ -109,15 +189,7 @@ def profile_to_toml_dict(
 ) -> dict:
     """Build the TOML document dict for a tag config from a YAML profile.
 
-    Args:
-        profile: The selected profile dict from hagent.yaml.
-        yaml_path: Path to the source hagent.yaml (recorded in metadata).
-        inputs: Optional dict of named input tags (e.g. {"orig_verilog": "tag1"}).
-        overrides: Optional dict of --set KEY=VALUE overrides to persist.
-        output_dir: Optional explicit output directory for the tag.
-
-    Returns:
-        An ordered dict suitable for tomlkit serialization.
+    The tag config uses named API tables: ``[api.compile]``, ``[api.lint]``, etc.
     """
     doc = tomlkit.document()
 
@@ -148,7 +220,6 @@ def profile_to_toml_dict(
     if isinstance(cfg_yaml, dict) and cfg_yaml:
         cfg = tomlkit.table()
 
-        # environment
         env_yaml = cfg_yaml.get('environment')
         if isinstance(env_yaml, dict) and env_yaml:
             env_tbl = tomlkit.table()
@@ -156,7 +227,6 @@ def profile_to_toml_dict(
                 env_tbl[k] = v
             cfg['environment'] = env_tbl
 
-        # tracking directives (source/output kept as strings for now)
         tracking = tomlkit.table()
         if 'source' in cfg_yaml:
             tracking['source'] = cfg_yaml['source']
@@ -180,25 +250,15 @@ def profile_to_toml_dict(
         tag_tbl['output_dir'] = output_dir
         doc['tag'] = tag_tbl
 
-    # --- [[apis]] ---
+    # --- [api.*] (named tables) ---
     if profile.get('apis'):
-        apis_aot = tomlkit.aot()
+        api_super = tomlkit.table(is_super_table=True)
         for api in profile['apis']:
-            item = tomlkit.table()
-            converted = _convert_api(api)
-            for k, v in converted.items():
-                if k == 'options':
-                    opts_aot = tomlkit.aot()
-                    for opt_dict in v:
-                        opt_item = tomlkit.table()
-                        for ok, ov in opt_dict.items():
-                            opt_item[ok] = ov
-                        opts_aot.append(opt_item)
-                    item.append('options', opts_aot)
-                else:
-                    item[k] = v
-            apis_aot.append(item)
-        doc.append('apis', apis_aot)
+            api_name = api.get('name')
+            if not api_name:
+                continue
+            api_super[api_name] = _api_to_toml_table(api)
+        doc['api'] = api_super
 
     # --- [overrides] ---
     if overrides:
@@ -210,16 +270,18 @@ def profile_to_toml_dict(
     return doc
 
 
-RESERVED_KEYS = {'meta', 'overrides', 'inputs', 'tag'}
+# --------------- runner.toml (all profiles) ---------------
 
 
-def _add_profile_to_doc(doc: tomlkit.TOMLDocument, profile: dict) -> None:
+def _add_profile_to_doc(
+    doc: tomlkit.TOMLDocument,
+    profile: dict,
+    common_env: Dict[str, str],
+    common_api_fields: Dict[str, dict],
+) -> None:
     """Add one YAML profile as a top-level ``[name]`` table in *doc*.
 
-    The profile name becomes the TOML key.  Sub-tables:
-    - ``[name.environment]``  — env vars
-    - ``[name.tracking]``     — source/output directives
-    - ``[[name.api]]``        — array of API entries
+    Values already present in ``[default]`` are omitted.
     """
     name = profile.get('name', '')
     if not name:
@@ -235,15 +297,17 @@ def _add_profile_to_doc(doc: tomlkit.TOMLDocument, profile: dict) -> None:
     if profile.get('memory'):
         tbl['memory'] = profile['memory']
 
-    # environment + tracking (flattened — no intermediate "configuration")
+    # environment (minus common entries)
     cfg_yaml = profile.get('configuration', {})
     if isinstance(cfg_yaml, dict) and cfg_yaml:
         env_yaml = cfg_yaml.get('environment')
         if isinstance(env_yaml, dict) and env_yaml:
-            env_tbl = tomlkit.table()
-            for k, v in env_yaml.items():
-                env_tbl[k] = v
-            tbl['environment'] = env_tbl
+            unique_env = {k: v for k, v in env_yaml.items() if common_env.get(k) != v}
+            if unique_env:
+                env_tbl = tomlkit.table()
+                for k, v in unique_env.items():
+                    env_tbl[k] = v
+                tbl['environment'] = env_tbl
 
         tracking = tomlkit.table()
         if 'source' in cfg_yaml:
@@ -253,25 +317,20 @@ def _add_profile_to_doc(doc: tomlkit.TOMLDocument, profile: dict) -> None:
         if tracking:
             tbl['tracking'] = tracking
 
-    # [[name.api]]
+    # [name.api.*] (named tables, minus default fields)
     if profile.get('apis'):
-        apis_aot = tomlkit.aot()
+        api_super = tomlkit.table(is_super_table=True)
         for api in profile['apis']:
-            item = tomlkit.table()
-            converted = _convert_api(api)
-            for k, v in converted.items():
-                if k == 'options':
-                    opts_aot = tomlkit.aot()
-                    for opt_dict in v:
-                        opt_item = tomlkit.table()
-                        for ok, ov in opt_dict.items():
-                            opt_item[ok] = ov
-                        opts_aot.append(opt_item)
-                    item.append('options', opts_aot)
-                else:
-                    item[k] = v
-            apis_aot.append(item)
-        tbl.append('api', apis_aot)
+            api_name = api.get('name')
+            if not api_name:
+                continue
+            api_tbl = _api_to_toml_table(api)
+            defaults_for_api = common_api_fields.get(api_name, {})
+            if defaults_for_api:
+                api_tbl = _strip_defaults(api_tbl, defaults_for_api)
+            api_super[api_name] = api_tbl
+        if api_super:
+            tbl['api'] = api_super
 
     doc.add(name, tbl)
 
@@ -279,16 +338,13 @@ def _add_profile_to_doc(doc: tomlkit.TOMLDocument, profile: dict) -> None:
 def yaml_to_runner_toml(yaml_path: str) -> str:
     """Convert an entire hagent.yaml (all profiles) into a single TOML string.
 
-    Each profile becomes a top-level ``[name]`` table.  This is the
-    migration path: ``hagent.yaml`` → ``runner.toml``.
-
-    Args:
-        yaml_path: Path to hagent.yaml.
-
-    Returns:
-        TOML-formatted string containing all profiles.
+    Each profile becomes a top-level ``[name]`` table.  Common values are
+    extracted into ``[default]``.  This is the migration path:
+    ``hagent.yaml`` → ``runner.toml``.
     """
     data = load_yaml(yaml_path)
+    profiles = data.get('profiles', [])
+
     doc = tomlkit.document()
 
     doc.add(tomlkit.comment('runner.toml — auto-generated from hagent.yaml'))
@@ -301,10 +357,37 @@ def yaml_to_runner_toml(yaml_path: str) -> str:
     meta['source_yaml'] = str(Path(yaml_path).resolve())
     doc['meta'] = meta
 
-    for profile in data.get('profiles', []):
-        _add_profile_to_doc(doc, profile)
+    # Extract defaults
+    common_env = _extract_common_env(profiles)
+    common_api_fields = _extract_common_api_fields(profiles)
+
+    if common_env or common_api_fields:
+        default_tbl = tomlkit.table()
+
+        if common_env:
+            env_tbl = tomlkit.table()
+            for k, v in common_env.items():
+                env_tbl[k] = v
+            default_tbl['environment'] = env_tbl
+
+        if common_api_fields:
+            api_super = tomlkit.table(is_super_table=True)
+            for api_name, fields in common_api_fields.items():
+                api_tbl = tomlkit.table()
+                for k, v in fields.items():
+                    api_tbl[k] = v
+                api_super[api_name] = api_tbl
+            default_tbl['api'] = api_super
+
+        doc['default'] = default_tbl
+
+    for profile in profiles:
+        _add_profile_to_doc(doc, profile, common_env, common_api_fields)
 
     return tomlkit.dumps(doc)
+
+
+# --------------- single-profile convenience ---------------
 
 
 def yaml_to_tag_toml(
@@ -314,18 +397,7 @@ def yaml_to_tag_toml(
     overrides: Optional[Dict[str, str]] = None,
     output_dir: Optional[str] = None,
 ) -> str:
-    """High-level: load YAML, select profile, return TOML string.
-
-    Args:
-        yaml_path: Path to hagent.yaml.
-        profile_name: Profile name to snapshot.
-        inputs: Optional named input tags.
-        overrides: Optional --set KEY=VALUE overrides to persist.
-        output_dir: Optional explicit output directory.
-
-    Returns:
-        TOML-formatted string ready to write to config.toml.
-    """
+    """High-level: load YAML, select profile, return TOML string."""
     data = load_yaml(yaml_path)
     profile = find_profile(data, profile_name)
     doc = profile_to_toml_dict(profile, yaml_path, inputs, overrides, output_dir)
@@ -340,10 +412,7 @@ def yaml_to_tag_toml_file(
     overrides: Optional[Dict[str, str]] = None,
     output_dir: Optional[str] = None,
 ) -> None:
-    """High-level: load YAML, select profile, write config.toml.
-
-    Creates parent directories as needed.
-    """
+    """High-level: load YAML, select profile, write config.toml."""
     content = yaml_to_tag_toml(yaml_path, profile_name, inputs, overrides, output_dir)
     Path(toml_path).parent.mkdir(parents=True, exist_ok=True)
     with open(toml_path, 'w') as f:
@@ -363,23 +432,6 @@ def setup_tag(
     """Create a tag directory under <cache>/tags/<tag>/ with a config.toml snapshot.
 
     Uses HAGENT_CACHE_DIR from the environment if cache_dir is not provided.
-
-    Args:
-        yaml_path: Path to hagent.yaml.
-        tag_name: Tag identifier (directory name under tags/).
-        profile_name: Profile name to snapshot from the YAML.
-        cache_dir: Explicit cache directory (defaults to HAGENT_CACHE_DIR).
-        inputs: Optional named input tags.
-        overrides: Optional --set KEY=VALUE overrides to persist.
-        output_dir: Optional explicit output directory for the tag.
-        force: If True, overwrite existing tag.
-
-    Returns:
-        Path to the created config.toml.
-
-    Raises:
-        ValueError: If tag already exists (and not --force), or profile not found.
-        EnvironmentError: If HAGENT_CACHE_DIR is not set and cache_dir is None.
     """
     if cache_dir is None:
         cache_dir = os.environ.get('HAGENT_CACHE_DIR')
@@ -392,7 +444,6 @@ def setup_tag(
     if tag_dir.exists() and not force:
         raise ValueError(f"tag '{tag_name}' already exists at {tag_dir}; use --force to overwrite")
 
-    # Create tag directory structure
     tag_dir.mkdir(parents=True, exist_ok=True)
     (tag_dir / 'logs').mkdir(exist_ok=True)
 
