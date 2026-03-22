@@ -67,20 +67,14 @@ def run_command(
 
     command = cfg.resolve_options(command, api_config, overrides)
     command = cfg.resolve_placeholders(command, context)
-    command = os.path.expandvars(command)
 
     cwd = api_config.get('cwd', '')
     if cwd:
         cwd = cfg.resolve_placeholders(cwd, context)
-        cwd = os.path.expandvars(cwd)
 
-    # Build environment
+    # Build environment (but don't expand $HAGENT_* in command/cwd —
+    # let the execution environment (Docker or local shell) resolve them)
     env = cfg.build_env(tag_config, tag_dir)
-
-    # Resolve cwd again with the built env
-    if cwd:
-        for k, v in env.items():
-            cwd = cwd.replace(f'${k}', v)
 
     # Execute via Builder
     log_path = os.path.join(tag_dir, 'logs', f'{api_name}.log')
@@ -124,11 +118,14 @@ def run_command(
 
 
 def _execute(command: str, cwd: str, env: dict, verbose: bool) -> tuple:
-    """Execute command via Builder.run_cmd().
+    """Execute command via Builder.run_cmd() or subprocess.
 
-    Falls back to subprocess if Builder setup fails.
+    Uses Builder when available (handles Docker mode).
+    Falls back to subprocess only if Builder import/setup fails.
     Returns (exit_code, stdout, stderr).
     """
+    docker_mode = bool(os.environ.get('HAGENT_DOCKER'))
+
     try:
         from hagent.inou.builder import Builder
 
@@ -137,17 +134,32 @@ def _execute(command: str, cwd: str, env: dict, verbose: bool) -> tuple:
             effective_cwd = cwd if cwd else '.'
             exit_code, stdout, stderr = builder.run_cmd(command, effective_cwd, env, quiet=not verbose)
             return exit_code, stdout, stderr
-    except Exception:
-        pass
+        else:
+            err_msg = f'Builder setup failed: {builder.get_error()}'
+            if docker_mode:
+                # In Docker mode, Builder is required — don't fall back
+                return 1, '', err_msg
+            if verbose:
+                print(f'warning: {err_msg}, falling back to subprocess', file=sys.stderr)
+    except Exception as e:
+        err_msg = f'Builder error: {e}'
+        if docker_mode:
+            return 1, '', err_msg
+        if verbose:
+            print(f'warning: {err_msg}, falling back to subprocess', file=sys.stderr)
 
-    # Fallback to subprocess
+    # Fallback to subprocess (local mode only)
     import subprocess
+
+    # For local subprocess, expand $VARS in command and cwd
+    resolved_cmd = os.path.expandvars(command)
+    resolved_cwd = os.path.expandvars(cwd) if cwd else None
 
     try:
         result = subprocess.run(
-            command,
+            resolved_cmd,
             shell=True,
-            cwd=cwd if cwd else None,
+            cwd=resolved_cwd,
             env=env,
             capture_output=True,
             text=True,
