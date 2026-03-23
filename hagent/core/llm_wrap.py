@@ -369,13 +369,12 @@ class LLM_wrap:
 
                     # Add variation to input to avoid caching when seeking diversity
                     if i > 0 and last_response:
-                        # Truncate last response to 2KB if needed
                         prev_response = last_response
                         if len(prev_response) > 2048:
                             prev_response = prev_response[:2048] + '...'
-                        call_args['input'] += (
-                            f'\n\nThe last response answer was: """{prev_response}""" please try something different.'
-                        )
+                        call_args['input'] = list(call_args['input']) + [
+                            {'role': 'user', 'content': f'The last response answer was: """{prev_response}""" please try something different.'},
+                        ]
 
                     r = litellm.responses(**call_args)
                     responses.append(r)
