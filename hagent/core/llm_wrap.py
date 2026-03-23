@@ -255,27 +255,6 @@ class LLM_wrap:
         except Exception as e:
             self._set_error(f'unable to log: {e}')
 
-    def _messages_to_input(self, messages: List[Dict]) -> str:
-        """Convert messages array to input string for responses API.
-
-        Args:
-            messages: List of message dicts with 'role' and 'content' keys
-
-        Returns:
-            str: Formatted input string
-        """
-        prompt_parts = []
-        for msg in messages:
-            role = msg.get('role', 'user')
-            content = msg.get('content', '')
-            if role == 'system':
-                prompt_parts.append(f'System: {content}')
-            elif role == 'user':
-                prompt_parts.append(f'{content}')
-            elif role == 'assistant':
-                prompt_parts.append(f'Assistant: {content}')
-        return '\n\n'.join(prompt_parts)
-
     def _call_llm(self, prompt_dict: Dict, prompt_index: str, n: int, max_history: int) -> List[str]:
         if self.last_error:
             return []
@@ -313,18 +292,15 @@ class LLM_wrap:
             return []
 
         if max_history > 0:
-            messages = self.chat_history[:max_history]
+            messages = list(self.chat_history[-max_history:])
         else:
             messages = []
         messages += formatted
 
-        # Convert messages to input string for responses API
-        input_text = self._messages_to_input(messages)
-
         # Build llm_call_args for responses API
         llm_call_args = {}
         llm_call_args['model'] = self.llm_args.get('model', '')
-        llm_call_args['input'] = input_text
+        llm_call_args['input'] = messages
 
         # Convert max_tokens to max_output_tokens for responses API
         if 'max_tokens' in self.llm_args:
