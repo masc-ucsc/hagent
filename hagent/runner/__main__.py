@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 from . import config as cfg
 from .commands import run_command
 from .tag import TagError, setup_tag
+from .tester import run_tests
 
 
 def _parse_kv_args(args: List[str], flag: str) -> Tuple[Dict[str, str], List[str]]:
@@ -321,6 +322,58 @@ def cmd_list(args: List[str]) -> int:
     return 0
 
 
+def cmd_test(args: List[str]) -> int:
+    """Handle: runner test <tag> [options]"""
+    if not args or args[0] in ('--help', '-h'):
+        print('usage: runner test <tag> [options]')
+        print()
+        print('options:')
+        print('  --filter <pattern>   Run only tests matching glob pattern')
+        print('  --jobs N             Max parallel test workers (default: ncpus)')
+        print('  --fail-fast          Stop after first failure')
+        print('  --timeout <sec>      Per-test timeout (default: from config or 300)')
+        print('  --list               List tests without running them')
+        print('  --verbose            Show full output')
+        print('  --quiet              Only show summary')
+        print('  --cache-dir DIR      Override cache directory')
+        return 0
+
+    tag_name = args[0]
+    rest = args[1:]
+
+    filter_pattern, rest = _extract_option(rest, '--filter')
+    jobs_str, rest = _extract_option(rest, '--jobs')
+    timeout_str, rest = _extract_option(rest, '--timeout')
+    cache_dir, rest = _extract_option(rest, '--cache-dir')
+    fail_fast, rest = _extract_flag(rest, '--fail-fast')
+    list_only, rest = _extract_flag(rest, '--list')
+    verbose, rest = _extract_flag(rest, '--verbose')
+    quiet, rest = _extract_flag(rest, '--quiet')
+
+    if rest:
+        print(f"error: unexpected arguments: {' '.join(rest)}", file=sys.stderr)
+        return 1
+
+    jobs = int(jobs_str) if jobs_str else None
+    timeout = int(timeout_str) if timeout_str else 300
+
+    try:
+        return run_tests(
+            tag_name=tag_name,
+            cache_dir=cache_dir,
+            filter_pattern=filter_pattern,
+            jobs=jobs,
+            fail_fast=fail_fast,
+            timeout=timeout,
+            verbose=verbose,
+            quiet=quiet,
+            list_only=list_only,
+        )
+    except TagError as e:
+        print(f'error: {e}', file=sys.stderr)
+        return 1
+
+
 def cmd_run(api_name: str, args: List[str]) -> int:
     """Handle: runner <cmd> <tag> [--set K=V]... [--verbose]"""
     if not args or args[0] in ('--help', '-h'):
@@ -357,6 +410,7 @@ def print_help() -> int:
     print()
     print('built-in commands:')
     print('  setup    Create a new tag from a runner.toml profile')
+    print('  test     Run tests for a tag (parallel)')
     print('  config   Inspect a config file (profiles and APIs)')
     print('  list     List APIs in an existing tag')
     print('  help     Show this help')
@@ -389,6 +443,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     BUILTINS = {
         'setup': cmd_setup,
+        'test': cmd_test,
         'config': cmd_config,
         'list': cmd_list,
     }

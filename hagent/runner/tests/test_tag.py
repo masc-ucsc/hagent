@@ -157,6 +157,53 @@ class TestSetupTag:
         with pytest.raises(TagError, match='must not contain'):
             setup_tag(runner_toml, 'bad.name', 'echo', cache_dir=cache_dir)
 
+    def test_docker_image_from_profile(self, cache_dir, tmp_path):
+        content = """\
+[meta]
+schema_version = 2
+
+[default]
+memory = 4
+docker = "default_img:v1"
+
+[local_profile]
+description = "Uses local tools"
+docker = ""
+[local_profile.api.hello]
+command = "echo hi"
+cwd = "."
+
+[docker_profile]
+description = "Uses custom docker"
+docker = "custom_img:v2"
+[docker_profile.api.hello]
+command = "echo hi"
+cwd = "."
+
+[inherit_profile]
+description = "Inherits default docker"
+[inherit_profile.api.hello]
+command = "echo hi"
+cwd = "."
+"""
+        rt = str(tmp_path / 'docker_runner.toml')
+        Path(rt).write_text(content)
+
+        # Profile with explicit docker image
+        setup_tag(rt, 'tag_docker', 'docker_profile', cache_dir=cache_dir)
+        cfg = validate_tag(get_tag_dir('tag_docker', cache_dir))
+        assert cfg['docker'] == 'custom_img:v2'
+
+        # Profile that forces local
+        setup_tag(rt, 'tag_local', 'local_profile', cache_dir=cache_dir)
+        cfg = validate_tag(get_tag_dir('tag_local', cache_dir))
+        assert cfg['docker'] == ''
+
+        # Profile that inherits default docker
+        setup_tag(rt, 'tag_inherit', 'inherit_profile', cache_dir=cache_dir)
+        cfg = validate_tag(get_tag_dir('tag_inherit', cache_dir))
+        assert cfg['docker'] == 'default_img:v1'
+
     def test_missing_profile(self, runner_toml, cache_dir):
         with pytest.raises(ValueError, match='no profile'):
             setup_tag(runner_toml, 'tst1', 'nonexistent', cache_dir=cache_dir)

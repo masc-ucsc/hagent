@@ -196,6 +196,27 @@ def build_env(config: dict, tag_dir: str) -> Dict[str, str]:
     return env
 
 
+def get_docker_image(config: dict) -> Optional[str]:
+    """Get the Docker image from tag config.
+
+    The ``docker`` key is a flat string (not a nested table):
+      - ``docker = "img:tag"`` → use that image
+      - ``docker = ""``        → force local execution
+      - key absent             → use ``HAGENT_DOCKER`` from environment
+
+    Returns:
+      - image string if docker is set to a non-empty value
+      - "" (empty string) if explicitly set to "" (means: force local)
+      - None if docker key is absent (means: use environment default)
+    """
+    if 'docker' not in config:
+        return None
+    val = config['docker']
+    if not isinstance(val, str):
+        return None
+    return val
+
+
 def resolve_options(command: str, api_config: dict, overrides: Optional[Dict[str, str]] = None) -> str:
     """Resolve option placeholders in a command string.
 

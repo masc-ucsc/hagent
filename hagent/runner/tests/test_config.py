@@ -10,6 +10,7 @@ from hagent.runner.config import (
     build_context,
     build_env,
     get_api_config,
+    get_docker_image,
     list_api_names,
     load_runner_toml,
     load_tag_config,
@@ -218,6 +219,20 @@ class TestBuildEnv:
         data = load_tag_config(sample_tag_dir)
         env = build_env(data, sample_tag_dir)
         assert env['FOO'] == 'bar'
+
+
+class TestGetDockerImage:
+    def test_absent(self):
+        assert get_docker_image({}) is None
+
+    def test_with_image(self):
+        assert get_docker_image({'docker': 'myimg:v1'}) == 'myimg:v1'
+
+    def test_empty_string_forces_local(self):
+        assert get_docker_image({'docker': ''}) == ''
+
+    def test_not_a_string(self):
+        assert get_docker_image({'docker': 42}) is None
 
 
 class TestResolveOptions:

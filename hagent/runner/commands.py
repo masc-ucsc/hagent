@@ -76,12 +76,15 @@ def run_command(
     # let the execution environment (Docker or local shell) resolve them)
     env = cfg.build_env(tag_config, tag_dir)
 
+    # Resolve Docker image from tag config
+    docker_image = cfg.get_docker_image(tag_config)
+
     # Execute via Builder
     log_path = os.path.join(tag_dir, 'logs', f'{api_name}.log')
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
     start = time.monotonic()
-    exit_code, stdout, stderr = _execute(command, cwd, env, verbose)
+    exit_code, stdout, stderr = _execute(command, cwd, env, verbose, docker_image=docker_image)
     elapsed = time.monotonic() - start
 
     # Write log
@@ -117,13 +120,28 @@ def run_command(
     return exit_code
 
 
-def _execute(command: str, cwd: str, env: dict, verbose: bool) -> tuple:
+def _execute(command: str, cwd: str, env: dict, verbose: bool, docker_image: str = None) -> tuple:
     """Execute command via Builder.run_cmd() or subprocess.
+
+    Args:
+        docker_image: Docker image override from tag config.
+            None  = use HAGENT_DOCKER from environment (default)
+            ""    = force local execution (unset HAGENT_DOCKER)
+            "img" = use this image (set HAGENT_DOCKER=img)
 
     Uses Builder when available (handles Docker mode).
     Falls back to subprocess only if Builder import/setup fails.
     Returns (exit_code, stdout, stderr).
     """
+    # Apply per-tag Docker image override
+    orig_docker = os.environ.get('HAGENT_DOCKER')
+    if docker_image is not None:
+        if docker_image == '':
+            # Force local: unset HAGENT_DOCKER
+            os.environ.pop('HAGENT_DOCKER', None)
+        else:
+            os.environ['HAGENT_DOCKER'] = docker_image
+
     docker_mode = bool(os.environ.get('HAGENT_DOCKER'))
 
     try:
@@ -137,16 +155,21 @@ def _execute(command: str, cwd: str, env: dict, verbose: bool) -> tuple:
         else:
             err_msg = f'Builder setup failed: {builder.get_error()}'
             if docker_mode:
-                # In Docker mode, Builder is required — don't fall back
                 return 1, '', err_msg
             if verbose:
                 print(f'warning: {err_msg}, falling back to subprocess', file=sys.stderr)
-    except Exception as e:
+    except (Exception, SystemExit) as e:
         err_msg = f'Builder error: {e}'
         if docker_mode:
             return 1, '', err_msg
         if verbose:
             print(f'warning: {err_msg}, falling back to subprocess', file=sys.stderr)
+    finally:
+        # Restore original HAGENT_DOCKER
+        if orig_docker is None:
+            os.environ.pop('HAGENT_DOCKER', None)
+        else:
+            os.environ['HAGENT_DOCKER'] = orig_docker
 
     # Fallback to subprocess (local mode only)
     import subprocess
