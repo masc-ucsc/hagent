@@ -45,8 +45,8 @@ def test_llm_wrap_caching(tmp_path, request):
         lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
         try:
-            jokes1 = lw._inference({}, 'use_prompt1', n=1)
-            jokes2 = lw._inference({}, 'use_prompt1', n=1)
+            jokes1 = lw.inference({}, 'use_prompt1', n=1)
+            jokes2 = lw.inference({}, 'use_prompt1', n=1)
         except Exception as e:  # pragma: no cover - skip on provider issues
             if isinstance(e, litellm.RateLimitError) or 'quota' in str(e).lower():
                 pytest.skip(f'Skipping due to provider quota error: {e}')
@@ -88,7 +88,7 @@ def test_llm_wrap_n_diff(tmp_path, request):
         litellm.cache = None
 
         try:
-            res = lw._inference({}, 'use_prompt_random', n=3)
+            res = lw.inference({}, 'use_prompt_random', n=3)
         except Exception as e:  # pragma: no cover - skip on provider issues
             litellm.cache = cache
             if isinstance(e, litellm.RateLimitError) or 'quota' in str(e).lower():
@@ -113,7 +113,7 @@ def test_bad_config_file_nonexistent(tmp_path):
         lw = LLM_wrap('test_bad_config', non_existent_file, 'test_bad_config.log')
         assert 'unable to read conf_file' in lw.last_error
 
-        result = lw._inference({}, 'some_prompt', n=1)
+        result = lw.inference({}, 'some_prompt', n=1)
         # Expect empty result and an error about missing llm "model".
         assert 'unable to read conf_file' in lw.last_error
         assert result == []
@@ -130,7 +130,7 @@ def test_bad_prompt(tmp_path):
     ):
         lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
-        result = lw._inference({}, 'some_bad_prompt', n=1)
+        result = lw.inference({}, 'some_bad_prompt', n=1)
 
         assert 'unable to find' in lw.last_error
         assert result == []
@@ -150,7 +150,7 @@ def test_bad_config_file_bad_yaml(tmp_path):
             lw = LLM_wrap('test_bad_yaml', tmp_yaml, 'test_bad_yaml.log')
             assert 'specify llm section' in lw.last_error
 
-            result = lw._inference({}, 'some_prompt', n=1)
+            result = lw.inference({}, 'some_prompt', n=1)
             assert result == []
             assert 'specify llm section' in lw.last_error
     finally:
@@ -190,7 +190,7 @@ def test_missing_env_var(tmp_path, monkeypatch):
         lw = LLM_wrap(name='test_caching', log_file='test_llm_wrap_caching.log', conf_file=conf_file)
 
         # Should return empty result since check_env_keys returns False
-        result = lw._inference({}, 'use_prompt1', n=1)
+        result = lw.inference({}, 'use_prompt1', n=1)
         assert result == []
         assert 'environment' in lw.last_error.lower()
 
@@ -214,7 +214,7 @@ def test_hagent_llm_model_override(tmp_path, monkeypatch):
         assert lw.llm_args['model'] == fake_model
 
         # Try to make an inference call - should fail with unsupported model error
-        result = lw._inference({}, 'use_prompt1', n=1)
+        result = lw.inference({}, 'use_prompt1', n=1)
         assert result == []
         assert 'environment keys not set for fakeprovider/fake-model' in lw.last_error
 

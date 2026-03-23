@@ -477,7 +477,7 @@ class LLM_wrap:
         self.responses.append(response)
         return answers
 
-    def _inference(self, prompt_dict: Dict, prompt_index: str, n: int = 1, max_history: int = 0) -> List[str]:
+    def inference(self, prompt_dict: Dict, prompt_index: str, n: int = 1, max_history: int = 0) -> List[str]:
         """Perform LLM inference with the given prompt and parameters.
 
         Args:
@@ -489,19 +489,4 @@ class LLM_wrap:
         Returns:
             list: List of string responses from the LLM
         """
-        answers = self._call_llm(prompt_dict, prompt_index, n=n, max_history=max_history)
-        return answers
-
-    def inference(self, prompt_dict: Dict, prompt_index: str, n: int = 1, max_history: int = 0) -> List[str]:
-        """Public interface for LLM inference - delegates to _inference.
-
-        Args:
-            prompt_dict: Dictionary containing variables for prompt template substitution
-            prompt_index: Name of the prompt template in the configuration file
-            n: Number of completions to generate (default: 1)
-            max_history: Maximum number of previous messages to include (default: 0)
-
-        Returns:
-            list: List of string responses from the LLM
-        """
-        return self._inference(prompt_dict, prompt_index, n, max_history)
+        return self._call_llm(prompt_dict, prompt_index, n=n, max_history=max_history)
