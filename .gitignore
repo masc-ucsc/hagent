@@ -29,5 +29,3 @@ setup_run
 /repo/
 .DS_Store
 project_env.sh
-GEMINI.md
-CLAUDE.md
