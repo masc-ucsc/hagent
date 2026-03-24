@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import tomlkit
 
@@ -284,7 +284,7 @@ def run_tests(
     # Run tests
     run_cmd = tests_config.get('run', '')
     if not run_cmd:
-        print("error: tests.run command not configured", file=sys.stderr)
+        print('error: tests.run command not configured', file=sys.stderr)
         return 1
 
     max_jobs = jobs if jobs else min(os.cpu_count() or 1, len(test_names))
@@ -295,7 +295,15 @@ def run_tests(
         # Sequential execution
         for test_name in test_names:
             result = _run_single_test(
-                test_name, run_cmd, build_cmd, tag_config, tag_name, tag_dir, env, timeout, verbose,
+                test_name,
+                run_cmd,
+                build_cmd,
+                tag_config,
+                tag_name,
+                tag_dir,
+                env,
+                timeout,
+                verbose,
             )
             results.append(result)
             if not quiet:
@@ -312,7 +320,15 @@ def run_tests(
             for test_name in test_names:
                 fut = executor.submit(
                     _run_single_test,
-                    test_name, run_cmd, build_cmd, tag_config, tag_name, tag_dir, env, timeout, verbose,
+                    test_name,
+                    run_cmd,
+                    build_cmd,
+                    tag_config,
+                    tag_name,
+                    tag_dir,
+                    env,
+                    timeout,
+                    verbose,
                 )
                 futures[fut] = test_name
 

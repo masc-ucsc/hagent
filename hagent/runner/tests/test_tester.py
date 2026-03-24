@@ -6,7 +6,6 @@ import pytest
 
 from hagent.runner.tag import get_tag_dir, setup_tag, validate_tag
 from hagent.runner.tester import (
-    TestResult,
     discover_tests,
     filter_tests,
     load_test_history,
@@ -311,10 +310,13 @@ list = ["test_1", "test_2", "test_3"]
         cache_dir = env_setup
         setup_tag(runner_toml_with_tests, 'tst1', 'echo', cache_dir=cache_dir)
         tag_dir = get_tag_dir('tst1', cache_dir)
-        save_test_history(tag_dir, {
-            'test_c': {'status': 'FAIL', 'duration': 1.0},
-            'test_a': {'status': 'PASS', 'duration': 0.5},
-        })
+        save_test_history(
+            tag_dir,
+            {
+                'test_c': {'status': 'FAIL', 'duration': 1.0},
+                'test_a': {'status': 'PASS', 'duration': 0.5},
+            },
+        )
         rc = run_tests('tst1', cache_dir=cache_dir, jobs=1, quiet=True)
         assert rc == 0
         history = load_test_history(tag_dir)

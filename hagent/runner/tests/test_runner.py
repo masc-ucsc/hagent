@@ -44,7 +44,6 @@ def runner_env(tmp_path, monkeypatch):
 
 
 # ── runner config ────────────────────────────────────────────────
-
 class TestConfig:
     def test_list_profiles(self, runner_env, capsys):
         """runner config demo_runner.toml --list"""
@@ -86,7 +85,6 @@ class TestConfig:
 
 
 # ── runner setup ─────────────────────────────────────────────────
-
 class TestSetup:
     def test_setup_demo_local(self, runner_env, capsys):
         """runner setup d1 --name demo_local --config demo_runner.toml"""
@@ -168,6 +166,7 @@ class TestSetup:
 
 # ── runner status ────────────────────────────────────────────────
 
+
 class TestStatus:
     def test_status_tag_apis(self, runner_env, capsys):
         """runner status d1"""
@@ -185,6 +184,7 @@ class TestStatus:
 
 
 # ── runner run <tag> <api> (command execution) ───────────────────
+
 
 class TestRunAPIs:
     @pytest.fixture(autouse=True)
@@ -254,6 +254,7 @@ class TestRunAPIs:
 
 
 # ── runner run test <tag> / runner run <tag> ──────────────────────
+
 
 class TestRunTests:
     @pytest.fixture(autouse=True)
@@ -327,6 +328,7 @@ class TestRunTests:
 
 # ── path-style tags ──────────────────────────────────────────────
 
+
 class TestPathTag:
     def test_full_workflow(self, runner_env, tmp_path):
         """Setup, run, and test using a path-style tag."""
@@ -348,6 +350,7 @@ class TestPathTag:
 
 
 # ── help ─────────────────────────────────────────────────────────
+
 
 class TestHelp:
     def test_help(self, capsys):

@@ -45,11 +45,11 @@ def get_tag_dir(tag: str, cache_dir: Optional[str] = None) -> str:
 def validate_tag(tag_dir: str) -> dict:
     """Verify tag directory and config.toml exist.  Return parsed config."""
     if not os.path.isdir(tag_dir):
-        raise TagError(f"tag directory does not exist: {tag_dir}")
+        raise TagError(f'tag directory does not exist: {tag_dir}')
     try:
         return cfg.load_tag_config(tag_dir)
     except FileNotFoundError:
-        raise TagError(f"no config.toml in tag directory: {tag_dir}")
+        raise TagError(f'no config.toml in tag directory: {tag_dir}')
 
 
 def resolve_input_dirs(inputs: Dict[str, str], cache_dir: Optional[str] = None) -> Dict[str, str]:
@@ -123,10 +123,7 @@ def setup_tag(
             if tag_matches(existing, profile_name, inputs):
                 return toml_path
             else:
-                raise TagError(
-                    f"tag '{tag}' exists with different config; "
-                    f"fix the request or use --force to overwrite"
-                )
+                raise TagError(f"tag '{tag}' exists with different config; fix the request or use --force to overwrite")
         elif not force:
             raise TagError(f"tag '{tag}' already exists at {tag_dir}; use --force to overwrite")
         else:

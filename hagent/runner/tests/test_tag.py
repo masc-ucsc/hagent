@@ -108,16 +108,12 @@ class TestSetupTag:
         # First create the input tag
         setup_tag(runner_toml, 'src_tag', 'echo', cache_dir=cache_dir)
         # Now create a tag referencing it
-        toml_path = setup_tag(
-            runner_toml, 'tst1', 'gcd', cache_dir=cache_dir, inputs={'orig': 'src_tag'}
-        )
+        toml_path = setup_tag(runner_toml, 'tst1', 'gcd', cache_dir=cache_dir, inputs={'orig': 'src_tag'})
         config = validate_tag(os.path.dirname(toml_path))
         assert config['inputs']['orig'] == 'src_tag'
 
     def test_with_overrides(self, runner_toml, cache_dir):
-        toml_path = setup_tag(
-            runner_toml, 'tst1', 'echo', cache_dir=cache_dir, overrides={'memory': '8'}
-        )
+        toml_path = setup_tag(runner_toml, 'tst1', 'echo', cache_dir=cache_dir, overrides={'memory': '8'})
         config = validate_tag(os.path.dirname(toml_path))
         assert config['memory'] == '8'
 

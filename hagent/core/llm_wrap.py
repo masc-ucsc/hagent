@@ -373,7 +373,10 @@ class LLM_wrap:
                         if len(prev_response) > 2048:
                             prev_response = prev_response[:2048] + '...'
                         call_args['input'] = list(call_args['input']) + [
-                            {'role': 'user', 'content': f'The last response answer was: """{prev_response}""" please try something different.'},
+                            {
+                                'role': 'user',
+                                'content': f'The last response answer was: """{prev_response}""" please try something different.',
+                            },
                         ]
 
                     r = litellm.responses(**call_args)

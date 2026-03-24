@@ -7,7 +7,7 @@ from typing import Dict, Optional
 
 from . import config as cfg
 from . import render
-from .tag import TagError, get_tag_dir, resolve_input_dirs, validate_tag
+from .tag import get_tag_dir, resolve_input_dirs, validate_tag
 
 
 def run_command(
@@ -31,7 +31,7 @@ def run_command(
         available = cfg.list_api_names(tag_config)
         print(f"error: no API '{api_name}' in tag '{tag_name}'", file=sys.stderr)
         if available:
-            print(f"  available: {', '.join(available)}", file=sys.stderr)
+            print(f'  available: {", ".join(available)}', file=sys.stderr)
         return 1
 
     # Apply ephemeral overrides

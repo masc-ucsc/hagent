@@ -1,9 +1,6 @@
 """Tests for hagent.runner.config."""
 
-import os
-
 import pytest
-import tomlkit
 
 from hagent.runner.config import (
     apply_overrides,

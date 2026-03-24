@@ -15,6 +15,29 @@ import docker
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def reset_path_manager_singleton():
+    """
+    Reset PathManager singleton state around each test.
+
+    PathManager caches execution mode (including HAGENT_DOCKER) process-wide.
+    Without resetting it, a Docker-mode test can leak its configuration into
+    later tests that expect local execution.
+    """
+    from hagent.inou.path_manager import PathManager
+
+    old_instance = PathManager._instance
+    old_initialized = PathManager._initialized
+
+    PathManager._instance = None
+    PathManager._initialized = False
+
+    yield
+
+    PathManager._instance = old_instance
+    PathManager._initialized = old_initialized
+
+
 def pytest_sessionstart(session):
     """Called after the Session object has been created."""
     # Store containers that existed before tests started
