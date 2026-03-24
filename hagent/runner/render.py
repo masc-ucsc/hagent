@@ -31,7 +31,7 @@ def print_result(
         if log_path:
             print(f'  log: {log_path}', file=sys.stderr)
         if tag_name:
-            print(f'  repro: runner {api_name} {tag_name} --verbose', file=sys.stderr)
+            print(f'  repro: runner run {api_name} {tag_name} --verbose', file=sys.stderr)
         if verbose and stderr_tail:
             for sline in stderr_tail.strip().splitlines()[-20:]:
                 print(f'  | {sline}', file=sys.stderr)

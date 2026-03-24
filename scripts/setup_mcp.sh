@@ -161,7 +161,6 @@ ${MODE_EXPORT}
 export HAGENT_REPO_DIR="${BASE_DIR}/repo"
 export HAGENT_BUILD_DIR="${BASE_DIR}/build"
 export HAGENT_CACHE_DIR="${BASE_DIR}/cache"
-export HAGENT_OUTPUT_DIR="${BASE_DIR}/logs"
 EOF
 
 cat >"${BASE_DIR}/hagent_server.sh" <<EOF
@@ -172,7 +171,6 @@ ${MODE_EXPORT}
 export HAGENT_REPO_DIR="${BASE_DIR}/repo"
 export HAGENT_BUILD_DIR="${BASE_DIR}/build"
 export HAGENT_CACHE_DIR="${BASE_DIR}/cache"
-export HAGENT_OUTPUT_DIR="${BASE_DIR}/logs"
 uv run python \${HAGENT_ROOT}/hagent/mcp/hagent-mcp-server.py "\$@"
 #uv run python \${HAGENT_ROOT}/hagent/mcp/mcp_build.py --help
 EOF

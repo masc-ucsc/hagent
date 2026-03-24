@@ -147,7 +147,6 @@ class TestMCPBuildDocker(unittest.TestCase):
             'HAGENT_REPO_DIR': str(self.test_dir / 'repo'),
             'HAGENT_BUILD_DIR': str(self.test_dir / 'build'),
             'HAGENT_CACHE_DIR': str(self.test_dir / 'cache'),
-            'HAGENT_OUTPUT_DIR': str(self.test_dir / 'logs'),
         }
 
         print('Running mcp_build.py with environment:')

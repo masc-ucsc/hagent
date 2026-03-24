@@ -69,7 +69,7 @@ class TestSetup:
     def test_setup_and_run(self, runner_toml, env_setup):
         rc = main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
         assert rc == 0
-        rc = main(['hello', 'tst1', '--cache-dir', env_setup])
+        rc = main(['run', 'hello', 'tst1', '--cache-dir', env_setup])
         assert rc == 0
 
     def test_setup_force(self, runner_toml, env_setup):
@@ -147,27 +147,27 @@ profiles:
         assert 'sim' in captured.out
 
 
-class TestList:
-    def test_list_help(self):
-        assert main(['list', '--help']) == 0
+class TestStatus:
+    def test_status_help(self):
+        assert main(['status', '--help']) == 0
 
-    def test_list_tag(self, runner_toml, env_setup, capsys):
+    def test_status_tag(self, runner_toml, env_setup, capsys):
         main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
-        rc = main(['list', 'tst1', '--cache-dir', env_setup])
+        rc = main(['status', 'tst1', '--cache-dir', env_setup])
         assert rc == 0
         captured = capsys.readouterr()
         assert 'hello' in captured.out
         assert 'Say hello' in captured.out
 
-    def test_list_missing_tag(self, env_setup, capsys):
-        rc = main(['list', 'nope', '--cache-dir', env_setup])
+    def test_status_missing_tag(self, env_setup, capsys):
+        rc = main(['status', 'nope', '--cache-dir', env_setup])
         assert rc == 1
 
 
 class TestRun:
     def test_run_help(self):
-        assert main(['compile', '--help']) == 0
+        assert main(['run', '--help']) == 0
 
     def test_run_missing_tag(self, env_setup, capsys):
-        rc = main(['hello', 'nope', '--cache-dir', env_setup])
+        rc = main(['run', 'hello', 'nope', '--cache-dir', env_setup])
         assert rc == 1

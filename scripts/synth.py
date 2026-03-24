@@ -368,7 +368,6 @@ def main():
                             'HAGENT_REPO_DIR',
                             'HAGENT_BUILD_DIR',
                             'HAGENT_CACHE_DIR',
-                            'HAGENT_OUTPUT_DIR',
                             'HAGENT_TECH_DIR',
                         ]:
                             env_path = os.environ.get(env_var)
@@ -379,7 +378,6 @@ def main():
                                     'HAGENT_REPO_DIR': '/code/workspace/repo',
                                     'HAGENT_BUILD_DIR': '/code/workspace/build',
                                     'HAGENT_CACHE_DIR': '/code/workspace/cache',
-                                    'HAGENT_OUTPUT_DIR': '/code/workspace/output',
                                     'HAGENT_TECH_DIR': '/code/workspace/tech',
                                 }
                                 arg = str(Path(docker_mount_map[env_var]) / rel_path)

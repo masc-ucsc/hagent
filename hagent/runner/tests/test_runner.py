@@ -166,25 +166,25 @@ class TestSetup:
         assert os.path.isdir(os.path.join(tag_path, 'logs'))
 
 
-# ── runner list ──────────────────────────────────────────────────
+# ── runner status ────────────────────────────────────────────────
 
-class TestList:
-    def test_list_tag_apis(self, runner_env, capsys):
-        """runner list d1"""
+class TestStatus:
+    def test_status_tag_apis(self, runner_env, capsys):
+        """runner status d1"""
         main(['setup', 'd1', '--name', 'demo_local', '--config', DEMO_TOML])
-        rc = main(['list', 'd1'])
+        rc = main(['status', 'd1'])
         assert rc == 0
         out = capsys.readouterr().out
         for api in ['hello', 'touch', 'check', 'ls_repo', 'env', 'write_result']:
             assert api in out
 
-    def test_list_missing_tag(self, runner_env):
-        """runner list nonexistent"""
-        rc = main(['list', 'nonexistent'])
+    def test_status_missing_tag(self, runner_env):
+        """runner status nonexistent"""
+        rc = main(['status', 'nonexistent'])
         assert rc == 1
 
 
-# ── runner <api> (command execution) ─────────────────────────────
+# ── runner run <tag> <api> (command execution) ───────────────────
 
 class TestRunAPIs:
     @pytest.fixture(autouse=True)
@@ -194,39 +194,39 @@ class TestRunAPIs:
         main(['setup', 'd1', '--name', 'demo_local', '--config', DEMO_TOML])
 
     def test_hello(self):
-        """runner hello d1"""
-        rc = main(['hello', 'd1'])
+        """runner run hello d1"""
+        rc = main(['run', 'hello', 'd1'])
         assert rc == 0
 
     def test_hello_log(self):
         """hello command writes a log file."""
-        main(['hello', 'd1'])
+        main(['run', 'hello', 'd1'])
         log = os.path.join(self.cache_dir, 'tags', 'd1', 'logs', 'hello.log')
         assert os.path.exists(log)
         content = open(log).read()
         assert 'hello from d1' in content
 
     def test_touch_and_check(self):
-        """runner touch d1 && runner check d1"""
-        rc = main(['touch', 'd1'])
+        """runner run touch d1 && runner run check d1"""
+        rc = main(['run', 'touch', 'd1'])
         assert rc == 0
         marker = os.path.join(self.cache_dir, 'tags', 'd1', 'marker.txt')
         assert os.path.exists(marker)
 
-        rc = main(['check', 'd1'])
+        rc = main(['run', 'check', 'd1'])
         assert rc == 0
 
     def test_ls_repo(self):
-        """runner ls_repo d1"""
-        rc = main(['ls_repo', 'd1'])
+        """runner run ls_repo d1"""
+        rc = main(['run', 'ls_repo', 'd1'])
         assert rc == 0
         log = os.path.join(self.cache_dir, 'tags', 'd1', 'logs', 'ls_repo.log')
         content = open(log).read()
         assert 'README.md' in content
 
     def test_env(self):
-        """runner env d1 — checks HAGENT_* vars are present."""
-        rc = main(['env', 'd1'])
+        """runner run env d1 — checks HAGENT_* vars are present."""
+        rc = main(['run', 'env', 'd1'])
         assert rc == 0
         log = os.path.join(self.cache_dir, 'tags', 'd1', 'logs', 'env.log')
         content = open(log).read()
@@ -235,25 +235,25 @@ class TestRunAPIs:
         assert 'CACHE=' in content
 
     def test_write_result(self):
-        """runner write_result d1"""
-        rc = main(['write_result', 'd1'])
+        """runner run write_result d1"""
+        rc = main(['run', 'write_result', 'd1'])
         assert rc == 0
         output = os.path.join(self.cache_dir, 'tags', 'd1', 'output.txt')
         assert os.path.exists(output)
         assert 'result from d1' in open(output).read()
 
     def test_unknown_api(self):
-        """runner nonexistent d1 — should fail gracefully."""
-        rc = main(['nonexistent', 'd1'])
+        """runner run nonexistent d1 — should fail gracefully."""
+        rc = main(['run', 'nonexistent', 'd1'])
         assert rc == 1
 
     def test_verbose(self):
-        """runner hello d1 --verbose"""
-        rc = main(['hello', 'd1', '--verbose'])
+        """runner run hello d1 --verbose"""
+        rc = main(['run', 'hello', 'd1', '--verbose'])
         assert rc == 0
 
 
-# ── runner test ──────────────────────────────────────────────────
+# ── runner run test <tag> / runner run <tag> ──────────────────────
 
 class TestRunTests:
     @pytest.fixture(autouse=True)
@@ -261,9 +261,17 @@ class TestRunTests:
         self.cache_dir, self.repo_dir, self.build_dir = runner_env
         main(['setup', 'd1', '--name', 'demo_local', '--config', DEMO_TOML])
 
+    def test_list_apis(self, capsys):
+        """runner run d1 --list shows available APIs"""
+        rc = main(['run', 'd1', '--list'])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert 'hello' in out
+        assert 'touch' in out
+
     def test_list_tests(self, capsys):
-        """runner test d1 --list"""
-        rc = main(['test', 'd1', '--list'])
+        """runner run test d1 --list shows tests"""
+        rc = main(['run', 'test', 'd1', '--list'])
         assert rc == 0
         out = capsys.readouterr().out
         assert 'test_fast' in out
@@ -271,44 +279,49 @@ class TestRunTests:
         assert 'test_slow' in out
 
     def test_run_all(self):
-        """runner test d1"""
-        rc = main(['test', 'd1'])
+        """runner run d1 (shorthand for test)"""
+        rc = main(['run', 'd1'])
         assert rc == 0
         # History should be written
         history_path = os.path.join(self.cache_dir, 'tags', 'd1', 'tests.toml')
         assert os.path.exists(history_path)
 
+    def test_run_all_explicit(self):
+        """runner run test d1"""
+        rc = main(['run', 'test', 'd1'])
+        assert rc == 0
+
     def test_run_parallel(self):
-        """runner test d1 --jobs 3"""
-        rc = main(['test', 'd1', '--jobs', '3'])
+        """runner run d1 --jobs 3"""
+        rc = main(['run', 'd1', '--jobs', '3'])
         assert rc == 0
 
     def test_run_sequential(self):
-        """runner test d1 --jobs 1"""
-        rc = main(['test', 'd1', '--jobs', '1'])
+        """runner run d1 --jobs 1"""
+        rc = main(['run', 'd1', '--jobs', '1'])
         assert rc == 0
 
     def test_filter(self):
-        """runner test d1 --filter test_fast"""
-        rc = main(['test', 'd1', '--filter', 'test_fast'])
+        """runner run d1 --filter test_fast"""
+        rc = main(['run', 'd1', '--filter', 'test_fast'])
         assert rc == 0
         # Only test_fast log should exist
         logs_dir = os.path.join(self.cache_dir, 'tags', 'd1', 'logs')
         assert os.path.exists(os.path.join(logs_dir, 'test_test_fast.log'))
 
     def test_filter_glob(self):
-        """runner test d1 --filter 'test_*ow'"""
-        rc = main(['test', 'd1', '--filter', 'test_*ow'])
+        """runner run d1 --filter 'test_*ow'"""
+        rc = main(['run', 'd1', '--filter', 'test_*ow'])
         assert rc == 0
 
     def test_filter_no_match(self):
-        """runner test d1 --filter xyz"""
-        rc = main(['test', 'd1', '--filter', 'xyz'])
+        """runner run d1 --filter xyz"""
+        rc = main(['run', 'd1', '--filter', 'xyz'])
         assert rc == 1
 
     def test_quiet(self):
-        """runner test d1 --quiet"""
-        rc = main(['test', 'd1', '--quiet'])
+        """runner run d1 --quiet"""
+        rc = main(['run', 'd1', '--quiet'])
         assert rc == 0
 
 
@@ -322,15 +335,15 @@ class TestPathTag:
         rc = main(['setup', tag_path, '--name', 'demo_local', '--config', DEMO_TOML])
         assert rc == 0
 
-        rc = main(['hello', tag_path])
+        rc = main(['run', 'hello', tag_path])
         assert rc == 0
         assert os.path.exists(os.path.join(tag_path, 'logs', 'hello.log'))
 
-        rc = main(['touch', tag_path])
+        rc = main(['run', 'touch', tag_path])
         assert rc == 0
         assert os.path.exists(os.path.join(tag_path, 'marker.txt'))
 
-        rc = main(['test', tag_path, '--list'])
+        rc = main(['run', tag_path, '--list'])
         assert rc == 0
 
 
@@ -343,19 +356,24 @@ class TestHelp:
         assert rc == 0
         out = capsys.readouterr().out
         assert 'setup' in out
-        assert 'test' in out
+        assert 'run' in out
 
     def test_setup_help(self, capsys):
         """runner setup --help"""
         rc = main(['setup', '--help'])
         assert rc == 0
 
-    def test_test_help(self, capsys):
-        """runner test --help"""
-        rc = main(['test', '--help'])
+    def test_run_help(self, capsys):
+        """runner run --help"""
+        rc = main(['run', '--help'])
         assert rc == 0
 
     def test_config_help(self, capsys):
         """runner config --help"""
         rc = main(['config', '--help'])
+        assert rc == 0
+
+    def test_status_help(self, capsys):
+        """runner status --help"""
+        rc = main(['status', '--help'])
         assert rc == 0

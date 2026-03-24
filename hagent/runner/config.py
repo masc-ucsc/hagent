@@ -177,21 +177,23 @@ def build_context(
 
 
 def build_env(config: dict, tag_dir: str) -> Dict[str, str]:
-    """Build environment dict from tag config.
+    """Build extra environment vars from tag config.
 
-    Sets HAGENT_BUILD_DIR to the tag directory.
+    Returns only the config-specific vars and HAGENT overrides — not
+    the full host environment.  Builder's FileSystem layer handles merging
+    these into either the host env (local) or exporting them into Docker.
     """
-    env = os.environ.copy()
+    env: Dict[str, str] = {}
 
     # Set HAGENT_BUILD_DIR to tag dir (tag.dir in config, or tag_dir arg)
     cfg_tag_dir = config.get('tag', {}).get('dir', '')
     env['HAGENT_BUILD_DIR'] = cfg_tag_dir if cfg_tag_dir else tag_dir
 
-    # Layer config environment vars
+    # Layer config [environment] vars
     cfg_env = config.get('environment', {})
     if isinstance(cfg_env, dict):
         for k, v in cfg_env.items():
-            env[k] = os.path.expandvars(v)
+            env[k] = v
 
     return env
 

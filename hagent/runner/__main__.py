@@ -2,43 +2,23 @@
 
 import os
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Annotated, Optional
+
+import click
+import typer
 
 from . import config as cfg
 from .commands import run_command
 from .tag import TagError, setup_tag
 from .tester import run_tests
 
-
-def _parse_kv_args(args: List[str], flag: str) -> Tuple[Dict[str, str], List[str]]:
-    """Extract --flag KEY=VALUE pairs from args.
-
-    Returns (parsed_dict, remaining_args).
-    """
-    parsed = {}
-    remaining = []
-    i = 0
-    while i < len(args):
-        if args[i] == flag and i + 1 < len(args):
-            kv = args[i + 1]
-            if '=' not in kv:
-                print(f"error: {flag} expects KEY=VALUE, got: {kv}", file=sys.stderr)
-                sys.exit(1)
-            k, v = kv.split('=', 1)
-            parsed[k.strip()] = v.strip()
-            i += 2
-        elif args[i].startswith(flag + '='):
-            kv = args[i][len(flag) + 1 :]
-            if '=' not in kv:
-                print(f"error: {flag} expects KEY=VALUE, got: {kv}", file=sys.stderr)
-                sys.exit(1)
-            k, v = kv.split('=', 1)
-            parsed[k.strip()] = v.strip()
-            i += 1
-        else:
-            remaining.append(args[i])
-            i += 1
-    return parsed, remaining
+app = typer.Typer(
+    name='runner',
+    no_args_is_help=True,
+    add_completion=False,
+    pretty_exceptions_enable=False,
+    rich_markup_mode=None,
+)
 
 
 def _find_runner_toml(config_path: Optional[str] = None) -> str:
@@ -48,8 +28,7 @@ def _find_runner_toml(config_path: Optional[str] = None) -> str:
     """
     if config_path:
         if not os.path.exists(config_path):
-            print(f"error: config not found: {config_path}", file=sys.stderr)
-            sys.exit(1)
+            _error(f'config not found: {config_path}')
         return config_path
 
     candidates = []
@@ -62,98 +41,33 @@ def _find_runner_toml(config_path: Optional[str] = None) -> str:
         if os.path.exists(c):
             return c
 
-    print('error: runner.toml not found', file=sys.stderr)
+    msg = 'runner.toml not found'
     if repo_dir:
-        print(f'  searched: {repo_dir}/runner.toml and ./runner.toml', file=sys.stderr)
+        msg += f'\n  searched: {repo_dir}/runner.toml and ./runner.toml'
     else:
-        print('  searched: ./runner.toml (set HAGENT_REPO_DIR for broader search)', file=sys.stderr)
-    sys.exit(1)
+        msg += '\n  searched: ./runner.toml (set HAGENT_REPO_DIR for broader search)'
+    _error(msg)
+    return ''  # unreachable, keeps type checker happy
 
 
-def _extract_flag(args: List[str], flag: str) -> Tuple[bool, List[str]]:
-    """Extract a boolean flag from args."""
-    if flag in args:
-        remaining = [a for a in args if a != flag]
-        return True, remaining
-    return False, args
+def _error(msg: str, hint: Optional[str] = None) -> None:
+    print(f'error: {msg}', file=sys.stderr)
+    if hint:
+        print(f'  (use "runner {hint} --help" for options and examples)', file=sys.stderr)
+    raise typer.Exit(1)
 
 
-def _extract_option(args: List[str], flag: str) -> Tuple[Optional[str], List[str]]:
-    """Extract a --flag VALUE option from args."""
-    remaining = []
-    value = None
-    i = 0
-    while i < len(args):
-        if args[i] == flag and i + 1 < len(args):
-            value = args[i + 1]
-            i += 2
-        elif args[i].startswith(flag + '='):
-            value = args[i][len(flag) + 1 :]
-            i += 1
-        else:
-            remaining.append(args[i])
-            i += 1
-    return value, remaining
-
-
-def cmd_setup(args: List[str]) -> int:
-    """Handle: runner setup <tag> --name <profile> [options]
-
-    <tag> is either a plain name (stored in <cache>/tags/<tag>/)
-    or a path (stored directly there).
-    """
-    if not args or args[0] in ('--help', '-h'):
-        print('usage: runner setup <tag> --name <profile> [--input N=T]...')
-        print('       [--set K=V]... [--force] [--reuse] [--config PATH]')
-        print()
-        print('<tag> can be a name (tst1) or a path (./my_dir, /abs/path).')
-        print('Names are stored under $HAGENT_CACHE_DIR/tags/<tag>/.')
-        print('Paths are used directly.')
-        return 0
-
-    tag = args[0]
-    rest = args[1:]
-
-    # Extract flags
-    name, rest = _extract_option(rest, '--name')
-    if not name:
-        print('error: --name <profile> is required', file=sys.stderr)
-        return 1
-
-    config_path, rest = _extract_option(rest, '--config')
-    cache_dir, rest = _extract_option(rest, '--cache-dir')
-    force, rest = _extract_flag(rest, '--force')
-    reuse, rest = _extract_flag(rest, '--reuse')
-
-    if force and reuse:
-        print('error: --force and --reuse are mutually exclusive', file=sys.stderr)
-        return 1
-
-    inputs, rest = _parse_kv_args(rest, '--input')
-    overrides, rest = _parse_kv_args(rest, '--set')
-
-    if rest:
-        print(f"error: unexpected arguments: {' '.join(rest)}", file=sys.stderr)
-        return 1
-
-    runner_toml = _find_runner_toml(config_path)
-
-    try:
-        toml_path = setup_tag(
-            runner_toml_path=runner_toml,
-            tag=tag,
-            profile_name=name,
-            cache_dir=cache_dir,
-            inputs=inputs or None,
-            overrides=overrides or None,
-            force=force,
-            reuse=reuse,
-        )
-        print(f'setup {tag} ({name}) -> {toml_path}')
-        return 0
-    except (TagError, ValueError, FileNotFoundError) as e:
-        print(f'error: {e}', file=sys.stderr)
-        return 1
+def _parse_kv_list(pairs: Optional[list[str]]) -> dict[str, str]:
+    """Parse ['K=V', ...] into {K: V}."""
+    if not pairs:
+        return {}
+    result = {}
+    for kv in pairs:
+        if '=' not in kv:
+            _error(f'expected KEY=VALUE, got: {kv}')
+        k, v = kv.split('=', 1)
+        result[k.strip()] = v.strip()
+    return result
 
 
 def _load_config_file(path: str) -> tuple:
@@ -169,7 +83,7 @@ def _load_config_file(path: str) -> tuple:
         return cfg.load_runner_toml(path), 'toml'
 
 
-def _get_profiles_from_file(data: dict, fmt: str) -> List[tuple]:
+def _get_profiles_from_file(data: dict, fmt: str) -> list[tuple]:
     """Get (name, description) pairs for all profiles in a config file."""
     if fmt == 'yaml':
         result = []
@@ -214,7 +128,7 @@ def _get_apis_from_tag(tag_config: dict) -> dict:
     return dict(apis) if isinstance(apis, dict) else {}
 
 
-def _print_profiles(profiles: List[tuple]) -> None:
+def _print_profiles(profiles: list[tuple]) -> None:
     """Print a list of (name, description) profile entries."""
     if not profiles:
         print('no profiles found')
@@ -225,6 +139,33 @@ def _print_profiles(profiles: List[tuple]) -> None:
             print(f'  {name:<24s} {desc}')
         else:
             print(f'  {name}')
+
+
+def _print_api_detail(api_name: str, api_data: dict) -> None:
+    """Print detail for a single API including its options."""
+    desc = api_data.get('description', '')
+    cmd = api_data.get('command', '')
+    print(f'{api_name}:')
+    if desc:
+        print(f'  description: {desc}')
+    if cmd:
+        print(f'  command: {cmd}')
+    cwd = api_data.get('cwd', '')
+    if cwd:
+        print(f'  cwd: {cwd}')
+    options = api_data.get('options', [])
+    if not options:
+        print('  options: (none)')
+    else:
+        print(f'  options ({len(options)}):')
+        for opt in options:
+            opt_name = opt.get('name', '')
+            opt_desc = opt.get('description', '')
+            opt_default = opt.get('default', None)
+            line = f'    {opt_name:<20s} {opt_desc}'
+            if opt_default is not None:
+                line += f'  [default: {opt_default!r}]'
+            print(line)
 
 
 def _print_apis(apis: dict, label: str) -> None:
@@ -242,216 +183,258 @@ def _print_apis(apis: dict, label: str) -> None:
             print(f'  {api_name:<24s} {cmd}')
 
 
-def cmd_config(args: List[str]) -> int:
-    """Handle: runner config <path> [--list] [--name <profile>]"""
-    if not args or args[0] in ('--help', '-h'):
-        print('usage: runner config <path> --list')
-        print('       runner config <path> --name <profile> --list')
-        print()
-        print('Inspect a config file (runner.toml or hagent.yaml) before setup.')
-        print()
-        print('examples:')
-        print('  runner config runner.toml --list')
-        print('  runner config runner.toml --name gcd --list')
-        print('  runner config ../hagent.yaml --list')
-        print('  runner config ../hagent.yaml --name gcd --list')
-        return 0
+@app.command()
+def config(
+    path: Annotated[Optional[str], typer.Argument(help='Path to runner.toml or hagent.yaml')] = None,
+    list: Annotated[bool, typer.Option('--list', help='List profiles or APIs')] = False,
+    name: Annotated[Optional[str], typer.Option('--name', help='Show APIs for this profile')] = None,
+) -> None:
+    """Inspect a config file needed for creating a tag.
 
-    path = args[0]
-    rest = args[1:]
+    \b
+    Examples:
+        runner config --list
+        runner config --list --name gcd
+        runner config ./repo/runner.toml --list
+        runner config ../hagent.yaml --name gcd --list
+    """
+    if not list:
+        _error('--list is required', hint='config')
 
-    list_flag, rest = _extract_flag(rest, '--list')
-    name, rest = _extract_option(rest, '--name')
-
-    if rest:
-        print(f"error: unexpected arguments: {' '.join(rest)}", file=sys.stderr)
-        return 1
-
-    if not list_flag:
-        print('error: --list is required (use --help for usage)', file=sys.stderr)
-        return 1
+    resolved = path if path else _find_runner_toml()
 
     try:
-        data, fmt = _load_config_file(path)
+        data, fmt = _load_config_file(resolved)
     except (FileNotFoundError, ValueError) as e:
-        print(f'error: {e}', file=sys.stderr)
-        return 1
+        _error(str(e), hint='config')
+        return  # unreachable
 
+    print(f'config: {resolved}')
     if name is None:
         _print_profiles(_get_profiles_from_file(data, fmt))
-        return 0
     else:
         try:
             apis = _get_apis_from_file(data, fmt, name)
         except ValueError as e:
-            print(f'error: {e}', file=sys.stderr)
-            return 1
+            _error(str(e), hint='config')
+            return
         _print_apis(apis, name)
-        return 0
 
 
-def cmd_list(args: List[str]) -> int:
-    """Handle: runner list <tag>"""
-    if not args or args[0] in ('--help', '-h'):
-        print('usage: runner list <tag>')
-        print()
-        print('List APIs available in an existing tag.')
-        return 0
+@app.command()
+def setup(
+    tag: Annotated[str, typer.Argument(help='Tag name (tst1) or path (./my_dir, /abs/path)')],
+    name: Annotated[str, typer.Option('--name', help='Profile name from runner.toml')],
+    input: Annotated[Optional[list[str]], typer.Option('--input', help='Named input as NAME=TAG (repeatable)')] = None,
+    set: Annotated[Optional[list[str]], typer.Option('--set', help='Config override as KEY=VALUE (repeatable)')] = None,
+    force: Annotated[bool, typer.Option('--force', help='Delete and recreate existing tag')] = False,
+    reuse: Annotated[bool, typer.Option('--reuse', help='Reuse existing tag directory')] = False,
+    config: Annotated[Optional[str], typer.Option('--config', help='Path to runner.toml')] = None,
+    cache_dir: Annotated[Optional[str], typer.Option('--cache-dir', help='Override cache directory')] = None,
+) -> None:
+    """Create a new tag from a runner.toml profile.
 
-    tag_name = args[0]
-    rest = args[1:]
+    \b
+    Examples:
+        runner setup tst1 --name gcd
+        runner setup tst1 --name gcd --config ./repo/runner.toml
+        runner setup ./my_build --name dualissue_d
+        runner setup tst2 --name gcd --input orig_verilog=tst1
+        runner setup tst1 --name gcd --set memory=8 --force
+    """
+    if force and reuse:
+        _error('--force and --reuse are mutually exclusive', hint='setup')
 
-    cache_dir, rest = _extract_option(rest, '--cache-dir')
+    inputs = _parse_kv_list(input)
+    overrides = _parse_kv_list(set)
+    runner_toml = _find_runner_toml(config)
 
-    if rest:
-        print(f"error: unexpected arguments: {' '.join(rest)}", file=sys.stderr)
-        return 1
+    try:
+        toml_path = setup_tag(
+            runner_toml_path=runner_toml,
+            tag=tag,
+            profile_name=name,
+            cache_dir=cache_dir,
+            inputs=inputs or None,
+            overrides=overrides or None,
+            force=force,
+            reuse=reuse,
+        )
+        print(f'setup {tag} ({name}) -> {toml_path}')
+    except (TagError, ValueError, FileNotFoundError) as e:
+        _error(str(e), hint='setup')
 
+
+@app.command()
+def status(
+    tag: Annotated[str, typer.Argument(help='Tag name or path')],
+    cache_dir: Annotated[Optional[str], typer.Option('--cache-dir', help='Override cache directory')] = None,
+) -> None:
+    """Show status and API list for an existing tag.
+
+    \b
+    Examples:
+        runner status tst1
+        runner status ./my_build
+    """
     try:
         from .tag import get_tag_dir, validate_tag
 
-        tag_dir = get_tag_dir(tag_name, cache_dir)
+        tag_dir = get_tag_dir(tag, cache_dir)
         tag_config = validate_tag(tag_dir)
     except TagError as e:
-        print(f'error: {e}', file=sys.stderr)
-        return 1
+        _error(str(e), hint='status')
+        return
 
-    profile_name = tag_config.get('meta', {}).get('profile_name', tag_name)
+    profile_name = tag_config.get('meta', {}).get('profile_name', tag)
     apis = _get_apis_from_tag(tag_config)
-    _print_apis(apis, f'{tag_name} ({profile_name})')
-    return 0
+    _print_apis(apis, f'{tag} ({profile_name})')
 
 
-def cmd_test(args: List[str]) -> int:
-    """Handle: runner test <tag> [options]"""
-    if not args or args[0] in ('--help', '-h'):
-        print('usage: runner test <tag> [options]')
-        print()
-        print('options:')
-        print('  --filter <pattern>   Run only tests matching glob pattern')
-        print('  --jobs N             Max parallel test workers (default: ncpus)')
-        print('  --fail-fast          Stop after first failure')
-        print('  --timeout <sec>      Per-test timeout (default: from config or 300)')
-        print('  --list               List tests without running them')
-        print('  --verbose            Show full output')
-        print('  --quiet              Only show summary')
-        print('  --cache-dir DIR      Override cache directory')
-        return 0
+def _tag_exists(tag: str, cache_dir: Optional[str] = None) -> bool:
+    """Check if a tag directory exists."""
+    try:
+        from .tag import get_tag_dir
 
-    tag_name = args[0]
-    rest = args[1:]
+        tag_dir = get_tag_dir(tag, cache_dir)
+        return os.path.isdir(tag_dir) and os.path.isfile(os.path.join(tag_dir, 'config.toml'))
+    except (TagError, Exception):
+        return False
 
-    filter_pattern, rest = _extract_option(rest, '--filter')
-    jobs_str, rest = _extract_option(rest, '--jobs')
-    timeout_str, rest = _extract_option(rest, '--timeout')
-    cache_dir, rest = _extract_option(rest, '--cache-dir')
-    fail_fast, rest = _extract_flag(rest, '--fail-fast')
-    list_only, rest = _extract_flag(rest, '--list')
-    verbose, rest = _extract_flag(rest, '--verbose')
-    quiet, rest = _extract_flag(rest, '--quiet')
 
-    if rest:
-        print(f"error: unexpected arguments: {' '.join(rest)}", file=sys.stderr)
-        return 1
+@app.command()
+def run(
+    first: Annotated[str, typer.Argument(help='API name or tag (if tag, defaults to test)')],
+    second: Annotated[Optional[str], typer.Argument(help='Tag name or path')] = None,
+    set: Annotated[Optional[list[str]], typer.Option('--set', help='Config override as KEY=VALUE (repeatable)')] = None,
+    verbose: Annotated[bool, typer.Option('--verbose', help='Show full output')] = False,
+    quiet: Annotated[bool, typer.Option('--quiet', help='Only show summary (tests)')] = False,
+    filter: Annotated[Optional[str], typer.Option('--filter', help='Run only tests matching glob pattern')] = None,
+    jobs: Annotated[Optional[int], typer.Option('--jobs', help='Max parallel test workers (default: ncpus)')] = None,
+    fail_fast: Annotated[bool, typer.Option('--fail-fast', help='Stop after first failure (tests)')] = False,
+    timeout: Annotated[int, typer.Option('--timeout', help='Per-test timeout in seconds')] = 300,
+    list: Annotated[bool, typer.Option('--list', help='List tests without running them')] = False,
+    cache_dir: Annotated[Optional[str], typer.Option('--cache-dir', help='Override cache directory')] = None,
+) -> None:
+    """Run an API in a tag.
 
-    jobs = int(jobs_str) if jobs_str else None
-    timeout = int(timeout_str) if timeout_str else 300
+    \b
+    runner run <api> <tag> [options]   Run a specific API
+    runner run <tag> [options]         Run tests (shorthand for: run test <tag>)
+    Examples:
+      runner run lint tst1
+      runner run compile tst1 --verbose
+      runner run synth tst1 --set top=MyModule
+      runner run tst1                     (run tests)
+      runner run tst1 --list              (list tests)
+      runner run tst1 --jobs 8
+      runner run tst1 --filter 'test_alu*'
+      runner run test tst1 --fail-fast
+    """
+    if second is not None:
+        # Two positional args: runner run <api> <tag>
+        api_name = first
+        tag_name = second
+    else:
+        # One positional arg: could be a tag (run tests) or a mistake
+        if _tag_exists(first, cache_dir):
+            api_name = 'test'
+            tag_name = first
+        else:
+            _error(f'tag not found: {first}', hint='run')
+            return  # unreachable
+
+    # --list handling
+    if list:
+        if second is None and api_name == 'test':
+            # runner run <tag> --list → show available APIs
+            try:
+                from .tag import get_tag_dir, validate_tag
+
+                tag_dir = get_tag_dir(tag_name, cache_dir)
+                tag_config = validate_tag(tag_dir)
+            except TagError as e:
+                _error(str(e), hint='run')
+                return
+            profile_name = tag_config.get('meta', {}).get('profile_name', tag_name)
+            apis = _get_apis_from_tag(tag_config)
+            _print_apis(apis, f'{tag_name} ({profile_name})')
+            raise typer.Exit(0)
+        elif api_name != 'test':
+            # runner run <api> <tag> --list → show API options
+            try:
+                from .tag import get_tag_dir, validate_tag
+
+                tag_dir = get_tag_dir(tag_name, cache_dir)
+                tag_config = validate_tag(tag_dir)
+            except TagError as e:
+                _error(str(e), hint='run')
+                return
+            apis = _get_apis_from_tag(tag_config)
+            if api_name not in apis:
+                _error(f"API '{api_name}' not found in tag '{tag_name}'", hint='run')
+                return
+            _print_api_detail(api_name, apis[api_name])
+            raise typer.Exit(0)
+        # else: api_name == 'test' with explicit second arg → falls through to run_tests(list_only=True)
+
+    overrides = _parse_kv_list(set)
 
     try:
-        return run_tests(
-            tag_name=tag_name,
-            cache_dir=cache_dir,
-            filter_pattern=filter_pattern,
-            jobs=jobs,
-            fail_fast=fail_fast,
-            timeout=timeout,
-            verbose=verbose,
-            quiet=quiet,
-            list_only=list_only,
-        )
+        if api_name == 'test':
+            rc = run_tests(
+                tag_name=tag_name,
+                cache_dir=cache_dir,
+                filter_pattern=filter,
+                jobs=jobs,
+                fail_fast=fail_fast,
+                timeout=timeout,
+                verbose=verbose,
+                quiet=quiet,
+                list_only=list,
+            )
+        else:
+            rc = run_command(
+                api_name=api_name,
+                tag_name=tag_name,
+                cache_dir=cache_dir,
+                overrides=overrides or None,
+                verbose=verbose,
+            )
+        raise typer.Exit(rc)
     except TagError as e:
-        print(f'error: {e}', file=sys.stderr)
-        return 1
+        _error(str(e), hint='run')
 
 
-def cmd_run(api_name: str, args: List[str]) -> int:
-    """Handle: runner <cmd> <tag> [--set K=V]... [--verbose]"""
-    if not args or args[0] in ('--help', '-h'):
-        print(f'usage: runner {api_name} <tag> [--set K=V]... [--verbose]')
-        return 0
-
-    tag_name = args[0]
-    rest = args[1:]
-
-    verbose, rest = _extract_flag(rest, '--verbose')
-    cache_dir, rest = _extract_option(rest, '--cache-dir')
-    overrides, rest = _parse_kv_args(rest, '--set')
-
-    if rest:
-        print(f"error: unexpected arguments: {' '.join(rest)}", file=sys.stderr)
-        return 1
-
-    try:
-        return run_command(
-            api_name=api_name,
-            tag_name=tag_name,
-            cache_dir=cache_dir,
-            overrides=overrides or None,
-            verbose=verbose,
-        )
-    except TagError as e:
-        print(f'error: {e}', file=sys.stderr)
-        return 1
-
-
-def print_help() -> int:
-    """Print top-level help."""
-    print('usage: runner <command> <tag> [options]')
-    print()
-    print('built-in commands:')
-    print('  setup    Create a new tag from a runner.toml profile')
-    print('  test     Run tests for a tag (parallel)')
-    print('  config   Inspect a config file (profiles and APIs)')
-    print('  list     List APIs in an existing tag')
-    print('  help     Show this help')
-    print()
-    print('Any other command is treated as an API name:')
-    print('  runner lint tst1')
-    print('  runner compile tst1')
-    print('  runner synth_asic tst1 --set top=MyModule')
-    print()
-    print('setup usage:')
-    print('  runner setup <tag> --name <profile> [--input N=T]...')
-    print('  runner setup <tag> --name <profile> [--set K=V]... [--force] [--reuse]')
-    print()
-    print('<tag> is a name (tst1) or a path (./my_dir, /abs/path).')
-    print()
-    print('run usage:')
-    print('  runner <cmd> <tag> [--set K=V]... [--verbose]')
-    return 0
-
-
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     """Entry point for the runner CLI."""
     args = argv if argv is not None else sys.argv[1:]
 
-    if not args or args[0] in ('--help', '-h', 'help'):
-        return print_help()
+    # No args or 'help' → show help
+    if not args or args[0] == 'help':
+        args = ['--help']
 
-    cmd = args[0]
-    rest = args[1:]
-
-    BUILTINS = {
-        'setup': cmd_setup,
-        'test': cmd_test,
-        'config': cmd_config,
-        'list': cmd_list,
-    }
-
-    if cmd in BUILTINS:
-        return BUILTINS[cmd](rest)
-    else:
-        return cmd_run(cmd, rest)
+    try:
+        result = app(args, standalone_mode=False, prog_name='runner')
+        if isinstance(result, int):
+            return result
+        return 0
+    except SystemExit as e:
+        return e.code if isinstance(e.code, int) else 0
+    except click.exceptions.NoArgsIsHelpError:
+        return 0
+    except click.exceptions.MissingParameter as e:
+        cmd = args[0] if args else ''
+        print(f'error: missing required option: {e.param.name}', file=sys.stderr)
+        if cmd:
+            print(f'  (use "runner {cmd} --help" for options and examples)', file=sys.stderr)
+        return 1
+    except click.exceptions.UsageError as e:
+        cmd = args[0] if args else ''
+        print(f'error: {e.format_message()}', file=sys.stderr)
+        if cmd:
+            print(f'  (use "runner {cmd} --help" for options and examples)', file=sys.stderr)
+        return 1
 
 
 if __name__ == '__main__':

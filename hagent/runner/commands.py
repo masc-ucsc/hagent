@@ -72,11 +72,11 @@ def run_command(
     if cwd:
         cwd = cfg.resolve_placeholders(cwd, context)
 
-    # Build environment (but don't expand $HAGENT_* in command/cwd —
-    # let the execution environment (Docker or local shell) resolve them)
+    # Build extra environment vars from tag config (not the full host env —
+    # Builder's FileSystem layer handles base env merging)
     env = cfg.build_env(tag_config, tag_dir)
 
-    # Resolve Docker image from tag config
+    # Resolve Docker image override from tag config
     docker_image = cfg.get_docker_image(tag_config)
 
     # Execute via Builder
@@ -121,7 +121,7 @@ def run_command(
 
 
 def _execute(command: str, cwd: str, env: dict, verbose: bool, docker_image: str = None) -> tuple:
-    """Execute command via Builder.run_cmd() or subprocess.
+    """Execute command via Builder.
 
     Args:
         docker_image: Docker image override from tag config.
@@ -129,64 +129,29 @@ def _execute(command: str, cwd: str, env: dict, verbose: bool, docker_image: str
             ""    = force local execution (unset HAGENT_DOCKER)
             "img" = use this image (set HAGENT_DOCKER=img)
 
-    Uses Builder when available (handles Docker mode).
-    Falls back to subprocess only if Builder import/setup fails.
     Returns (exit_code, stdout, stderr).
     """
+    from hagent.inou.builder import Builder
+
     # Apply per-tag Docker image override
     orig_docker = os.environ.get('HAGENT_DOCKER')
     if docker_image is not None:
         if docker_image == '':
-            # Force local: unset HAGENT_DOCKER
             os.environ.pop('HAGENT_DOCKER', None)
         else:
             os.environ['HAGENT_DOCKER'] = docker_image
 
-    docker_mode = bool(os.environ.get('HAGENT_DOCKER'))
-
     try:
-        from hagent.inou.builder import Builder
-
         builder = Builder()
-        if builder.setup():
-            effective_cwd = cwd if cwd else '.'
-            exit_code, stdout, stderr = builder.run_cmd(command, effective_cwd, env, quiet=not verbose)
-            return exit_code, stdout, stderr
-        else:
-            err_msg = f'Builder setup failed: {builder.get_error()}'
-            if docker_mode:
-                return 1, '', err_msg
-            if verbose:
-                print(f'warning: {err_msg}, falling back to subprocess', file=sys.stderr)
+        if not builder.setup():
+            return 1, '', f'Builder setup failed: {builder.get_error()}'
+
+        effective_cwd = cwd if cwd else '.'
+        return builder.run_cmd(command, effective_cwd, env, quiet=not verbose)
     except (Exception, SystemExit) as e:
-        err_msg = f'Builder error: {e}'
-        if docker_mode:
-            return 1, '', err_msg
-        if verbose:
-            print(f'warning: {err_msg}, falling back to subprocess', file=sys.stderr)
+        return 1, '', f'Builder error: {e}'
     finally:
-        # Restore original HAGENT_DOCKER
         if orig_docker is None:
             os.environ.pop('HAGENT_DOCKER', None)
         else:
             os.environ['HAGENT_DOCKER'] = orig_docker
-
-    # Fallback to subprocess (local mode only)
-    import subprocess
-
-    # For local subprocess, expand $VARS in command and cwd
-    resolved_cmd = os.path.expandvars(command)
-    resolved_cwd = os.path.expandvars(cwd) if cwd else None
-
-    try:
-        result = subprocess.run(
-            resolved_cmd,
-            shell=True,
-            cwd=resolved_cwd,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        return result.returncode, result.stdout, result.stderr
-    except Exception as e:
-        return 1, '', str(e)
