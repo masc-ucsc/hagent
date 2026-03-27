@@ -262,6 +262,10 @@ class Locator:
         """Get last error message following Tool pattern."""
         return self._error
 
+    def get_hierarchy(self) -> dict:
+        """Get module hierarchy mapping (uses cache when available)."""
+        return self._build_hierarchy_cache()
+
     def cleanup(self) -> None:
         """Clean up resources (Builder, file handles, etc.)."""
         if self.builder:
@@ -417,7 +421,7 @@ class Locator:
 
         return verilog_patterns
 
-    def _build_hierarchy_cache(self, target_type: Optional[RepresentationType] = None) -> dict:
+    def _build_hierarchy_cache(self) -> dict:
         """Execute slang-hier and parse output into hierarchy mapping.
 
         Args:
