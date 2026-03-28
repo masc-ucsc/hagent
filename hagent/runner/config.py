@@ -80,13 +80,7 @@ def apply_overrides(config: dict, overrides: Dict[str, str]) -> dict:
     """
     config = copy.deepcopy(config)
     for key, value in overrides.items():
-        parts = key.split('.')
-        target = config
-        for part in parts[:-1]:
-            if part not in target or not isinstance(target[part], dict):
-                target[part] = {}
-            target = target[part]
-        target[parts[-1]] = value
+        set_field(config, key, value)
     return config
 
 
@@ -106,16 +100,27 @@ def list_api_names(config: dict) -> List[str]:
     return list(apis.keys())
 
 
-def _lookup(context: dict, key: str):
+def lookup(data: dict, key: str):
     """Walk a dotted key path through nested dicts.  Returns None on miss."""
     parts = key.split('.')
-    obj = context
+    obj = data
     for part in parts:
         if isinstance(obj, dict) and part in obj:
             obj = obj[part]
         else:
             return None
     return obj
+
+
+def set_field(data: dict, field_path: str, value) -> None:
+    """Set a nested field in a dict via dotted key, creating intermediate dicts as needed."""
+    parts = field_path.split('.')
+    target = data
+    for part in parts[:-1]:
+        if part not in target or not isinstance(target[part], dict):
+            target[part] = {}
+        target = target[part]
+    target[parts[-1]] = value
 
 
 def resolve_placeholders(text: str, context: dict) -> str:
@@ -127,7 +132,7 @@ def resolve_placeholders(text: str, context: dict) -> str:
 
     def _replace(match):
         key = match.group(1)
-        val = _lookup(context, key)
+        val = lookup(context, key)
         if val is None:
             return match.group(0)  # pass through
         return str(val)
