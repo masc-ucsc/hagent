@@ -554,6 +554,15 @@ class Locator:
                 'profile': self.profile_name,
             }
 
+            # Resolve relative file paths to absolute using cwd from _metadata
+            resolved_cwd = self._resolve_cwd(cwd)
+            for key, info in hierarchy.items():
+                if key.startswith('_'):
+                    continue
+                file_path = info.get('file', '')
+                if file_path and not os.path.isabs(file_path):
+                    info['file'] = str((resolved_cwd / file_path).resolve())
+
             # Save to cache
             self._save_cache('hierarchy', hierarchy)
 
@@ -1098,12 +1107,7 @@ class Locator:
         for entry in matching_entries:
             self._debug_print(f'  - Module: {entry.get("module", "?")}, File: {entry.get("file", "?")}')
 
-        # Resolve the cwd used by slang-hier so file paths are resolved correctly
-        # (e.g., cva6 uses $HAGENT_REPO_DIR, simplechisel uses $HAGENT_BUILD_DIR)
-        hier_metadata = hierarchy.get('_metadata', {})
-        hier_cwd = hier_metadata.get('cwd')
-        hier_base_dir = self._resolve_cwd(hier_cwd) if hier_cwd else None
-        self._debug_print(f'Hierarchy base dir: {hier_base_dir} (from cwd={hier_cwd})')
+        # File paths in hierarchy are already absolute (resolved during cache build)
 
         # Search in all matching files
         locations = []
@@ -1187,7 +1191,6 @@ class Locator:
                     file_path=file_path,
                     module_name=module_name,
                     representation=RepresentationType.VERILOG,
-                    base_dir=hier_base_dir,
                 )
 
                 if verilog_locs:
@@ -1270,7 +1273,6 @@ class Locator:
                     file_path=file_path,
                     module_name=module_name,
                     representation=RepresentationType.VERILOG,
-                    base_dir=hier_base_dir,
                 )
                 locations.extend(file_locations)
 
