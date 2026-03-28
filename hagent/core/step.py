@@ -192,6 +192,11 @@ class Step(metaclass=TracerMetaClass):
         else:
             self.input_data = self.overwrite_conf
 
+        # Apply set_env_vars early so subclass setup() code (e.g. PathManager) sees them.
+        # The context is kept open and exited at the end of step().
+        self._env_ctx = self._temporary_env_vars()
+        self._env_ctx.__enter__()
+
     def run(self, data):
         """Execute the step's main logic.
 
@@ -260,9 +265,7 @@ class Step(metaclass=TracerMetaClass):
         start = time.time()
         output_data = {}
         try:
-            # Set environment variables temporarily before running.
-            with self._temporary_env_vars():
-                result_data = self.run(self.input_data)
+            result_data = self.run(self.input_data)
             if result_data is None:
                 result_data = {}
             # Propagate all fields from input to output unless overridden.
@@ -270,6 +273,11 @@ class Step(metaclass=TracerMetaClass):
         except Exception as e:
             output_data.update({'error': f'{sys.argv[0]} {datetime.datetime.now().isoformat()} - unable to write yaml: {e}'})
             print(f'ERROR: unable to write yaml: {e}')
+        finally:
+            # Exit the env var context opened in setup().
+            if hasattr(self, '_env_ctx') and self._env_ctx:
+                self._env_ctx.__exit__(None, None, None)
+                self._env_ctx = None
 
         # Get total cost and tokens if there is any LLM attached
         # Also get the chat history to dump any relevant stats in the yaml.
