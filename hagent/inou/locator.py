@@ -266,6 +266,11 @@ class Locator:
         """Get module hierarchy mapping (uses cache when available)."""
         return self._build_hierarchy_cache()
 
+    def get_top_modules(self) -> List[str]:
+        """Get top-level module names from slang-hier output."""
+        hierarchy = self._build_hierarchy_cache()
+        return hierarchy.get('_top_modules', [])
+
     def cleanup(self) -> None:
         """Clean up resources (Builder, file handles, etc.)."""
         if self.builder:
@@ -982,16 +987,29 @@ class Locator:
             # Parse text format output from slang-hier
             # Example line: Module="ALUControl" Instance="PipelinedDualIssueCPU.pipeB_aluControl" File="build_pipelined_d/ALUControl.sv"
             hierarchy = {}
+            top_modules = []
+            in_top_level_section = False
 
             for line in slang_output.splitlines():
-                line = line.strip()
-                if not line or line.startswith('#') or line.startswith('Top level') or line.startswith('Build succeeded'):
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#') or stripped.startswith('Build succeeded'):
+                    in_top_level_section = False
+                    continue
+
+                # Parse "Top level design units:" section
+                if stripped.startswith('Top level'):
+                    in_top_level_section = True
+                    continue
+
+                if in_top_level_section:
+                    # Lines after "Top level design units:" are indented module names
+                    top_modules.append(stripped)
                     continue
 
                 # Extract Module, Instance, and File using regex
-                module_match = re.search(r'Module="([^"]+)"', line)
-                instance_match = re.search(r'Instance="([^"]+)"', line)
-                file_match = re.search(r'File="([^"]+)"', line)
+                module_match = re.search(r'Module="([^"]+)"', stripped)
+                instance_match = re.search(r'Instance="([^"]+)"', stripped)
+                file_match = re.search(r'File="([^"]+)"', stripped)
 
                 if module_match and instance_match and file_match:
                     module_name = module_match.group(1)
@@ -1005,6 +1023,9 @@ class Locator:
                         'instance': instance_path,
                     }
 
+            if top_modules:
+                hierarchy['_top_modules'] = top_modules
+
             return hierarchy
 
     def _find_vcd_in_hierarchy(self, hier_path: str, target_type: RepresentationType) -> List[SourceLocation]:
@@ -1017,7 +1038,7 @@ class Locator:
         4. Case-insensitive matching: "gcd.x" matches "GCD" module
         """
         self._debug_print(f'_find_vcd_in_hierarchy() called: hier_path={hier_path}, target={target_type.value}')
-        hierarchy = self._build_hierarchy_cache(target_type=target_type)
+        hierarchy = self._build_hierarchy_cache()
         if not hierarchy:
             self._debug_print('No hierarchy cache available')
             return []
@@ -1049,14 +1070,12 @@ class Locator:
                 # Strategy 2: Replace first component with actual top module if it matches profile name
                 first_component = parts[0] if parts else ''
                 if first_component == self.profile_name:
-                    # Find the actual top module from hierarchy
-                    for instance_path, info in hierarchy.items():
-                        if '.' not in instance_path:  # Top-level module
-                            actual_top = instance_path
-                            # Replace profile name with actual top module
-                            new_module_path = actual_top + '.' + '.'.join(parts[1:-1])
-                            if new_module_path in hierarchy:
-                                matching_entries.append(hierarchy[new_module_path])
+                    # Find the actual top module from hierarchy using _top_modules
+                    top_modules = hierarchy.get('_top_modules', [])
+                    for actual_top in top_modules:
+                        new_module_path = actual_top + '.' + '.'.join(parts[1:-1])
+                        if new_module_path in hierarchy:
+                            matching_entries.append(hierarchy[new_module_path])
                             break
 
                 # Strategy 3: Hierarchical suffix matching
