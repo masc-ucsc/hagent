@@ -192,7 +192,9 @@ class ExtractCriticalStep(Step):
         netlist_text = netlist_path.read_text()
 
         launch_q_signal = ''
+        launch_src_file: Optional[Path] = None
         capture_d_signal = ''
+        capture_src_file: Optional[Path] = None
 
         # Fresh annotated_rtl directory for this invocation
         annotated_dir = Path(self.storage.output_dir) / 'annotated_rtl'
@@ -264,6 +266,17 @@ class ExtractCriticalStep(Step):
             hierarchy_prefix = synth_top.split('$', 1)[1]
             print(f'  Using hierarchy prefix from synth_top_module: {hierarchy_prefix}')
 
+        # Map signal_name -> src_file for fallback module discovery
+        signal_src_files = {}
+        if launch_q_signal and launch_src_file:
+            signal_src_files[launch_q_signal] = launch_src_file
+        if capture_d_signal and capture_src_file:
+            signal_src_files[capture_d_signal] = capture_src_file
+
+        module_to_file = self._map_modules_to_files()
+        # Reverse map: filename -> module name
+        file_to_module = {p.name: m for m, p in module_to_file.items()}
+
         for signal_name in [launch_q_signal, capture_d_signal]:
             if not signal_name:
                 continue
@@ -271,14 +284,21 @@ class ExtractCriticalStep(Step):
             vcd_path = f'{hierarchy_prefix}.{signal_name}'
             locations = self.locator.locate_vcd(to=RepresentationType.VERILOG, vcd_variable=vcd_path)
 
-            if not locations:
-                print(f'  Warning: No locations found for {vcd_path}')
-                continue
-
-            # SourceLocation has module_name from hierarchy
-            source_module = locations[0].module_name
-            if not source_module:
-                source_module = Path(locations[0].file_path).stem
+            if locations:
+                # SourceLocation has module_name from hierarchy
+                source_module = locations[0].module_name
+                if not source_module:
+                    source_module = Path(locations[0].file_path).stem
+            else:
+                # Fallback: derive module from (* src *) file when VCD lookup fails
+                # (e.g. signal is a synthesized name like _20608_)
+                src_file = signal_src_files.get(signal_name)
+                if src_file:
+                    source_module = file_to_module.get(src_file.name, src_file.stem)
+                    print(f'  Derived module from (* src *): {source_module} ({src_file.name})')
+                else:
+                    print(f'  Warning: No locations found for {vcd_path}')
+                    continue
 
             if source_module and source_module not in source_modules:
                 source_modules.append(source_module)
