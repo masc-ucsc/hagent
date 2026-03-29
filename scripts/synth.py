@@ -823,13 +823,15 @@ def _elaborate_with_read_verilog(args, slang_args, top_name):
         print('error: no .sv or .v files found in arguments for read_verilog', file=sys.stderr)
         sys.exit(1)
 
-    read_cmds = '\n'.join(f'yosys read_verilog -sv -DSYNTHESIS {f}' for f in sv_files)
+    read_cmd = 'yosys read_verilog -sv -DSYNTHESIS ' + ' '.join(sv_files)
 
-    script = f"""{read_cmds}
+    script = f"""{read_cmd}
 yosys hierarchy -top {top_name}
 yosys flatten {top_name}
 yosys chformal -remove
+yosys proc
 yosys opt
+yosys memory -nomap
 yosys bwmuxmap
 yosys demuxmap
 yosys write_verilog -simple-lhs {elab_path}
