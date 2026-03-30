@@ -36,7 +36,7 @@ class ExtractCriticalStep(Step):
       - storage: output_dir
 
     Required YAML fields (from previous steps):
-      - sta.report_path
+      - logs.sta_log
       - synthesis.netlist_path
 
     Writes to YAML:
@@ -60,7 +60,7 @@ class ExtractCriticalStep(Step):
         self.netlist_path = Path(self.rtl.netlist_file)
         if not self.netlist_path.exists():
             self.error(f'Netlist not found: {self.netlist_path}')
-        self.sta_report_path = Path(get_field(data, 'sta.report_path'))
+        self.sta_report_path = Path(get_field(data, 'logs.sta_log'))
         if not self.sta_report_path.exists():
             self.error(f'Timing report not found: {self.sta_report_path}')
         # Initialize Locator for signal location and hierarchy queries
