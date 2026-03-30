@@ -233,6 +233,69 @@ class TestGeneratePerfetto:
 
         assert isinstance(data['traceEvents'], list) is True
 
+    def test_sidecar_loading(self, test_dir, clean_tracer):
+        """Verify sidecar .trace.json files are loaded by parse_yaml_files."""
+        simple_dir = os.path.join(test_dir, 'simple')
+
+        # Verify sidecar files exist for this test data.
+        assert os.path.exists(os.path.join(simple_dir, 'intermediate.trace.json'))
+        assert os.path.exists(os.path.join(simple_dir, 'final.trace.json'))
+
+        yaml_files = tracer.scan_for_yamls(simple_dir)
+        initial, inputs, outputs = tracer.parse_yaml_files(simple_dir, yaml_files)
+
+        # Should have loaded trace events from sidecars.
+        assert len(tracer.Tracer.events) > 0
+
+    def test_backward_compat_inline_tracing(self, clean_tracer, tmp_path):
+        """Verify parse_yaml_files works with old-format YAMLs that have inline trace_events."""
+        from ruamel.yaml import YAML
+
+        yaml_obj = YAML()
+        yaml_obj.default_flow_style = False
+
+        # Create an initial input YAML (no tracing).
+        input_yaml = tmp_path / 'input.yaml'
+        yaml_obj.dump({'code_content': 'test', 'top_name': 'test'}, input_yaml.open('w'))
+
+        # Create a step output YAML with inline trace_events (old format, no sidecar).
+        output_yaml = tmp_path / 'output.yaml'
+        yaml_obj.dump(
+            {
+                'code_content': 'test',
+                'step': 'FakeStep',
+                'tracing': {
+                    'start': 1000000.0,
+                    'elapsed': 500.0,
+                    'input': ['input.yaml'],
+                    'output': 'output.yaml',
+                    'trace_events': [
+                        {
+                            'name': 'FakeStep::__init__',
+                            'cat': 'hagent',
+                            'ph': 'X',
+                            'ts': 999999.0,
+                            'pid': 0,
+                            'tid': 0,
+                            'args': {'func': '__init__', 'func_args': [], 'func_kwargs': {}, 'func_result': 'None'},
+                            'dur': 1.0,
+                        }
+                    ],
+                    'history': [],
+                },
+            },
+            output_yaml.open('w'),
+        )
+
+        # No sidecar file exists -- parse_yaml_files should use inline data.
+        assert not (tmp_path / 'output.trace.json').exists()
+
+        with PathManager.configured(repo_dir=tmp_path, build_dir=tmp_path, cache_dir=tmp_path):
+            yaml_files = tracer.scan_for_yamls(str(tmp_path))
+            initial, inputs, outputs = tracer.parse_yaml_files(tmp_path, yaml_files)
+
+        assert len(tracer.Tracer.events) > 0
+
     def test_generate_multi_input(self, test_dir, clean_tracer):
         multi_input_dir = os.path.join(test_dir, 'multi_input')
         yaml_files = tracer.scan_for_yamls(multi_input_dir)

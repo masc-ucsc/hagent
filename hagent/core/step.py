@@ -12,7 +12,7 @@ from ruamel.yaml.scalarstring import LiteralScalarString
 
 from hagent.core.llm_wrap import dict_deep_merge
 from hagent.core.llm_wrap import LLM_wrap
-from hagent.core.tracer import Tracer, TracerMetaClass, s_to_us
+from hagent.core.tracer import Tracer, TracerMetaClass, s_to_us, write_sidecar_tracing
 
 
 def wrap_literals(obj):
@@ -241,8 +241,8 @@ class Step(metaclass=TracerMetaClass):
             input = [self.input_file]
         output_data['tracing']['input'] = input
         output_data['tracing']['output'] = self.output_file
-        output_data['tracing']['trace_events'] = Tracer.get_events()
-        output_data['tracing']['history'] = history
+        # Write trace_events and history to sidecar JSON instead of embedding in YAML.
+        write_sidecar_tracing(self.output_file, Tracer.get_events(), history)
 
     def step(self):
         """Execute the complete step workflow with tracing and error handling.
