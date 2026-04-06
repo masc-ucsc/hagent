@@ -99,8 +99,7 @@ class V2chisel_batch(Step):
         )
         if result.returncode != 0:
             raise RuntimeError(
-                f'setup_mcp.sh failed (exit {result.returncode}):\n'
-                f'STDOUT: {result.stdout}\nSTDERR: {result.stderr}'
+                f'setup_mcp.sh failed (exit {result.returncode}):\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}'
             )
 
         # Read env vars from the generated hagent_server.sh
@@ -179,7 +178,14 @@ class V2chisel_batch(Step):
         """Internal pipeline — called after workspace is ready."""
         # Print env vars so the user can verify they are set correctly
         print('\n🔧 Environment variables:')
-        for var in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_TECH_DIR', 'HAGENT_DOCKER', 'HAGENT_EXECUTION_MODE']:
+        for var in [
+            'HAGENT_REPO_DIR',
+            'HAGENT_BUILD_DIR',
+            'HAGENT_CACHE_DIR',
+            'HAGENT_TECH_DIR',
+            'HAGENT_DOCKER',
+            'HAGENT_EXECUTION_MODE',
+        ]:
             print(f'   {var} = {os.environ.get(var, "(not set)")}')
 
         # Setup Builder (initialize filesystem and load hagent.yaml configuration)
@@ -199,7 +205,10 @@ class V2chisel_batch(Step):
         default_config = str(Path(__file__).parent / 'v2chisel_batch_conf.yaml')
         llm_config_file = self.input_data.get('llm_config_file', default_config)
         llm_name = self.input_data.get('llm_name', 'v2chisel_batch')
-        llm_model = self.input_data.get('llm_model', '')
+        # Support model override from top-level 'llm_model' key OR nested 'v2chisel_batch.llm.model'
+        llm_model = self.input_data.get('llm_model', '') or self.input_data.get('v2chisel_batch', {}).get('llm', {}).get(
+            'model', ''
+        )
         self.chisel_diff_generator = ChiselDiffGenerator(llm_config_file, llm_name, debug=self.debug, llm_model=llm_model)
 
         # Initialize DockerDiffApplier for applying Chisel diffs in Docker
@@ -341,8 +350,10 @@ class V2chisel_batch(Step):
             print(f'🎯 CPU profile override from --cpu argument: {cpu_override}')
             return cpu_override
 
-        # Auto-detect from verilog filenames in bugs
-        verilog_files = [bug.get('file', '') for bug in bugs if bug.get('file')]
+        # Auto-detect from verilog filenames in bugs (support both 'file' and 'verilog_file')
+        verilog_files = [
+            bug.get('file') or bug.get('verilog_file', '') for bug in bugs if bug.get('file') or bug.get('verilog_file')
+        ]
 
         if not verilog_files:
             print('⚠️  No verilog files found in bugs, defaulting to singlecyclecpu_d')
@@ -429,7 +440,7 @@ class V2chisel_batch(Step):
         Returns:
             Dict with bug processing result and all metadata
         """
-        bug_file = bug.get('file', 'unknown')
+        bug_file = bug.get('file') or bug.get('verilog_file', 'unknown')
         bug_description = bug.get('description', '')
         unified_diff = bug.get('unified_diff', bug.get('patch', ''))
 
@@ -952,9 +963,7 @@ class V2chisel_batch(Step):
 
                         # Recreate golden design with new diff
                         print('🎯 [GOLDEN] Recreating golden design for LEC retry...')
-                        golden_result = self._create_golden_design_with_elab(
-                            verilog_diff=unified_diff, cpu_profile=cpu_profile
-                        )
+                        golden_result = self._create_golden_design_with_elab(verilog_diff=unified_diff, cpu_profile=cpu_profile)
 
                         if not golden_result['success']:
                             print(f'❌ [GOLDEN] Golden design recreation failed: {golden_result.get("error")}')
@@ -1398,9 +1407,7 @@ class V2chisel_batch(Step):
                 print('🎯 [GOLDEN] Applying verilog_diff to build dir and running elab...')
 
             # Step 1: Apply verilog_diff to the .sv file in build/build_<cpu_profile>/
-            apply_success = self.docker_diff_applier.apply_diff_to_container(
-                diff_content=verilog_diff, dry_run=False
-            )
+            apply_success = self.docker_diff_applier.apply_diff_to_container(diff_content=verilog_diff, dry_run=False)
 
             if not apply_success:
                 return {'success': False, 'error': 'Failed to apply verilog_diff to build directory'}
@@ -1412,9 +1419,7 @@ class V2chisel_batch(Step):
             if self.debug:
                 print(f'⚡ [GOLDEN] Running elab with tag=gold for profile: {cpu_profile}')
 
-            exit_code, stdout, stderr = self.builder.run_api(
-                exact_name=cpu_profile, command_name='elab', options={'tag': 'gold'}
-            )
+            exit_code, stdout, stderr = self.builder.run_api(exact_name=cpu_profile, command_name='elab', options={'tag': 'gold'})
 
             if exit_code != 0:
                 error_msg = f'elab gold failed (exit code {exit_code})\nSTDOUT: {stdout}\nSTDERR: {stderr}'
@@ -1486,9 +1491,7 @@ class V2chisel_batch(Step):
             print('🎯 [LEC] Comparing gold (ref-tag=gold) vs gate (impl-tag=gate)')
 
             # Run LEC using Equiv_check (same as cli_equiv_check.py does internally)
-            lec_result = self.equiv_check.check_equivalence(
-                gold_code=gold_verilog, gate_code=gate_verilog, desired_top=''
-            )
+            lec_result = self.equiv_check.check_equivalence(gold_code=gold_verilog, gate_code=gate_verilog, desired_top='')
 
             if lec_result is True:
                 if self.debug:
