@@ -153,6 +153,10 @@ else
   MODE_EXPORT="export HAGENT_DOCKER=\"${DOCKER_IMAGE}\""
 fi
 
+# Determine HAGENT_TECH_DIR: use env var if set, else try sky130 default
+TECH_DIR="${HAGENT_TECH_DIR:-/home/farzaneh/open_pdks/sky130/sky130B/libs.ref/sky130_fd_sc_hd/lib}"
+TECH_DIR_EXPORT="export HAGENT_TECH_DIR=\"${TECH_DIR}\""
+
 cat >"${BASE_DIR}/set_env.sh" <<EOF
 #!/bin/bash
 export UV_PROJECT="${HAGENT_ROOT}"
@@ -161,6 +165,7 @@ ${MODE_EXPORT}
 export HAGENT_REPO_DIR="${BASE_DIR}/repo"
 export HAGENT_BUILD_DIR="${BASE_DIR}/build"
 export HAGENT_CACHE_DIR="${BASE_DIR}/cache"
+${TECH_DIR_EXPORT}
 EOF
 
 cat >"${BASE_DIR}/hagent_server.sh" <<EOF
@@ -171,6 +176,7 @@ ${MODE_EXPORT}
 export HAGENT_REPO_DIR="${BASE_DIR}/repo"
 export HAGENT_BUILD_DIR="${BASE_DIR}/build"
 export HAGENT_CACHE_DIR="${BASE_DIR}/cache"
+${TECH_DIR_EXPORT}
 uv run python \${HAGENT_ROOT}/hagent/mcp/hagent-mcp-server.py "\$@"
 #uv run python \${HAGENT_ROOT}/hagent/mcp/mcp_build.py --help
 EOF
