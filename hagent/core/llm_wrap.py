@@ -148,9 +148,9 @@ class LLM_wrap:
             return True
         # Add more providers as needed...
         else:
-            # No specific key required for this model type (or you can raise an error if unknown)
-            print(f'ERROR: No environment variable check defined for model: {model}', file=sys.stderr)
-            return False
+            # Unknown provider — warn but allow litellm to attempt the call
+            print(f'WARNING: No environment variable check defined for model: {model}', file=sys.stderr)
+            return True
 
         if os.environ.get(required_key) is None:
             error_message = f"Error: Environment variable '{required_key}' is not set for model '{model}'."

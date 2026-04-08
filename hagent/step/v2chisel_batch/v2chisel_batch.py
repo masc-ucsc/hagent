@@ -205,11 +205,19 @@ class V2chisel_batch(Step):
         default_config = str(Path(__file__).parent / 'v2chisel_batch_conf.yaml')
         llm_config_file = self.input_data.get('llm_config_file', default_config)
         llm_name = self.input_data.get('llm_name', 'v2chisel_batch')
-        # Support model override from top-level 'llm_model' key OR nested 'v2chisel_batch.llm.model'
-        llm_model = self.input_data.get('llm_model', '') or self.input_data.get('v2chisel_batch', {}).get('llm', {}).get(
-            'model', ''
-        )
-        self.chisel_diff_generator = ChiselDiffGenerator(llm_config_file, llm_name, debug=self.debug, llm_model=llm_model)
+
+        # Read LLM overrides from input YAML's v2chisel_batch.llm section
+        llm_overrides = dict(self.input_data.get('v2chisel_batch', {}).get('llm', {}))
+
+        # CLI --llm flag takes highest priority
+        if self.input_data.get('llm_model'):
+            llm_overrides['model'] = self.input_data['llm_model']
+
+        # Auto-add bedrock/converse/ prefix when aws_region_name is set and model has no provider prefix
+        if llm_overrides.get('aws_region_name') and '/' not in llm_overrides.get('model', ''):
+            llm_overrides['model'] = 'bedrock/converse/' + llm_overrides['model']
+
+        self.chisel_diff_generator = ChiselDiffGenerator(llm_config_file, llm_name, debug=self.debug, llm_overrides=llm_overrides)
 
         # Initialize DockerDiffApplier for applying Chisel diffs in Docker
         self.docker_diff_applier = DockerDiffApplier(self.builder)

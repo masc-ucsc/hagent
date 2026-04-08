@@ -740,6 +740,11 @@ class ContainerManager:
             # if automount and not self._fix_mounted_directory_permissions():
             #     return False
 
+            # Allow git to run in mounted directories regardless of ownership.
+            # Docker mounts may be owned by a different UID than the container user,
+            # causing git to refuse with exit code 128 (safe.directory check).
+            self.container.exec_run(['git', 'config', '--global', '--add', 'safe.directory', '*'])
+
             # Check if bash exists in the container
             result = self.container.exec_run(['test', '-x', '/bin/bash'])
             if result.exit_code == 0:
