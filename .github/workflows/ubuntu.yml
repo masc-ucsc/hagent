@@ -105,7 +105,7 @@ jobs:
           uv run pytest --cov --cov-branch --cov-report=xml:coverage.xml -m "not slow"
       - name: Upload coverage reports to Codecov
         if: always()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
