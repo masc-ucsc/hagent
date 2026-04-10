@@ -1,5 +1,6 @@
 """Tests for hagent.runner.__main__ CLI dispatch."""
 
+import json
 import os
 
 import pytest
@@ -66,6 +67,13 @@ class TestSetup:
         captured = capsys.readouterr()
         assert 'setup tst1' in captured.out
 
+    def test_setup_at_tag(self, runner_toml, env_setup, capsys):
+        """runner setup @tst1 --name echo"""
+        rc = main(['setup', '@tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert 'setup tst1' in captured.out
+
     def test_setup_and_run(self, runner_toml, env_setup):
         rc = main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
         assert rc == 0
@@ -83,29 +91,27 @@ class TestConfig:
         assert main(['config', '--help']) == 0
 
     def test_config_list_profiles(self, runner_toml, capsys):
-        rc = main(['config', runner_toml, '--list'])
+        rc = main(['config', runner_toml])
         assert rc == 0
         captured = capsys.readouterr()
-        assert 'echo' in captured.out
-        assert 'Echo profile' in captured.out
+        data = json.loads(captured.out)
+        names = [p['name'] for p in data]
+        assert 'echo' in names
 
     def test_config_list_apis(self, runner_toml, capsys):
-        rc = main(['config', runner_toml, '--name', 'echo', '--list'])
+        rc = main(['config', runner_toml, '--name', 'echo'])
         assert rc == 0
         captured = capsys.readouterr()
-        assert 'hello' in captured.out
-        assert 'Say hello' in captured.out
+        data = json.loads(captured.out)
+        names = [a['name'] for a in data]
+        assert 'hello' in names
 
     def test_config_missing_profile(self, runner_toml, capsys):
-        rc = main(['config', runner_toml, '--name', 'nope', '--list'])
+        rc = main(['config', runner_toml, '--name', 'nope'])
         assert rc == 1
 
     def test_config_missing_file(self, capsys):
-        rc = main(['config', '/nonexistent.toml', '--list'])
-        assert rc == 1
-
-    def test_config_no_list_flag(self, runner_toml, capsys):
-        rc = main(['config', runner_toml])
+        rc = main(['config', '/nonexistent.toml'])
         assert rc == 1
 
     def test_config_yaml(self, tmp_path, capsys):
@@ -120,10 +126,12 @@ profiles:
 """
         p = tmp_path / 'hagent.yaml'
         p.write_text(yaml_content)
-        rc = main(['config', str(p), '--list'])
+        rc = main(['config', str(p)])
         assert rc == 0
         captured = capsys.readouterr()
-        assert 'adder' in captured.out
+        data = json.loads(captured.out)
+        names = [p['name'] for p in data]
+        assert 'adder' in names
 
     def test_config_yaml_apis(self, tmp_path, capsys):
         yaml_content = """\
@@ -140,11 +148,13 @@ profiles:
 """
         p = tmp_path / 'hagent.yaml'
         p.write_text(yaml_content)
-        rc = main(['config', str(p), '--name', 'adder', '--list'])
+        rc = main(['config', str(p), '--name', 'adder'])
         assert rc == 0
         captured = capsys.readouterr()
-        assert 'compile' in captured.out
-        assert 'sim' in captured.out
+        data = json.loads(captured.out)
+        names = [a['name'] for a in data]
+        assert 'compile' in names
+        assert 'sim' in names
 
 
 class TestStatus:
@@ -153,14 +163,72 @@ class TestStatus:
 
     def test_status_tag(self, runner_toml, env_setup, capsys):
         main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
+        capsys.readouterr()  # clear setup output
         rc = main(['status', 'tst1', '--cache-dir', env_setup])
         assert rc == 0
         captured = capsys.readouterr()
-        assert 'hello' in captured.out
-        assert 'Say hello' in captured.out
+        data = json.loads(captured.out)
+        assert data['tag'] == 'tst1'
+        api_names = [a['name'] for a in data['apis']]
+        assert 'hello' in api_names
+
+    def test_status_at_tag(self, runner_toml, env_setup, capsys):
+        main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
+        rc = main(['status', '@tst1', '--cache-dir', env_setup])
+        assert rc == 0
 
     def test_status_missing_tag(self, env_setup, capsys):
         rc = main(['status', 'nope', '--cache-dir', env_setup])
+        assert rc == 1
+
+
+class TestList:
+    def test_list_help(self):
+        assert main(['list', '--help']) == 0
+
+    def test_list_tag(self, runner_toml, env_setup, capsys):
+        main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
+        capsys.readouterr()  # clear setup output
+        rc = main(['list', 'tst1', '--cache-dir', env_setup])
+        assert rc == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        names = [a['name'] for a in data]
+        assert 'hello' in names
+
+    def test_list_at_tag(self, runner_toml, env_setup, capsys):
+        main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
+        rc = main(['list', '@tst1', '--cache-dir', env_setup])
+        assert rc == 0
+
+    def test_list_missing_tag(self, env_setup):
+        rc = main(['list', 'nope', '--cache-dir', env_setup])
+        assert rc == 1
+
+
+class TestDescribe:
+    def test_describe_help(self):
+        assert main(['describe', '--help']) == 0
+
+    def test_describe_api(self, runner_toml, env_setup, capsys):
+        main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
+        capsys.readouterr()  # clear setup output
+        rc = main(['describe', 'hello', 'tst1', '--cache-dir', env_setup])
+        assert rc == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data['name'] == 'hello'
+        assert data['description'] == 'Say hello'
+        assert data['command'] == 'echo hello'
+
+    def test_describe_at_tag(self, runner_toml, env_setup, capsys):
+        main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
+        rc = main(['describe', 'hello', '@tst1', '--cache-dir', env_setup])
+        assert rc == 0
+
+    def test_describe_missing_api(self, runner_toml, env_setup):
+        main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
+        rc = main(['describe', 'nonexistent', 'tst1', '--cache-dir', env_setup])
         assert rc == 1
 
 
@@ -171,3 +239,13 @@ class TestRun:
     def test_run_missing_tag(self, env_setup, capsys):
         rc = main(['run', 'hello', 'nope', '--cache-dir', env_setup])
         assert rc == 1
+
+    def test_run_shorthand_rejected(self, runner_toml, env_setup, capsys):
+        main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
+        rc = main(['run', 'tst1', '--cache-dir', env_setup])
+        assert rc == 1
+
+    def test_run_at_tag(self, runner_toml, env_setup):
+        main(['setup', 'tst1', '--name', 'echo', '--config', runner_toml, '--cache-dir', env_setup])
+        rc = main(['run', 'hello', '@tst1', '--cache-dir', env_setup])
+        assert rc == 0

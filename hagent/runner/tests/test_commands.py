@@ -72,7 +72,7 @@ class TestRunCommand:
     def test_log_written(self, tag_setup):
         tag_name, cache_dir = tag_setup
         run_command('hello', tag_name, cache_dir=cache_dir)
-        log_path = os.path.join(cache_dir, 'tags', tag_name, 'logs', 'hello.log')
+        log_path = os.path.join(cache_dir, 'tags', tag_name, 'logs', '001_runner_hello.log')
         assert os.path.exists(log_path)
         content = open(log_path).read()
         assert 'echo hello' in content
@@ -81,7 +81,7 @@ class TestRunCommand:
         tag_name, cache_dir = tag_setup
         rc = run_command('greet_tag', tag_name, cache_dir=cache_dir)
         assert rc == 0
-        log_path = os.path.join(cache_dir, 'tags', tag_name, 'logs', 'greet_tag.log')
+        log_path = os.path.join(cache_dir, 'tags', tag_name, 'logs', '001_runner_greet_tag.log')
         content = open(log_path).read()
         assert 'tst1' in content
 
@@ -112,4 +112,4 @@ class TestRunCommand:
         # Run using the path directly
         rc = run_command('hello', tag_path)
         assert rc == 0
-        assert os.path.exists(os.path.join(tag_path, 'logs', 'hello.log'))
+        assert os.path.exists(os.path.join(tag_path, 'logs', '001_runner_hello.log'))

@@ -21,13 +21,13 @@ def load_runner_toml(path: str) -> dict:
 
 
 def load_tag_config(tag_dir: str) -> dict:
-    """Parse a tag's config.toml.
+    """Parse a tag's runner.toml.
 
-    Raises FileNotFoundError if config.toml is missing.
+    Raises FileNotFoundError if runner.toml is missing.
     """
-    cfg_path = os.path.join(tag_dir, 'config.toml')
+    cfg_path = os.path.join(tag_dir, 'runner.toml')
     if not os.path.exists(cfg_path):
-        raise FileNotFoundError(f'no config.toml in {tag_dir}')
+        raise FileNotFoundError(f'no runner.toml in {tag_dir}')
     with open(cfg_path, 'r') as f:
         return tomlkit.parse(f.read())
 

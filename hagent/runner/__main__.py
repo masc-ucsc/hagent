@@ -1,5 +1,6 @@
 """CLI parsing and dispatch for the runner."""
 
+import json
 import os
 import sys
 from typing import Annotated, Optional
@@ -55,6 +56,16 @@ def _error(msg: str, hint: Optional[str] = None) -> None:
     if hint:
         print(f'  (use "runner {hint} --help" for options and examples)', file=sys.stderr)
     raise typer.Exit(1)
+
+
+def _strip_at(tag: str) -> str:
+    """Strip leading '@' from a tag argument.  '@tst1' → 'tst1'."""
+    return tag[1:] if tag.startswith('@') else tag
+
+
+def _strip_at_value(kv_value: str) -> str:
+    """Strip leading '@' from the value side of a NAME=@TAG pair."""
+    return kv_value[1:] if kv_value.startswith('@') else kv_value
 
 
 def _parse_kv_list(pairs: Optional[list[str]]) -> dict[str, str]:
@@ -123,84 +134,25 @@ def _get_apis_from_file(data: dict, fmt: str, profile_name: str) -> dict:
 
 
 def _get_apis_from_tag(tag_config: dict) -> dict:
-    """Get APIs dict from a tag's config.toml."""
+    """Get APIs dict from a tag's runner.toml."""
     apis = tag_config.get('api', {})
     return dict(apis) if isinstance(apis, dict) else {}
-
-
-def _print_profiles(profiles: list[tuple]) -> None:
-    """Print a list of (name, description) profile entries."""
-    if not profiles:
-        print('no profiles found')
-        return
-    print(f'profiles ({len(profiles)}):')
-    for name, desc in profiles:
-        if desc:
-            print(f'  {name:<24s} {desc}')
-        else:
-            print(f'  {name}')
-
-
-def _print_api_detail(api_name: str, api_data: dict) -> None:
-    """Print detail for a single API including its options."""
-    desc = api_data.get('description', '')
-    cmd = api_data.get('command', '')
-    print(f'{api_name}:')
-    if desc:
-        print(f'  description: {desc}')
-    if cmd:
-        print(f'  command: {cmd}')
-    cwd = api_data.get('cwd', '')
-    if cwd:
-        print(f'  cwd: {cwd}')
-    options = api_data.get('options', [])
-    if not options:
-        print('  options: (none)')
-    else:
-        print(f'  options ({len(options)}):')
-        for opt in options:
-            opt_name = opt.get('name', '')
-            opt_desc = opt.get('description', '')
-            opt_default = opt.get('default', None)
-            line = f'    {opt_name:<20s} {opt_desc}'
-            if opt_default is not None:
-                line += f'  [default: {opt_default!r}]'
-            print(line)
-
-
-def _print_apis(apis: dict, label: str) -> None:
-    """Print a dict of {api_name: api_data} entries."""
-    if not apis:
-        print(f'no APIs in {label}')
-        return
-    print(f'{label} APIs ({len(apis)}):')
-    for api_name, api_data in apis.items():
-        desc = api_data.get('description', '')
-        cmd = api_data.get('command', '')
-        if desc:
-            print(f'  {api_name:<24s} {desc}')
-        else:
-            print(f'  {api_name:<24s} {cmd}')
 
 
 @app.command()
 def config(
     path: Annotated[Optional[str], typer.Argument(help='Path to runner.toml or hagent.yaml')] = None,
-    list: Annotated[bool, typer.Option('--list', help='List profiles or APIs')] = False,
-    name: Annotated[Optional[str], typer.Option('--name', help='Show APIs for this profile')] = None,
+    name: Annotated[Optional[str], typer.Option('--name', help='Profile name to inspect')] = None,
 ) -> None:
-    """Inspect a config file needed for creating a tag.
+    """Inspect a config file: list profiles or show APIs for a profile.
 
     \b
     Examples:
-        runner config --list
-        runner config --list --name gcd
-        runner config ./repo/runner.toml --list
-        runner config ../hagent.yaml --name gcd --list
+        runner config                          List profiles from runner.toml
+        runner config --name gcd               Show APIs for gcd profile
+        runner config ./repo/runner.toml       List profiles from a specific file
+        runner config ../hagent.yaml --name gcd
     """
-    if not list:
-        _error('--list is required', hint='config')
-
     resolved = path if path else _find_runner_toml()
 
     try:
@@ -209,21 +161,31 @@ def config(
         _error(str(e), hint='config')
         return  # unreachable
 
-    print(f'config: {resolved}')
     if name is None:
-        _print_profiles(_get_profiles_from_file(data, fmt))
+        # List profiles as JSON
+        profiles = _get_profiles_from_file(data, fmt)
+        result = [{'name': n, 'description': d} for n, d in profiles]
+        print(json.dumps(result))
     else:
+        # List APIs for a profile as JSON
         try:
             apis = _get_apis_from_file(data, fmt, name)
         except ValueError as e:
             _error(str(e), hint='config')
             return
-        _print_apis(apis, name)
+        result = []
+        for api_name, api_data in apis.items():
+            entry = {'name': api_name}
+            if isinstance(api_data, dict):
+                entry['description'] = api_data.get('description', '')
+                entry['command'] = api_data.get('command', '')
+            result.append(entry)
+        print(json.dumps(result))
 
 
 @app.command()
 def setup(
-    tag: Annotated[str, typer.Argument(help='Tag name (tst1) or path (./my_dir, /abs/path)')],
+    tag: Annotated[str, typer.Argument(help='Tag name (@tst1) or path (./my_dir, /abs/path)')],
     name: Annotated[str, typer.Option('--name', help='Profile name from runner.toml')],
     input: Annotated[Optional[list[str]], typer.Option('--input', help='Named input as NAME=TAG (repeatable)')] = None,
     set: Annotated[Optional[list[str]], typer.Option('--set', help='Config override as KEY=VALUE (repeatable)')] = None,
@@ -236,16 +198,20 @@ def setup(
 
     \b
     Examples:
-        runner setup tst1 --name gcd
-        runner setup tst1 --name gcd --config ./repo/runner.toml
+        runner setup @tst1 --name gcd
+        runner setup @tst1 --name gcd --config ./repo/runner.toml
         runner setup ./my_build --name dualissue_d
-        runner setup tst2 --name gcd --input orig_verilog=tst1
-        runner setup tst1 --name gcd --set memory=8 --force
+        runner setup @tst2 --name gcd --input orig_verilog=@tst1
+        runner setup @tst1 --name gcd --set memory=8 --force
     """
+    tag = _strip_at(tag)
+
     if force and reuse:
         _error('--force and --reuse are mutually exclusive', hint='setup')
 
     inputs = _parse_kv_list(input)
+    # Strip @ from input tag values: --input orig=@src_tag
+    inputs = {k: _strip_at_value(v) for k, v in inputs.items()}
     overrides = _parse_kv_list(set)
     runner_toml = _find_runner_toml(config)
 
@@ -274,9 +240,11 @@ def status(
 
     \b
     Examples:
-        runner status tst1
+        runner status @tst1
         runner status ./my_build
     """
+    tag = _strip_at(tag)
+
     try:
         from .tag import get_tag_dir, validate_tag
 
@@ -288,23 +256,118 @@ def status(
 
     profile_name = tag_config.get('meta', {}).get('profile_name', tag)
     apis = _get_apis_from_tag(tag_config)
-    _print_apis(apis, f'{tag} ({profile_name})')
+
+    result = {
+        'tag': tag,
+        'profile': profile_name,
+        'tag_dir': tag_dir,
+        'apis': [],
+    }
+    for api_name, api_data in apis.items():
+        entry = {'name': api_name}
+        if isinstance(api_data, dict):
+            entry['description'] = api_data.get('description', '')
+        result['apis'].append(entry)
+    print(json.dumps(result))
 
 
-def _tag_exists(tag: str, cache_dir: Optional[str] = None) -> bool:
-    """Check if a tag directory exists."""
+@app.command('list')
+def list_cmd(
+    tag: Annotated[str, typer.Argument(help='Tag name or path')],
+    cache_dir: Annotated[Optional[str], typer.Option('--cache-dir', help='Override cache directory')] = None,
+) -> None:
+    """List APIs available in a tag (JSON output).
+
+    \b
+    Examples:
+        runner list @tst1
+        runner list ./my_build
+    """
+    tag = _strip_at(tag)
+
     try:
-        from .tag import get_tag_dir
+        from .tag import get_tag_dir, validate_tag
 
         tag_dir = get_tag_dir(tag, cache_dir)
-        return os.path.isdir(tag_dir) and os.path.isfile(os.path.join(tag_dir, 'config.toml'))
-    except (TagError, Exception):
-        return False
+        tag_config = validate_tag(tag_dir)
+    except TagError as e:
+        _error(str(e), hint='list')
+        return
+
+    apis = _get_apis_from_tag(tag_config)
+    result = []
+    for api_name, api_data in apis.items():
+        entry = {'name': api_name}
+        if isinstance(api_data, dict):
+            entry['description'] = api_data.get('description', '')
+            entry['command'] = api_data.get('command', '')
+        result.append(entry)
+
+    # Include tests if configured
+    tests_config = tag_config.get('tests', {})
+    if isinstance(tests_config, dict) and tests_config:
+        from .tester import discover_tests
+
+        env = cfg.build_env(tag_config, tag_dir)
+        test_names = discover_tests(tag_config, tag_dir, env)
+        if test_names:
+            result.append({'name': 'test', 'description': f'{len(test_names)} tests', 'tests': test_names})
+
+    print(json.dumps(result))
+
+
+@app.command()
+def describe(
+    api: Annotated[str, typer.Argument(help='API name to describe')],
+    tag: Annotated[str, typer.Argument(help='Tag name or path')],
+    cache_dir: Annotated[Optional[str], typer.Option('--cache-dir', help='Override cache directory')] = None,
+) -> None:
+    """Show detailed information for a single API in a tag (JSON output).
+
+    \b
+    Examples:
+        runner describe elab @tst1
+        runner describe compile ./my_build
+    """
+    tag = _strip_at(tag)
+
+    try:
+        from .tag import get_tag_dir, validate_tag
+
+        tag_dir = get_tag_dir(tag, cache_dir)
+        tag_config = validate_tag(tag_dir)
+    except TagError as e:
+        _error(str(e), hint='describe')
+        return
+
+    apis = _get_apis_from_tag(tag_config)
+    if api not in apis:
+        _error(f"API '{api}' not found in tag '{tag}'", hint='describe')
+        return
+
+    api_data = apis[api]
+    result = {
+        'name': api,
+        'description': api_data.get('description', ''),
+        'command': api_data.get('command', ''),
+        'cwd': api_data.get('cwd', ''),
+        'options': [],
+    }
+    for opt in api_data.get('options', []):
+        opt_entry = {
+            'name': opt.get('name', ''),
+            'description': opt.get('description', ''),
+            'format': opt.get('format', ''),
+        }
+        if 'default' in opt:
+            opt_entry['default'] = opt['default']
+        result['options'].append(opt_entry)
+    print(json.dumps(result))
 
 
 @app.command()
 def run(
-    first: Annotated[str, typer.Argument(help='API name or tag (if tag, defaults to test)')],
+    first: Annotated[str, typer.Argument(help='API name (use "test" for test orchestration)')],
     second: Annotated[Optional[str], typer.Argument(help='Tag name or path')] = None,
     set: Annotated[Optional[list[str]], typer.Option('--set', help='Config override as KEY=VALUE (repeatable)')] = None,
     verbose: Annotated[bool, typer.Option('--verbose', help='Show full output')] = False,
@@ -313,70 +376,28 @@ def run(
     jobs: Annotated[Optional[int], typer.Option('--jobs', help='Max parallel test workers (default: ncpus)')] = None,
     fail_fast: Annotated[bool, typer.Option('--fail-fast', help='Stop after first failure (tests)')] = False,
     timeout: Annotated[int, typer.Option('--timeout', help='Per-test timeout in seconds')] = 300,
-    list: Annotated[bool, typer.Option('--list', help='List tests without running them')] = False,
     cache_dir: Annotated[Optional[str], typer.Option('--cache-dir', help='Override cache directory')] = None,
 ) -> None:
     """Run an API in a tag.
 
     \b
     runner run <api> <tag> [options]   Run a specific API
-    runner run <tag> [options]         Run tests (shorthand for: run test <tag>)
+    runner run test <tag> [options]    Run tests
     Examples:
-      runner run lint tst1
-      runner run compile tst1 --verbose
-      runner run synth tst1 --set top=MyModule
-      runner run tst1                     (run tests)
-      runner run tst1 --list              (list tests)
-      runner run tst1 --jobs 8
-      runner run tst1 --filter 'test_alu*'
-      runner run test tst1 --fail-fast
+      runner run lint @tst1
+      runner run compile @tst1 --verbose
+      runner run synth @tst1 --set top=MyModule
+      runner run test @tst1 --jobs 8
+      runner run test @tst1 --filter 'test_alu*'
+      runner run test @tst1 --fail-fast
     """
     if second is not None:
         # Two positional args: runner run <api> <tag>
         api_name = first
-        tag_name = second
+        tag_name = _strip_at(second)
     else:
-        # One positional arg: could be a tag (run tests) or a mistake
-        if _tag_exists(first, cache_dir):
-            api_name = 'test'
-            tag_name = first
-        else:
-            _error(f'tag not found: {first}', hint='run')
-            return  # unreachable
-
-    # --list handling
-    if list:
-        if second is None and api_name == 'test':
-            # runner run <tag> --list → show available APIs
-            try:
-                from .tag import get_tag_dir, validate_tag
-
-                tag_dir = get_tag_dir(tag_name, cache_dir)
-                tag_config = validate_tag(tag_dir)
-            except TagError as e:
-                _error(str(e), hint='run')
-                return
-            profile_name = tag_config.get('meta', {}).get('profile_name', tag_name)
-            apis = _get_apis_from_tag(tag_config)
-            _print_apis(apis, f'{tag_name} ({profile_name})')
-            raise typer.Exit(0)
-        elif api_name != 'test':
-            # runner run <api> <tag> --list → show API options
-            try:
-                from .tag import get_tag_dir, validate_tag
-
-                tag_dir = get_tag_dir(tag_name, cache_dir)
-                tag_config = validate_tag(tag_dir)
-            except TagError as e:
-                _error(str(e), hint='run')
-                return
-            apis = _get_apis_from_tag(tag_config)
-            if api_name not in apis:
-                _error(f"API '{api_name}' not found in tag '{tag_name}'", hint='run')
-                return
-            _print_api_detail(api_name, apis[api_name])
-            raise typer.Exit(0)
-        # else: api_name == 'test' with explicit second arg → falls through to run_tests(list_only=True)
+        _error('expected: runner run <api> <tag>; use "runner run test <tag>" for tests', hint='run')
+        return  # unreachable
 
     overrides = _parse_kv_list(set)
 
@@ -391,7 +412,6 @@ def run(
                 timeout=timeout,
                 verbose=verbose,
                 quiet=quiet,
-                list_only=list,
             )
         else:
             rc = run_command(

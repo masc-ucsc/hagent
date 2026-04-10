@@ -63,7 +63,7 @@ default = "GCD"
 
 @pytest.fixture
 def sample_tag_dir(tmp_path):
-    """Create a minimal tag directory with config.toml."""
+    """Create a minimal tag directory with runner.toml."""
     tag_dir = tmp_path / 'tags' / 'tst1'
     tag_dir.mkdir(parents=True)
     content = """\
@@ -86,7 +86,7 @@ cwd = "$HAGENT_REPO_DIR"
 description = "Greet"
 command = "echo hello {tag}"
 """
-    (tag_dir / 'config.toml').write_text(content)
+    (tag_dir / 'runner.toml').write_text(content)
     return str(tag_dir)
 
 

@@ -224,15 +224,6 @@ list_cmd = "echo dynamic_test"
 
 
 class TestRunTests:
-    def test_list_only(self, runner_toml_with_tests, cache_dir, capsys):
-        setup_tag(runner_toml_with_tests, 'tst1', 'echo', cache_dir=cache_dir)
-        rc = run_tests('tst1', cache_dir=cache_dir, list_only=True)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert 'test_a' in out
-        assert 'test_b' in out
-        assert 'test_c' in out
-
     def test_no_tests_section(self, runner_toml_no_tests, cache_dir):
         setup_tag(runner_toml_no_tests, 'tst1', 'echo', cache_dir=cache_dir)
         rc = run_tests('tst1', cache_dir=cache_dir)
@@ -259,7 +250,10 @@ class TestRunTests:
         rc = run_tests('tst1', cache_dir=cache_dir, jobs=1, quiet=True)
         assert rc == 0
         tag_dir = get_tag_dir('tst1', cache_dir)
-        assert os.path.exists(os.path.join(tag_dir, 'logs', 'test_build.log'))
+        import glob as g
+
+        build_logs = g.glob(os.path.join(tag_dir, 'logs', '*_runner_test_build.log'))
+        assert len(build_logs) >= 1
 
     def test_run_parallel(self, runner_toml_with_tests, env_setup):
         cache_dir = env_setup

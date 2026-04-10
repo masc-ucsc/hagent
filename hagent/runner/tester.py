@@ -18,15 +18,25 @@ from .tag import TagError, get_tag_dir, resolve_input_dirs, validate_tag
 class TestResult:
     """Result of a single test execution."""
 
-    __slots__ = ('name', 'exit_code', 'elapsed', 'stdout', 'stderr', 'skipped')
+    __slots__ = ('name', 'exit_code', 'elapsed', 'stdout', 'stderr', 'skipped', 'log_path')
 
-    def __init__(self, name: str, exit_code: int, elapsed: float, stdout: str = '', stderr: str = '', skipped: bool = False):
+    def __init__(
+        self,
+        name: str,
+        exit_code: int,
+        elapsed: float,
+        stdout: str = '',
+        stderr: str = '',
+        skipped: bool = False,
+        log_path: str = '',
+    ):
         self.name = name
         self.exit_code = exit_code
         self.elapsed = elapsed
         self.stdout = stdout
         self.stderr = stderr
         self.skipped = skipped
+        self.log_path = log_path
 
 
 def discover_tests(tag_config: dict, tag_dir: str, env: dict) -> List[str]:
@@ -140,22 +150,37 @@ def _run_single_test(
     # Resolve Docker
     docker_image = cfg.get_docker_image(tag_config)
 
-    # Log file
-    log_path = os.path.join(tag_dir, 'logs', f'test_{test_name}.log')
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    # Log file (numbered)
+    from .commands import next_log_path
+
+    log_path = next_log_path(tag_dir, f'test_{test_name}')
 
     start = time.monotonic()
 
     try:
         from .commands import _execute
 
-        exit_code, stdout, stderr = _execute(
-            command,
-            cwd or '.',
-            env,
-            verbose,
-            docker_image=docker_image,
-        )
+        # Enforce timeout using a thread
+        if timeout and timeout > 0:
+            from concurrent.futures import ThreadPoolExecutor as _TPE
+            from concurrent.futures import TimeoutError as _TE
+
+            with _TPE(max_workers=1) as tex:
+                fut = tex.submit(_execute, command, cwd or '.', env, verbose, docker_image)
+                try:
+                    exit_code, stdout, stderr = fut.result(timeout=timeout)
+                except _TE:
+                    exit_code = 1
+                    stdout = ''
+                    stderr = f'TIMEOUT after {timeout}s'
+        else:
+            exit_code, stdout, stderr = _execute(
+                command,
+                cwd or '.',
+                env,
+                verbose,
+                docker_image=docker_image,
+            )
     except Exception as e:
         exit_code = 1
         stdout = ''
@@ -183,6 +208,7 @@ def _run_single_test(
         elapsed=elapsed,
         stdout=stdout,
         stderr=stderr,
+        log_path=log_path,
     )
 
 
@@ -195,7 +221,6 @@ def run_tests(
     timeout: int = 300,
     verbose: bool = False,
     quiet: bool = False,
-    list_only: bool = False,
 ) -> int:
     """Run tests for a tag.
 
@@ -230,12 +255,6 @@ def run_tests(
         print(f'no tests matching: {filter_pattern}', file=sys.stderr)
         return 1
 
-    # List only
-    if list_only:
-        for t in test_names:
-            print(t)
-        return 0
-
     # Order by history (failed-first)
     history = load_test_history(tag_dir)
     test_names = order_tests(test_names, history)
@@ -265,8 +284,9 @@ def run_tests(
         )
         elapsed = time.monotonic() - start
 
-        log_path = os.path.join(tag_dir, 'logs', 'test_build.log')
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        from .commands import next_log_path
+
+        log_path = next_log_path(tag_dir, 'test_build')
         with open(log_path, 'w') as f:
             f.write(f'# build step\n# command: {build_cmd_resolved}\n# exit_code: {exit_code}\n\n')
             if stdout:
@@ -276,7 +296,9 @@ def run_tests(
                 f.write('=== stderr ===\n')
                 f.write(stderr + '\n')
 
-        render.print_result('build', exit_code, elapsed, log_path, stderr, tag_name, verbose)
+        render.print_result(
+            'build', exit_code, elapsed, log_path, stderr, tag_name, verbose, tag_dir=tag_dir, step_type='test_build'
+        )
 
         if exit_code != 0:
             return 1
@@ -307,8 +329,17 @@ def run_tests(
             )
             results.append(result)
             if not quiet:
-                log_path = os.path.join(tag_dir, 'logs', f'test_{test_name}.log')
-                render.print_result(test_name, result.exit_code, result.elapsed, log_path, result.stderr, tag_name, verbose)
+                render.print_result(
+                    test_name,
+                    result.exit_code,
+                    result.elapsed,
+                    result.log_path,
+                    result.stderr,
+                    tag_name,
+                    verbose,
+                    tag_dir=tag_dir,
+                    step_type='test',
+                )
             if result.exit_code != 0:
                 failed = True
                 if fail_fast:
@@ -336,8 +367,17 @@ def run_tests(
                 result = fut.result()
                 results.append(result)
                 if not quiet:
-                    log_path = os.path.join(tag_dir, 'logs', f'test_{result.name}.log')
-                    render.print_result(result.name, result.exit_code, result.elapsed, log_path, result.stderr, tag_name, verbose)
+                    render.print_result(
+                        result.name,
+                        result.exit_code,
+                        result.elapsed,
+                        result.log_path,
+                        result.stderr,
+                        tag_name,
+                        verbose,
+                        tag_dir=tag_dir,
+                        step_type='test',
+                    )
                 if result.exit_code != 0:
                     failed = True
                     if fail_fast:

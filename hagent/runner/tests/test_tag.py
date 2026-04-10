@@ -78,7 +78,7 @@ class TestSetupTag:
     def test_basic_setup(self, runner_toml, cache_dir):
         toml_path = setup_tag(runner_toml, 'tst1', 'echo', cache_dir=cache_dir)
         assert os.path.exists(toml_path)
-        assert 'config.toml' in toml_path
+        assert 'runner.toml' in toml_path
         # logs dir should exist
         tag_dir = os.path.dirname(toml_path)
         assert os.path.isdir(os.path.join(tag_dir, 'logs'))
@@ -120,8 +120,8 @@ class TestSetupTag:
     def test_path_as_tag(self, runner_toml, cache_dir, tmp_path):
         custom = str(tmp_path / 'my_tag')
         toml_path = setup_tag(runner_toml, custom, 'echo', cache_dir=cache_dir)
-        # config.toml should be in the custom dir, not in cache/tags/
-        assert toml_path == os.path.join(custom, 'config.toml')
+        # runner.toml should be in the custom dir, not in cache/tags/
+        assert toml_path == os.path.join(custom, 'runner.toml')
         assert os.path.exists(toml_path)
         assert os.path.isdir(os.path.join(custom, 'logs'))
 
@@ -219,7 +219,7 @@ class TestValidateTag:
     def test_missing_config(self, cache_dir):
         tag_dir = os.path.join(cache_dir, 'tags', 'empty')
         os.makedirs(tag_dir)
-        with pytest.raises(TagError, match='no config.toml'):
+        with pytest.raises(TagError, match='no runner.toml'):
             validate_tag(tag_dir)
 
 

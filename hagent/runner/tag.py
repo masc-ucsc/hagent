@@ -43,13 +43,13 @@ def get_tag_dir(tag: str, cache_dir: Optional[str] = None) -> str:
 
 
 def validate_tag(tag_dir: str) -> dict:
-    """Verify tag directory and config.toml exist.  Return parsed config."""
+    """Verify tag directory and runner.toml exist.  Return parsed config."""
     if not os.path.isdir(tag_dir):
         raise TagError(f'tag directory does not exist: {tag_dir}')
     try:
         return cfg.load_tag_config(tag_dir)
     except FileNotFoundError:
-        raise TagError(f'no config.toml in tag directory: {tag_dir}')
+        raise TagError(f'no runner.toml in tag directory: {tag_dir}')
 
 
 def resolve_input_dirs(inputs: Dict[str, str], cache_dir: Optional[str] = None) -> Dict[str, str]:
@@ -67,9 +67,9 @@ def resolve_input_dirs(inputs: Dict[str, str], cache_dir: Optional[str] = None) 
         tag_dir = get_tag_dir(tag_ref, cache_dir)
         if not os.path.isdir(tag_dir):
             raise TagError(f"input tag '{tag_ref}' (for input '{name}') does not exist at {tag_dir}")
-        cfg_path = os.path.join(tag_dir, 'config.toml')
+        cfg_path = os.path.join(tag_dir, 'runner.toml')
         if not os.path.exists(cfg_path):
-            raise TagError(f"input tag '{tag_ref}' has no config.toml")
+            raise TagError(f"input tag '{tag_ref}' has no runner.toml")
         result[name] = tag_dir
     return result
 
@@ -95,13 +95,13 @@ def setup_tag(
     force: bool = False,
     reuse: bool = False,
 ) -> str:
-    """Create a tag directory with a snapshotted config.toml.
+    """Create a tag directory with a snapshotted runner.toml.
 
     If *tag* is a path (contains '/'), the tag is created there directly.
     If *tag* is a plain name, the tag is created at <cache>/tags/<tag>/.
     A plain name must not contain path characters.
 
-    Returns the path to the created config.toml.
+    Returns the path to the created runner.toml.
     """
     if _is_path(tag):
         tag_dir = str(Path(tag).resolve())
@@ -111,7 +111,7 @@ def setup_tag(
         cache = _resolve_cache_dir(cache_dir)
         tag_dir = str(Path(cache) / 'tags' / tag)
 
-    toml_path = os.path.join(tag_dir, 'config.toml')
+    toml_path = os.path.join(tag_dir, 'runner.toml')
 
     # Handle existing tag
     if os.path.exists(toml_path):
@@ -119,7 +119,7 @@ def setup_tag(
             try:
                 existing = cfg.load_tag_config(tag_dir)
             except FileNotFoundError:
-                raise TagError(f"tag '{tag}' exists but has no config.toml; use --force")
+                raise TagError(f"tag '{tag}' exists but has no runner.toml; use --force")
             if tag_matches(existing, profile_name, inputs):
                 return toml_path
             else:
