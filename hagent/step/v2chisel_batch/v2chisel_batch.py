@@ -607,6 +607,10 @@ class V2chisel_batch(Step):
 
         chisel_diff = llm_result.get('chisel_diff', '')
         print(f'✅ LLM generated Chisel diff ({len(chisel_diff)} chars, {llm_result.get("attempts", 1)} attempt(s))')
+        print('=' * 60)
+        print('📋 Generated Chisel diff:')
+        print(chisel_diff)
+        print('=' * 60)
         report.mark_llm_success(generated_diff=chisel_diff)
         total_llm_cost = llm_result.get('cost', 0)
         total_llm_tokens = llm_result.get('tokens', 0)
