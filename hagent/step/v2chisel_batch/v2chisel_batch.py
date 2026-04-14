@@ -1270,8 +1270,9 @@ class V2chisel_batch(Step):
 
             if hints_result.get('success'):
                 chisel_files = [
-                    h.file_path if hasattr(h, 'file_path') else h.get('file_path', '')
+                    getattr(h, 'file_name', None) or (h.get('file_name') if isinstance(h, dict) else None)
                     for h in hints_result.get('hits', [])
+                    if getattr(h, 'file_name', None) or (isinstance(h, dict) and h.get('file_name'))
                 ]
                 return {'success': True, 'hints': hints_result.get('hints', ''), 'chisel_files_found': chisel_files, 'source': hints_result.get('source', 'unknown')}
             else:
@@ -1308,7 +1309,7 @@ class V2chisel_batch(Step):
                 combined_hints_parts.append(f'// === Hints for {sv_file} ===')
                 combined_hints_parts.append(result.get('hints', ''))
                 for h in result.get('hits', []):
-                    fp = h.file_path if hasattr(h, 'file_path') else h.get('file_path', '')
+                    fp = getattr(h, 'file_name', None) or (h.get('file_name') if isinstance(h, dict) else None)
                     if fp and fp not in all_chisel_files:
                         all_chisel_files.append(fp)
             else:
