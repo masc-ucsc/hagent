@@ -92,8 +92,10 @@ class V2chisel_batch(Step):
         tmp_dir.mkdir(parents=True, exist_ok=True)
         print(f'\n🗂️  Auto-workspace: {tmp_dir}')
 
+        project = self.input_data.get('project', 'simplechisel')
+        print(f'🐳 Setting up workspace for project: {project}')
         result = subprocess.run(
-            ['bash', str(setup_script), 'simplechisel', str(tmp_dir)],
+            ['bash', str(setup_script), project, str(tmp_dir)],
             capture_output=True,
             text=True,
         )
@@ -102,29 +104,64 @@ class V2chisel_batch(Step):
                 f'setup_mcp.sh failed (exit {result.returncode}):\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}'
             )
 
-        # Read env vars from the generated hagent_server.sh
-        server_sh = tmp_dir / 'hagent_server.sh'
-        if server_sh.exists():
-            with open(server_sh) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith('export '):
-                        var_part = line[7:]
-                        if '=' in var_part:
-                            key, value = var_part.split('=', 1)
-                            value = value.strip('"\'')
-                            os.environ[key] = value
+        # Read env vars from the generated hagent_server.sh.
+        # setup_mcp.sh writes exactly these variables (one per line):
+        #   UV_PROJECT, HAGENT_ROOT,
+        #   HAGENT_DOCKER  -or-  HAGENT_EXECUTION_MODE  (only one, mode-dependent),
+        #   HAGENT_REPO_DIR, HAGENT_BUILD_DIR, HAGENT_CACHE_DIR, HAGENT_TECH_DIR
+        #
+        # We only import the HAGENT_* vars (skip UV_PROJECT / HAGENT_ROOT so we
+        # don't clobber the host process's own project-root settings).
+        _WANTED_PREFIXES = ('HAGENT_',)
 
-        # Ensure HAGENT_TECH_DIR is set (setup_mcp.sh already exports it, but
-        # fall back to a known default if it came through unset/empty).
+        server_sh = tmp_dir / 'hagent_server.sh'
+        if not server_sh.exists():
+            raise RuntimeError(f'setup_mcp.sh succeeded but hagent_server.sh was not created at {server_sh}')
+
+        extracted: dict[str, str] = {}
+        with open(server_sh) as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line.startswith('export '):
+                    continue
+                var_part = line[len('export ') :]
+                if '=' not in var_part:
+                    continue
+                key, raw_value = var_part.split('=', 1)
+                key = key.strip()
+                # Strip a single layer of wrapping quotes (" or ') without
+                # eating embedded quotes (unlike str.strip which removes all
+                # leading/trailing chars in the set).
+                if len(raw_value) >= 2 and raw_value[0] in ('"', "'") and raw_value[-1] == raw_value[0]:
+                    value = raw_value[1:-1]
+                else:
+                    value = raw_value
+                if any(key.startswith(p) for p in _WANTED_PREFIXES):
+                    extracted[key] = value
+
+        # Apply extracted vars
+        for key, value in extracted.items():
+            os.environ[key] = value
+        print(f'✅ Env vars loaded from hagent_server.sh ({len(extracted)} vars)')
+
+        # Ensure HAGENT_TECH_DIR is set (setup_mcp.sh always writes it, but
+        # fall back gracefully if it arrived empty/unset).
         if not os.environ.get('HAGENT_TECH_DIR'):
             default_tech = '/home/farzaneh/open_pdks/sky130/sky130B/libs.ref/sky130_fd_sc_hd/lib'
             os.environ['HAGENT_TECH_DIR'] = default_tech
-            print(f'⚠️  HAGENT_TECH_DIR not in server.sh — using default: {default_tech}')
+            print(f'⚠️  HAGENT_TECH_DIR missing from server.sh — falling back to: {default_tech}')
 
         # Reset PathManager singleton + recreate Runner so they re-read the
         # freshly exported HAGENT_* env vars (including HAGENT_TECH_DIR).
         self._reset_path_manager_and_runner()
+
+        # Verify workspace setup: check that repo and build dirs exist
+        repo_dir = tmp_dir / 'repo'
+        build_dir = tmp_dir / 'build'
+        if repo_dir.exists() and build_dir.exists():
+            print(f'✅ Workspace verified: repo and build dirs exist in {tmp_dir}')
+        else:
+            raise RuntimeError(f'Workspace setup incomplete: missing repo or build dir in {tmp_dir}')
 
         return tmp_dir
 
@@ -250,13 +287,18 @@ class V2chisel_batch(Step):
 
         # Step 2: Determine CPU profile
         cpu_profile = self._determine_cpu_profile(bugs)
-        print(f'🔧 Using CPU profile: {cpu_profile}')
+        if cpu_profile is not None:
+            print(f'🔧 Using CPU profile: {cpu_profile}')
+        else:
+            project = self.input_data.get('project', 'simplechisel')
+            print(f'🔧 CPU profile: not applicable for project "{project}"')
 
         chisel_diff_only = self.input_data.get('chisel_diff_only', False)
 
-        # Step 3: Generate fresh baseline Verilog (skip in chisel_diff_only mode)
+        # Step 3: Generate fresh baseline Verilog
+        # Skipped in chisel_diff_only mode or when the project has no CPU-profile system.
         baseline_result = {}
-        if not chisel_diff_only:
+        if not chisel_diff_only and cpu_profile is not None:
             print('\n' + '=' * 80)
             print('STEP 1: Generate Fresh Baseline Verilog')
             print('=' * 80)
@@ -267,11 +309,11 @@ class V2chisel_batch(Step):
                 print(f'❌ Baseline generation failed: {baseline_result.get("error")}')
                 return {'success': False, 'error': f'Baseline generation failed: {baseline_result.get("error")}'}
 
-            print('✅ Baseline Verilog generation complete!')
-            print(f'   Profile: {baseline_result.get("profile")}')
-            print(f'   Files: {baseline_result.get("file_count", 0)}')
-        else:
+            print(f'✅ Baseline Verilog generation complete (profile: {baseline_result.get("profile")})')
+        elif chisel_diff_only:
             print('\n⏭️  Skipping baseline generation (chisel_diff_only mode)')
+        else:
+            print('\n⏭️  Skipping baseline generation (no CPU profile for this project)')
 
         # Step 2: Process each bug with retry loops
         print('\n' + '=' * 80)
@@ -347,11 +389,23 @@ class V2chisel_batch(Step):
         """
         Determine which CPU profile to use for compilation/Verilog generation.
 
-        Priority:
+        CPU profiles are a simplechisel/dinocpu-specific concept.  Projects like
+        xiangshan, soomrv, and cva6 do not have multiple CPU variants, so this
+        function returns None for them and the caller skips profile-dependent steps.
+
+        Priority for simplechisel:
         1. --cpu argument (from input_data['cpu_type'])
         2. Auto-detect from bug Verilog filenames
         3. Default to singlecyclecpu_d
         """
+        project = self.input_data.get('project', 'simplechisel')
+
+        # Projects that do NOT use the dinocpu CPU-profile system
+        _NO_CPU_PROFILE_PROJECTS = {'xiangshan', 'soomrv', 'cva6'}
+        if project in _NO_CPU_PROFILE_PROJECTS:
+            print(f'ℹ️  Project "{project}" does not use CPU profiles — skipping cpu_type detection')
+            return None
+
         # Check for explicit override via --cpu argument
         cpu_override = self.input_data.get('cpu_type')
         if cpu_override:
@@ -380,9 +434,35 @@ class V2chisel_batch(Step):
         print(f'🔍 Auto-detected CPU profile from files {verilog_files}: {profile}')
         return profile
 
+    def _run_mcp_build(self, cpu_profile: str, api: str, extra_opts: dict | None = None) -> tuple[int, str, str]:
+        """
+        Run mcp_build.py as a subprocess.
+
+        Invokes:
+            uv run --python 3.13 python <HAGENT_ROOT>/hagent/mcp/mcp_build.py
+                --name <cpu_profile> --api <api> [extra options]
+
+        Returns:
+            (returncode, stdout, stderr)
+        """
+        hagent_root = os.environ.get('HAGENT_ROOT', str(Path(__file__).parent.parent.parent.parent))
+        mcp_build = Path(hagent_root) / 'hagent' / 'mcp' / 'mcp_build.py'
+
+        cmd = ['uv', 'run', '--python', '3.13', 'python', str(mcp_build), '--name', cpu_profile, '--api', api]
+        if extra_opts:
+            for k, v in extra_opts.items():
+                cmd += [f'-o{k}={v}']
+
+        if self.debug:
+            print(f'   $ {" ".join(cmd)}')
+
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        return proc.returncode, proc.stdout, proc.stderr
+
     def _generate_baseline_verilog(self, cpu_profile):
         """
-        Generate fresh baseline Verilog using MCP profile system and backup files for golden design.
+        Generate fresh baseline Verilog by calling mcp_build.py --api compile
+        and backup files for golden design.
 
         Args:
             cpu_profile: MCP profile name (e.g., 'pipelined_d')
@@ -392,25 +472,17 @@ class V2chisel_batch(Step):
         """
         print(f'\n🏭 Generating baseline Verilog using MCP profile: {cpu_profile}')
 
-        # Convert profile to verilog filename for BaselineVerilogGenerator
-        profile_to_verilog = {
-            'singlecyclecpu_d': ['SingleCycleCPU.sv'],
-            'pipelined_d': ['PipelinedCPU.sv'],
-            'dualissue_d': ['PipelinedDualIssueCPU.sv'],
-        }
-        verilog_files = profile_to_verilog.get(cpu_profile, ['SingleCycleCPU.sv'])
+        # Compile Chisel → Verilog via mcp_build.py
+        returncode, stdout, stderr = self._run_mcp_build(cpu_profile, 'compile')
 
-        # Generate baseline using BaselineVerilogGenerator (uses MCP internally)
-        result = self.baseline_verilog_generator.generate_fresh_baseline(
-            docker_container=None,  # Builder handles this
-            verilog_files=verilog_files,
-        )
+        if returncode != 0:
+            error_msg = f'mcp_build compile failed (exit {returncode}):\n{stderr}'
+            print(f'❌ [BASELINE] {error_msg}')
+            return {'success': False, 'error': error_msg}
 
-        if not result['success']:
-            return result
+        result = {'success': True, 'profile': cpu_profile, 'stdout': stdout, 'file_count': 0}
 
         # Backup the generated baseline Verilog files for golden design creation
-        print('💾 [BASELINE] Backing up baseline Verilog files for golden design...')
         backup_id = f'baseline_{cpu_profile}'
         backup_result = self.golden_design_builder.backup_existing_original_verilog(
             docker_container=None,  # Builder handles this
@@ -418,13 +490,10 @@ class V2chisel_batch(Step):
         )
 
         if backup_result['success']:
-            print(f'✅ [BASELINE] Backed up {backup_result["total_files"]} baseline Verilog files')
-            # Add backup info to result
             result['original_verilog_files'] = backup_result['files']
             result['baseline_verilog_success'] = True
             result['backup_id'] = backup_id
         else:
-            print(f'⚠️  [BASELINE] Backup failed: {backup_result.get("error")}, continuing anyway')
             result['original_verilog_files'] = {}
             result['baseline_verilog_success'] = False
 
@@ -481,15 +550,9 @@ class V2chisel_batch(Step):
                 'dac_metrics': report.get_dac_report_dict(),
             }
 
-        print('✅ Hints generated successfully')
-        print('   Strategies used: 3 (Direct Module, Signal-Based, Context-Aware)')
-        print(f'   Chisel files found: {len(hints_result.get("chisel_files_found", []))}')
-        if hints_result.get('chisel_files_found'):
-            for f in hints_result['chisel_files_found'][:3]:  # Show first 3
-                print(f'     - {f}')
-
         hints = hints_result.get('hints', '')
         chisel_files_found = hints_result.get('chisel_files_found', [])
+        print(f'✅ Hints generated ({len(hints)} chars, {len(chisel_files_found)} Chisel files found)')
 
         # Initial LLM call to generate Chisel diff
         print('🤖 Calling LLM to generate Chisel diff (initial attempt)...')
@@ -518,18 +581,8 @@ class V2chisel_batch(Step):
                 'dac_metrics': report.get_dac_report_dict(),
             }
 
-        print('✅ LLM generated Chisel diff successfully')
-        print(f'   Attempts: {llm_result.get("attempts", 1)}')
-        print(f'   Cost: ${llm_result.get("cost", 0):.4f}')
-        print(f'   Tokens: {llm_result.get("tokens", 0)}')
-
         chisel_diff = llm_result.get('chisel_diff', '')
-
-        # DEBUG: Print the generated Chisel diff
-        print('\n📝 [DEBUG] Generated Chisel diff:')
-        print('=' * 80)
-        print(chisel_diff)
-        print('=' * 80)
+        print(f'✅ LLM generated Chisel diff ({len(chisel_diff)} chars, {llm_result.get("attempts", 1)} attempt(s))')
         report.mark_llm_success(generated_diff=chisel_diff)
         total_llm_cost = llm_result.get('cost', 0)
         total_llm_tokens = llm_result.get('tokens', 0)
@@ -572,22 +625,25 @@ class V2chisel_batch(Step):
                 'llm_tokens': total_llm_tokens,
             }
 
-        # Create golden design BEFORE modifying Chisel files:
+        module_name = os.path.splitext(os.path.basename(bug_file))[0]
+
+        # Create golden design BEFORE modifying Chisel files (only for projects with cpu_profile):
         # 1. Apply verilog_diff to .sv file in build/build_<cpu>/
         # 2. Run mcp_build.py --api elab -o tag=gold
-        # (matches manual pipeline: step 5 apply verilog_diff, step 6 elab gold)
-        print('🎯 [GOLDEN] Creating golden design for LEC comparison...')
-        golden_result = self._create_golden_design_with_elab(
-            verilog_diff=unified_diff,
-            cpu_profile=cpu_profile,
-        )
-
-        if not golden_result['success']:
-            print(f'❌ [GOLDEN] Golden design creation failed: {golden_result.get("error")}')
-            print('⚠️  [GOLDEN] Continuing anyway, but LEC results may be incorrect')
+        golden_result = {'success': False}
+        if cpu_profile is not None:
+            print('🎯 [GOLDEN] Creating golden design for LEC comparison...')
+            golden_result = self._create_golden_design_with_elab(
+                verilog_diff=unified_diff,
+                cpu_profile=cpu_profile,
+                module_name=module_name,
+            )
+            if not golden_result['success']:
+                print(f'⚠️  [GOLDEN] Golden design failed (LEC may be incorrect): {golden_result.get("error")}')
+            else:
+                print('✅ [GOLDEN] Golden design created (elab tag=gold)')
         else:
-            print('✅ [GOLDEN] Golden design created successfully')
-            print('   Elab tag: gold')
+            print('⏭️  [GOLDEN] Skipping golden design (no CPU profile for this project)')
 
         # Create master backup before any modifications
         print('💾 Creating master backup of original Chisel files...')
@@ -679,19 +735,42 @@ class V2chisel_batch(Step):
                     }
 
             # Diff applied successfully, break out of ambiguous retry loop
-            print('✅ Successfully applied Chisel diff')
-            print(f'   Files modified: {apply_result.get("files_modified", 0)}')
+            print(f'✅ Chisel diff applied ({apply_result.get("files_modified", 0)} file(s) modified)')
             report.mark_applier_success()
             break
+
+        # For projects without a CPU profile (xiangshan, soomrv, cva6):
+        # applying the chisel diff is the final step — no compile or LEC available.
+        if cpu_profile is None:
+            print('✅ Done (no compile/LEC for this project)')
+            report.finalize_dac_metrics(
+                verilog_diff=unified_diff, has_hints=True, golden_design_success=False, lec_files_compared=[bug_file]
+            )
+            return {
+                'bug_number': bug_number,
+                'file': bug_file,
+                'success': True,
+                'hints': hints,
+                'chisel_files_found': chisel_files_found,
+                'unified_diff': unified_diff,
+                'description': bug_description,
+                'chisel_diff': chisel_diff,
+                'llm_attempts': total_llm_attempts,
+                'llm_cost': total_llm_cost,
+                'llm_tokens': total_llm_tokens,
+                'diff_applied': True,
+                'files_modified': apply_result.get('files_modified', 0),
+                'compilation_success': False,
+                'lec_passed': False,
+                'dac_metrics': report.get_dac_report_dict(),
+            }
 
         # Retry loop for compilation errors (3 iterations max)
         compile_retries = 0
         max_compile_retries = 3
 
         while compile_retries <= max_compile_retries:
-            # Compile modified Chisel and generate new Verilog using MCP
-            print('🔨 Compiling modified Chisel and generating Verilog...')
-            compile_result = self._compile_and_generate_verilog(cpu_profile)
+            compile_result = self._compile_and_generate_verilog(cpu_profile, module_name=module_name)
 
             if not compile_result['success']:
                 error_msg = compile_result.get('error', '')
@@ -813,9 +892,9 @@ class V2chisel_batch(Step):
                     }
 
             # Compilation successful, break out of compile retry loop
-            print('✅ Successfully compiled and generated Verilog')
-            print(f'   Profile: {compile_result.get("profile")}')
-            print(f'   Verilog files: {compile_result.get("verilog_count", 0)}')
+            print(
+                f'✅ Compile + elab gate done (profile: {compile_result.get("profile")}, {compile_result.get("verilog_count", 0)} Verilog file(s))'
+            )
             report.mark_compilation_success()
             report.mark_verilog_success()
             break
@@ -825,8 +904,6 @@ class V2chisel_batch(Step):
         max_lec_retries = 1
 
         while lec_retries <= max_lec_retries:
-            # Run LEC verification (compares golden design vs modified Verilog)
-            print('🔍 Running LEC verification...')
             lec_result = self._run_lec_verification(
                 bug_file=bug_file, cpu_profile=cpu_profile, unified_diff=unified_diff, golden_result=golden_result
             )
@@ -939,7 +1016,7 @@ class V2chisel_batch(Step):
                             }
 
                         # Recompile with new diff
-                        compile_result = self._compile_and_generate_verilog(cpu_profile)
+                        compile_result = self._compile_and_generate_verilog(cpu_profile, module_name=module_name)
                         if not compile_result['success']:
                             print(f'❌ LEC retry compilation failed: {compile_result.get("error")}')
                             golden_dir = golden_result.get('golden_directory', '/code/workspace/repo/lec_golden')
@@ -971,7 +1048,7 @@ class V2chisel_batch(Step):
 
                         # Recreate golden design with new diff
                         print('🎯 [GOLDEN] Recreating golden design for LEC retry...')
-                        golden_result = self._create_golden_design_with_elab(verilog_diff=unified_diff, cpu_profile=cpu_profile)
+                        golden_result = self._create_golden_design_with_elab(verilog_diff=unified_diff, cpu_profile=cpu_profile, module_name=module_name)
 
                         if not golden_result['success']:
                             print(f'❌ [GOLDEN] Golden design recreation failed: {golden_result.get("error")}')
@@ -1173,12 +1250,6 @@ class V2chisel_batch(Step):
             )
 
             if hints_result.get('success'):
-                if self.debug:
-                    print('✅ [HINTS] Multi-strategy hints generation successful')
-                    print(f'   Combined hints length: {len(hints_result.get("hints", ""))} chars')
-
-                # Extract file paths from hints result
-                # HintsGeneratorV2 returns hits with file information
                 chisel_files = []
                 if hints_result.get('hits'):
                     for hit in hints_result['hits']:
@@ -1194,15 +1265,12 @@ class V2chisel_batch(Step):
                     'source': hints_result.get('source', 'unknown'),
                 }
             else:
-                error_msg = hints_result.get('error', 'Unknown error in hints generation')
-                if self.debug:
-                    print(f'❌ [HINTS] Hints generation failed: {error_msg}')
+                error_msg = hints_result.get('error', 'No candidates found by any strategy')
                 return {'success': False, 'error': error_msg}
 
         except Exception as e:
             error_msg = f'Exception during hints generation: {str(e)}'
             if self.debug:
-                print(f'❌ [HINTS] {error_msg}')
                 import traceback
 
                 traceback.print_exc()
@@ -1264,42 +1332,27 @@ class V2chisel_batch(Step):
             Dict with success status and files modified count
         """
         try:
-            if self.debug:
-                print('📝 [APPLIER] Applying Chisel diff to Docker files...')
-
             if not chisel_diff:
                 return {'success': False, 'error': 'Empty Chisel diff provided'}
 
-            # Determine target file path if available from hints
             target_file = chisel_files_found[0] if chisel_files_found else None
 
-            # Apply diff using DockerDiffApplier
             success = self.docker_diff_applier.apply_diff_to_container(
                 diff_content=chisel_diff, target_file_path=target_file, dry_run=False
             )
 
             if success:
-                if self.debug:
-                    print('✅ [APPLIER] Diff applied successfully')
-
                 return {
                     'success': True,
                     'files_modified': len(chisel_files_found) if chisel_files_found else 1,
                     'target_file': target_file,
                 }
-            else:
-                error_msg = 'DockerDiffApplier returned failure'
-                if self.debug:
-                    print(f'❌ [APPLIER] {error_msg}')
-                return {'success': False, 'error': error_msg}
+            return {'success': False, 'error': 'DockerDiffApplier returned failure'}
 
         except Exception as e:
-            error_msg = f'Exception during diff application: {str(e)}'
-            if self.debug:
-                print(f'❌ [APPLIER] {error_msg}')
-            return {'success': False, 'error': error_msg}
+            return {'success': False, 'error': f'Exception during diff application: {str(e)}'}
 
-    def _compile_and_generate_verilog(self, cpu_profile):
+    def _compile_and_generate_verilog(self, cpu_profile, module_name: str = ''):
         """
         Compile modified Chisel code and generate Verilog using MCP profile.
 
@@ -1314,42 +1367,30 @@ class V2chisel_batch(Step):
             Dict with success status, profile info, and Verilog file count
         """
         try:
-            if self.debug:
-                print(f'🔨 [COMPILE] Compiling Chisel and generating Verilog using MCP profile: {cpu_profile}')
-
-            # Use Builder's run_api to call MCP compile command
-            # This executes: sbt "runMain dinocpu.PipelinedDualIssueDebug" (or similar based on profile)
-            exit_code, stdout, stderr = self.builder.run_api(exact_name=cpu_profile, command_name='compile')
-
+            # Step 1: compile (Chisel → Verilog)
+            exit_code, stdout, stderr = self._run_mcp_build(cpu_profile, 'compile')
             if exit_code != 0:
-                error_msg = f'Compilation failed with exit code {exit_code}: {stderr}'
-                if self.debug:
-                    print(f'❌ [COMPILE] {error_msg}')
-                return {'success': False, 'error': error_msg, 'exit_code': exit_code, 'stderr': stderr}
+                return {
+                    'success': False,
+                    'error': f'compile failed (exit {exit_code}):\n{stderr}',
+                    'exit_code': exit_code,
+                    'stderr': stderr,
+                }
 
-            if self.debug:
-                print('✅ [COMPILE] Compilation and Verilog generation successful')
-
-            # Run elab with tag=gate (matches manual pipeline step 9)
-            if self.debug:
-                print(f'⚡ [COMPILE] Running elab with tag=gate for profile: {cpu_profile}')
-
-            elab_exit_code, elab_stdout, elab_stderr = self.builder.run_api(
-                exact_name=cpu_profile, command_name='elab', options={'tag': 'gate'}
-            )
-
+            # Step 2: elab --tag gate
+            elab_opts = {'tag': 'gate'}
+            if module_name:
+                elab_opts['top_synth'] = module_name
+            elab_exit_code, _, elab_stderr = self._run_mcp_build(cpu_profile, 'elab', elab_opts)
             if elab_exit_code != 0:
-                error_msg = f'elab gate failed (exit code {elab_exit_code})\nSTDOUT: {elab_stdout}\nSTDERR: {elab_stderr}'
-                if self.debug:
-                    print(f'❌ [COMPILE] {error_msg}')
-                return {'success': False, 'error': error_msg, 'exit_code': elab_exit_code, 'stderr': elab_stderr}
+                return {
+                    'success': False,
+                    'error': f'elab gate failed (exit {elab_exit_code}):\n{elab_stderr}',
+                    'exit_code': elab_exit_code,
+                    'stderr': elab_stderr,
+                }
 
-            if self.debug:
-                print('✅ [COMPILE] elab gate completed successfully')
-
-            # Count generated Verilog files
             verilog_count = self._count_verilog_files(cpu_profile)
-
             return {
                 'success': True,
                 'profile': cpu_profile,
@@ -1359,10 +1400,7 @@ class V2chisel_batch(Step):
             }
 
         except Exception as e:
-            error_msg = f'Exception during compilation: {str(e)}'
-            if self.debug:
-                print(f'❌ [COMPILE] {error_msg}')
-            return {'success': False, 'error': error_msg}
+            return {'success': False, 'error': f'Exception during compilation: {str(e)}'}
 
     def _count_verilog_files(self, cpu_profile):
         """
@@ -1395,7 +1433,7 @@ class V2chisel_batch(Step):
         except Exception:
             return 0
 
-    def _create_golden_design_with_elab(self, verilog_diff: str, cpu_profile: str):
+    def _create_golden_design_with_elab(self, verilog_diff: str, cpu_profile: str, module_name: str = ''):
         """
         Create golden design by:
         1. Applying verilog_diff directly to .sv file in build/build_<cpu_profile>/
@@ -1411,32 +1449,20 @@ class V2chisel_batch(Step):
             Dict with success status and elab details
         """
         try:
-            if self.debug:
-                print('🎯 [GOLDEN] Applying verilog_diff to build dir and running elab...')
-
             # Step 1: Apply verilog_diff to the .sv file in build/build_<cpu_profile>/
             apply_success = self.docker_diff_applier.apply_diff_to_container(diff_content=verilog_diff, dry_run=False)
 
             if not apply_success:
                 return {'success': False, 'error': 'Failed to apply verilog_diff to build directory'}
 
-            if self.debug:
-                print('✅ [GOLDEN] verilog_diff applied to build directory')
-
-            # Step 2: Run elab with tag=gold
-            if self.debug:
-                print(f'⚡ [GOLDEN] Running elab with tag=gold for profile: {cpu_profile}')
-
-            exit_code, stdout, stderr = self.builder.run_api(exact_name=cpu_profile, command_name='elab', options={'tag': 'gold'})
+            # Step 2: Run elab with tag=gold via mcp_build.py
+            elab_opts = {'tag': 'gold'}
+            if module_name:
+                elab_opts['top_synth'] = module_name
+            exit_code, stdout, stderr = self._run_mcp_build(cpu_profile, 'elab', elab_opts)
 
             if exit_code != 0:
-                error_msg = f'elab gold failed (exit code {exit_code})\nSTDOUT: {stdout}\nSTDERR: {stderr}'
-                if self.debug:
-                    print(f'❌ [GOLDEN] {error_msg}')
-                return {'success': False, 'error': error_msg}
-
-            if self.debug:
-                print('✅ [GOLDEN] elab gold completed successfully')
+                return {'success': False, 'error': f'elab gold failed (exit {exit_code}):\n{stderr}'}
 
             return {
                 'success': True,
@@ -1446,89 +1472,70 @@ class V2chisel_batch(Step):
             }
 
         except Exception as e:
-            error_msg = f'Golden design creation failed: {str(e)}'
-            if self.debug:
-                print(f'❌ [GOLDEN] {error_msg}')
-            return {'success': False, 'error': error_msg}
+            return {'success': False, 'error': f'Golden design creation failed: {str(e)}'}
 
     def _run_lec_verification(self, bug_file, cpu_profile, unified_diff, golden_result):
         """
-        Run Logic Equivalence Check (LEC) using elaborated tagged netlists.
+        Run Logic Equivalence Check via cli_equiv_check.py subprocess.
 
-        Reads gold/elab.v and gate/elab.v from the build directory — the files
-        created by 'elab --tag gold' and 'elab --tag gate' — then calls
-        Equiv_check.check_equivalence(), consistent with cli_equiv_check.py
-        --ref-tag gold --impl-tag gate.
+        Invokes:
+            uv run --python 3.13 python <HAGENT_ROOT>/hagent/tool/tests/cli_equiv_check.py
+                --dir <HAGENT_BUILD_DIR>/build_<cpu_profile>
+                --ref-tag gold --impl-tag gate
+
+        Exit codes from cli_equiv_check.py:
+            0 = equivalent (pass)
+            1 = not equivalent or error (fail)
+            2 = inconclusive
 
         Args:
-            bug_file: Name of the buggy Verilog file (used for display only)
-            cpu_profile: MCP profile name (determines build directory)
-            unified_diff: Original Verilog diff (unused, kept for interface compatibility)
-            golden_result: Golden design creation result (unused, kept for interface compatibility)
-
-        Returns:
-            Dict with success status, LEC command, and any counterexample
+            bug_file: Verilog file name (display only)
+            cpu_profile: MCP profile name (determines build subdirectory)
+            unified_diff: unused, kept for interface compatibility
+            golden_result: unused, kept for interface compatibility
         """
         try:
+            hagent_root = os.environ.get('HAGENT_ROOT', str(Path(__file__).parent.parent.parent.parent))
+            cli_script = Path(hagent_root) / 'hagent' / 'tool' / 'tests' / 'cli_equiv_check.py'
+
+            build_base = os.environ.get('HAGENT_BUILD_DIR', '/code/workspace/build')
+            build_dir = str(Path(build_base) / f'build_{cpu_profile}')
+
+            cmd = [
+                'uv',
+                'run',
+                '--python',
+                '3.13',
+                'python',
+                str(cli_script),
+                '--dir',
+                build_dir,
+                '--ref-tag',
+                'gold',
+                '--impl-tag',
+                'gate',
+            ]
+
             if self.debug:
-                print('🔍 [LEC] Starting Logic Equivalence Check...')
-                print(f'   CPU profile: {cpu_profile}')
+                print(f'   $ {" ".join(cmd)}')
 
-            # Resolve build directory from profile
-            profile_to_build_subdir = {
-                'singlecyclecpu_d': 'build_singlecyclecpu_d',
-                'singlecyclecpu_nd': 'build_singlecyclecpu_nd',
-                'pipelined_d': 'build_pipelined_d',
-                'pipelined_nd': 'build_pipelined_nd',
-                'dualissue_d': 'build_dualissue_d',
-                'dualissue_nd': 'build_dualissue_nd',
-            }
-            build_subdir = profile_to_build_subdir.get(cpu_profile, f'build_{cpu_profile}')
-            build_dir = f'/code/workspace/build/{build_subdir}'
+            proc = subprocess.run(cmd, capture_output=True, text=True)
 
-            # Read elaborated netlists created by elab --tag gold/gate
-            gold_elab_file = f'{build_dir}/gold/elab.v'
-            gate_elab_file = f'{build_dir}/gate/elab.v'
-
-            print(f'📄 [LEC] Reading GOLD netlist:  {gold_elab_file}')
-            gold_verilog = self.builder.filesystem.read_text(gold_elab_file)
-
-            print(f'📄 [LEC] Reading GATE netlist:  {gate_elab_file}')
-            gate_verilog = self.builder.filesystem.read_text(gate_elab_file)
-
-            print('🎯 [LEC] Comparing gold (ref-tag=gold) vs gate (impl-tag=gate)')
-
-            # Run LEC using Equiv_check (same as cli_equiv_check.py does internally)
-            lec_result = self.equiv_check.check_equivalence(gold_code=gold_verilog, gate_code=gate_verilog, desired_top='')
-
-            if lec_result is True:
-                if self.debug:
-                    print('✅ [LEC] Designs are logically equivalent')
-                return {
-                    'success': True,
-                    'result': 'equivalent',
-                    'command': f'--ref-tag gold --impl-tag gate --dir {build_dir}',
-                }
-            elif lec_result is False:
-                counterexample = self.equiv_check.get_counterexample()
-                error_msg = 'Designs are NOT logically equivalent'
-                if self.debug:
-                    print(f'❌ [LEC] {error_msg}')
-                    if counterexample:
-                        print(f'   Counterexample:\n{counterexample}')
-                return {'success': False, 'error': error_msg, 'counterexample': counterexample, 'result': 'not_equivalent'}
+            if proc.returncode == 0:
+                return {'success': True, 'result': 'equivalent', 'stdout': proc.stdout}
+            elif proc.returncode == 2:
+                return {'success': False, 'error': f'LEC inconclusive: {proc.stdout}', 'result': 'inconclusive'}
             else:
-                # None = inconclusive
-                error_msg = f'LEC result inconclusive: {self.equiv_check.get_error()}'
-                if self.debug:
-                    print(f'⚠️  [LEC] {error_msg}')
-                return {'success': False, 'error': error_msg, 'result': 'inconclusive'}
+                # returncode == 1: not equivalent or setup error
+                return {
+                    'success': False,
+                    'error': 'Designs are NOT logically equivalent',
+                    'counterexample': proc.stdout,
+                    'result': 'not_equivalent',
+                }
 
         except Exception as e:
-            error_msg = f'Exception during LEC verification: {str(e)}'
-            if self.debug:
-                print(f'❌ [LEC] {error_msg}')
-            return {'success': False, 'error': error_msg}
+            return {'success': False, 'error': f'Exception during LEC: {str(e)}'}
 
 
 def main():

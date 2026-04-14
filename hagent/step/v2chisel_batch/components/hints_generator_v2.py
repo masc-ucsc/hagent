@@ -44,11 +44,14 @@ class HintsGeneratorV2:
         self.builder = builder
         self.debug = debug
 
-        # Initialize strategies
+        # Initialize strategies.
+        # Thresholds are kept low so that even weak matches produce hints —
+        # the LLM must not be called with NO hints, so we prefer noisy-but-present
+        # hints over empty hints.
         self.strategies = [
-            ModuleFinder(min_confidence=0.3),
+            ModuleFinder(min_confidence=0.1),  # was 0.3 — accept weak name matches
             SourceLocator(),
-            FuzzyGrepStrategy(threshold=70),
+            FuzzyGrepStrategy(threshold=50),  # was 70 — accept looser signal matches
         ]
 
         # SpanIndex will be built per request (cached if possible)
