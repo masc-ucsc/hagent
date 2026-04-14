@@ -1292,11 +1292,21 @@ class V2chisel_batch(Step):
         """
         from hagent.step.v2chisel_batch.components.bug_info import BugInfo
 
+        MAX_HINTS_PER_FILE = 4000   # chars — cap each file's hints block
+        MAX_TOTAL_HINTS = 16000     # chars — cap the combined hints sent to LLM
+
         combined_hints_parts = []
         all_chisel_files = []
         any_success = False
 
         for sv_file in verilog_files:
+            # Stop adding more file hints if we've already hit the total cap
+            current_total = sum(len(p) for p in combined_hints_parts)
+            if current_total >= MAX_TOTAL_HINTS:
+                if self.debug:
+                    print(f'   ⚠️  Total hints cap reached ({MAX_TOTAL_HINTS} chars), skipping {sv_file}')
+                break
+
             bug_entry = {'file': sv_file, 'unified_diff': verilog_diff, 'description': bug_description}
             bug_info = BugInfo(bug_entry, 0)
 
@@ -1306,8 +1316,14 @@ class V2chisel_batch(Step):
 
             if result.get('success'):
                 any_success = True
+                file_hints = result.get('hints', '')
+                # Truncate this file's hints if too large
+                if len(file_hints) > MAX_HINTS_PER_FILE:
+                    file_hints = file_hints[:MAX_HINTS_PER_FILE] + '\n// ... (truncated)'
+                    if self.debug:
+                        print(f'   ✂️  Hints for {sv_file} truncated to {MAX_HINTS_PER_FILE} chars')
                 combined_hints_parts.append(f'// === Hints for {sv_file} ===')
-                combined_hints_parts.append(result.get('hints', ''))
+                combined_hints_parts.append(file_hints)
                 for h in result.get('hits', []):
                     fp = getattr(h, 'file_name', None) or (h.get('file_name') if isinstance(h, dict) else None)
                     if fp and fp not in all_chisel_files:
@@ -1319,9 +1335,17 @@ class V2chisel_batch(Step):
         if not any_success:
             return {'success': False, 'error': 'No hints found for any of the SV files'}
 
+        combined = '\n'.join(combined_hints_parts)
+        # Final safety truncation
+        if len(combined) > MAX_TOTAL_HINTS:
+            combined = combined[:MAX_TOTAL_HINTS] + '\n// ... (total hints truncated)'
+
+        if self.debug:
+            print(f'   📏 Combined hints: {len(combined)} chars from {len(all_chisel_files)} Chisel file(s)')
+
         return {
             'success': True,
-            'hints': '\n'.join(combined_hints_parts),
+            'hints': combined,
             'chisel_files_found': all_chisel_files,
             'source': 'multi_file',
         }
