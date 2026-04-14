@@ -56,8 +56,8 @@ class V2chisel_batch(Step):
         self.debug = True
         self.input_data = {}
 
-        # Initialize Builder (handles Docker/local execution)
-        self.builder = Builder()
+        # Builder is deferred — created in run() AFTER workspace env vars are set
+        self.builder = None
 
         # Initialize Module_finder for hints generation
         self.module_finder = Module_finder()
@@ -191,12 +191,10 @@ class V2chisel_batch(Step):
                 error_msg = f'Workspace auto-setup failed: {exc}'
                 print(f'❌ {error_msg}')
                 return {'success': False, 'error': error_msg}
-        else:
-            # Env vars are already set, but PathManager singleton may have been
-            # initialized before them (in __init__).  Always reset + recreate so
-            # it re-reads the current env — especially HAGENT_TECH_DIR for the
-            # Docker tech-dir mount.
-            self._reset_path_manager_and_runner()
+
+        # Create Builder now that env vars are guaranteed to be set
+        self._reset_path_manager_and_runner()
+        self.builder = Builder()
 
         try:
             return self._run_pipeline(data)
@@ -204,12 +202,13 @@ class V2chisel_batch(Step):
             self._cleanup_workspace(tmp_dir)
 
     def _reset_path_manager_and_runner(self):
-        """Reset the PathManager singleton and recreate Runner so they read the current env vars."""
+        """Reset the PathManager singleton so it re-reads the current env vars on next use."""
         from hagent.inou.path_manager import PathManager as _PM
 
         _PM._instance = None
         _PM._initialized = False
-        self.builder.runner = type(self.builder.runner)()
+        if self.builder is not None:
+            self.builder.runner = type(self.builder.runner)()
 
     def _run_pipeline(self, _data=None):
         """Internal pipeline — called after workspace is ready."""
