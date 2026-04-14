@@ -278,7 +278,21 @@ class V2chisel_batch(Step):
             print(f'⚠️  Warning: LEC setup failed: {self.equiv_check.get_error()}')
 
         # Step 1: Load bugs from input
+        # Support xiangshan-style format: {verilog_diffs: [{filename, verilog_diff}, ...]}
         bugs = self.input_data.get('bugs', [])
+        if not bugs and 'verilog_diffs' in self.input_data:
+            description = self.input_data.get('mutation_type', '')
+            scala_file = self.input_data.get('scala_file', '')
+            if scala_file:
+                description = f'{description} in {scala_file}'
+            for entry in self.input_data['verilog_diffs']:
+                bugs.append({
+                    'verilog_file': entry['filename'],
+                    'unified_diff': entry['verilog_diff'],
+                    'description': description,
+                })
+            print(f'📦 Converted xiangshan verilog_diffs format → {len(bugs)} bug(s)')
+
         if not bugs:
             print('❌ No bugs found in input')
             return {'success': False, 'error': 'No bugs provided'}
@@ -1557,6 +1571,7 @@ def main():
     parser.add_argument('--chisel-diff-only', action='store_true', help='Only generate chisel_diff (skip compile/LEC)')
     parser.add_argument('--compile-error', help='Compile error from previous attempt (triggers prompt_compile_error)')
     parser.add_argument('--previous-diff-file', help='Path to file containing previous chisel_diff that failed')
+    parser.add_argument('--project', help='Project name (e.g., xiangshan, soomrv, cva6, simplechisel)')
     parser.add_argument('--debug', action='store_true', default=True, help='Enable debug output')
 
     args = parser.parse_args()
@@ -1567,6 +1582,10 @@ def main():
         input_data = yaml.safe_load(f)
 
     # Add command-line arguments to input_data
+    if args.project:
+        input_data['project'] = args.project
+        print(f'🔧 Project override from --project: {args.project}')
+
     if args.cpu:
         input_data['cpu_type'] = args.cpu
         print(f'🔧 CPU type override from --cpu: {args.cpu}')
