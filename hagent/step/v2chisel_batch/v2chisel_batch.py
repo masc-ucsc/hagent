@@ -278,19 +278,27 @@ class V2chisel_batch(Step):
 
         # Step 1: Load bugs from input
         # Support xiangshan-style format: {verilog_diffs: [{filename, verilog_diff}, ...]}
+        # All verilog_diffs in one record come from a SINGLE chisel mutation, so we
+        # combine them into ONE bug with a multi-file unified diff.
         bugs = self.input_data.get('bugs', [])
         if not bugs and 'verilog_diffs' in self.input_data:
+            verilog_diffs_list = self.input_data['verilog_diffs']
             description = self.input_data.get('mutation_type', '')
             scala_file = self.input_data.get('scala_file', '')
             if scala_file:
                 description = f'{description} in {scala_file}'
-            for entry in self.input_data['verilog_diffs']:
-                bugs.append({
-                    'verilog_file': entry['filename'],
-                    'unified_diff': entry['verilog_diff'],
-                    'description': description,
-                })
-            print(f'📦 Converted xiangshan verilog_diffs format → {len(bugs)} bug(s)')
+
+            # Concatenate all per-file diffs into one multi-file unified diff
+            combined_diff = '\n'.join(entry['verilog_diff'] for entry in verilog_diffs_list)
+            verilog_files = [entry['filename'] for entry in verilog_diffs_list]
+
+            bugs.append({
+                'verilog_file': scala_file or verilog_files[0],
+                'unified_diff': combined_diff,
+                'description': description,
+                'verilog_files': verilog_files,  # all SV files for multi-hint lookup
+            })
+            print(f'📦 Converted xiangshan format: {len(verilog_diffs_list)} verilog diffs → 1 combined bug')
 
         if not bugs:
             print('❌ No bugs found in input')
@@ -533,6 +541,7 @@ class V2chisel_batch(Step):
         bug_file = bug.get('file') or bug.get('verilog_file', 'unknown')
         bug_description = bug.get('description', '')
         unified_diff = bug.get('unified_diff', bug.get('patch', ''))
+        verilog_files = bug.get('verilog_files')  # set for xiangshan multi-file bugs
 
         # Create report for this bug for DAC metrics tracking
         report = self.pipeline_reporter.create_report(bug_file)
@@ -548,7 +557,7 @@ class V2chisel_batch(Step):
 
         # Generate hints using HintsGeneratorV2 (3 strategies combined)
         print('🔍 Generating hints using multi-strategy approach...')
-        hints_result = self._generate_hints_for_bug(unified_diff, bug_description, bug_file)
+        hints_result = self._generate_hints_for_bug(unified_diff, bug_description, bug_file, verilog_files=verilog_files)
 
         if not hints_result['success']:
             print(f'❌ Hints generation failed: {hints_result.get("error", "Unknown error")}')
@@ -568,13 +577,15 @@ class V2chisel_batch(Step):
         print(f'✅ Hints generated ({len(hints)} chars, {len(chisel_files_found)} Chisel files found)')
 
         # Initial LLM call to generate Chisel diff
-        print('🤖 Calling LLM to generate Chisel diff (initial attempt)...')
+        # Use prompt_xiangshan for multi-file bugs (xiangshan-style mutations)
+        initial_prompt = 'prompt_xiangshan' if verilog_files else 'prompt_initial'
+        print(f'🤖 Calling LLM to generate Chisel diff (initial attempt, prompt: {initial_prompt})...')
 
         # Start iteration 1 for DAC metrics
         iter1 = report.add_iteration(1)
 
         llm_result = self.chisel_diff_generator.generate_chisel_diff(
-            verilog_diff=unified_diff, chisel_hints=hints, bug_description=bug_description, prompt_name='prompt_initial'
+            verilog_diff=unified_diff, chisel_hints=hints, bug_description=bug_description, prompt_name=initial_prompt
         )
 
         if not llm_result['success']:
@@ -1202,19 +1213,18 @@ class V2chisel_batch(Step):
             'dac_metrics': report.get_dac_report_dict(),
         }
 
-    def _generate_hints_for_bug(self, verilog_diff, bug_description, bug_file='unknown'):
+    def _generate_hints_for_bug(self, verilog_diff, bug_description, bug_file='unknown', verilog_files=None):
         """
         Generate Chisel hints from Verilog diff using multi-strategy approach.
 
-        This method uses HintsGeneratorV2 which combines 3 strategies:
-        1. Direct Module Mapping - Maps Verilog module names to Chisel classes
-        2. Signal-Based Search - Searches for signals mentioned in the diff
-        3. Context-Aware Analysis - Analyzes logic patterns and context
+        For multi-file bugs (xiangshan), verilog_files contains all SV filenames.
+        Hints are run per file and aggregated into one combined block.
 
         Args:
-            verilog_diff: Unified diff of Verilog changes
+            verilog_diff: Unified diff of Verilog changes (may span multiple files)
             bug_description: Description of the bug
-            bug_file: Verilog file name (e.g., 'Control.sv')
+            bug_file: Primary Verilog/Scala file name
+            verilog_files: Optional list of all SV files changed (for multi-file hints)
 
         Returns:
             Dict with success status, hints, and metadata
@@ -1226,26 +1236,14 @@ class V2chisel_batch(Step):
             # Import BugInfo for constructing bug_info object
             from hagent.step.v2chisel_batch.components.bug_info import BugInfo
 
-            # Create BugInfo object expected by HintsGeneratorV2
-            bug_entry = {
-                'file': bug_file,
-                'unified_diff': verilog_diff,
-                'description': bug_description,
-            }
-            bug_info = BugInfo(bug_entry, 0)
-
             # Get all Chisel files from the repository (using Builder's filesystem)
-            # For now, use a simple pattern to find Scala files
             all_files = []
             try:
-                # Use Builder to find Scala files in the repository
                 exit_code, stdout, stderr = self.builder.run_cmd(
                     'find /code/workspace/repo/src/main/scala -name "*.scala" -type f 2>/dev/null || find . -name "*.scala" -type f 2>/dev/null || true'
                 )
                 if exit_code == 0 and stdout:
                     raw_files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
-                    # Prepend docker: prefix for SpanIndex to use Builder for file reading
-                    # Format: docker:container_name:path
                     for f in raw_files:
                         all_files.append(f'docker:hagent:{f}')
             except Exception as e:
@@ -1255,39 +1253,77 @@ class V2chisel_batch(Step):
             if self.debug:
                 print(f'   Found {len(all_files)} Scala files')
 
-            # Call HintsGeneratorV2.find_hints() with proper parameters
+            # For multi-file bugs: run hints per SV file and aggregate results
+            files_to_search = verilog_files if verilog_files else [bug_file]
+
+            if len(files_to_search) > 1:
+                if self.debug:
+                    print(f'   Multi-file mode: running hints for {len(files_to_search)} SV files')
+                return self._aggregate_hints_for_files(files_to_search, verilog_diff, bug_description, all_files)
+
+            # Single-file: standard path
+            bug_entry = {'file': bug_file, 'unified_diff': verilog_diff, 'description': bug_description}
+            bug_info = BugInfo(bug_entry, 0)
             hints_result = self.hints_generator_v2.find_hints(
-                bug_info=bug_info,
-                all_files=all_files,
-                docker_container='hagent',  # Builder handles docker
+                bug_info=bug_info, all_files=all_files, docker_container='hagent'
             )
 
             if hints_result.get('success'):
-                chisel_files = []
-                if hints_result.get('hits'):
-                    for hit in hints_result['hits']:
-                        if hasattr(hit, 'file_path'):
-                            chisel_files.append(hit.file_path)
-                        elif isinstance(hit, dict) and 'file_path' in hit:
-                            chisel_files.append(hit['file_path'])
-
-                return {
-                    'success': True,
-                    'hints': hints_result.get('hints', ''),
-                    'chisel_files_found': chisel_files,
-                    'source': hints_result.get('source', 'unknown'),
-                }
+                chisel_files = [
+                    h.file_path if hasattr(h, 'file_path') else h.get('file_path', '')
+                    for h in hints_result.get('hits', [])
+                ]
+                return {'success': True, 'hints': hints_result.get('hints', ''), 'chisel_files_found': chisel_files, 'source': hints_result.get('source', 'unknown')}
             else:
-                error_msg = hints_result.get('error', 'No candidates found by any strategy')
-                return {'success': False, 'error': error_msg}
+                return {'success': False, 'error': hints_result.get('error', 'No candidates found')}
 
         except Exception as e:
             error_msg = f'Exception during hints generation: {str(e)}'
             if self.debug:
                 import traceback
-
                 traceback.print_exc()
             return {'success': False, 'error': error_msg}
+
+    def _aggregate_hints_for_files(self, verilog_files, verilog_diff, bug_description, all_files):
+        """
+        Run hints for each SV file and combine into one hints block.
+        Used for xiangshan-style mutations where one chisel change produces N SV changes.
+        """
+        from hagent.step.v2chisel_batch.components.bug_info import BugInfo
+
+        combined_hints_parts = []
+        all_chisel_files = []
+        any_success = False
+
+        for sv_file in verilog_files:
+            bug_entry = {'file': sv_file, 'unified_diff': verilog_diff, 'description': bug_description}
+            bug_info = BugInfo(bug_entry, 0)
+
+            result = self.hints_generator_v2.find_hints(
+                bug_info=bug_info, all_files=all_files, docker_container='hagent'
+            )
+
+            if result.get('success'):
+                any_success = True
+                combined_hints_parts.append(f'// === Hints for {sv_file} ===')
+                combined_hints_parts.append(result.get('hints', ''))
+                for h in result.get('hits', []):
+                    fp = h.file_path if hasattr(h, 'file_path') else h.get('file_path', '')
+                    if fp and fp not in all_chisel_files:
+                        all_chisel_files.append(fp)
+            else:
+                if self.debug:
+                    print(f'   ⚠️  No hints for {sv_file}: {result.get("error")}')
+
+        if not any_success:
+            return {'success': False, 'error': 'No hints found for any of the SV files'}
+
+        return {
+            'success': True,
+            'hints': '\n'.join(combined_hints_parts),
+            'chisel_files_found': all_chisel_files,
+            'source': 'multi_file',
+        }
 
     def _generate_chisel_diff_with_llm(self, verilog_diff, chisel_hints, bug_description):
         """

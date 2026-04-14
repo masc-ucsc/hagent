@@ -58,6 +58,50 @@ v2chisel_batch:
 
         Generate ONLY the Chisel unified diff now:
 
+  # Prompt for xiangshan multi-file mutations
+  # One chisel change produces N verilog diffs across N SV files.
+  # The LLM must find the single Chisel source responsible for all of them.
+  prompt_xiangshan:
+    - role: system
+      content: |
+        You are an expert AI assistant specialized in translating Verilog changes to corresponding Chisel code modifications.
+        Your goal is to generate a precise Chisel diff that, when applied, will produce Verilog logically equivalent to ALL the target changes shown.
+
+        CRITICAL: You must respond with ONLY the unified diff. No explanations, no alternatives, no commentary.
+        Your entire response must be a single, clean unified diff that starts with "---" and contains only the necessary changes.
+
+    - role: user
+      content: |
+        I have a Chisel hardware design that generates Verilog. A single mutation in one Chisel source file caused changes across MULTIPLE Verilog files simultaneously.
+
+        Here are the unified diffs showing the desired Verilog changes across all affected files:
+        ```
+        {verilog_diff}
+        ```
+
+        Here are hints from the Chisel source code that likely needs modification:
+        ```
+        {chisel_hints}
+        ```
+
+        Your task: find the SINGLE location in the Chisel source that caused ALL these Verilog changes and produce ONE unified diff to fix it.
+
+        CRITICAL REQUIREMENTS - FOLLOW EXACTLY:
+        - Output ONLY a single unified diff targeting the ONE Chisel source file
+        - Use minimal hunks containing only the necessary changes
+        - Do NOT include any explanation, commentary, notes, or reasoning
+        - Do NOT output multiple diffs or target multiple Chisel files
+        - Ensure the diff can be applied to existing Chisel source files
+        - Your response must start with "---" and end with a complete unified diff
+
+        CRITICAL - REMOVAL LINES MUST BE EXACT COPIES FROM HINTS:
+        - For lines to REMOVE (marked with '-' in your diff): You MUST copy them EXACTLY from the hints above
+        - Do NOT recreate, rephrase, or reformat removal lines - copy them character-for-character
+        - Copy the EXACT indentation (spaces/tabs), spacing around operators, and comments from the hints
+        - Only ADDITION lines (marked with '+') should be your newly generated code
+
+        Generate ONLY the Chisel unified diff now:
+
   # Prompt for retry when compilation fails
   prompt_compile_error:
     - role: system
