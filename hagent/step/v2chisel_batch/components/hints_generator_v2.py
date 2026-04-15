@@ -169,12 +169,17 @@ class HintsGeneratorV2:
         self, top_candidate: 'ModuleCandidate', all_candidates: List['ModuleCandidate'], docker_container: str
     ) -> str:
         """Format candidates into hint text."""
+        import re
+
         hints_parts = []
 
         hints_parts.append(f'// Multi-strategy hint generation for {top_candidate.span.name}')
         hints_parts.append(f'// Top candidate score: {top_candidate.fused_score:.3f} (tier: {top_candidate.get_tier()})')
         hints_parts.append(f'// Strategies matched: {top_candidate.sources_hit}/3')
         hints_parts.append('')
+
+        # Collect all code blocks so we can scan for sub-module instantiations afterward
+        candidate_codes: List[str] = []
 
         # Show top candidates
         for i, candidate in enumerate(all_candidates, 1):
@@ -197,6 +202,65 @@ class HintsGeneratorV2:
             if code:
                 hints_parts.append(code)
                 hints_parts.append('')
+                candidate_codes.append(code)
+
+        # ── Option B: Sub-module instantiation following ──────────────────────
+        # Scan every candidate's code for `Module(new ClassName)` patterns,
+        # look up each class in the SpanIndex, and APPEND their source as
+        # additional hint sections.  Nothing already generated is removed.
+        already_included: set = {c.span.name for c in all_candidates}
+        submodule_sections: List[str] = []
+
+        sub_pattern = re.compile(r'Module\s*\(\s*new\s+(\w+)')
+        for code_block in candidate_codes:
+            for match in sub_pattern.finditer(code_block):
+                class_name = match.group(1)
+                if class_name in already_included:
+                    continue  # already in hints
+
+                # Try to find the class in the SpanIndex
+                if self.span_index is None:
+                    continue
+                # SpanIndex has no direct lookup-by-name; iterate all modules
+                span = next(
+                    (s for s in self.span_index.get_all_modules() if s.name == class_name),
+                    None,
+                )
+                if span is None:
+                    if self.debug:
+                        print(f'   🔍 Sub-module {class_name} not found in SpanIndex')
+                    continue
+
+                already_included.add(class_name)
+
+                # Fetch its source
+                sub_file = span.file
+                display_file = sub_file
+                if display_file.startswith('docker:'):
+                    parts = display_file.split(':', 2)
+                    if len(parts) == 3:
+                        display_file = parts[2]
+
+                sub_code = self._extract_code_from_span(span)
+
+                section: List[str] = []
+                section.append(f'// ========== SUB-MODULE: {class_name} (followed from candidate) ==========')
+                section.append(f'// File: {display_file}')
+                section.append(f'// Lines: {span.start_line}-{span.end_line}')
+                section.append('')
+                if sub_code:
+                    section.append(sub_code)
+                    section.append('')
+
+                submodule_sections.extend(section)
+
+                if self.debug:
+                    print(f'   ➕ Added sub-module hint: {class_name} ({display_file}:{span.start_line}-{span.end_line})')
+
+        if submodule_sections:
+            hints_parts.append('// ========== SUB-MODULE INSTANTIATIONS (auto-followed) ==========')
+            hints_parts.append('')
+            hints_parts.extend(submodule_sections)
 
         return '\n'.join(hints_parts)
 
@@ -233,6 +297,33 @@ class HintsGeneratorV2:
         except Exception as e:
             if self.debug:
                 print(f'     ⚠️  Failed to extract code: {e}')
+            return f'// Failed to extract code: {e}'
+
+    def _extract_code_from_span(self, span) -> str:
+        """Extract source code for a ModuleSpan (used for sub-module following)."""
+        try:
+            file_path = span.file
+
+            if file_path.startswith('docker:'):
+                parts = file_path.split(':', 2)
+                actual_file_path = parts[2]
+                if self.builder:
+                    full_content = self.builder.filesystem.read_text(actual_file_path)
+                    lines = full_content.split('\n')
+                    start_idx = max(0, span.start_line - 1)
+                    end_idx = min(len(lines), span.end_line)
+                    return '\n'.join(lines[start_idx:end_idx]).strip()
+                return '// Builder not available for docker path'
+            else:
+                with open(file_path, 'r') as f:
+                    lines = f.readlines()
+                    start_idx = max(0, span.start_line - 1)
+                    end_idx = min(len(lines), span.end_line)
+                    return ''.join(lines[start_idx:end_idx]).strip()
+
+        except Exception as e:
+            if self.debug:
+                print(f'     ⚠️  Failed to extract span code: {e}')
             return f'// Failed to extract code: {e}'
 
     def _candidates_to_hits(self, candidates: List['ModuleCandidate']) -> List:
