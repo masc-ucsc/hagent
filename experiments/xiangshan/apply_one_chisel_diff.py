@@ -213,17 +213,27 @@ def main():
         shutil.rmtree(tmp_dir, ignore_errors=True)
         print("  Done")
 
-    # ── Step 8: save results to mutation YAML ────────────────────────────────
+    # ── Step 8: save results to verilog_diffs_B/ ─────────────────────────────
     mutation["status"]        = status
     mutation["sv_changed"]    = sv_changed
     mutation["verilog_diffs"] = verilog_diffs
 
-    mutation_path.write_text(yaml.dump(mutation, allow_unicode=True, sort_keys=False, width=120))
-    print()
-    print(f"Results saved to {mutation_path.name}")
-    print(f"  status       : {status}")
-    print(f"  sv_changed   : {sv_changed}")
-    print(f"  verilog_diffs: {len(verilog_diffs)} file(s)")
+    out_dir = mutation_path.parent / "verilog_diffs_B"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / mutation_path.name
+
+    content = yaml.dump(mutation, allow_unicode=True, sort_keys=False, width=120)
+    out_path.write_text(content)
+
+    if out_path.stat().st_size == 0:
+        print(f"WARNING: output file is empty: {out_path}", file=sys.stderr)
+    else:
+        print()
+        print(f"Results saved to {out_path}")
+        print(f"  status       : {status}")
+        print(f"  sv_changed   : {sv_changed}")
+        print(f"  verilog_diffs: {len(verilog_diffs)} file(s)")
+        print(f"  file size    : {out_path.stat().st_size} bytes")
 
 
 if __name__ == "__main__":
