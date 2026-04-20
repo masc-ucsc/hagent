@@ -1257,6 +1257,15 @@ class V2chisel_batch(Step):
             if self.debug:
                 print(f'   Found {len(all_files)} Scala files')
 
+            # For multi-file bugs (xiangshan): if we already know the scala file, read it
+            # directly from Docker — this is more accurate than per-SV-file strategy lookups
+            # which are indirect (verilog module name → chisel class) and often miss the
+            # actual mutation site inside nested sub-modules.
+            if verilog_files and bug_file.endswith('.scala'):
+                if self.debug:
+                    print(f'   Multi-file xiangshan mode: using scala file directly: {bug_file}')
+                return self._hints_from_scala_file(bug_file, verilog_diff, all_files)
+
             # For multi-file bugs: run hints per SV file and aggregate results
             files_to_search = verilog_files if verilog_files else [bug_file]
 
@@ -1288,6 +1297,130 @@ class V2chisel_batch(Step):
                 import traceback
                 traceback.print_exc()
             return {'success': False, 'error': error_msg}
+
+    def _hints_from_scala_file(self, scala_file: str, verilog_diff: str, all_files) -> dict:
+        """
+        Generate hints by reading the known Chisel scala file directly from Docker.
+
+        Used for xiangshan mutations where the YAML already specifies the scala_file.
+        Reading the file directly avoids the verilog→chisel name-lookup that often
+        finds the wrapper instead of the implementation, and ensures sub-modules (like
+        SubModule inside AluDataModule) are included without truncation.
+        """
+        import re
+
+        MAX_TOTAL_HINTS = 16000
+
+        # Try both workspace and cache-based paths inside the container
+        candidate_paths = [
+            f'/code/workspace/repo/{scala_file}',
+            f'/code/workspace/repo/src/main/scala/{scala_file}',
+            scala_file,
+        ]
+
+        file_content = None
+        used_path = None
+        for docker_path in candidate_paths:
+            try:
+                file_content = self.builder.filesystem.read_text(docker_path)
+                used_path = docker_path
+                break
+            except Exception:
+                continue
+
+        if file_content is None:
+            if self.debug:
+                print(f'   ⚠️  Could not read scala file {scala_file} from Docker, falling back to aggregate mode')
+            from hagent.step.v2chisel_batch.components.bug_info import BugInfo
+            # Extract module name from scala_file for single-file fallback
+            module_name = os.path.splitext(os.path.basename(scala_file))[0]
+            bug_entry = {'file': module_name + '.sv', 'unified_diff': verilog_diff, 'description': scala_file}
+            bug_info = BugInfo(bug_entry, 0)
+            result = self.hints_generator_v2.find_hints(bug_info=bug_info, all_files=all_files, docker_container='hagent')
+            if result.get('success'):
+                return {'success': True, 'hints': result.get('hints', ''), 'chisel_files_found': [scala_file], 'source': 'fallback'}
+            return {'success': False, 'error': f'Could not read {scala_file} and fallback also failed'}
+
+        if self.debug:
+            print(f'   📖 Read {len(file_content)} chars from {used_path}')
+
+        # Build hints: full scala file content + sub-module following
+        hints_parts = [
+            f'// ========== DIRECT SCALA FILE: {scala_file} ==========',
+            f'// Source: {used_path}',
+            '',
+            file_content.strip(),
+            '',
+        ]
+
+        # Sub-module following: find Module(new ClassName) patterns and append those classes too
+        if self.hints_generator_v2.span_index is not None:
+            already_included: set = set()
+            sub_pattern = re.compile(r'Module\s*\(\s*new\s+(\w+)')
+            queue = [file_content]
+            seen_code: list = []
+
+            while queue:
+                code_block = queue.pop(0)
+                if code_block in seen_code:
+                    continue
+                seen_code.append(code_block)
+
+                for match in sub_pattern.finditer(code_block):
+                    class_name = match.group(1)
+                    if class_name in already_included:
+                        continue
+                    already_included.add(class_name)
+
+                    span = next(
+                        (s for s in self.hints_generator_v2.span_index.get_all_modules() if s.name == class_name),
+                        None,
+                    )
+                    if span is None:
+                        continue
+
+                    sub_code = self.hints_generator_v2._extract_code_from_span(span)
+                    if not sub_code:
+                        continue
+
+                    display_file = span.file
+                    if display_file.startswith('docker:'):
+                        parts = display_file.split(':', 2)
+                        if len(parts) == 3:
+                            display_file = parts[2]
+
+                    hints_parts.append(f'// ========== SUB-MODULE: {class_name} ==========')
+                    hints_parts.append(f'// File: {display_file} lines {span.start_line}-{span.end_line}')
+                    hints_parts.append('')
+                    hints_parts.append(sub_code.strip())
+                    hints_parts.append('')
+
+                    if self.debug:
+                        print(f'   ➕ Sub-module: {class_name} ({display_file}:{span.start_line}-{span.end_line})')
+
+                    # Recurse into this sub-module to follow nested instantiations
+                    queue.append(sub_code)
+
+                    # Safety: stop if we've already hit the hint size budget
+                    current_size = sum(len(p) for p in hints_parts)
+                    if current_size > MAX_TOTAL_HINTS:
+                        if self.debug:
+                            print(f'   ⚠️  Sub-module hint budget reached, stopping at {class_name}')
+                        break
+
+        combined = '\n'.join(hints_parts)
+        if len(combined) > MAX_TOTAL_HINTS:
+            combined = combined[:MAX_TOTAL_HINTS] + '\n// ... (truncated)'
+
+        if self.debug:
+            print(f'   📏 Direct scala hints: {len(combined)} chars')
+
+        return {
+            'success': True,
+            'hints': combined,
+            'chisel_files_found': [scala_file],
+            'source': 'direct_scala',
+        }
 
     def _aggregate_hints_for_files(self, verilog_files, verilog_diff, bug_description, all_files):
         """
@@ -1691,8 +1824,9 @@ def main():
         input_data['bugs'] = selected_bugs
         print(f'🎯 Processing {len(selected_bugs)} selected bug(s)')
 
-    # Create output directory
-    os.makedirs(args.output, exist_ok=True)
+    # Create output directory (args.output is a file path, so use its parent dir)
+    output_dir = os.path.dirname(os.path.abspath(args.output))
+    os.makedirs(output_dir, exist_ok=True)
 
     # Run pipeline using Step pattern
     processor = V2chisel_batch()
