@@ -89,6 +89,7 @@ def compile_xiangshan(hagent_root: Path, env: dict) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="Apply one chisel diff and collect verilog_diffs")
     parser.add_argument("mutation_yaml", help="Path to mutation_f*_m*_diffs.yaml")
+    parser.add_argument("--output-dir", default=None, help="Directory to save result YAML (default: verilog_diffs_B/ next to input)")
     args = parser.parse_args()
 
     mutation_path = Path(args.mutation_yaml).resolve()
@@ -218,7 +219,7 @@ def main():
     mutation["sv_changed"]    = sv_changed
     mutation["verilog_diffs"] = verilog_diffs
 
-    out_dir = mutation_path.parent / "verilog_diffs_B"
+    out_dir = Path(args.output_dir) if args.output_dir else mutation_path.parent / "verilog_diffs_B"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / mutation_path.name
 
