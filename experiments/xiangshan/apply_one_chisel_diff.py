@@ -29,24 +29,35 @@ import tempfile
 from pathlib import Path
 
 import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.scalarstring import LiteralScalarString
 
 
 # ── YAML helpers ─────────────────────────────────────────────────────────────
-class LiteralDumper(yaml.Dumper):
-    pass
-
-
-def _str_presenter(dumper, data):
-    if "\n" in data:
-        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
-    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
-
-
-LiteralDumper.add_representer(str, _str_presenter)
+def _make_literal(obj):
+    """Recursively convert multiline strings to LiteralScalarString so ruamel.yaml uses block style."""
+    if isinstance(obj, dict):
+        return {k: _make_literal(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_make_literal(v) for v in obj]
+    if isinstance(obj, str) and "\n" in obj:
+        return LiteralScalarString(obj)
+    return obj
 
 
 def yaml_dump(obj) -> str:
-    return yaml.dump(obj, Dumper=LiteralDumper, allow_unicode=True, sort_keys=False, width=120)
+    ry = YAML()
+    ry.default_flow_style = False
+    ry.width = 120
+    ry.allow_unicode = True
+    import io
+    buf = io.StringIO()
+    ry.dump(_make_literal(obj), buf)
+    return buf.getvalue()
+
+
+def yaml_load(text: str):
+    return yaml.safe_load(text)
 
 
 # ── RTL helpers ───────────────────────────────────────────────────────────────
@@ -109,7 +120,7 @@ def main():
     setup_script = hagent_root / "scripts" / "setup_mcp.sh"
 
     # ── Load mutation YAML ────────────────────────────────────────────────────
-    mutation = yaml.safe_load(mutation_path.read_text())
+    mutation = yaml_load(mutation_path.read_text())
     scala_rel = mutation["scala_file"]   # e.g. "src/main/scala/.../Alu.scala"
     orig_code = mutation["original_code"]
     mut_code  = mutation["mutated_code"]
