@@ -32,13 +32,21 @@ import yaml
 
 
 # ── YAML helpers ─────────────────────────────────────────────────────────────
-def str_presenter(dumper, data):
+class LiteralDumper(yaml.Dumper):
+    pass
+
+
+def _str_presenter(dumper, data):
     if "\n" in data:
         return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
     return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
 
-yaml.add_representer(str, str_presenter)
+LiteralDumper.add_representer(str, _str_presenter)
+
+
+def yaml_dump(obj) -> str:
+    return yaml.dump(obj, Dumper=LiteralDumper, allow_unicode=True, sort_keys=False, width=120)
 
 
 # ── RTL helpers ───────────────────────────────────────────────────────────────
@@ -223,7 +231,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / mutation_path.name
 
-    content = yaml.dump(mutation, allow_unicode=True, sort_keys=False, width=120)
+    content = yaml_dump(mutation)
     out_path.write_text(content)
 
     if out_path.stat().st_size == 0:
