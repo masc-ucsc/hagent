@@ -239,7 +239,7 @@ def main():
     mutation["verilog_diffs"] = verilog_diffs
 
     out_dir = Path(args.output_dir) if args.output_dir else mutation_path.parent / "verilog_diffs_B"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
     out_path = out_dir / mutation_path.name
 
     content = yaml_dump(mutation)
