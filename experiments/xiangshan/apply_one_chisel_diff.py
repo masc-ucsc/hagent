@@ -240,7 +240,7 @@ def main():
     mutation["sv_changed"]    = sv_changed
     mutation["verilog_diffs"] = verilog_diffs
 
-    out_dir = Path(args.output_dir) if args.output_dir else mutation_path.parent / "verilog_diffs_B"
+    out_dir = Path(args.output_dir) if args.output_dir else hagent_root / "experiments/xiangshan/chisel_diffs_B/verilog_diffs_B"
     os.makedirs(out_dir, exist_ok=True)
     out_path = out_dir / mutation_path.name
 
