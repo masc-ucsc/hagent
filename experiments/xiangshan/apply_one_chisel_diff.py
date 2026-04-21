@@ -91,12 +91,12 @@ def make_unified_diff(old: str, new: str, filename: str, n: int = 3) -> str:
 
 
 # ── Compile ───────────────────────────────────────────────────────────────────
-def compile_xiangshan(hagent_root: Path, env: dict) -> bool:
-    """Run the debug compile via mcp_build.py with the given environment."""
+def compile_xiangshan(hagent_root: Path, env: dict, profile: str) -> bool:
+    """Run compile via mcp_build.py with the given environment."""
     cmd = [
         "uv", "run", "--python", "3.13",
         "python", str(hagent_root / "hagent/mcp/mcp_build.py"),
-        "--name", "xiangshan_rtl_dbg",
+        "--name", profile,
         "--api", "compile",
     ]
     print(f"  Running: {' '.join(cmd)}")
@@ -109,6 +109,7 @@ def main():
     parser = argparse.ArgumentParser(description="Apply one chisel diff and collect verilog_diffs")
     parser.add_argument("mutation_yaml", help="Path to mutation_f*_m*_diffs.yaml")
     parser.add_argument("--output-dir", default=None, help="Directory to save result YAML (default: verilog_diffs_B/ next to input)")
+    parser.add_argument("--profile", default="xiangshan_rtl_dbg", choices=["xiangshan_rtl_dbg", "xiangshan_rtl_opt"], help="Build profile to use (default: xiangshan_rtl_dbg)")
     args = parser.parse_args()
 
     mutation_path = Path(args.mutation_yaml).resolve()
@@ -145,10 +146,11 @@ def main():
         print()
 
         # Paths inside the temp workspace
-        repo_dir = tmp_dir / "repo"
+        repo_dir  = tmp_dir / "repo"
         build_dir = tmp_dir / "build"
         cache_dir = tmp_dir / "cache"
-        rtl_dir   = build_dir / "build_dbg" / "rtl"
+        build_subdir = "build_opt" if args.profile == "xiangshan_rtl_opt" else "build_dbg"
+        rtl_dir   = build_dir / build_subdir / "rtl"
 
         # Build environment for compile calls
         env = os.environ.copy()
@@ -166,7 +168,7 @@ def main():
 
         # ── Step 2: baseline compile ──────────────────────────────────────────
         print("Step 2: Compiling clean Chisel (baseline)...")
-        if not compile_xiangshan(hagent_root, env):
+        if not compile_xiangshan(hagent_root, env, args.profile):
             print("ERROR: Baseline compile failed.", file=sys.stderr)
             sys.exit(1)
         print("  Baseline compile OK")
@@ -199,7 +201,7 @@ def main():
 
         try:
             print("Step 5: Compiling with mutation (debug build)...")
-            if not compile_xiangshan(hagent_root, env):
+            if not compile_xiangshan(hagent_root, env, args.profile):
                 print("  COMPILE FAILED")
             else:
                 print("  Compile OK")
