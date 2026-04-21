@@ -117,6 +117,23 @@ def main():
         print(f"ERROR: file not found: {mutation_path}", file=sys.stderr)
         sys.exit(1)
 
+    # ── Validate output dir up front (before any compile work) ───────────────
+    out_dir = Path(args.output_dir) if args.output_dir else Path(__file__).resolve().parent / "chisel_diffs_B/verilog_diffs_B"
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except OSError as e:
+        print(f"ERROR: cannot create output directory {out_dir}: {e}", file=sys.stderr)
+        sys.exit(1)
+    # Write a quick test file to verify we have write permissions
+    test_file = out_dir / ".write_test"
+    try:
+        test_file.write_text("ok")
+        test_file.unlink()
+    except OSError as e:
+        print(f"ERROR: no write permission in {out_dir}: {e}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Output dir    : {out_dir}")
+
     hagent_root = Path(os.environ.get("HAGENT_ROOT", Path.home() / "hagent"))
     setup_script = hagent_root / "scripts" / "setup_mcp.sh"
 
@@ -240,8 +257,7 @@ def main():
     mutation["sv_changed"]    = sv_changed
     mutation["verilog_diffs"] = verilog_diffs
 
-    out_dir = Path(args.output_dir) if args.output_dir else hagent_root / "experiments/xiangshan/chisel_diffs_B/verilog_diffs_B"
-    os.makedirs(out_dir, exist_ok=True)
+    # out_dir already created and verified at the top of main()
     out_path = out_dir / mutation_path.name
 
     content = yaml_dump(mutation)
