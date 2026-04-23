@@ -34,13 +34,13 @@ def main():
 
     chisel_diff = mutation.get("chisel_diff", "")
 
-    bugs = []
-    for entry in verilog_diffs:
-        diff_text = str(entry.get("verilog_diff", entry.get("unified_diff", "")))
-        bug = {"file": entry["file"], "unified_diff": LiteralScalarString(diff_text)}
-        if chisel_diff:
-            bug["chisel_diff"] = LiteralScalarString(str(chisel_diff))
-        bugs.append(bug)
+    # All verilog_diffs come from one chisel_diff — combine into a single bug entry
+    combined_diff = "\n".join(
+        str(entry.get("verilog_diff", entry.get("unified_diff", "")))
+        for entry in verilog_diffs
+    )
+    files = [entry["file"] for entry in verilog_diffs]
+    bugs = [{"file": files[0], "unified_diff": LiteralScalarString(combined_diff)}]
 
     out = {
         "v2chisel_batch": {
@@ -53,6 +53,8 @@ def main():
         "chisel_patterns": ["/home/farzaneh/hagent/xiangShan/repo/src/main/scala/**/*.scala"],
         "bugs": bugs,
     }
+    if chisel_diff:
+        out["chisel_diff"] = LiteralScalarString(str(chisel_diff))
 
     out_path = Path(args.output) if args.output else mutation_path.parent / f"test_input_{mutation_path.stem}.yaml"
 
@@ -63,7 +65,7 @@ def main():
         ry2.dump(out, f)
 
     print(f"Written : {out_path}")
-    print(f"  bugs  : {len(bugs)} entries ({', '.join(b['file'] for b in bugs)})")
+    print(f"  bugs  : 1 combined entry covering {len(verilog_diffs)} files ({', '.join(files)})")
     print()
     print(f"Run with:")
     print(f"  uv run python hagent/step/v2chisel_batch/v2chisel_batch.py {out_path} -o out.yaml")

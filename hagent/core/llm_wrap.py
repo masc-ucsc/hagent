@@ -297,25 +297,38 @@ class LLM_wrap:
             messages = []
         messages += formatted
 
-        # Build llm_call_args for responses API
+        model = self.llm_args.get('model', '')
+
+        # Decide which API to use: responses API for codex/o-series, completion for everything else
+        _responses_api_models = ('codex', 'o1', 'o3', 'o4')
+        use_responses_api = any(m in model for m in _responses_api_models)
+
+        # Build llm_call_args
         llm_call_args = {}
-        llm_call_args['model'] = self.llm_args.get('model', '')
-        llm_call_args['input'] = messages
-
-        # Convert max_tokens to max_output_tokens for responses API
-        if 'max_tokens' in self.llm_args:
-            llm_call_args['max_output_tokens'] = self.llm_args['max_tokens']
-
-        model = llm_call_args.get('model', '')
+        llm_call_args['model'] = model
+        if use_responses_api:
+            llm_call_args['input'] = messages
+            if 'max_tokens' in self.llm_args:
+                llm_call_args['max_output_tokens'] = self.llm_args['max_tokens']
+        else:
+            llm_call_args['messages'] = messages
+            if 'max_tokens' in self.llm_args:
+                llm_call_args['max_tokens'] = self.llm_args['max_tokens']
 
         # Anthropic models do not allow both temperature and top_p simultaneously
         anthropic_model = model.startswith('anthropic') or model.startswith('claude')
+
+        # Models that do not support temperature parameter
+        _no_temperature_models = ('gpt-5', 'codex', 'o1', 'o3', 'o4')
+        no_temperature = any(m in model for m in _no_temperature_models)
 
         # Copy other supported parameters
         for param in ['temperature', 'top_p', 'stream']:
             if param in self.llm_args:
                 if anthropic_model and param == 'top_p':
                     continue  # Anthropic does not allow both temperature and top_p
+                if no_temperature and param == 'temperature':
+                    continue  # Some models do not support temperature
                 llm_call_args[param] = self.llm_args[param]
         if model == '':
             self._set_error('empty model name. No default model used')
@@ -372,39 +385,57 @@ class LLM_wrap:
                         prev_response = last_response
                         if len(prev_response) > 2048:
                             prev_response = prev_response[:2048] + '...'
-                        call_args['input'] = list(call_args['input']) + [
+                        key = 'input' if use_responses_api else 'messages'
+                        call_args[key] = list(call_args[key]) + [
                             {
                                 'role': 'user',
                                 'content': f'The last response answer was: """{prev_response}""" please try something different.',
                             },
                         ]
 
-                    r = litellm.responses(**call_args)
+                    if use_responses_api:
+                        r = litellm.responses(**call_args)
+                    else:
+                        r = litellm.completion(**call_args)
                     responses.append(r)
 
-                    # Store only the last response for next iteration's variation
-                    # Extract text from output[0].content[0].text
-                    if hasattr(r, 'output') and r.output:
+                    # Extract text for variation tracking
+                    if use_responses_api:
+                        if hasattr(r, 'output') and r.output:
+                            try:
+                                last_response = r.output[0].content[0].text
+                            except (IndexError, AttributeError):
+                                pass
+                    else:
                         try:
-                            last_response = r.output[0].content[0].text
+                            last_response = r.choices[0].message.content or ''
                         except (IndexError, AttributeError):
                             pass
 
-                # For responses API, we collect answers directly instead of combining choices
                 answers = []
                 total_tokens = 0
                 total_cost = 0.0
 
                 for resp in responses:
-                    if hasattr(resp, 'output') and resp.output:
+                    if use_responses_api:
+                        if hasattr(resp, 'output') and resp.output:
+                            try:
+                                text = resp.output[0].content[0].text
+                                if text:
+                                    answers.append(text)
+                            except (IndexError, AttributeError):
+                                pass
+                        if hasattr(resp, 'usage'):
+                            total_tokens += getattr(resp.usage, 'total_tokens', 0)
+                    else:
                         try:
-                            text = resp.output[0].content[0].text
+                            text = resp.choices[0].message.content or ''
                             if text:
                                 answers.append(text)
                         except (IndexError, AttributeError):
                             pass
-                    if hasattr(resp, 'usage'):
-                        total_tokens += getattr(resp.usage, 'total_tokens', 0)
+                        if hasattr(resp, 'usage'):
+                            total_tokens += getattr(resp.usage, 'total_tokens', 0)
                     try:
                         total_cost += litellm.completion_cost(completion_response=resp)
                     except Exception:
@@ -415,22 +446,31 @@ class LLM_wrap:
                 tokens = total_tokens
                 cost = total_cost
             else:
-                r = litellm.responses(**llm_call_args)
+                if use_responses_api:
+                    r = litellm.responses(**llm_call_args)
+                else:
+                    r = litellm.completion(**llm_call_args)
 
                 end = time.time()
                 response = {'created': start, 'elapsed': end - start}
 
-                # Extract answer from response
                 answers = []
-                if hasattr(r, 'output') and r.output:
+                if use_responses_api:
+                    if hasattr(r, 'output') and r.output:
+                        try:
+                            text = r.output[0].content[0].text
+                            if text:
+                                answers.append(text)
+                        except (IndexError, AttributeError):
+                            pass
+                else:
                     try:
-                        text = r.output[0].content[0].text
+                        text = r.choices[0].message.content or ''
                         if text:
                             answers.append(text)
                     except (IndexError, AttributeError):
                         pass
 
-                # Get tokens and cost
                 tokens = 0
                 if hasattr(r, 'usage'):
                     tokens = getattr(r.usage, 'total_tokens', 0)

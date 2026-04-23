@@ -292,12 +292,14 @@ class V2chisel_batch(Step):
             combined_diff = '\n'.join(entry['verilog_diff'] for entry in verilog_diffs_list)
             verilog_files = [entry['filename'] for entry in verilog_diffs_list]
 
-            bugs.append({
-                'verilog_file': scala_file or verilog_files[0],
-                'unified_diff': combined_diff,
-                'description': description,
-                'verilog_files': verilog_files,  # all SV files for multi-hint lookup
-            })
+            bugs.append(
+                {
+                    'verilog_file': scala_file or verilog_files[0],
+                    'unified_diff': combined_diff,
+                    'description': description,
+                    'verilog_files': verilog_files,  # all SV files for multi-hint lookup
+                }
+            )
             print(f'📦 Converted xiangshan format: {len(verilog_diffs_list)} verilog diffs → 1 combined bug')
 
         if not bugs:
@@ -421,11 +423,22 @@ class V2chisel_batch(Step):
         """
         project = self.input_data.get('project', 'simplechisel')
 
-        # Projects that do NOT use the dinocpu CPU-profile system
-        _NO_CPU_PROFILE_PROJECTS = {'xiangshan', 'soomrv', 'cva6'}
-        if project in _NO_CPU_PROFILE_PROJECTS:
-            print(f'ℹ️  Project "{project}" does not use CPU profiles — skipping cpu_type detection')
-            return None
+        # Projects with their own compile profiles (not dinocpu CPU-profile system)
+        _PROJECT_COMPILE_PROFILES = {
+            'xiangshan': {'dbg': 'xiangshan_rtl_dbg', 'opt': 'xiangshan_rtl_opt'},
+            'soomrv': None,
+            'cva6': None,
+        }
+        if project in _PROJECT_COMPILE_PROFILES:
+            profiles = _PROJECT_COMPILE_PROFILES[project]
+            if not profiles:
+                print(f'ℹ️  Project "{project}" has no compile profile — skipping cpu_type detection')
+                return None
+            # Use --xiangshan-profile arg if provided, default to dbg
+            xiangshan_profile = self.input_data.get('xiangshan_profile', 'dbg')
+            profile = profiles.get(xiangshan_profile, profiles['dbg'])
+            print(f'ℹ️  Project "{project}" using compile profile "{profile}"')
+            return profile
 
         # Check for explicit override via --cpu argument
         cpu_override = self.input_data.get('cpu_type')
@@ -767,7 +780,7 @@ class V2chisel_batch(Step):
             report.mark_applier_success()
             break
 
-        # For projects without a CPU profile (xiangshan, soomrv, cva6):
+        # For projects without a CPU profile (soomrv, cva6):
         # applying the chisel diff is the final step — no compile or LEC available.
         if cpu_profile is None:
             print('✅ Done (no compile/LEC for this project)')
@@ -795,7 +808,7 @@ class V2chisel_batch(Step):
 
         # Retry loop for compilation errors (3 iterations max)
         compile_retries = 0
-        max_compile_retries = 3
+        max_compile_retries = 0
 
         while compile_retries <= max_compile_retries:
             compile_result = self._compile_and_generate_verilog(cpu_profile, module_name=module_name)
@@ -803,6 +816,7 @@ class V2chisel_batch(Step):
             if not compile_result['success']:
                 error_msg = compile_result.get('error', '')
                 report.set_error('compilation', error_msg)
+                print(f'❌ Compile error:\n{error_msg}')
 
                 if compile_retries < max_compile_retries:
                     compile_retries += 1
@@ -929,7 +943,7 @@ class V2chisel_batch(Step):
 
         # Retry loop for LEC failures (1 iteration max)
         lec_retries = 0
-        max_lec_retries = 1
+        max_lec_retries = 0
 
         while lec_retries <= max_lec_retries:
             lec_result = self._run_lec_verification(
@@ -1076,7 +1090,9 @@ class V2chisel_batch(Step):
 
                         # Recreate golden design with new diff
                         print('🎯 [GOLDEN] Recreating golden design for LEC retry...')
-                        golden_result = self._create_golden_design_with_elab(verilog_diff=unified_diff, cpu_profile=cpu_profile, module_name=module_name)
+                        golden_result = self._create_golden_design_with_elab(
+                            verilog_diff=unified_diff, cpu_profile=cpu_profile, module_name=module_name
+                        )
 
                         if not golden_result['success']:
                             print(f'❌ [GOLDEN] Golden design recreation failed: {golden_result.get("error")}')
@@ -1277,9 +1293,7 @@ class V2chisel_batch(Step):
             # Single-file: standard path
             bug_entry = {'file': bug_file, 'unified_diff': verilog_diff, 'description': bug_description}
             bug_info = BugInfo(bug_entry, 0)
-            hints_result = self.hints_generator_v2.find_hints(
-                bug_info=bug_info, all_files=all_files, docker_container='hagent'
-            )
+            hints_result = self.hints_generator_v2.find_hints(bug_info=bug_info, all_files=all_files, docker_container='hagent')
 
             if hints_result.get('success'):
                 chisel_files = [
@@ -1287,7 +1301,12 @@ class V2chisel_batch(Step):
                     for h in hints_result.get('hits', [])
                     if getattr(h, 'file_name', None) or (isinstance(h, dict) and h.get('file_name'))
                 ]
-                return {'success': True, 'hints': hints_result.get('hints', ''), 'chisel_files_found': chisel_files, 'source': hints_result.get('source', 'unknown')}
+                return {
+                    'success': True,
+                    'hints': hints_result.get('hints', ''),
+                    'chisel_files_found': chisel_files,
+                    'source': hints_result.get('source', 'unknown'),
+                }
             else:
                 return {'success': False, 'error': hints_result.get('error', 'No candidates found')}
 
@@ -1295,6 +1314,7 @@ class V2chisel_batch(Step):
             error_msg = f'Exception during hints generation: {str(e)}'
             if self.debug:
                 import traceback
+
                 traceback.print_exc()
             return {'success': False, 'error': error_msg}
 
@@ -1332,13 +1352,19 @@ class V2chisel_batch(Step):
             if self.debug:
                 print(f'   ⚠️  Could not read scala file {scala_file} from Docker, falling back to aggregate mode')
             from hagent.step.v2chisel_batch.components.bug_info import BugInfo
+
             # Extract module name from scala_file for single-file fallback
             module_name = os.path.splitext(os.path.basename(scala_file))[0]
             bug_entry = {'file': module_name + '.sv', 'unified_diff': verilog_diff, 'description': scala_file}
             bug_info = BugInfo(bug_entry, 0)
             result = self.hints_generator_v2.find_hints(bug_info=bug_info, all_files=all_files, docker_container='hagent')
             if result.get('success'):
-                return {'success': True, 'hints': result.get('hints', ''), 'chisel_files_found': [scala_file], 'source': 'fallback'}
+                return {
+                    'success': True,
+                    'hints': result.get('hints', ''),
+                    'chisel_files_found': [scala_file],
+                    'source': 'fallback',
+                }
             return {'success': False, 'error': f'Could not read {scala_file} and fallback also failed'}
 
         if self.debug:
@@ -1429,8 +1455,8 @@ class V2chisel_batch(Step):
         """
         from hagent.step.v2chisel_batch.components.bug_info import BugInfo
 
-        MAX_HINTS_PER_FILE = 4000   # chars — cap each file's hints block
-        MAX_TOTAL_HINTS = 16000     # chars — cap the combined hints sent to LLM
+        MAX_HINTS_PER_FILE = 4000  # chars — cap each file's hints block
+        MAX_TOTAL_HINTS = 16000  # chars — cap the combined hints sent to LLM
 
         combined_hints_parts = []
         all_chisel_files = []
@@ -1447,9 +1473,7 @@ class V2chisel_batch(Step):
             bug_entry = {'file': sv_file, 'unified_diff': verilog_diff, 'description': bug_description}
             bug_info = BugInfo(bug_entry, 0)
 
-            result = self.hints_generator_v2.find_hints(
-                bug_info=bug_info, all_files=all_files, docker_container='hagent'
-            )
+            result = self.hints_generator_v2.find_hints(bug_info=bug_info, all_files=all_files, docker_container='hagent')
 
             if result.get('success'):
                 any_success = True
@@ -1577,6 +1601,8 @@ class V2chisel_batch(Step):
         Returns:
             Dict with success status, profile info, and Verilog file count
         """
+        _COMPILE_ONLY_PROFILES = ('xiangshan_rtl_dbg', 'xiangshan_rtl_opt')
+
         try:
             # Step 1: compile (Chisel → Verilog)
             exit_code, stdout, stderr = self._run_mcp_build(cpu_profile, 'compile')
@@ -1588,18 +1614,19 @@ class V2chisel_batch(Step):
                     'stderr': stderr,
                 }
 
-            # Step 2: elab --tag gate
-            elab_opts = {'tag': 'gate'}
-            if module_name:
-                elab_opts['top_synth'] = module_name
-            elab_exit_code, _, elab_stderr = self._run_mcp_build(cpu_profile, 'elab', elab_opts)
-            if elab_exit_code != 0:
-                return {
-                    'success': False,
-                    'error': f'elab gate failed (exit {elab_exit_code}):\n{elab_stderr}',
-                    'exit_code': elab_exit_code,
-                    'stderr': elab_stderr,
-                }
+            # Step 2: elab --tag gate (skipped for xiangshan which has no elab API)
+            if cpu_profile not in _COMPILE_ONLY_PROFILES:
+                elab_opts = {'tag': 'gate'}
+                if module_name:
+                    elab_opts['top_synth'] = module_name
+                elab_exit_code, _, elab_stderr = self._run_mcp_build(cpu_profile, 'elab', elab_opts)
+                if elab_exit_code != 0:
+                    return {
+                        'success': False,
+                        'error': f'elab gate failed (exit {elab_exit_code}):\n{elab_stderr}',
+                        'exit_code': elab_exit_code,
+                        'stderr': elab_stderr,
+                    }
 
             verilog_count = self._count_verilog_files(cpu_profile)
             return {
@@ -1769,6 +1796,12 @@ def main():
     parser.add_argument('--compile-error', help='Compile error from previous attempt (triggers prompt_compile_error)')
     parser.add_argument('--previous-diff-file', help='Path to file containing previous chisel_diff that failed')
     parser.add_argument('--project', help='Project name (e.g., xiangshan, soomrv, cva6, simplechisel)')
+    parser.add_argument(
+        '--xiangshan-profile',
+        choices=['dbg', 'opt'],
+        default='dbg',
+        help='XiangShan compile profile: dbg (xiangshan_rtl_dbg) or opt (xiangshan_rtl_opt)',
+    )
     parser.add_argument('--debug', action='store_true', default=True, help='Enable debug output')
 
     args = parser.parse_args()
@@ -1794,6 +1827,9 @@ def main():
     input_data['debug'] = args.debug
     input_data['output_dir'] = args.output
     input_data['chisel_diff_only'] = args.chisel_diff_only
+
+    # Wire --xiangshan-profile into input_data
+    input_data['xiangshan_profile'] = args.xiangshan_profile
 
     if args.compile_error:
         input_data['compile_error'] = args.compile_error
@@ -1872,10 +1908,25 @@ def main():
             print(f'❌ Pipeline failed: {result.get("error")}')
         print('=' * 80)
 
-    # Write output YAML
+    # Write output YAML with block scalar style for multiline strings
+    from ruamel.yaml import YAML as _YAML
+    from ruamel.yaml.scalarstring import LiteralScalarString as _LSS
+
+    def _make_literal(obj):
+        if isinstance(obj, dict):
+            return {k: _make_literal(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_make_literal(v) for v in obj]
+        if isinstance(obj, str) and '\n' in obj:
+            return _LSS(obj)
+        return obj
+
     output_file = os.path.join(args.output, 'output.yaml')
+    _ry = _YAML()
+    _ry.default_flow_style = False
+    _ry.width = 120
     with open(output_file, 'w') as f:
-        yaml.dump(result, f, default_flow_style=False)
+        _ry.dump(_make_literal(result), f)
     print(f'\n💾 Output written to: {output_file}')
 
     return 0 if result['success'] else 1
