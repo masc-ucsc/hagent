@@ -316,7 +316,7 @@ class V2chisel_batch(Step):
             project = self.input_data.get('project', 'simplechisel')
             print(f'🔧 CPU profile: not applicable for project "{project}"')
 
-        chisel_diff_only = self.input_data.get('chisel_diff_only', False)
+        chisel_diff_only = self.input_data.get('chisel_diff_only', True)
 
         # Step 3: Generate fresh baseline Verilog
         # Skipped in chisel_diff_only mode or when the project has no CPU-profile system.
@@ -363,6 +363,10 @@ class V2chisel_batch(Step):
             print(f'\n✅ Generated chisel_diff for {successful_bugs}/{len(bugs)} bugs')
             print(f'💰 Total LLM cost: ${total_cost:.4f}')
             print(f'🔢 Total tokens used: {total_tokens}')
+
+            if self.builder:
+                self.builder.cleanup()
+                print('🗑️  Docker container cleaned up')
 
             return {
                 'success': True,
@@ -1792,7 +1796,8 @@ def main():
     )
     parser.add_argument('--bugs', help='Bug numbers to process (e.g., "1,2,3" or "1-5")')
     parser.add_argument('--llm', help='LLM model to use (e.g., "openai/gpt-4o", "anthropic/claude-sonnet-4-5-20250929")')
-    parser.add_argument('--chisel-diff-only', action='store_true', help='Only generate chisel_diff (skip compile/LEC)')
+    parser.add_argument('--chisel-diff-only', action='store_true', default=True, help='Only generate chisel_diff, skip compile/LEC (default: True)')
+    parser.add_argument('--full-pipeline', action='store_true', help='Run full pipeline including compile and LEC')
     parser.add_argument('--compile-error', help='Compile error from previous attempt (triggers prompt_compile_error)')
     parser.add_argument('--previous-diff-file', help='Path to file containing previous chisel_diff that failed')
     parser.add_argument('--project', help='Project name (e.g., xiangshan, soomrv, cva6, simplechisel)')
@@ -1826,7 +1831,7 @@ def main():
 
     input_data['debug'] = args.debug
     input_data['output_dir'] = args.output
-    input_data['chisel_diff_only'] = args.chisel_diff_only
+    input_data['chisel_diff_only'] = not args.full_pipeline
 
     # Wire --xiangshan-profile into input_data
     input_data['xiangshan_profile'] = args.xiangshan_profile
@@ -1921,7 +1926,13 @@ def main():
             return _LSS(obj)
         return obj
 
-    output_file = os.path.join(args.output, 'output.yaml')
+    output_path = Path(args.output)
+    if output_path.suffix in ('.yaml', '.yml'):
+        output_file = str(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        output_path.mkdir(parents=True, exist_ok=True)
+        output_file = str(output_path / 'output.yaml')
     _ry = _YAML()
     _ry.default_flow_style = False
     _ry.width = 120
