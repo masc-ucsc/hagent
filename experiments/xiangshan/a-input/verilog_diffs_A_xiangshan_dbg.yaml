@@ -1,0 +1,229 @@
+v2chisel_batch:
+  llm:
+    model: openai/gpt-5-codex
+docker_container: hagent
+docker_patterns:
+- /code/XiangShan/src/main/scala
+chisel_patterns:
+- /home/farzaneh/hagent/xiangShan/repo/src/main/scala/**/*.scala
+bugs:
+- file: AddModule.sv
+  unified_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -96,5 +96,5 @@
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+    -  wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    +  wire [63:0] io_add_0 = 64'(io_src_0_0 - io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+       wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+- file: AddModule.sv
+  unified_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -97,5 +97,5 @@
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    -  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+    +  wire [31:0] io_addw_0 = 32'(io_srcw_0 - io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       assign io_addw = io_addw_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+- file: AddModule.sv
+  unified_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -96,5 +96,5 @@
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+    -  wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    +  wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_0_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+       wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+- file: AddModule.sv
+  unified_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -97,5 +97,5 @@
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    -  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+    +  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_srcw_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       assign io_addw = io_addw_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+- file: SubModule.sv
+  unified_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -93,5 +93,5 @@
+       wire [63:0] io_src_0_0 = io_src_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+    -  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+    +  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} - 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+       assign io_sub = io_sub_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+     endmodule
+- file: SubModule.sv
+  unified_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -93,5 +93,5 @@
+       wire [63:0] io_src_0_0 = io_src_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+    -  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+    +  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} - 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+       assign io_sub = io_sub_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+     endmodule
+- file: SubModule.sv
+  unified_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -93,5 +93,5 @@
+       wire [63:0] io_src_0_0 = io_src_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+    -  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+    +  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h0));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+       assign io_sub = io_sub_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+     endmodule
+- file: SubModule.sv
+  unified_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -93,5 +93,5 @@
+       wire [63:0] io_src_0_0 = io_src_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+    -  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+    +  wire [64:0] io_sub_0 = 65'({1'h1, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+       assign io_sub = io_sub_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+     endmodule
+- file: Alu.sv
+  unified_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -432,5 +432,5 @@
+         io_in_bits_perfDebugInfo_tlbRespTime_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+       wire [63:0] pipeReg_0_debug_seqNum = io_in_bits_debug_seqNum_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+    -  wire        io_in_ready_0 = io_out_ready_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+    +  wire        io_in_ready_0 = ~io_out_ready_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+       wire        fixpipeReg_0_perfDebugInfo_eliminatedMove;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23
+       wire [63:0] fixpipeReg_0_perfDebugInfo_renameTime;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23
+- file: Alu.sv
+  unified_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -394,5 +394,5 @@
+       wire [63:0] fixpipeReg_0_dataPipe_0_src_0 = 64'h0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, :204:47
+       wire [63:0] fixpipeReg_0_dataPipe_0_imm = 64'h0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, :204:47
+    -  wire        io_out_valid_0 = io_in_valid_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+    +  wire        io_out_valid_0 = ~io_in_valid_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+       wire [8:0]  pipeReg_0_ctrl_fuOpType = io_in_bits_ctrl_fuOpType_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+       wire        pipeReg_0_ctrl_robIdx_flag = io_in_bits_ctrl_robIdx_flag_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+- file: Alu.sv
+  unified_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -445,5 +445,5 @@
+       wire [63:0] fixpipeReg_0_debug_seqNum;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23
+       wire [6:0]  _flushed_flushItself_T_1 =
+    -    {io_in_bits_ctrl_robIdx_flag_0, io_in_bits_ctrl_robIdx_value_0};	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7, code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:61:40
+    +    {~io_in_bits_ctrl_robIdx_flag_0, io_in_bits_ctrl_robIdx_value_0};	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7, code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:61:40
+       wire [6:0]  _flushed_flushItself_T_2 =
+         {io_flush_bits_robIdx_flag_0, io_flush_bits_robIdx_value_0};	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7, code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:61:56
+- file: Alu.sv
+  unified_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -455,5 +455,5 @@
+       wire        flushed_differentFlag;	// code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:66:35
+       assign flushed_differentFlag = _GEN;	// code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:66:35
+    -  wire        _GEN_0 = io_in_bits_ctrl_robIdx_value_0 > io_flush_bits_robIdx_value_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7, code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:67:30
+    +  wire        _GEN_0 = io_in_bits_ctrl_robIdx_value_0 < io_flush_bits_robIdx_value_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7, code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:67:30
+       wire        flushVec_compare;	// code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:67:30
+       assign flushVec_compare = _GEN_0;	// code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:67:30
+- file: AluDataModule.sv
+  unified_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -114,5 +114,5 @@
+       wire [8:0]       io_func_0 = io_func;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7
+       wire [5:0]       shamt = io_src_1_0[5:0];	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :204:19
+    -  wire [5:0]       revShamt = 6'(~shamt + 6'h1);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :205:{18,29}
+    +  wire [5:0]       revShamt = 6'(~shamt - 6'h1);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :205:{18,29}
+       wire [63:0]      bitShift = 64'h1 << shamt;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :216:22
+       wire [63:0]      bclr = io_src_0_0 & ~bitShift;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :216:22, :217:{19,21}
+- file: AluDataModule.sv
+  unified_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -149,5 +149,5 @@
+       wire [3:0][63:0] _GEN_1 =
+         {{shaddSource_3}, {shaddSource_2}, {shaddSource_1}, {shaddSource_0}};	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:272:28, :286:29
+    -  wire             sltu = ~(_subModule_io_sub[64]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:247:25, :297:{17,21}
+    +  wire             sltu = (_subModule_io_sub[64]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:247:25, :297:{17,21}
+       wire             slt = io_src_0_0[63] ^ io_src_1_0[63] ^ sltu;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :297:17, :298:{21,38,49}
+       wire [63:0]      maxMin = slt ^ io_func_0[0] ? io_src_1_0 : io_src_0_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :211:49, :298:49, :299:{20,25}
+- file: AluDataModule.sv
+  unified_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -115,5 +115,5 @@
+       wire [5:0]       shamt = io_src_1_0[5:0];	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :204:19
+       wire [5:0]       revShamt = 6'(~shamt + 6'h1);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :205:{18,29}
+    -  wire [63:0]      bitShift = 64'h1 << shamt;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :216:22
+    +  wire [63:0]      bitShift = 64'h0 << shamt;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :216:22
+       wire [63:0]      bclr = io_src_0_0 & ~bitShift;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :216:22, :217:{19,21}
+       wire [63:0]      bset = io_src_0_0 | bitShift;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :216:22, :218:19
+- file: AluDataModule.sv
+  unified_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -157,5 +157,5 @@
+           ? {1'h0, io_func_0[1] ? maxMin : maxMinU}
+           : io_func_0[1] ? {64'h0, slt} : io_func_0[0] ? {64'h0, sltu} : _subModule_io_sub;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :211:49, :237:{28,33,57}, :247:25, :297:17, :298:49, :299:20, :300:20, :301:{23,36,67,85}
+    -  wire [63:0]      logicSrc2 = {64{~(io_func_0[5]) & io_func_0[0]}} ^ io_src_1_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :211:49, :304:{22,23,28,32}
+    +  wire [63:0]      logicSrc2 = {64{~(io_func_0[5]) | io_func_0[0]}} ^ io_src_1_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :211:49, :304:{22,23,28,32}
+       wire [63:0]      and_0 = io_src_0_0 & logicSrc2;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :304:22, :305:22
+       wire [63:0]      or_0 = io_src_0_0 | logicSrc2;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :304:22, :306:22
+- file: SubModule.sv
+  unified_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -93,5 +93,5 @@
+       wire [63:0] io_src_0_0 = io_src_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+    -  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+    +  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+       assign io_sub = io_sub_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+     endmodule
+- file: AddModule.sv
+  unified_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -97,5 +97,5 @@
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    -  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+    +  wire [31:0] io_addw_0 = 32'(io_srcw_0 ^ io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       assign io_addw = io_addw_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+- file: AddModule.sv
+  unified_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -96,5 +96,5 @@
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+    -  wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    +  wire [63:0] io_add_0 = 64'(io_src_0_0 + 64'd0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+       wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+- file: AddModule.sv
+  unified_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -97,5 +97,5 @@
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    -  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+    +  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_0_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       assign io_addw = io_addw_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7

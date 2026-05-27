@@ -39,10 +39,6 @@ if [ -n "$HAGENT_CACHE_DIR" ]; then
     DOCKER_ARGS="$DOCKER_ARGS -v $HAGENT_CACHE_DIR:/code/workspace/cache"
 fi
 
-if [ -n "$HAGENT_OUTPUT_DIR" ]; then
-    DOCKER_ARGS="$DOCKER_ARGS -v $HAGENT_OUTPUT_DIR:/code/workspace/output"
-fi
-
 # Add the docker image
 DOCKER_ARGS="$DOCKER_ARGS $HAGENT_DOCKER"
 

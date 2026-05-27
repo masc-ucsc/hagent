@@ -290,6 +290,52 @@ Module="Register" Instance="top.cpu.reg" File="/path/to/reg.v"
         assert hierarchy['top.cpu.alu']['file'] == '/path/to/alu.v'
         assert hierarchy['top.cpu.alu']['module'] == 'ALU'
 
+    def test_parse_slang_hierarchy_top_modules(self):
+        """Test that top-level design units are captured from slang-hier output."""
+        locator = Locator()
+
+        slang_output = (
+            'Module="PipelinedCPU" Instance="PipelinedCPU" File="PipelinedCPU.sv"\n'
+            'Module="ALU" Instance="PipelinedCPU.alu" File="ALU.sv"\n'
+            'Module="Control" Instance="PipelinedCPU.control" File="Control.sv"\n'
+            'Top level design units:\n'
+            '    PipelinedCPU\n'
+        )
+
+        hierarchy = locator._parse_slang_hierarchy(slang_output)
+
+        assert 'PipelinedCPU' in hierarchy
+        assert hierarchy['PipelinedCPU']['module'] == 'PipelinedCPU'
+        assert 'PipelinedCPU.alu' in hierarchy
+        assert '_top_modules' in hierarchy
+        assert hierarchy['_top_modules'] == ['PipelinedCPU']
+
+    def test_parse_slang_hierarchy_multiple_tops(self):
+        """Test parsing multiple top-level design units."""
+        locator = Locator()
+
+        slang_output = (
+            'Module="CPU" Instance="CPU" File="CPU.sv"\n'
+            'Module="Memory" Instance="Memory" File="Memory.sv"\n'
+            'Top level design units:\n'
+            '    CPU\n'
+            '    Memory\n'
+        )
+
+        hierarchy = locator._parse_slang_hierarchy(slang_output)
+
+        assert hierarchy['_top_modules'] == ['CPU', 'Memory']
+
+    def test_parse_slang_hierarchy_no_top_section(self):
+        """Test that _top_modules is absent when slang-hier omits the section."""
+        locator = Locator()
+
+        slang_output = 'Module="ALU" Instance="ALU" File="ALU.sv"\n'
+
+        hierarchy = locator._parse_slang_hierarchy(slang_output)
+
+        assert '_top_modules' not in hierarchy
+
     def test_parse_slang_hierarchy_empty(self):
         """Test parsing empty slang output."""
         locator = Locator()

@@ -312,6 +312,44 @@ def detect_top_ports_from_rtl(rtl_dir: str, top: str) -> List[str]:
     return []
 
 
+def _best_match(ports: List[str], patterns: List[str]) -> str:
+    """Return the port name that matches the highest-priority (lowest index) pattern."""
+    best = ''
+    best_rank: Optional[int] = None
+    for p in ports:
+        pl = p.lower()
+        for i, pat in enumerate(patterns):
+            if re.match(pat, pl):
+                if best_rank is None or i < best_rank:
+                    best, best_rank = p, i
+                break
+    return best
+
+
+_CLK_PATTERNS = [
+    r'^clk$',
+    r'^clock$',
+    r'^pclk$',
+    r'^aclk$',
+    r'.*clk.*',
+    r'.*clock.*',
+]
+
+_RST_PATTERNS = [
+    r'^rst$',
+    r'^reset$',
+    r'^resetn$',
+    r'^rst_n$',
+    r'^reset_n$',
+    r'^reset_ni$',
+    r'^rst_ni$',
+    r'.*reset.*',
+    r'.*rst.*',
+]
+
+_ACTIVE_LOW_SUFFIXES = ('_ni', 'ni', '_n', 'n')
+
+
 def _detect_clk_rst_from_port_names(
     port_names: List[str],
     clock_override: Optional[str] = None,
@@ -329,71 +367,22 @@ def _detect_clk_rst_from_port_names(
           * otherwise -> '<rst>'
     """
     if reset_expr_override and reset_expr_override.strip():
-        # even if rst unknown, allow user expression
         return (clock_override or '', reset_override or '', reset_expr_override.strip(), 'user_override_reset_expr')
 
-    ports = [p for p in (port_names or []) if p and p.strip()]
-    # de-dupe preserve order
-    seen = set()
-    puniq = []
-    for p in ports:
-        if p not in seen:
-            puniq.append(p)
+    # de-dupe preserving order
+    seen: set = set()
+    ports: List[str] = []
+    for p in port_names or []:
+        if p and p.strip() and p not in seen:
+            ports.append(p)
             seen.add(p)
-    ports = puniq
 
-    clk = (clock_override or '').strip()
-    rst = (reset_override or '').strip()
-
-    if not clk:
-        clk_patterns = [
-            r'^clk$',
-            r'^clock$',
-            r'^pclk$',
-            r'^aclk$',
-            r'.*clk.*',
-            r'.*clock.*',
-        ]
-        clk_best = ''
-        clk_best_rank = None
-        for p in ports:
-            pl = p.lower()
-            for i, pat in enumerate(clk_patterns):
-                if re.match(pat, pl):
-                    if clk_best_rank is None or i < clk_best_rank:
-                        clk_best = p
-                        clk_best_rank = i
-                    break
-        clk = clk_best
-
-    if not rst:
-        rst_patterns = [
-            r'^rst$',
-            r'^reset$',
-            r'^resetn$',
-            r'^rst_n$',
-            r'^reset_n$',
-            r'^reset_ni$',
-            r'^rst_ni$',
-            r'.*reset.*',
-            r'.*rst.*',
-        ]
-        rst_best = ''
-        rst_best_rank = None
-        for p in ports:
-            pl = p.lower()
-            for i, pat in enumerate(rst_patterns):
-                if re.match(pat, pl):
-                    if rst_best_rank is None or i < rst_best_rank:
-                        rst_best = p
-                        rst_best_rank = i
-                    break
-        rst = rst_best
+    clk = (clock_override or '').strip() or _best_match(ports, _CLK_PATTERNS)
+    rst = (reset_override or '').strip() or _best_match(ports, _RST_PATTERNS)
 
     rst_expr = ''
     if rst:
-        low = rst.lower()
-        is_active_low = low.endswith('n') or low.endswith('_n') or low.endswith('ni') or low.endswith('_ni')
+        is_active_low = any(rst.lower().endswith(s) for s in _ACTIVE_LOW_SUFFIXES)
         rst_expr = f'!{rst}' if is_active_low else rst
 
     return clk, rst, rst_expr, 'ports_name_heuristic'
@@ -1239,7 +1228,7 @@ class PropertyBuilder:
             if is_combinational:
                 print(
                     f"[WARN] Combinational module '{prop_top_used}' has no clock/reset; "
-                    f"skipping temporal property generation (only immediate assertions are valid)."
+                    f'skipping temporal property generation (only immediate assertions are valid).'
                 )
                 # For now, we'll use a dummy clock to allow the code to proceed,
                 # but properties should be pure combinational (no temporal operators).

@@ -1,0 +1,72 @@
+# demo_runner.toml — simple APIs for debugging/demoing the runner
+#
+# All commands use basic shell tools (touch, ls, cat, echo) so they
+# work identically on local and inside Docker.  The key insight:
+# $HAGENT_REPO_DIR and $HAGENT_BUILD_DIR resolve to different paths
+# in Docker vs local, but the *contents* should match.
+#
+# Profiles:
+#   demo_local   — always local (docker = "")
+#   demo         — follows HAGENT_DOCKER env (no docker key)
+#   demo_docker  — always Docker (docker = "mascucsc/hagent-builder:2026.02")
+
+[meta]
+schema_version = 2
+
+# ──────────────────────────────────────────────────────────────────
+# Defaults — shared APIs inherited by all profiles
+# ──────────────────────────────────────────────────────────────────
+
+[default]
+memory = 1
+
+[default.api.hello]
+description = "Print hello with tag name"
+command = "echo hello from {tag}"
+cwd = "."
+
+[default.api.touch]
+description = "Create a marker file in the tag directory"
+command = "touch {tag_dir}/marker.txt && echo created {tag_dir}/marker.txt"
+cwd = "."
+
+[default.api.check]
+description = "Verify the marker file exists"
+command = "ls -la {tag_dir}/marker.txt"
+cwd = "."
+
+[default.api.ls_repo]
+description = "List HAGENT_REPO_DIR"
+command = "ls $HAGENT_REPO_DIR"
+cwd = "$HAGENT_REPO_DIR"
+
+[default.api.env]
+description = "Show HAGENT environment variables"
+command = "echo REPO=$HAGENT_REPO_DIR BUILD=$HAGENT_BUILD_DIR CACHE=$HAGENT_CACHE_DIR"
+cwd = "."
+
+[default.api.write_result]
+description = "Write a file and read it back"
+command = "echo 'result from {tag}' > {tag_dir}/output.txt && cat {tag_dir}/output.txt"
+cwd = "."
+
+[default.tests]
+run = "echo running {test_name} && sleep 0.1"
+list = ["test_fast", "test_medium", "test_slow"]
+
+# ── demo_local: forces local execution (no Docker) ───────────────
+
+[demo_local]
+description = "Demo profile — always runs locally (no Docker)"
+docker = ""
+
+# ── demo: inherits default Docker (from HAGENT_DOCKER env) ──────
+
+[demo]
+description = "Demo profile — uses HAGENT_DOCKER if set, else local"
+
+# ── demo_docker: always runs in Docker ───────────────────────────
+
+[demo_docker]
+description = "Demo profile — always runs in Docker"
+docker = "mascucsc/hagent-builder:2026.02"

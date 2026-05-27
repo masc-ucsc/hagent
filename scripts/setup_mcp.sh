@@ -132,9 +132,17 @@ else
 
   # Copy from cache to target
   mkdir -p "${BASE_DIR}"
-  for d in repo build cache logs; do
+  for d in repo build logs; do
     cp -a "${CACHE_TEMPLATE_DIR}/${d}" "${BASE_DIR}/" 2>/dev/null || mkdir -p "${BASE_DIR}/${d}"
   done
+  mkdir -p "${BASE_DIR}/cache"
+
+  # The cached template may contain a prebuilt virtualenv that is several GB.
+  # Reusing that shared venv via copy is unnecessary for MCP setup and makes
+  # per-test setup painfully slow, so only copy the lightweight cache contents.
+  if [[ -d "${CACHE_TEMPLATE_DIR}/cache/reference" ]]; then
+    cp -a "${CACHE_TEMPLATE_DIR}/cache/reference" "${BASE_DIR}/cache/"
+  fi
   mkdir -p "${BASE_DIR}/cache/mcp"
 fi
 
@@ -145,6 +153,10 @@ else
   MODE_EXPORT="export HAGENT_DOCKER=\"${DOCKER_IMAGE}\""
 fi
 
+# Determine HAGENT_TECH_DIR: use env var if set, else try sky130 default
+TECH_DIR="${HAGENT_TECH_DIR:-/home/farzaneh/open_pdks/sky130/sky130B/libs.ref/sky130_fd_sc_hd/lib}"
+TECH_DIR_EXPORT="export HAGENT_TECH_DIR=\"${TECH_DIR}\""
+
 cat >"${BASE_DIR}/set_env.sh" <<EOF
 #!/bin/bash
 export UV_PROJECT="${HAGENT_ROOT}"
@@ -153,7 +165,7 @@ ${MODE_EXPORT}
 export HAGENT_REPO_DIR="${BASE_DIR}/repo"
 export HAGENT_BUILD_DIR="${BASE_DIR}/build"
 export HAGENT_CACHE_DIR="${BASE_DIR}/cache"
-export HAGENT_OUTPUT_DIR="${BASE_DIR}/logs"
+${TECH_DIR_EXPORT}
 EOF
 
 cat >"${BASE_DIR}/hagent_server.sh" <<EOF
@@ -164,7 +176,7 @@ ${MODE_EXPORT}
 export HAGENT_REPO_DIR="${BASE_DIR}/repo"
 export HAGENT_BUILD_DIR="${BASE_DIR}/build"
 export HAGENT_CACHE_DIR="${BASE_DIR}/cache"
-export HAGENT_OUTPUT_DIR="${BASE_DIR}/logs"
+${TECH_DIR_EXPORT}
 uv run python \${HAGENT_ROOT}/hagent/mcp/hagent-mcp-server.py "\$@"
 #uv run python \${HAGENT_ROOT}/hagent/mcp/mcp_build.py --help
 EOF

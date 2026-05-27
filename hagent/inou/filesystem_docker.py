@@ -193,10 +193,14 @@ class FileSystemDocker(FileSystem):
         self, command: str, cwd: str = '.', env: Optional[Dict[str, str]] = None, quiet: bool = True
     ) -> Tuple[int, str, str]:
         """Execute command in Docker container."""
-        # Build command with environment variables and working directory
+        # Build command with environment variables and working directory.
+        # Use double quotes so shell variables like $PATH expand inside the container.
         if env:
-            env_vars = ' '.join(f'{k}={repr(v)}' for k, v in env.items())
-            command = f'export {env_vars} && {command}'
+            env_parts = []
+            for k, v in env.items():
+                escaped = v.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`')
+                env_parts.append(f'{k}="{escaped}"')
+            command = f'export {" ".join(env_parts)} && {command}'
 
         if cwd and cwd != '.':
             command = f'cd "{cwd}" && {command}'

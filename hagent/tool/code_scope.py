@@ -1,10 +1,61 @@
+from typing import List, Tuple, Optional
+
+
+# Comment delimiters: (open, close)
+_BLOCK_COMMENTS = [('/*', '*/'), ('(*', '*)')]
+
+
+def _is_in_string(line: str, pos: int) -> bool:
+    """Check whether character at `pos` sits inside a string literal."""
+    in_str = False
+    for j in range(pos):
+        if line[j] in ('"', "'"):
+            in_str = not in_str
+    return in_str
+
+
+def _is_word_boundary(line: str, pos: int, length: int) -> bool:
+    """Return True if the token at line[pos:pos+length] is a standalone word."""
+    if pos > 0 and line[pos - 1].isalnum():
+        return False
+    if pos + length < len(line) and line[pos + length].isalnum():
+        return False
+    return True
+
+
+def _strip_block_comments(raw: str, in_block: bool, opener: Optional[str]) -> Tuple[str, bool, Optional[str]]:
+    """Remove block-comment content from *raw*, tracking cross-line state."""
+    out: List[str] = []
+    j = 0
+    while j < len(raw):
+        if not in_block:
+            started = False
+            for op, _ in _BLOCK_COMMENTS:
+                if raw[j : j + 2] == op:
+                    in_block, opener, started = True, op, True
+                    j += 2
+                    break
+            if started:
+                continue
+            out.append(raw[j])
+            j += 1
+        else:
+            close = next(cl for op, cl in _BLOCK_COMMENTS if op == opener)
+            if raw[j : j + 2] == close:
+                in_block, opener = False, None
+                j += 2
+            else:
+                j += 1
+    return ''.join(out), in_block, opener
+
+
 class Code_scope:
     """
     A class to find upper scopes in code for languages like Scala, C++, and Verilog.
     Given a set of line numbers, it returns the continuous scopes that contain these lines.
     """
 
-    def __init__(self, code_text, line_limit=10):
+    def __init__(self, code_text: str, line_limit: int = 10) -> None:
         """
         Initialize with the code text.
 
@@ -17,153 +68,68 @@ class Code_scope:
         self.line_limit = line_limit
         self.scopes = self._parse_scopes()
 
-    def _parse_scopes(self):
+    def _parse_scopes(self) -> List[Tuple[int, int]]:
         """
         Parse the code to identify all scopes.
 
         Returns:
-            list: A list of tuples (start_line, end_line, level) representing scopes.
+            list: A list of tuples (start_line, end_line) representing scopes.
         """
-        scopes = []
-        scope_stack = []
         open_markers = ['{', 'begin']
         close_markers = ['}', 'end']
+        scopes: List[Tuple[int, int]] = []
+        scope_stack: List[Tuple[int, int]] = []
+        in_block = False
+        opener: Optional[str] = None
 
-        # Track if we're in a comment
-        in_block_comment = False
-        block_comment_start = None
+        for i in range(self.num_lines):
+            line = self.lines[i]
 
-        i = 0
-        while i < self.num_lines:
-            line = self.lines[i].strip()
-            original_line = self.lines[i]
-
-            # Process comments first to avoid finding markers in comments
-
-            # Handle single-line comments
-            if not in_block_comment:
-                # Check for single line comments (// or #)
-                comment_pos = -1
-                for comment_marker in ['//', '#']:
-                    pos = line.find(comment_marker)
-                    if pos != -1 and (comment_pos == -1 or pos < comment_pos):
-                        comment_pos = pos
-
-                if comment_pos != -1:
-                    line = line[:comment_pos].strip()
-                    if not line:
-                        i += 1
-                        continue
-
-            # Handle multi-line comments (/* */, (* *))
-            j = 0
-            processed_line = ''
-            while j < len(original_line):
-                if not in_block_comment:
-                    # Check for comment start
-                    if j < len(original_line) - 1:
-                        if original_line[j : j + 2] == '/*':
-                            in_block_comment = True
-                            block_comment_start = '/*'
-                            j += 2
-                            continue
-                        elif original_line[j : j + 2] == '(*':
-                            in_block_comment = True
-                            block_comment_start = '(*'
-                            j += 2
-                            continue
-
-                    if j < len(original_line):
-                        processed_line += original_line[j]
-                    j += 1
-                else:
-                    # Check for comment end
-                    if j < len(original_line) - 1:
-                        if block_comment_start == '/*' and original_line[j : j + 2] == '*/':
-                            in_block_comment = False
-                            j += 2
-                            continue
-                        elif block_comment_start == '(*' and original_line[j : j + 2] == '*)':
-                            in_block_comment = False
-                            j += 2
-                            continue
-                    j += 1
-
-            # If we're in a comment, continue to next line
-            if in_block_comment:
-                i += 1
+            # --- strip block comments (cross-line aware) ---
+            cleaned, in_block, opener = _strip_block_comments(line, in_block, opener)
+            if in_block:
                 continue
 
-            # Skip empty lines after comment processing
-            if not processed_line.strip():
-                i += 1
+            # --- strip single-line comments ---
+            for cm in ('//', '#'):
+                pos = cleaned.find(cm)
+                if pos != -1:
+                    cleaned = cleaned[:pos]
+
+            stripped = cleaned.strip()
+            if not stripped:
                 continue
 
-            line = processed_line.strip()
-
-            # Check for opening markers with line limit
+            # --- check opening markers ---
             for idx, marker in enumerate(open_markers):
-                if marker in line:
-                    # Get position of the marker in the line
-                    pos = line.find(marker)
+                pos = stripped.find(marker)
+                if pos == -1:
+                    continue
+                if marker == 'begin' and not _is_word_boundary(stripped, pos, len(marker)):
+                    continue
+                if marker == '{' and _is_in_string(stripped, pos):
+                    continue
+                scope_stack.append((i, idx))
+                break
 
-                    # Make sure it's a real block opening, not part of another word (for 'begin')
-                    if marker == 'begin':
-                        if pos > 0 and line[pos - 1].isalnum():
-                            continue
-                        if pos + len(marker) < len(line) and line[pos + len(marker)].isalnum():
-                            continue
-
-                    # For C++ and Scala style, check if this is actually opening a scope
-                    if marker == '{':
-                        # Ensure we're not in a string or character literal
-                        string_quotes = ['"', "'"]
-                        in_string = False
-                        for j in range(pos):
-                            if line[j] in string_quotes:
-                                in_string = not in_string
-                        if in_string:
-                            continue
-
-                    scope_stack.append((i, idx))
-                    break
-
-            # Check for closing markers with line limit
+            # --- check closing markers ---
             for idx, marker in enumerate(close_markers):
-                if marker in line:
-                    pos = line.find(marker)
+                pos = stripped.find(marker)
+                if pos == -1:
+                    continue
+                if marker == 'end' and not _is_word_boundary(stripped, pos, len(marker)):
+                    continue
+                if marker == '}' and _is_in_string(stripped, pos):
+                    continue
+                if scope_stack and scope_stack[-1][1] == idx:
+                    start_line, _ = scope_stack.pop()
+                    if i - start_line <= self.line_limit:
+                        scopes.append((start_line, i))
+                    else:
+                        scopes.append((max(0, i - self.line_limit), i))
+                break
 
-                    # Similar checks as for opening markers
-                    if marker == 'end':
-                        if pos > 0 and line[pos - 1].isalnum():
-                            continue
-                        if pos + len(marker) < len(line) and line[pos + len(marker)].isalnum():
-                            continue
-
-                    # For C++ and Scala style, check if this is actually closing a scope
-                    if marker == '}':
-                        # Ensure we're not in a string
-                        string_quotes = ['"', "'"]
-                        in_string = False
-                        for j in range(pos):
-                            if line[j] in string_quotes:
-                                in_string = not in_string
-                        if in_string:
-                            continue
-
-                    # Try to match with an opening marker
-                    if scope_stack and scope_stack[-1][1] == idx:
-                        start_line, _ = scope_stack.pop()
-                        # Only add scope if within the line limit
-                        if i - start_line <= self.line_limit:
-                            scopes.append((start_line, i))
-                        else:
-                            # Create limited scope based on the line limit
-                            scopes.append((max(0, i - self.line_limit), i))
-
-            i += 1
-
-        # Handle unclosed scopes (using line limit)
+            # Handle unclosed scopes
         while scope_stack:
             start_line, _ = scope_stack.pop()
             end_line = min(start_line + self.line_limit, self.num_lines - 1)

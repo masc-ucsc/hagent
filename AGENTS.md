@@ -18,7 +18,6 @@ Follow these concise rules when working in this repo.
   - `export HAGENT_REPO_DIR=/path/to/git/root`
   - `export HAGENT_BUILD_DIR=/path/to/build`
   - `export HAGENT_CACHE_DIR=/path/to/cache`
-  - `export HAGENT_OUTPUT_DIR=/path/to/output`.
 
 ### Typical Directory Layout for Hagent users, not hagent iself
 - Local (host paths under your control):

@@ -1,3 +1,4 @@
+from types import ModuleType
 from typing import Optional, List
 from collections import namedtuple
 
@@ -27,6 +28,11 @@ class Compile_slang:
         self.error_message = ''
         self._compiler = None
         self._top_module = None
+        self._has_sources = False
+
+    def _can_query_symbols(self) -> bool:
+        """Avoid native symbol lookups on an empty real pyslang compilation."""
+        return self._has_sources or not isinstance(pyslang, ModuleType)
 
     def setup(self, args: Optional[str] = '') -> bool:
         """
@@ -65,6 +71,7 @@ class Compile_slang:
 
             self._sm = driver.sourceManager
             self._compiler = compilation
+            self._has_sources = False
 
             # tree = pyslang.SyntaxTree.fromFile("trivial.v", self._sm)
             # compilation.addSyntaxTree(tree)
@@ -92,6 +99,7 @@ class Compile_slang:
         try:
             tree = pyslang.SyntaxTree.fromText(text=text, sourceManager=self._sm, name='inline')
             self._compiler.addSyntaxTree(tree)
+            self._has_sources = True
 
         except Exception as e:
             self.error_message = f'Error adding source: {e}'
@@ -116,6 +124,7 @@ class Compile_slang:
                 self._sm = self._compiler.sourceManager
             tree = pyslang.SyntaxTree.fromFile(file, sourceManager=self._sm)
             self._compiler.addSyntaxTree(tree)
+            self._has_sources = True
 
         except FileNotFoundError:
             self.error_message = f'File not found: {file}'
@@ -131,7 +140,7 @@ class Compile_slang:
         Returns:
             True if the top exist in the compile (previously add_source) source. False otherwise.
         """
-        if self._compiler is None:
+        if self._compiler is None or not self._can_query_symbols():
             return False
 
         definition = self._compiler.getRoot().lookupName(top)
@@ -144,14 +153,16 @@ class Compile_slang:
         if not self._compiler:
             return ''
 
-        if not self._top_module:
+        if self._top_module:
+            top = self._top_module
+        elif not self._can_query_symbols():
+            return ''
+        else:
             inst = self._compiler.getRoot().topInstances
             if len(inst) != 1:
                 self.error_message = 'uname to find a single top module'
                 return ''
             top = str(inst[0].name)
-        else:
-            top = self._top_module
 
         return top
 
@@ -168,6 +179,9 @@ class Compile_slang:
         if self._top_module:
             if self._top_module == modname or not modname:
                 return [self._top_module]
+
+        if not self._can_query_symbols():
+            return []
 
         if not modname:
             inst = self._compiler.getRoot().topInstances
@@ -192,7 +206,7 @@ class Compile_slang:
             List[IO]: A list of IOs, Each entry has a named struct "name:str, input:bool, output:bool, bits:int".
         """
         ios = []
-        if not self._compiler:
+        if not self._compiler or not self._can_query_symbols():
             return []
 
         if not modname:

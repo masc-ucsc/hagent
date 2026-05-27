@@ -1,0 +1,921 @@
+pairs:
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -96,5 +96,5 @@
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+    -  wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    +  wire [63:0] io_add_0 = 64'(io_src_0_0 - io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+       wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -32,1 +32,1 @@
+    -  io.add := io.src(0) + io.src(1)
+    +  io.add := io.src(0) - io.src(1)
+  correct: true
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -97,5 +97,5 @@
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    -  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+    +  wire [31:0] io_addw_0 = 32'(io_srcw_0 - io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       assign io_addw = io_addw_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -31,7 +31,7 @@
+       io.add := io.src(0) + io.src(1)
+       // TODO: why this extra adder?
+    -  io.addw := io.srcw + io.src(1)(31,0)
+    +  io.addw := io.srcw - io.src(1)(31,0)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -96,5 +96,5 @@
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+    -  wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    +  wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_0_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+       wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -24,12 +24,12 @@
+     class AddModule(implicit p: Parameters) extends XSModule {
+       val io = IO(new Bundle() {
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val srcw = Input(UInt((XLEN/2).W))
+         val add = Output(UInt(XLEN.W))
+         val addw = Output(UInt((XLEN/2).W))
+       })
+    -  io.add := io.src(0) + io.src(1)
+    +  io.add := io.src(0) + io.src(0)
+       // TODO: why this extra adder?
+       io.addw := io.srcw + io.src(1)(31,0)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -97,5 +97,5 @@
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    -  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+    +  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_srcw_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       assign io_addw = io_addw_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -31,5 +31,5 @@
+       })
+       io.add := io.src(0) + io.src(1)
+       // TODO: why this extra adder?
+    -  io.addw := io.srcw + io.src(1)(31,0)
+    +  io.addw := io.srcw + io.srcw
+     }
+  correct: true
+- verilog_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -93,5 +93,5 @@
+       wire [63:0] io_src_0_0 = io_src_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+    -  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+    +  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} - 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+       assign io_sub = io_sub_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+     endmodule
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -40,5 +40,5 @@
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val sub = Output(UInt((XLEN+1).W))
+       })
+    -  io.sub := (io.src(0) +& (~io.src(1)).asUInt) + 1.U
+    +  io.sub := Cat(0.U(1.W), io.src(0)) - (Cat(0.U(1.W), (~io.src(1)).asUInt) + 1.U((XLEN+1).W))
+     }
+  correct: true
+- verilog_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -93,5 +93,5 @@
+       wire [63:0] io_src_0_0 = io_src_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+    -  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+    +  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} - 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+       assign io_sub = io_sub_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+     endmodule
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -36,8 +36,8 @@
+     class SubModule(implicit p: Parameters) extends XSModule {
+       val io = IO(new Bundle() {
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val sub = Output(UInt((XLEN+1).W))
+       })
+    -  io.sub := (io.src(0) +& (~io.src(1)).asUInt) + 1.U
+    +  io.sub := io.src(0) +& ((~io.src(1)).asUInt - 1.U)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -93,5 +93,5 @@
+       wire [63:0] io_src_0_0 = io_src_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+    -  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+    +  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h0));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+       assign io_sub = io_sub_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -40,7 +40,7 @@
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val sub = Output(UInt((XLEN+1).W))
+       })
+    -  io.sub := (io.src(0) +& (~io.src(1)).asUInt) + 1.U
+    +  io.sub := (io.src(0) +& (~io.src(1)).asUInt) + 0.U
+     }
+     
+     // ========== CANDIDATE 2: IntrGenIO ==========
+  correct: false
+- verilog_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -93,5 +93,5 @@
+       wire [63:0] io_src_0_0 = io_src_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+    -  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+    +  wire [64:0] io_sub_0 = 65'({1'h1, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+       assign io_sub = io_sub_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+     endmodule
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -36,7 +36,7 @@ class SubModule(implicit p: Parameters) extends XSModule {
+       val io = IO(new Bundle() {
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val sub = Output(UInt((XLEN+1).W))
+       })
+    -  io.sub := (io.src(0) +& (~io.src(1)).asUInt) + 1.U
+    +  io.sub := Cat(1.U(1.W), io.src(0)) + (Cat(0.U(1.W), (~io.src(1)).asUInt) + 1.U)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -432,5 +432,5 @@
+         io_in_bits_perfDebugInfo_tlbRespTime_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+       wire [63:0] pipeReg_0_debug_seqNum = io_in_bits_debug_seqNum_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+    -  wire        io_in_ready_0 = io_out_ready_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+    +  wire        io_in_ready_0 = ~io_out_ready_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+       wire        fixpipeReg_0_perfDebugInfo_eliminatedMove;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23
+       wire [63:0] fixpipeReg_0_perfDebugInfo_renameTime;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    @@ -7,11 +7,11 @@
+     class Alu(cfg: FuConfig)(implicit p: Parameters) extends PipedFuncUnit(cfg) {
+       private val aluModule = Module(new AluDataModule)
+     
+       private val flushed = io.in.bits.ctrl.robIdx.needFlush(io.flush)
+     
+       io.out.valid := io.in.valid
+    -  io.in.ready := io.out.ready
+    +  io.in.ready := ~io.out.ready
+     
+       private val in = io.in.bits
+       private val out = io.out.bits
+       aluModule.io.src.zip(in.data.src).foreach { case (sink, source) =>
+         sink := source
+       }
+  correct: true
+- verilog_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -394,5 +394,5 @@
+       wire [63:0] fixpipeReg_0_dataPipe_0_src_0 = 64'h0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, :204:47
+       wire [63:0] fixpipeReg_0_dataPipe_0_imm = 64'h0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, :204:47
+    -  wire        io_out_valid_0 = io_in_valid_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+    +  wire        io_out_valid_0 = ~io_in_valid_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+       wire [8:0]  pipeReg_0_ctrl_fuOpType = io_in_bits_ctrl_fuOpType_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+       wire        pipeReg_0_ctrl_robIdx_flag = io_in_bits_ctrl_robIdx_flag_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23, code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    @@ -11,7 +11,7 @@
+     
+       private val flushed = io.in.bits.ctrl.robIdx.needFlush(io.flush)
+     
+    -  io.out.valid := io.in.valid
+    +  io.out.valid := !io.in.valid
+       io.in.ready := io.out.ready
+     
+       private val in = io.in.bits
+       private val out = io.out.bits
+  correct: true
+- verilog_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -445,5 +445,5 @@
+       wire [63:0] fixpipeReg_0_debug_seqNum;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/FuncUnit.scala:200:23
+       wire [6:0]  _flushed_flushItself_T_1 =
+    -    {io_in_bits_ctrl_robIdx_flag_0, io_in_bits_ctrl_robIdx_value_0};	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7, code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:61:40
+    +    {~io_in_bits_ctrl_robIdx_flag_0, io_in_bits_ctrl_robIdx_value_0};	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7, code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:61:40
+       wire [6:0]  _flushed_flushItself_T_2 =
+         {io_flush_bits_robIdx_flag_0, io_flush_bits_robIdx_value_0};	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7, code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:61:56
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    @@
+     class Alu(cfg: FuConfig)(implicit p: Parameters) extends PipedFuncUnit(cfg) {
+       private val aluModule = Module(new AluDataModule)
+     
+    -  private val flushed = io.in.bits.ctrl.robIdx.needFlush(io.flush)
+    +  private val flippedRobIdx = Wire(new RobPtr)
+    +  flippedRobIdx := io.in.bits.ctrl.robIdx
+    +  flippedRobIdx.flag := ~io.in.bits.ctrl.robIdx.flag
+    +  private val flushed = flippedRobIdx.needFlush(io.flush)
+     
+       io.out.valid := io.in.valid
+       io.in.ready := io.out.ready
+  correct: true
+- verilog_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -455,5 +455,5 @@
+       wire        flushed_differentFlag;	// code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:66:35
+       assign flushed_differentFlag = _GEN;	// code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:66:35
+    -  wire        _GEN_0 = io_in_bits_ctrl_robIdx_value_0 > io_flush_bits_robIdx_value_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7, code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:67:30
+    +  wire        _GEN_0 = io_in_bits_ctrl_robIdx_value_0 < io_flush_bits_robIdx_value_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala:8:7, code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:67:30
+       wire        flushVec_compare;	// code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:67:30
+       assign flushVec_compare = _GEN_0;	// code/workspace/repo/utility/src/main/scala/utility/CircularQueuePtr.scala:67:30
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    @@ -5,7 +5,7 @@
+       private val aluModule = Module(new AluDataModule)
+     
+    -  private val flushed = io.in.bits.ctrl.robIdx.needFlush(io.flush)
+    +  private val flushed = io.in.bits.ctrl.robIdx.needFlush(io.flush, false)
+     
+       io.out.valid := io.in.valid
+       io.in.ready := io.out.ready
+  correct: false
+- verilog_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -114,5 +114,5 @@
+       wire [8:0]       io_func_0 = io_func;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7
+       wire [5:0]       shamt = io_src_1_0[5:0];	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :204:19
+    -  wire [5:0]       revShamt = 6'(~shamt + 6'h1);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :205:{18,29}
+    +  wire [5:0]       revShamt = 6'(~shamt - 6'h1);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :205:{18,29}
+       wire [63:0]      bitShift = 64'h1 << shamt;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :216:22
+       wire [63:0]      bclr = io_src_0_0 & ~bitShift;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :216:22, :217:{19,21}
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -204,2 +204,2 @@
+       val shamt = src2(5, 0)
+    -  val revShamt = ~src2(5,0) + 1.U
+    +  val revShamt = ~src2(5,0) - 1.U
+  correct: true
+- verilog_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -149,5 +149,5 @@
+       wire [3:0][63:0] _GEN_1 =
+         {{shaddSource_3}, {shaddSource_2}, {shaddSource_1}, {shaddSource_0}};	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:272:28, :286:29
+    -  wire             sltu = ~(_subModule_io_sub[64]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:247:25, :297:{17,21}
+    +  wire             sltu = (_subModule_io_sub[64]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:247:25, :297:{17,21}
+       wire             slt = io_src_0_0[63] ^ io_src_1_0[63] ^ sltu;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :297:17, :298:{21,38,49}
+       wire [63:0]      maxMin = slt ^ io_func_0[0] ? io_src_1_0 : io_src_0_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :211:49, :298:49, :299:{20,25}
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -1,7 +1,7 @@
+       // sub
+       val sub  = subModule.io.sub
+       subModule.io.src(0) := src1
+       subModule.io.src(1) := src2
+    -  val sltu    = !sub(XLEN)
+    +  val sltu    = sub(XLEN)
+       val slt     = src1(XLEN - 1) ^ src2(XLEN - 1) ^ sltu
+       val maxMin  = Mux(slt ^ func(0), src2, src1)
+       val maxMinU = Mux(sltu ^ func(0), src2, src1)
+  correct: true
+- verilog_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -115,5 +115,5 @@
+       wire [5:0]       shamt = io_src_1_0[5:0];	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :204:19
+       wire [5:0]       revShamt = 6'(~shamt + 6'h1);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :205:{18,29}
+    -  wire [63:0]      bitShift = 64'h1 << shamt;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :216:22
+    +  wire [63:0]      bitShift = 64'h0 << shamt;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:204:19, :216:22
+       wire [63:0]      bclr = io_src_0_0 & ~bitShift;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :216:22, :217:{19,21}
+       wire [63:0]      bset = io_src_0_0 | bitShift;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :216:22, :218:19
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -214,7 +214,7 @@
+     
+       // bclr, bset, binv
+    -  val bitShift = 1.U << src2(5, 0)
+    +  val bitShift = 0.U << src2(5, 0)
+       val bclr = src1 & ~bitShift
+       val bset = src1 | bitShift
+       val binv = src1 ^ bitShift
+  correct: true
+- verilog_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -157,5 +157,5 @@
+           ? {1'h0, io_func_0[1] ? maxMin : maxMinU}
+           : io_func_0[1] ? {64'h0, slt} : io_func_0[0] ? {64'h0, sltu} : _subModule_io_sub;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :211:49, :237:{28,33,57}, :247:25, :297:17, :298:49, :299:20, :300:20, :301:{23,36,67,85}
+    -  wire [63:0]      logicSrc2 = {64{~(io_func_0[5]) & io_func_0[0]}} ^ io_src_1_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :211:49, :304:{22,23,28,32}
+    +  wire [63:0]      logicSrc2 = {64{~(io_func_0[5]) | io_func_0[0]}} ^ io_src_1_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :211:49, :304:{22,23,28,32}
+       wire [63:0]      and_0 = io_src_0_0 & logicSrc2;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :304:22, :305:22
+       wire [63:0]      or_0 = io_src_0_0 | logicSrc2;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:196:7, :304:22, :306:22
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@
+       // logic
+    -  val logicSrc2 = Mux(!func(5) && func(0), ~src2, src2)
+    +  val logicSrc2 = Mux(!func(5) || func(0), ~src2, src2)
+       val and     = src1 & logicSrc2
+       val or      = src1 | logicSrc2
+       val xor     = src1 ^ logicSrc2
+       val orcb    = Cat((0 until 8).map(i => Fill(8, src1(i * 8 + 7, i * 8).orR)).reverse)
+       val orh48   = Cat(src1(63, 8), 0.U(8.W)) | src2
+  correct: true
+- verilog_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -93,5 +93,5 @@
+       wire [63:0] io_src_0_0 = io_src_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+    -  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, ~io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+    +  wire [64:0] io_sub_0 = 65'({1'h0, io_src_0_0} + 65'({1'h0, io_src_1_0} + 65'h1));	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7, :42:{24,28,48}
+       assign io_sub = io_sub_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:37:7
+     endmodule
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -36,8 +36,8 @@
+     class SubModule(implicit p: Parameters) extends XSModule {
+       val io = IO(new Bundle() {
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val sub = Output(UInt((XLEN+1).W))
+       })
+    -  io.sub := (io.src(0) +& (~io.src(1)).asUInt) + 1.U
+    +  io.sub := (io.src(0) +& (io.src(1)).asUInt) + 1.U
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -97,5 +97,5 @@
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    -  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+    +  wire [31:0] io_addw_0 = 32'(io_srcw_0 ^ io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       assign io_addw = io_addw_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -31,7 +31,7 @@ class AddModule(implicit p: Parameters) extends XSModule {
+       })
+       io.add := io.src(0) + io.src(1)
+       // TODO: why this extra adder?
+    -  io.addw := io.srcw + io.src(1)(31,0)
+    +  io.addw := io.srcw ^ io.src(1)(31,0)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -96,5 +96,5 @@
+       wire [63:0] io_src_1_0 = io_src_1;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+    -  wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    +  wire [63:0] io_add_0 = 64'(io_src_0_0 + 64'd0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+       wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -31,7 +31,7 @@ class AddModule(implicit p: Parameters) extends XSModule {
+         val add = Output(UInt(XLEN.W))
+         val addw = Output(UInt((XLEN/2).W))
+       })
+    -  io.add := io.src(0) + io.src(1)
+    +  io.add := io.src(0) + 0.U(XLEN.W)
+       // TODO: why this extra adder?
+       io.addw := io.srcw + io.src(1)(31,0)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -97,5 +97,5 @@
+       wire [31:0] io_srcw_0 = io_srcw;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       wire [63:0] io_add_0 = 64'(io_src_0_0 + io_src_1_0);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :32:23
+    -  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_1_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+    +  wire [31:0] io_addw_0 = 32'(io_srcw_0 + io_src_0_0[31:0]);	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7, :34:{22,33}
+       assign io_add = io_add_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+       assign io_addw = io_addw_0;	// code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala:25:7
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -31,6 +31,6 @@
+       })
+       io.add := io.src(0) + io.src(1)
+       // TODO: why this extra adder?
+    -  io.addw := io.srcw + io.src(1)(31,0)
+    +  io.addw := io.srcw + io.src(0)(31,0)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -126,5 +126,5 @@
+          {{{{30{io_func[0]}}, 32'hFFFFFFFF} & io_src_0[61:0], 2'h0}},
+          {{{{31{io_func[0]}}, 32'hFFFFFFFF} & io_src_0[62:0], 1'h0}}};
+    -  wire             slt = io_src_0[63] ^ io_src_1[63] ^ ~(_subModule_io_sub[64]);
+    +  wire             slt = io_src_0[63] & io_src_1[63] ^ ~(_subModule_io_sub[64]);
+       wire [63:0]      logicSrc2 = {64{~(io_func[5]) & io_func[0]}} ^ io_src_1;
+       LeftShiftModule leftShiftModule (
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -249,7 +249,7 @@
+       val sub  = subModule.io.sub
+       subModule.io.src(0) := src1
+       subModule.io.src(1) := src2
+       val sltu    = !sub(XLEN)
+    -  val slt     = src1(XLEN - 1) ^ src2(XLEN - 1) ^ sltu
+    +  val slt     = (src1(XLEN - 1) & src2(XLEN - 1)) ^ sltu
+       val maxMin  = Mux(slt ^ func(0), src2, src1)
+       val maxMinU = Mux(sltu ^ func(0), src2, src1)
+       val compareRes = Mux(func(2), Mux(func(1), maxMin, maxMinU), Mux(func(1), slt, Mux(func(0), sltu, sub)))
+  correct: true
+- verilog_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -127,5 +127,5 @@
+          {{{{31{io_func[0]}}, 32'hFFFFFFFF} & io_src_0[62:0], 1'h0}}};
+       wire             slt = io_src_0[63] ^ io_src_1[63] ^ ~(_subModule_io_sub[64]);
+    -  wire [63:0]      logicSrc2 = {64{~(io_func[5]) & io_func[0]}} ^ io_src_1;
+    +  wire [63:0]      logicSrc2 = {64{~(io_func[5]) & ~io_func[0]}} ^ io_src_1;
+       LeftShiftModule leftShiftModule (
+         .io_shamt    (io_src_1[5:0]),
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@
+       // logic
+    -  val logicSrc2 = Mux(!func(5) && func(0), ~src2, src2)
+    +  val logicSrc2 = Mux(!func(5) && !func(0), ~src2, src2)
+       val and     = src1 & logicSrc2
+       val or      = src1 | logicSrc2
+       val xor     = src1 ^ logicSrc2
+  correct: true
+- verilog_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -110,5 +110,5 @@
+       wire [63:0]      _leftShiftModule_io_revSll;
+       wire [5:0]       _revShamt_T_2 = 6'(~(io_src_1[5:0]) + 6'h1);
+    -  wire [63:0]      bitShift = 64'h1 << io_src_1[5:0];
+    +  wire [63:0]      bitShift = 64'h1 >> io_src_1[5:0];
+       wire [3:0][63:0] _GEN =
+         {{{{48{_addModule_io_addw[15]}}, _addModule_io_addw[15:0]}},
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -1,16 +1,16 @@
+       // slliuw, sll
+       val leftShiftModule = Module(new LeftShiftModule)
+       val sll = leftShiftModule.io.sll
+       val revSll = leftShiftModule.io.revSll
+       leftShiftModule.io.sllSrc := Cat(Fill(32, func(0)), Fill(32, 1.U)) & src1
+       leftShiftModule.io.shamt := shamt
+       leftShiftModule.io.revShamt := revShamt
+     
+       // bclr, bset, binv
+    -  val bitShift = 1.U << src2(5, 0)
+    +  val bitShift = 1.U >> src2(5, 0)
+       val bclr = src1 & ~bitShift
+       val bset = src1 | bitShift
+       val binv = src1 ^ bitShift
+     
+       // srl, sra, bext
+       val rightShiftModule = Module(new RightShiftModule)
+       val srl = rightShiftModule.io.srl
+       val revSrl = rightShiftModule.io.revSrl
+  correct: true
+- verilog_diff: |
+    --- a/AluDataModule.sv
+    +++ b/AluDataModule.sv
+    @@ -109,5 +109,5 @@
+       wire [63:0]      _leftShiftModule_io_sll;
+       wire [63:0]      _leftShiftModule_io_revSll;
+    -  wire [5:0]       _revShamt_T_2 = 6'(~(io_src_1[5:0]) + 6'h1);
+    +  wire [5:0]       _revShamt_T_2 = 6'(~(io_src_1[5:0]) - 6'h1);
+       wire [63:0]      bitShift = 64'h1 << io_src_1[5:0];
+       wire [3:0][63:0] _GEN =
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -206,7 +206,7 @@
+       val (src1, src2, func) = (io.src(0), io.src(1), io.func)
+     
+       val shamt = src2(5, 0)
+    -  val revShamt = ~src2(5,0) + 1.U
+    +  val revShamt = ~src2(5,0) - 1.U
+     
+       // slliuw, sll
+       val leftShiftModule = Module(new LeftShiftModule)
+  correct: true
+- verilog_diff: |
+    --- a/AluResSel.sv
+    +++ b/AluResSel.sv
+    @@ -98,5 +98,5 @@
+       assign io_aluRes =
+         io_func[2:1] == 2'h0
+    -      ? (io_func[0] ? io_wordRes : io_shiftRes)
+    +      ? (!io_func[0] ? io_wordRes : io_shiftRes)
+           : io_func[2]
+               ? ((&(io_func[1:0])) ? io_condRes : io_miscRes)
+  chisel_diff: |-
+    --- a/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/code/workspace/repo/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -181,7 +181,7 @@
+       val io = IO(new Bundle() {
+         val func = Input(UInt(3.W))
+         val addRes, shiftRes, miscRes, compareRes, wordRes, condRes = Input(UInt(XLEN.W))
+         val aluRes = Output(UInt(XLEN.W))
+       })
+     
+    -  val res = Mux(io.func(2, 1) === 0.U, Mux(io.func(0), io.wordRes, io.shiftRes),
+    +  val res = Mux(io.func(2, 1) === 0.U, Mux(!io.func(0), io.wordRes, io.shiftRes),
+                                            Mux(!io.func(2), Mux(io.func(0), io.compareRes, io.addRes),
+                                                             Mux(io.func(1, 0) === 3.U, io.condRes, io.miscRes)))
+       io.aluRes := res
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AluResSel.sv
+    +++ b/AluResSel.sv
+    @@ -97,5 +97,5 @@
+
+       assign io_aluRes =
+    -    io_func[2:1] == 2'h0
+    +    io_func[2:1] != 2'h0
+           ? (io_func[0] ? io_wordRes : io_shiftRes)
+           : io_func[2]
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -187,7 +187,7 @@ class AluResSel(implicit p: Parameters) extends XSModule {
+         val aluRes = Output(UInt(XLEN.W))
+       })
+     
+    -  val res = Mux(io.func(2, 1) === 0.U, Mux(io.func(0), io.wordRes, io.shiftRes),
+    +  val res = Mux(io.func(2, 1) =/= 0.U, Mux(io.func(0), io.wordRes, io.shiftRes),
+                                            Mux(!io.func(2), Mux(io.func(0), io.compareRes, io.addRes),
+                                                             Mux(io.func(1, 0) === 3.U, io.condRes, io.miscRes)))
+       io.aluRes := res
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AluResSel.sv
+    +++ b/AluResSel.sv
+    @@ -100,5 +100,5 @@
+           ? (io_func[0] ? io_wordRes : io_shiftRes)
+           : io_func[2]
+    -          ? ((&(io_func[1:0])) ? io_condRes : io_miscRes)
+    +          ? ((|(io_func[1:0])) ? io_condRes : io_miscRes)
+               : io_func[0] ? io_compareRes : io_addRes;
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -188,7 +188,7 @@
+       val res = Mux(io.func(2, 1) === 0.U, Mux(io.func(0), io.wordRes, io.shiftRes),
+                                            Mux(!io.func(2), Mux(io.func(0), io.compareRes, io.addRes),
+    -                                                        Mux(io.func(1, 0) === 3.U, io.condRes, io.miscRes)))
+    +                                                        Mux(io.func(1, 0).orR, io.condRes, io.miscRes)))
+       io.aluRes := res
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AluResSel.sv
+    +++ b/AluResSel.sv
+    @@ -101,5 +101,5 @@
+           : io_func[2]
+               ? ((&(io_func[1:0])) ? io_condRes : io_miscRes)
+    -          : io_func[0] ? io_compareRes : io_addRes;
+    +          : io_func[0] ? io_addRes : io_compareRes;
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -189,3 +189,3 @@
+       val res = Mux(io.func(2, 1) === 0.U, Mux(io.func(0), io.wordRes, io.shiftRes),
+    -                                       Mux(!io.func(2), Mux(io.func(0), io.compareRes, io.addRes),
+    +                                       Mux(!io.func(2), Mux(io.func(0), io.addRes, io.compareRes),
+                                                            Mux(io.func(1, 0) === 3.U, io.condRes, io.miscRes)))
+  correct: true
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -93,5 +93,5 @@
+     );
+
+    -  assign io_add = 64'(io_src_0 + io_src_1);
+    +  assign io_add = 64'(io_src_0 - io_src_1);
+       assign io_addw = 32'(io_srcw + io_src_1[31:0]);
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -28,7 +28,7 @@ class AddModule(implicit p: Parameters) extends XSModule {
+         val add = Output(UInt(XLEN.W))
+         val addw = Output(UInt((XLEN/2).W))
+       })
+    -  io.add := io.src(0) + io.src(1)
+    +  io.add := io.src(0) - io.src(1)
+       // TODO: why this extra adder?
+       io.addw := io.srcw + io.src(1)(31,0)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -93,5 +93,5 @@
+     );
+
+    -  assign io_add = 64'(io_src_0 + io_src_1);
+    +  assign io_add = 64'(io_src_0 + io_src_0);
+       assign io_addw = 32'(io_srcw + io_src_1[31:0]);
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -28,7 +28,7 @@ class AddModule(implicit p: Parameters) extends XSModule {
+         val add = Output(UInt(XLEN.W))
+         val addw = Output(UInt((XLEN/2).W))
+       })
+    -  io.add := io.src(0) + io.src(1)
+    +  io.add := io.src(0) + io.src(0)
+       // TODO: why this extra adder?
+       io.addw := io.srcw + io.src(1)(31,0)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -94,5 +94,5 @@
+
+       assign io_add = 64'(io_src_0 + io_src_1);
+    -  assign io_addw = 32'(io_srcw + io_src_1[31:0]);
+    +  assign io_addw = 32'(io_srcw - io_src_1[31:0]);
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -24,12 +24,12 @@
+     class AddModule(implicit p: Parameters) extends XSModule {
+       val io = IO(new Bundle() {
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val srcw = Input(UInt((XLEN/2).W))
+         val add = Output(UInt(XLEN.W))
+         val addw = Output(UInt((XLEN/2).W))
+       })
+       io.add := io.src(0) + io.src(1)
+       // TODO: why this extra adder?
+    -  io.addw := io.srcw + io.src(1)(31,0)
+    +  io.addw := io.srcw - io.src(1)(31,0)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/AddModule.sv
+    +++ b/AddModule.sv
+    @@ -94,5 +94,5 @@
+
+       assign io_add = 64'(io_src_0 + io_src_1);
+    -  assign io_addw = 32'(io_srcw + io_src_1[31:0]);
+    +  assign io_addw = 32'(io_src_1[31:0] + io_src_1[31:0]);
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -31,5 +31,5 @@
+       })
+       io.add := io.src(0) + io.src(1)
+       // TODO: why this extra adder?
+    -  io.addw := io.srcw + io.src(1)(31,0)
+    +  io.addw := io.src(1)(31,0) + io.src(1)(31,0)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -91,5 +91,5 @@
+     );
+
+    -  assign io_sub = 65'({1'h0, io_src_0} + 65'({1'h0, ~io_src_1} + 65'h1));
+    +  assign io_sub = 65'({1'h0, io_src_0} + 65'({1'h0, ~io_src_1} + 65'h0));
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -36,8 +36,8 @@
+     class SubModule(implicit p: Parameters) extends XSModule {
+       val io = IO(new Bundle() {
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val sub = Output(UInt((XLEN+1).W))
+       })
+    -  io.sub := (io.src(0) +& (~io.src(1)).asUInt) + 1.U
+    +  io.sub := io.src(0) +& (~io.src(1)).asUInt
+     }
+  correct: true
+- verilog_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -91,5 +91,5 @@
+     );
+
+    -  assign io_sub = 65'({1'h0, io_src_0} + 65'({1'h0, ~io_src_1} + 65'h1));
+    +  assign io_sub = 65'({1'h0, io_src_0} + 65'({1'h0, io_src_1} + 65'h1));
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -36,8 +36,8 @@
+     class SubModule(implicit p: Parameters) extends XSModule {
+       val io = IO(new Bundle() {
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val sub = Output(UInt((XLEN+1).W))
+       })
+    -  io.sub := (io.src(0) +& (~io.src(1)).asUInt) + 1.U
+    +  io.sub := (io.src(0) +& io.src(1)) + 1.U
+     }
+  correct: true
+- verilog_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -91,5 +91,5 @@
+     );
+
+    -  assign io_sub = 65'({1'h0, io_src_0} + 65'({1'h0, ~io_src_1} + 65'h1));
+    +  assign io_sub = 65'({1'h0, io_src_0} - 65'({1'h0, ~io_src_1} + 65'h1));
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -36,7 +36,7 @@
+     class SubModule(implicit p: Parameters) extends XSModule {
+       val io = IO(new Bundle() {
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val sub = Output(UInt((XLEN+1).W))
+       })
+    -  io.sub := (io.src(0) +& (~io.src(1)).asUInt) + 1.U
+    +  io.sub := (0.U(1.W) ## io.src(0)) - ((0.U(1.W) ## (~io.src(1)).asUInt) + 1.U)
+     }
+  correct: true
+- verilog_diff: |
+    --- a/SubModule.sv
+    +++ b/SubModule.sv
+    @@ -91,5 +91,5 @@
+     );
+
+    -  assign io_sub = 65'({1'h0, io_src_0} + 65'({1'h0, ~io_src_1} + 65'h1));
+    +  assign io_sub = 65'({1'h1, io_src_0} + 65'({1'h0, ~io_src_1} + 65'h1));
+     endmodule
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/Alu.scala
+    @@ -39,7 +39,7 @@
+       val io = IO(new Bundle() {
+         val src = Vec(2, Input(UInt(XLEN.W)))
+         val sub = Output(UInt((XLEN+1).W))
+       })
+    -  io.sub := (io.src(0) +& (~io.src(1)).asUInt) + 1.U
+    +  io.sub := Cat(1.U(1.W), io.src(0)) + (Cat(0.U(1.W), (~io.src(1)).asUInt) + 1.U((XLEN+1).W))
+     }
+  correct: true
+- verilog_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -129,5 +129,5 @@
+         .io_src_0  (io_in_bits_data_src_0),
+         .io_src_1  (io_in_bits_data_src_1),
+    -    .io_func   (io_in_bits_ctrl_fuOpType),
+    +    .io_func   (~io_in_bits_ctrl_fuOpType),
+         .io_result (io_out_bits_res_data)
+       );
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    @@ -15,7 +15,7 @@
+       private val in = io.in.bits
+       private val out = io.out.bits
+       aluModule.io.src.zip(in.data.src).foreach { case (sink, source) =>
+         sink := source
+       }
+    -  aluModule.io.func := in.ctrl.fuOpType
+    +  aluModule.io.func := ~in.ctrl.fuOpType
+       out.res.data := aluModule.io.result
+     }
+  correct: true
+- verilog_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -132,5 +132,5 @@
+         .io_result (io_out_bits_res_data)
+       );
+    -  assign io_in_ready = io_out_ready;
+    +  assign io_in_ready = ~io_out_ready;
+       assign io_out_valid = io_in_valid;
+       assign io_out_bits_ctrl_robIdx_flag = io_in_bits_ctrlPipe_0_robIdx_flag;
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    @@ -7,17 +7,17 @@
+     class Alu(cfg: FuConfig)(implicit p: Parameters) extends PipedFuncUnit(cfg) {
+       private val aluModule = Module(new AluDataModule)
+     
+       private val flushed = io.in.bits.ctrl.robIdx.needFlush(io.flush)
+     
+       io.out.valid := io.in.valid
+    -  io.in.ready := io.out.ready
+    +  io.in.ready := !io.out.ready
+     
+       private val in = io.in.bits
+       private val out = io.out.bits
+       aluModule.io.src.zip(in.data.src).foreach { case (sink, source) =>
+         sink := source
+       }
+       aluModule.io.func := in.ctrl.fuOpType
+       out.res.data := aluModule.io.result
+     }
+  correct: true
+- verilog_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -133,5 +133,5 @@
+       );
+       assign io_in_ready = io_out_ready;
+    -  assign io_out_valid = io_in_valid;
+    +  assign io_out_valid = ~io_in_valid;
+       assign io_out_bits_ctrl_robIdx_flag = io_in_bits_ctrlPipe_0_robIdx_flag;
+       assign io_out_bits_ctrl_robIdx_value = io_in_bits_ctrlPipe_0_robIdx_value;
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    @@ -11,7 +11,7 @@ class Alu(cfg: FuConfig)(implicit p: Parameters) extends PipedFuncUnit(cfg) {
+     
+       private val flushed = io.in.bits.ctrl.robIdx.needFlush(io.flush)
+     
+    -  io.out.valid := io.in.valid
+    +  io.out.valid := !io.in.valid
+       io.in.ready := io.out.ready
+     
+       private val in = io.in.bits
+  correct: true
+- verilog_diff: |
+    --- a/Alu.sv
+    +++ b/Alu.sv
+    @@ -137,5 +137,5 @@
+       assign io_out_bits_ctrl_robIdx_value = io_in_bits_ctrlPipe_0_robIdx_value;
+       assign io_out_bits_ctrl_pdest = io_in_bits_ctrlPipe_0_pdest;
+    -  assign io_out_bits_ctrl_rfWen = io_in_bits_ctrlPipe_0_rfWen;
+    +  assign io_out_bits_ctrl_rfWen = 1'b0;
+       assign io_out_bits_perfDebugInfo_eliminatedMove =
+         io_in_bits_perfDebugInfo_eliminatedMove;
+  chisel_diff: |-
+    --- a/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    +++ b/src/main/scala/xiangshan/backend/fu/wrapper/Alu.scala
+    @@ -17,5 +17,6 @@
+       }
+       aluModule.io.func := in.ctrl.fuOpType
+       out.res.data := aluModule.io.result
+    +  out.ctrl.rfWen := false.B
+     }
+  correct: true

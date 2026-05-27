@@ -55,7 +55,7 @@ def docker_env_for_cli():
     env = os.environ.copy()
 
     # Remove any existing HAGENT path variables
-    for key in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_OUTPUT_DIR']:
+    for key in ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR']:
         env.pop(key, None)
 
     # Set execution mode, Docker image, and empty cache directory

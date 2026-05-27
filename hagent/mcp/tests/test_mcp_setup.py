@@ -9,6 +9,7 @@ Flow:
 
 import os
 import subprocess
+import time
 import unittest
 import uuid
 from pathlib import Path
@@ -104,18 +105,27 @@ class TestMCPSetupIntegration(unittest.TestCase):
         """Check that hagent shows up as a connected MCP server for all available clients."""
         outputs = {}
         for client in self.available_clients:
-            list_result = subprocess.run(
-                [client, 'mcp', 'list'],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                cwd=self.test_dir,
-            )
+            output = ''
+            for attempt in range(6):
+                list_result = subprocess.run(
+                    [client, 'mcp', 'list'],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    cwd=self.test_dir,
+                )
 
-            if list_result.returncode != 0:
-                self.fail(f'{client} mcp list failed: {list_result.stderr}')
+                if list_result.returncode != 0:
+                    self.fail(f'{client} mcp list failed: {list_result.stderr}')
 
-            output = list_result.stdout
+                # Claude prints MCP entries to stdout, while Gemini reports them on stderr.
+                output = '\n'.join(part for part in (list_result.stdout, list_result.stderr) if part)
+                if 'hagent:' in output and 'Connected' in output:
+                    break
+
+                if attempt < 5:
+                    time.sleep(2)
+
             outputs[client] = output
             self.assertIn('hagent:', output, f'hagent MCP entry missing from {client} mcp list output')
             self.assertIn('Connected', output, f'hagent MCP is not reported as Connected for {client}')

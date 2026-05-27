@@ -61,9 +61,6 @@ export HAGENT_REPO_DIR=/path/to/your/git/repository     # Git repository root
 export HAGENT_BUILD_DIR=/path/to/your/build/directory   # Build output directory
 export HAGENT_CACHE_DIR=/path/to/your/cache/directory   # HAgent cache directory
 
-# Optional: Set custom output directory for logs and test results
-export HAGENT_OUTPUT_DIR=/path/to/your/output/directory  # Test/log output directory
-
 # Run a step locally
 uv run python hagent/step/trivial/trivial.py hagent/step/trivial/tests/input1.yaml -o output.yaml
 ```
@@ -80,9 +77,6 @@ export HAGENT_DOCKER=mascucsc/hagent-simplechisel:2026.02
 # Optional: Mount host directories into container
 export HAGENT_REPO_DIR=/path/to/your/git/repository     # Will be mounted to /code/workspace/repo
 export HAGENT_BUILD_DIR=/path/to/your/build/directory   # Will be mounted to /code/workspace/build
-
-# Optional: Set custom output directory for logs and test results
-export HAGENT_OUTPUT_DIR=/path/to/your/output/directory  # Test/log output directory
 
 # Run the same step in Docker - identical command!
 uv run python hagent/step/trivial/trivial.py hagent/step/trivial/tests/input1.yaml -o output.yaml

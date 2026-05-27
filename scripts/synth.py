@@ -199,9 +199,9 @@ def print_dry_run(args, slang_args, synth_top, elaborate_top):
     print(f'Output directory: {args.output_dir}')
     print(f'Elaboration method: {args.elab_method}')
 
-    # Determine which phases will run
+    # Determine which phases will run (orthogonal flags)
     no_run_flags = not (args.run_elab or args.run_synth or args.run_sta)
-    run_elab = no_run_flags or args.run_elab or args.run_synth
+    run_elab = no_run_flags or args.run_elab
     run_synth = no_run_flags or args.run_synth
     run_sta = no_run_flags or args.run_sta
 
@@ -368,7 +368,6 @@ def main():
                             'HAGENT_REPO_DIR',
                             'HAGENT_BUILD_DIR',
                             'HAGENT_CACHE_DIR',
-                            'HAGENT_OUTPUT_DIR',
                             'HAGENT_TECH_DIR',
                         ]:
                             env_path = os.environ.get(env_var)
@@ -379,7 +378,6 @@ def main():
                                     'HAGENT_REPO_DIR': '/code/workspace/repo',
                                     'HAGENT_BUILD_DIR': '/code/workspace/build',
                                     'HAGENT_CACHE_DIR': '/code/workspace/cache',
-                                    'HAGENT_OUTPUT_DIR': '/code/workspace/output',
                                     'HAGENT_TECH_DIR': '/code/workspace/tech',
                                 }
                                 arg = str(Path(docker_mount_map[env_var]) / rel_path)
@@ -436,17 +434,17 @@ def main():
     parser.add_argument(
         '--run-elab',
         action='store_true',
-        help='Only run elaboration (create elab.v only, disables default synth+STA)',
+        help='Run elaboration only (create elab.v)',
     )
     parser.add_argument(
         '--run-synth',
         action='store_true',
-        help='Run elaboration + synthesis (create elab.v + synth.v, disables default STA)',
+        help='Run synthesis only (requires elab.v to exist)',
     )
     parser.add_argument(
         '--run-sta',
         action='store_true',
-        help='Run full workflow including STA (elaboration + synthesis + STA)',
+        help='Run STA only (requires synth.v to exist)',
     )
     parser.add_argument(
         '--skip-elab',
@@ -455,12 +453,13 @@ def main():
     )
     parser.add_argument(
         '--elab-method',
-        choices=['auto', 'slang', 'sv2v'],
+        choices=['auto', 'slang', 'sv2v', 'none'],
         default='auto',
-        help='Elaboration method: auto (try slang, fallback to sv2v), slang (read_slang only), sv2v (sv2v only)',
+        help='Elaboration method: auto/slang use read_slang, sv2v uses sv2v, none uses read_verilog -sv directly',
     )
     parser.add_argument('--exclude', action='append', help='Exclude files matching regex pattern (can be used multiple times)')
     parser.add_argument('--top-synthesis', help='Top module for synthesis (when different from elaboration top in --top)')
+    parser.add_argument('--output-module', help='Rename synthesized top module to this name in output netlist')
     parser.add_argument('--dry-run', action='store_true', help='Show command line arguments without executing')
     parser.add_argument(
         '--max-fanout',
@@ -570,6 +569,8 @@ def main():
 
     # Determine synthesis top (may differ from elaborate top)
     synth_top = args.top_synthesis if args.top_synthesis else elaborate_top
+    # Determine output module name (rename after synthesis)
+    output_top = args.output_module if args.output_module else synth_top
 
     if args.dry_run:
         print_dry_run(args, slang_args, synth_top, elaborate_top)
@@ -578,9 +579,9 @@ def main():
         # Default: all phases (elab + synth + STA) if no --run-* flags specified
         no_run_flags = not (args.run_elab or args.run_synth or args.run_sta)
 
-        # --run-sta implies running all prerequisite phases
-        should_run_elab = no_run_flags or args.run_elab or args.run_synth or args.run_sta
-        should_run_synth = no_run_flags or args.run_synth or args.run_sta
+        # Each --run-* flag controls only its own phase; no flags = all phases
+        should_run_elab = no_run_flags or args.run_elab
+        should_run_synth = no_run_flags or args.run_synth
         should_run_sta = no_run_flags or args.run_sta
 
         # Phase 1: Elaborate (unless --skip-elab and elab.v exists)
@@ -589,11 +590,11 @@ def main():
 
         # Phase 2: Synthesize if requested
         if should_run_synth:
-            run_synthesis(args, synth_top)
+            run_synthesis(args, synth_top, output_top)
 
         # Phase 3: STA if requested
         if should_run_sta:
-            run_sta(args, synth_top)
+            run_sta(args, output_top)
 
         # Generate manifest.yaml when --tag is used
         if args.tag:
@@ -696,6 +697,36 @@ yosys write_verilog -simple-lhs {netlist_path}
 """
 
 
+def _fixup_src_attributes(elab_path):
+    """Convert relative paths in (* src = "..." *) attributes to absolute paths.
+
+    The yosys-slang frontend stores source locations relative to CWD.
+    This post-processes the output to use absolute paths so downstream
+    tools can locate original source files regardless of working directory.
+    """
+    cwd = Path.cwd()
+    path = Path(elab_path)
+    if not path.exists():
+        return
+
+    content = path.read_text()
+
+    def _resolve_src(match):
+        prefix = match.group(1)
+        rel_path = match.group(2)
+        suffix = match.group(3)
+        if not rel_path.startswith('/'):
+            abs_path = str((cwd / rel_path).resolve())
+            return f'{prefix}{abs_path}{suffix}'
+        return match.group(0)
+
+    updated = re.sub(r'(\(\* src = ")([^":]+)(:[^"]*" \*\))', _resolve_src, content)
+
+    if updated != content:
+        path.write_text(updated)
+        print(f'Fixed src attributes to absolute paths: {elab_path}', file=sys.stderr)
+
+
 def run_elaboration(args, slang_args, top_name):
     """Run elaboration phase (produces elab.v)"""
     _check_tool_available('yosys')
@@ -703,14 +734,12 @@ def run_elaboration(args, slang_args, top_name):
     # Determine elaboration method
     if args.elab_method == 'sv2v':
         _elaborate_with_sv2v(args, slang_args, top_name)
-    elif args.elab_method == 'slang':
+    elif args.elab_method == 'none':
+        _elaborate_with_read_verilog(args, slang_args, top_name)
+    else:  # auto or slang — both use read_slang
         _elaborate_with_readslang(args, slang_args, top_name)
-    else:  # auto
-        try:
-            _elaborate_with_readslang(args, slang_args, top_name)
-        except subprocess.CalledProcessError as e:
-            print(f'read_slang failed: {e}, falling back to sv2v', file=sys.stderr)
-            _elaborate_with_sv2v(args, slang_args, top_name)
+        # yosys-slang stores src attributes as relative paths; fix them up
+        _fixup_src_attributes(args.elab_path)
 
 
 def _elaborate_with_readslang(args, slang_args, top_name):
@@ -783,8 +812,45 @@ yosys write_verilog -simple-lhs {elab_path}
     )
 
 
-def run_synthesis(args, top_name):
+def _elaborate_with_read_verilog(args, slang_args, top_name):
+    """Elaborate using read_verilog -sv directly (no slang, no sv2v)"""
+    output_dir = Path(args.output_dir)
+    elab_path = args.elab_path
+
+    # Collect source files from slang_args
+    sv_files = [a for a in slang_args if a.endswith(('.sv', '.v'))]
+    if not sv_files:
+        print('error: no .sv or .v files found in arguments for read_verilog', file=sys.stderr)
+        sys.exit(1)
+
+    read_cmd = 'yosys read_verilog -sv -DSYNTHESIS ' + ' '.join(sv_files)
+
+    script = f"""{read_cmd}
+yosys hierarchy -top {top_name}
+yosys flatten {top_name}
+yosys chformal -remove
+yosys proc
+yosys opt
+yosys memory -nomap
+yosys bwmuxmap
+yosys demuxmap
+yosys write_verilog -simple-lhs {elab_path}
+"""
+
+    _run_tool_with_script(
+        ['yosys', '-c', str(output_dir / 'elab_none.tcl')],
+        script,
+        output_dir / 'elab_none.tcl',
+        output_dir / 'elab_none.log',
+        f'Elaboration (read_verilog): {elab_path}',
+    )
+
+
+def run_synthesis(args, top_name, output_top=None):
     """Run synthesis phase (reads elab.v, produces synth.v)"""
+    if output_top is None:
+        output_top = top_name
+
     output_dir = Path(args.output_dir)
     elab_path = args.elab_path
     netlist_path = args.netlist_path
@@ -815,8 +881,13 @@ yosys printattrs
 yosys stat
 yosys abc -liberty {args.liberty} -dff -keepff -script {abc_script_path}
 yosys stat
-yosys write_verilog -simple-lhs {netlist_path}
 """
+
+    # Rename module if output name differs from synthesis top
+    if output_top != top_name:
+        script += f'yosys rename {top_name} {output_top}\n'
+
+    script += f'yosys write_verilog -simple-lhs {netlist_path}\n'
 
     # Execute
     _run_tool_with_script(
@@ -825,6 +896,7 @@ yosys write_verilog -simple-lhs {netlist_path}
         output_dir / 'synth.tcl',
         output_dir / 'synth.log',
         f'Synthesis: {netlist_path}',
+        timeout_seconds=3600
     )
 
 

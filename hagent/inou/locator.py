@@ -262,6 +262,15 @@ class Locator:
         """Get last error message following Tool pattern."""
         return self._error
 
+    def get_hierarchy(self) -> dict:
+        """Get module hierarchy mapping (uses cache when available)."""
+        return self._build_hierarchy_cache()
+
+    def get_top_modules(self) -> List[str]:
+        """Get top-level module names from slang-hier output."""
+        hierarchy = self._build_hierarchy_cache()
+        return hierarchy.get('_top_modules', [])
+
     def cleanup(self) -> None:
         """Clean up resources (Builder, file handles, etc.)."""
         if self.builder:
@@ -417,7 +426,7 @@ class Locator:
 
         return verilog_patterns
 
-    def _build_hierarchy_cache(self, target_type: Optional[RepresentationType] = None) -> dict:
+    def _build_hierarchy_cache(self) -> dict:
         """Execute slang-hier and parse output into hierarchy mapping.
 
         Args:
@@ -544,6 +553,15 @@ class Locator:
                 'cwd': cwd,
                 'profile': self.profile_name,
             }
+
+            # Resolve relative file paths to absolute using cwd from _metadata
+            resolved_cwd = self._resolve_cwd(cwd)
+            for key, info in hierarchy.items():
+                if key.startswith('_'):
+                    continue
+                file_path = info.get('file', '')
+                if file_path and not os.path.isabs(file_path):
+                    info['file'] = str((resolved_cwd / file_path).resolve())
 
             # Save to cache
             self._save_cache('hierarchy', hierarchy)
@@ -978,16 +996,29 @@ class Locator:
             # Parse text format output from slang-hier
             # Example line: Module="ALUControl" Instance="PipelinedDualIssueCPU.pipeB_aluControl" File="build_pipelined_d/ALUControl.sv"
             hierarchy = {}
+            top_modules = []
+            in_top_level_section = False
 
             for line in slang_output.splitlines():
-                line = line.strip()
-                if not line or line.startswith('#') or line.startswith('Top level') or line.startswith('Build succeeded'):
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#') or stripped.startswith('Build succeeded'):
+                    in_top_level_section = False
+                    continue
+
+                # Parse "Top level design units:" section
+                if stripped.startswith('Top level'):
+                    in_top_level_section = True
+                    continue
+
+                if in_top_level_section:
+                    # Lines after "Top level design units:" are indented module names
+                    top_modules.append(stripped)
                     continue
 
                 # Extract Module, Instance, and File using regex
-                module_match = re.search(r'Module="([^"]+)"', line)
-                instance_match = re.search(r'Instance="([^"]+)"', line)
-                file_match = re.search(r'File="([^"]+)"', line)
+                module_match = re.search(r'Module="([^"]+)"', stripped)
+                instance_match = re.search(r'Instance="([^"]+)"', stripped)
+                file_match = re.search(r'File="([^"]+)"', stripped)
 
                 if module_match and instance_match and file_match:
                     module_name = module_match.group(1)
@@ -1001,6 +1032,9 @@ class Locator:
                         'instance': instance_path,
                     }
 
+            if top_modules:
+                hierarchy['_top_modules'] = top_modules
+
             return hierarchy
 
     def _find_vcd_in_hierarchy(self, hier_path: str, target_type: RepresentationType) -> List[SourceLocation]:
@@ -1013,7 +1047,7 @@ class Locator:
         4. Case-insensitive matching: "gcd.x" matches "GCD" module
         """
         self._debug_print(f'_find_vcd_in_hierarchy() called: hier_path={hier_path}, target={target_type.value}')
-        hierarchy = self._build_hierarchy_cache(target_type=target_type)
+        hierarchy = self._build_hierarchy_cache()
         if not hierarchy:
             self._debug_print('No hierarchy cache available')
             return []
@@ -1045,14 +1079,12 @@ class Locator:
                 # Strategy 2: Replace first component with actual top module if it matches profile name
                 first_component = parts[0] if parts else ''
                 if first_component == self.profile_name:
-                    # Find the actual top module from hierarchy
-                    for instance_path, info in hierarchy.items():
-                        if '.' not in instance_path:  # Top-level module
-                            actual_top = instance_path
-                            # Replace profile name with actual top module
-                            new_module_path = actual_top + '.' + '.'.join(parts[1:-1])
-                            if new_module_path in hierarchy:
-                                matching_entries.append(hierarchy[new_module_path])
+                    # Find the actual top module from hierarchy using _top_modules
+                    top_modules = hierarchy.get('_top_modules', [])
+                    for actual_top in top_modules:
+                        new_module_path = actual_top + '.' + '.'.join(parts[1:-1])
+                        if new_module_path in hierarchy:
+                            matching_entries.append(hierarchy[new_module_path])
                             break
 
                 # Strategy 3: Hierarchical suffix matching
@@ -1075,12 +1107,7 @@ class Locator:
         for entry in matching_entries:
             self._debug_print(f'  - Module: {entry.get("module", "?")}, File: {entry.get("file", "?")}')
 
-        # Resolve the cwd used by slang-hier so file paths are resolved correctly
-        # (e.g., cva6 uses $HAGENT_REPO_DIR, simplechisel uses $HAGENT_BUILD_DIR)
-        hier_metadata = hierarchy.get('_metadata', {})
-        hier_cwd = hier_metadata.get('cwd')
-        hier_base_dir = self._resolve_cwd(hier_cwd) if hier_cwd else None
-        self._debug_print(f'Hierarchy base dir: {hier_base_dir} (from cwd={hier_cwd})')
+        # File paths in hierarchy are already absolute (resolved during cache build)
 
         # Search in all matching files
         locations = []
@@ -1164,7 +1191,6 @@ class Locator:
                     file_path=file_path,
                     module_name=module_name,
                     representation=RepresentationType.VERILOG,
-                    base_dir=hier_base_dir,
                 )
 
                 if verilog_locs:
@@ -1247,7 +1273,6 @@ class Locator:
                     file_path=file_path,
                     module_name=module_name,
                     representation=RepresentationType.VERILOG,
-                    base_dir=hier_base_dir,
                 )
                 locations.extend(file_locations)
 

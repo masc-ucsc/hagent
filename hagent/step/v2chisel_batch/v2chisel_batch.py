@@ -10,7 +10,10 @@ This is a complete rewrite that:
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
+import uuid
 import yaml
 from pathlib import Path
 
@@ -53,8 +56,8 @@ class V2chisel_batch(Step):
         self.debug = True
         self.input_data = {}
 
-        # Initialize Builder (handles Docker/local execution)
-        self.builder = Builder()
+        # Builder is deferred — created in run() AFTER workspace env vars are set
+        self.builder = None
 
         # Initialize Module_finder for hints generation
         self.module_finder = Module_finder()
@@ -72,6 +75,102 @@ class V2chisel_batch(Step):
 
         print('✅ [V2chisel_batch] Initialized')
 
+    def _setup_workspace(self):
+        """
+        Auto-create a temporary workspace by running setup_mcp.sh simplechisel,
+        then read the generated env vars from hagent_server.sh (same approach as
+        run_v2chisel_manual.py).  Sets HAGENT_* env vars in the current process.
+
+        Returns the tmp_dir path (caller must pass to _cleanup_workspace).
+        """
+        scripts_dir = Path(__file__).parent.parent.parent.parent / 'scripts'
+        setup_script = scripts_dir / 'setup_mcp.sh'
+        if not setup_script.exists():
+            raise FileNotFoundError(f'setup_mcp.sh not found at {setup_script}')
+
+        tmp_dir = Path('/tmp') / f'v2chisel_batch_{uuid.uuid4().hex[:8]}'
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        print(f'\n🗂️  Auto-workspace: {tmp_dir}')
+
+        project = self.input_data.get('project', 'simplechisel')
+        print(f'🐳 Setting up workspace for project: {project}')
+        result = subprocess.run(
+            ['bash', str(setup_script), project, str(tmp_dir)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f'setup_mcp.sh failed (exit {result.returncode}):\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}'
+            )
+
+        # Read env vars from the generated hagent_server.sh.
+        # setup_mcp.sh writes exactly these variables (one per line):
+        #   UV_PROJECT, HAGENT_ROOT,
+        #   HAGENT_DOCKER  -or-  HAGENT_EXECUTION_MODE  (only one, mode-dependent),
+        #   HAGENT_REPO_DIR, HAGENT_BUILD_DIR, HAGENT_CACHE_DIR, HAGENT_TECH_DIR
+        #
+        # We only import the HAGENT_* vars (skip UV_PROJECT / HAGENT_ROOT so we
+        # don't clobber the host process's own project-root settings).
+        _WANTED_PREFIXES = ('HAGENT_',)
+
+        server_sh = tmp_dir / 'hagent_server.sh'
+        if not server_sh.exists():
+            raise RuntimeError(f'setup_mcp.sh succeeded but hagent_server.sh was not created at {server_sh}')
+
+        extracted: dict[str, str] = {}
+        with open(server_sh) as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line.startswith('export '):
+                    continue
+                var_part = line[len('export ') :]
+                if '=' not in var_part:
+                    continue
+                key, raw_value = var_part.split('=', 1)
+                key = key.strip()
+                # Strip a single layer of wrapping quotes (" or ') without
+                # eating embedded quotes (unlike str.strip which removes all
+                # leading/trailing chars in the set).
+                if len(raw_value) >= 2 and raw_value[0] in ('"', "'") and raw_value[-1] == raw_value[0]:
+                    value = raw_value[1:-1]
+                else:
+                    value = raw_value
+                if any(key.startswith(p) for p in _WANTED_PREFIXES):
+                    extracted[key] = value
+
+        # Apply extracted vars
+        for key, value in extracted.items():
+            os.environ[key] = value
+        print(f'✅ Env vars loaded from hagent_server.sh ({len(extracted)} vars)')
+
+        # Ensure HAGENT_TECH_DIR is set (setup_mcp.sh always writes it, but
+        # fall back gracefully if it arrived empty/unset).
+        if not os.environ.get('HAGENT_TECH_DIR'):
+            default_tech = '/home/farzaneh/open_pdks/sky130/sky130B/libs.ref/sky130_fd_sc_hd/lib'
+            os.environ['HAGENT_TECH_DIR'] = default_tech
+            print(f'⚠️  HAGENT_TECH_DIR missing from server.sh — falling back to: {default_tech}')
+
+        # Reset PathManager singleton + recreate Runner so they re-read the
+        # freshly exported HAGENT_* env vars (including HAGENT_TECH_DIR).
+        self._reset_path_manager_and_runner()
+
+        # Verify workspace setup: check that repo and build dirs exist
+        repo_dir = tmp_dir / 'repo'
+        build_dir = tmp_dir / 'build'
+        if repo_dir.exists() and build_dir.exists():
+            print(f'✅ Workspace verified: repo and build dirs exist in {tmp_dir}')
+        else:
+            raise RuntimeError(f'Workspace setup incomplete: missing repo or build dir in {tmp_dir}')
+
+        return tmp_dir
+
+    def _cleanup_workspace(self, tmp_dir):
+        """Delete the auto-created workspace directory to free disk space."""
+        if tmp_dir and tmp_dir.exists():
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            print(f'🗑️  Cleaned up workspace: {tmp_dir}')
+
     def run(self, data):
         """Main processing function"""
         print('\n' + '=' * 80)
@@ -80,6 +179,50 @@ class V2chisel_batch(Step):
 
         # Update input_data with any runtime data
         self.input_data.update(data)
+
+        # Auto-setup workspace if any required env var is missing
+        tmp_dir = None
+        required_vars = ['HAGENT_REPO_DIR', 'HAGENT_BUILD_DIR', 'HAGENT_CACHE_DIR', 'HAGENT_TECH_DIR']
+        if not all(os.environ.get(v) for v in required_vars):
+            print('\n🔧 HAGENT env vars not fully set — auto-creating workspace via setup_mcp.sh...')
+            try:
+                tmp_dir = self._setup_workspace()
+            except Exception as exc:
+                error_msg = f'Workspace auto-setup failed: {exc}'
+                print(f'❌ {error_msg}')
+                return {'success': False, 'error': error_msg}
+
+        # Create Builder now that env vars are guaranteed to be set
+        self._reset_path_manager_and_runner()
+        self.builder = Builder()
+
+        try:
+            return self._run_pipeline(data)
+        finally:
+            self._cleanup_workspace(tmp_dir)
+
+    def _reset_path_manager_and_runner(self):
+        """Reset the PathManager singleton so it re-reads the current env vars on next use."""
+        from hagent.inou.path_manager import PathManager as _PM
+
+        _PM._instance = None
+        _PM._initialized = False
+        if self.builder is not None:
+            self.builder.runner = type(self.builder.runner)()
+
+    def _run_pipeline(self, _data=None):
+        """Internal pipeline — called after workspace is ready."""
+        # Print env vars so the user can verify they are set correctly
+        print('\n🔧 Environment variables:')
+        for var in [
+            'HAGENT_REPO_DIR',
+            'HAGENT_BUILD_DIR',
+            'HAGENT_CACHE_DIR',
+            'HAGENT_TECH_DIR',
+            'HAGENT_DOCKER',
+            'HAGENT_EXECUTION_MODE',
+        ]:
+            print(f'   {var} = {os.environ.get(var, "(not set)")}')
 
         # Setup Builder (initialize filesystem and load hagent.yaml configuration)
         if not self.builder.setup():
@@ -98,8 +241,19 @@ class V2chisel_batch(Step):
         default_config = str(Path(__file__).parent / 'v2chisel_batch_conf.yaml')
         llm_config_file = self.input_data.get('llm_config_file', default_config)
         llm_name = self.input_data.get('llm_name', 'v2chisel_batch')
-        llm_model = self.input_data.get('llm_model', '')
-        self.chisel_diff_generator = ChiselDiffGenerator(llm_config_file, llm_name, debug=self.debug, llm_model=llm_model)
+
+        # Read LLM overrides from input YAML's v2chisel_batch.llm section
+        llm_overrides = dict(self.input_data.get('v2chisel_batch', {}).get('llm', {}))
+
+        # CLI --llm flag takes highest priority
+        if self.input_data.get('llm_model'):
+            llm_overrides['model'] = self.input_data['llm_model']
+
+        # Auto-add bedrock/converse/ prefix when aws_region_name is set and model has no provider prefix
+        if llm_overrides.get('aws_region_name') and '/' not in llm_overrides.get('model', ''):
+            llm_overrides['model'] = 'bedrock/converse/' + llm_overrides['model']
+
+        self.chisel_diff_generator = ChiselDiffGenerator(llm_config_file, llm_name, debug=self.debug, llm_overrides=llm_overrides)
 
         # Initialize DockerDiffApplier for applying Chisel diffs in Docker
         self.docker_diff_applier = DockerDiffApplier(self.builder)
@@ -123,7 +277,31 @@ class V2chisel_batch(Step):
             print(f'⚠️  Warning: LEC setup failed: {self.equiv_check.get_error()}')
 
         # Step 1: Load bugs from input
+        # Support xiangshan-style format: {verilog_diffs: [{filename, verilog_diff}, ...]}
+        # All verilog_diffs in one record come from a SINGLE chisel mutation, so we
+        # combine them into ONE bug with a multi-file unified diff.
         bugs = self.input_data.get('bugs', [])
+        if not bugs and 'verilog_diffs' in self.input_data:
+            verilog_diffs_list = self.input_data['verilog_diffs']
+            description = self.input_data.get('mutation_type', '')
+            scala_file = self.input_data.get('scala_file', '')
+            if scala_file:
+                description = f'{description} in {scala_file}'
+
+            # Concatenate all per-file diffs into one multi-file unified diff
+            combined_diff = '\n'.join(entry['verilog_diff'] for entry in verilog_diffs_list)
+            verilog_files = [entry['filename'] for entry in verilog_diffs_list]
+
+            bugs.append(
+                {
+                    'verilog_file': scala_file or verilog_files[0],
+                    'unified_diff': combined_diff,
+                    'description': description,
+                    'verilog_files': verilog_files,  # all SV files for multi-hint lookup
+                }
+            )
+            print(f'📦 Converted xiangshan format: {len(verilog_diffs_list)} verilog diffs → 1 combined bug')
+
         if not bugs:
             print('❌ No bugs found in input')
             return {'success': False, 'error': 'No bugs provided'}
@@ -132,13 +310,18 @@ class V2chisel_batch(Step):
 
         # Step 2: Determine CPU profile
         cpu_profile = self._determine_cpu_profile(bugs)
-        print(f'🔧 Using CPU profile: {cpu_profile}')
+        if cpu_profile is not None:
+            print(f'🔧 Using CPU profile: {cpu_profile}')
+        else:
+            project = self.input_data.get('project', 'simplechisel')
+            print(f'🔧 CPU profile: not applicable for project "{project}"')
 
-        chisel_diff_only = self.input_data.get('chisel_diff_only', False)
+        chisel_diff_only = self.input_data.get('chisel_diff_only', True)
 
-        # Step 3: Generate fresh baseline Verilog (skip in chisel_diff_only mode)
+        # Step 3: Generate fresh baseline Verilog
+        # Skipped in chisel_diff_only mode or when the project has no CPU-profile system.
         baseline_result = {}
-        if not chisel_diff_only:
+        if not chisel_diff_only and cpu_profile is not None:
             print('\n' + '=' * 80)
             print('STEP 1: Generate Fresh Baseline Verilog')
             print('=' * 80)
@@ -149,11 +332,11 @@ class V2chisel_batch(Step):
                 print(f'❌ Baseline generation failed: {baseline_result.get("error")}')
                 return {'success': False, 'error': f'Baseline generation failed: {baseline_result.get("error")}'}
 
-            print('✅ Baseline Verilog generation complete!')
-            print(f'   Profile: {baseline_result.get("profile")}')
-            print(f'   Files: {baseline_result.get("file_count", 0)}')
-        else:
+            print(f'✅ Baseline Verilog generation complete (profile: {baseline_result.get("profile")})')
+        elif chisel_diff_only:
             print('\n⏭️  Skipping baseline generation (chisel_diff_only mode)')
+        else:
+            print('\n⏭️  Skipping baseline generation (no CPU profile for this project)')
 
         # Step 2: Process each bug with retry loops
         print('\n' + '=' * 80)
@@ -180,6 +363,10 @@ class V2chisel_batch(Step):
             print(f'\n✅ Generated chisel_diff for {successful_bugs}/{len(bugs)} bugs')
             print(f'💰 Total LLM cost: ${total_cost:.4f}')
             print(f'🔢 Total tokens used: {total_tokens}')
+
+            if self.builder:
+                self.builder.cleanup()
+                print('🗑️  Docker container cleaned up')
 
             return {
                 'success': True,
@@ -229,19 +416,44 @@ class V2chisel_batch(Step):
         """
         Determine which CPU profile to use for compilation/Verilog generation.
 
-        Priority:
+        CPU profiles are a simplechisel/dinocpu-specific concept.  Projects like
+        xiangshan, soomrv, and cva6 do not have multiple CPU variants, so this
+        function returns None for them and the caller skips profile-dependent steps.
+
+        Priority for simplechisel:
         1. --cpu argument (from input_data['cpu_type'])
         2. Auto-detect from bug Verilog filenames
         3. Default to singlecyclecpu_d
         """
+        project = self.input_data.get('project', 'simplechisel')
+
+        # Projects with their own compile profiles (not dinocpu CPU-profile system)
+        _PROJECT_COMPILE_PROFILES = {
+            'xiangshan': {'dbg': 'xiangshan_rtl_dbg', 'opt': 'xiangshan_rtl_opt'},
+            'soomrv': None,
+            'cva6': None,
+        }
+        if project in _PROJECT_COMPILE_PROFILES:
+            profiles = _PROJECT_COMPILE_PROFILES[project]
+            if not profiles:
+                print(f'ℹ️  Project "{project}" has no compile profile — skipping cpu_type detection')
+                return None
+            # Use --xiangshan-profile arg if provided, default to dbg
+            xiangshan_profile = self.input_data.get('xiangshan_profile', 'dbg')
+            profile = profiles.get(xiangshan_profile, profiles['dbg'])
+            print(f'ℹ️  Project "{project}" using compile profile "{profile}"')
+            return profile
+
         # Check for explicit override via --cpu argument
         cpu_override = self.input_data.get('cpu_type')
         if cpu_override:
             print(f'🎯 CPU profile override from --cpu argument: {cpu_override}')
             return cpu_override
 
-        # Auto-detect from verilog filenames in bugs
-        verilog_files = [bug.get('file', '') for bug in bugs if bug.get('file')]
+        # Auto-detect from verilog filenames in bugs (support both 'file' and 'verilog_file')
+        verilog_files = [
+            bug.get('file') or bug.get('verilog_file', '') for bug in bugs if bug.get('file') or bug.get('verilog_file')
+        ]
 
         if not verilog_files:
             print('⚠️  No verilog files found in bugs, defaulting to singlecyclecpu_d')
@@ -260,9 +472,35 @@ class V2chisel_batch(Step):
         print(f'🔍 Auto-detected CPU profile from files {verilog_files}: {profile}')
         return profile
 
+    def _run_mcp_build(self, cpu_profile: str, api: str, extra_opts: dict | None = None) -> tuple[int, str, str]:
+        """
+        Run mcp_build.py as a subprocess.
+
+        Invokes:
+            uv run --python 3.13 python <HAGENT_ROOT>/hagent/mcp/mcp_build.py
+                --name <cpu_profile> --api <api> [extra options]
+
+        Returns:
+            (returncode, stdout, stderr)
+        """
+        hagent_root = os.environ.get('HAGENT_ROOT', str(Path(__file__).parent.parent.parent.parent))
+        mcp_build = Path(hagent_root) / 'hagent' / 'mcp' / 'mcp_build.py'
+
+        cmd = ['uv', 'run', '--python', '3.13', 'python', str(mcp_build), '--name', cpu_profile, '--api', api]
+        if extra_opts:
+            for k, v in extra_opts.items():
+                cmd += [f'-o{k}={v}']
+
+        if self.debug:
+            print(f'   $ {" ".join(cmd)}')
+
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        return proc.returncode, proc.stdout, proc.stderr
+
     def _generate_baseline_verilog(self, cpu_profile):
         """
-        Generate fresh baseline Verilog using MCP profile system and backup files for golden design.
+        Generate fresh baseline Verilog by calling mcp_build.py --api compile
+        and backup files for golden design.
 
         Args:
             cpu_profile: MCP profile name (e.g., 'pipelined_d')
@@ -272,25 +510,17 @@ class V2chisel_batch(Step):
         """
         print(f'\n🏭 Generating baseline Verilog using MCP profile: {cpu_profile}')
 
-        # Convert profile to verilog filename for BaselineVerilogGenerator
-        profile_to_verilog = {
-            'singlecyclecpu_d': ['SingleCycleCPU.sv'],
-            'pipelined_d': ['PipelinedCPU.sv'],
-            'dualissue_d': ['PipelinedDualIssueCPU.sv'],
-        }
-        verilog_files = profile_to_verilog.get(cpu_profile, ['SingleCycleCPU.sv'])
+        # Compile Chisel → Verilog via mcp_build.py
+        returncode, stdout, stderr = self._run_mcp_build(cpu_profile, 'compile')
 
-        # Generate baseline using BaselineVerilogGenerator (uses MCP internally)
-        result = self.baseline_verilog_generator.generate_fresh_baseline(
-            docker_container=None,  # Builder handles this
-            verilog_files=verilog_files,
-        )
+        if returncode != 0:
+            error_msg = f'mcp_build compile failed (exit {returncode}):\n{stderr}'
+            print(f'❌ [BASELINE] {error_msg}')
+            return {'success': False, 'error': error_msg}
 
-        if not result['success']:
-            return result
+        result = {'success': True, 'profile': cpu_profile, 'stdout': stdout, 'file_count': 0}
 
         # Backup the generated baseline Verilog files for golden design creation
-        print('💾 [BASELINE] Backing up baseline Verilog files for golden design...')
         backup_id = f'baseline_{cpu_profile}'
         backup_result = self.golden_design_builder.backup_existing_original_verilog(
             docker_container=None,  # Builder handles this
@@ -298,13 +528,10 @@ class V2chisel_batch(Step):
         )
 
         if backup_result['success']:
-            print(f'✅ [BASELINE] Backed up {backup_result["total_files"]} baseline Verilog files')
-            # Add backup info to result
             result['original_verilog_files'] = backup_result['files']
             result['baseline_verilog_success'] = True
             result['backup_id'] = backup_id
         else:
-            print(f'⚠️  [BASELINE] Backup failed: {backup_result.get("error")}, continuing anyway')
             result['original_verilog_files'] = {}
             result['baseline_verilog_success'] = False
 
@@ -328,9 +555,10 @@ class V2chisel_batch(Step):
         Returns:
             Dict with bug processing result and all metadata
         """
-        bug_file = bug.get('file', 'unknown')
+        bug_file = bug.get('file') or bug.get('verilog_file', 'unknown')
         bug_description = bug.get('description', '')
         unified_diff = bug.get('unified_diff', bug.get('patch', ''))
+        verilog_files = bug.get('verilog_files')  # set for xiangshan multi-file bugs
 
         # Create report for this bug for DAC metrics tracking
         report = self.pipeline_reporter.create_report(bug_file)
@@ -346,7 +574,7 @@ class V2chisel_batch(Step):
 
         # Generate hints using HintsGeneratorV2 (3 strategies combined)
         print('🔍 Generating hints using multi-strategy approach...')
-        hints_result = self._generate_hints_for_bug(unified_diff, bug_description, bug_file)
+        hints_result = self._generate_hints_for_bug(unified_diff, bug_description, bug_file, verilog_files=verilog_files)
 
         if not hints_result['success']:
             print(f'❌ Hints generation failed: {hints_result.get("error", "Unknown error")}')
@@ -361,24 +589,20 @@ class V2chisel_batch(Step):
                 'dac_metrics': report.get_dac_report_dict(),
             }
 
-        print('✅ Hints generated successfully')
-        print('   Strategies used: 3 (Direct Module, Signal-Based, Context-Aware)')
-        print(f'   Chisel files found: {len(hints_result.get("chisel_files_found", []))}')
-        if hints_result.get('chisel_files_found'):
-            for f in hints_result['chisel_files_found'][:3]:  # Show first 3
-                print(f'     - {f}')
-
         hints = hints_result.get('hints', '')
         chisel_files_found = hints_result.get('chisel_files_found', [])
+        print(f'✅ Hints generated ({len(hints)} chars, {len(chisel_files_found)} Chisel files found)')
 
         # Initial LLM call to generate Chisel diff
-        print('🤖 Calling LLM to generate Chisel diff (initial attempt)...')
+        # Use prompt_xiangshan for multi-file bugs (xiangshan-style mutations)
+        initial_prompt = 'prompt_xiangshan' if verilog_files else 'prompt_initial'
+        print(f'🤖 Calling LLM to generate Chisel diff (initial attempt, prompt: {initial_prompt})...')
 
         # Start iteration 1 for DAC metrics
         iter1 = report.add_iteration(1)
 
         llm_result = self.chisel_diff_generator.generate_chisel_diff(
-            verilog_diff=unified_diff, chisel_hints=hints, bug_description=bug_description, prompt_name='prompt_initial'
+            verilog_diff=unified_diff, chisel_hints=hints, bug_description=bug_description, prompt_name=initial_prompt
         )
 
         if not llm_result['success']:
@@ -398,18 +622,12 @@ class V2chisel_batch(Step):
                 'dac_metrics': report.get_dac_report_dict(),
             }
 
-        print('✅ LLM generated Chisel diff successfully')
-        print(f'   Attempts: {llm_result.get("attempts", 1)}')
-        print(f'   Cost: ${llm_result.get("cost", 0):.4f}')
-        print(f'   Tokens: {llm_result.get("tokens", 0)}')
-
         chisel_diff = llm_result.get('chisel_diff', '')
-
-        # DEBUG: Print the generated Chisel diff
-        print('\n📝 [DEBUG] Generated Chisel diff:')
-        print('=' * 80)
+        print(f'✅ LLM generated Chisel diff ({len(chisel_diff)} chars, {llm_result.get("attempts", 1)} attempt(s))')
+        print('=' * 60)
+        print('📋 Generated Chisel diff:')
         print(chisel_diff)
-        print('=' * 80)
+        print('=' * 60)
         report.mark_llm_success(generated_diff=chisel_diff)
         total_llm_cost = llm_result.get('cost', 0)
         total_llm_tokens = llm_result.get('tokens', 0)
@@ -451,6 +669,26 @@ class V2chisel_batch(Step):
                 'llm_cost': total_llm_cost,
                 'llm_tokens': total_llm_tokens,
             }
+
+        module_name = os.path.splitext(os.path.basename(bug_file))[0]
+
+        # Create golden design BEFORE modifying Chisel files (only for projects with cpu_profile):
+        # 1. Apply verilog_diff to .sv file in build/build_<cpu>/
+        # 2. Run mcp_build.py --api elab -o tag=gold
+        golden_result = {'success': False}
+        if cpu_profile is not None:
+            print('🎯 [GOLDEN] Creating golden design for LEC comparison...')
+            golden_result = self._create_golden_design_with_elab(
+                verilog_diff=unified_diff,
+                cpu_profile=cpu_profile,
+                module_name=module_name,
+            )
+            if not golden_result['success']:
+                print(f'⚠️  [GOLDEN] Golden design failed (LEC may be incorrect): {golden_result.get("error")}')
+            else:
+                print('✅ [GOLDEN] Golden design created (elab tag=gold)')
+        else:
+            print('⏭️  [GOLDEN] Skipping golden design (no CPU profile for this project)')
 
         # Create master backup before any modifications
         print('💾 Creating master backup of original Chisel files...')
@@ -542,23 +780,47 @@ class V2chisel_batch(Step):
                     }
 
             # Diff applied successfully, break out of ambiguous retry loop
-            print('✅ Successfully applied Chisel diff')
-            print(f'   Files modified: {apply_result.get("files_modified", 0)}')
+            print(f'✅ Chisel diff applied ({apply_result.get("files_modified", 0)} file(s) modified)')
             report.mark_applier_success()
             break
 
+        # For projects without a CPU profile (soomrv, cva6):
+        # applying the chisel diff is the final step — no compile or LEC available.
+        if cpu_profile is None:
+            print('✅ Done (no compile/LEC for this project)')
+            report.finalize_dac_metrics(
+                verilog_diff=unified_diff, has_hints=True, golden_design_success=False, lec_files_compared=[bug_file]
+            )
+            return {
+                'bug_number': bug_number,
+                'file': bug_file,
+                'success': True,
+                'hints': hints,
+                'chisel_files_found': chisel_files_found,
+                'unified_diff': unified_diff,
+                'description': bug_description,
+                'chisel_diff': chisel_diff,
+                'llm_attempts': total_llm_attempts,
+                'llm_cost': total_llm_cost,
+                'llm_tokens': total_llm_tokens,
+                'diff_applied': True,
+                'files_modified': apply_result.get('files_modified', 0),
+                'compilation_success': False,
+                'lec_passed': False,
+                'dac_metrics': report.get_dac_report_dict(),
+            }
+
         # Retry loop for compilation errors (3 iterations max)
         compile_retries = 0
-        max_compile_retries = 3
+        max_compile_retries = 0
 
         while compile_retries <= max_compile_retries:
-            # Compile modified Chisel and generate new Verilog using MCP
-            print('🔨 Compiling modified Chisel and generating Verilog...')
-            compile_result = self._compile_and_generate_verilog(cpu_profile)
+            compile_result = self._compile_and_generate_verilog(cpu_profile, module_name=module_name)
 
             if not compile_result['success']:
                 error_msg = compile_result.get('error', '')
                 report.set_error('compilation', error_msg)
+                print(f'❌ Compile error:\n{error_msg}')
 
                 if compile_retries < max_compile_retries:
                     compile_retries += 1
@@ -676,36 +938,18 @@ class V2chisel_batch(Step):
                     }
 
             # Compilation successful, break out of compile retry loop
-            print('✅ Successfully compiled and generated Verilog')
-            print(f'   Profile: {compile_result.get("profile")}')
-            print(f'   Verilog files: {compile_result.get("verilog_count", 0)}')
+            print(
+                f'✅ Compile + elab gate done (profile: {compile_result.get("profile")}, {compile_result.get("verilog_count", 0)} Verilog file(s))'
+            )
             report.mark_compilation_success()
             report.mark_verilog_success()
             break
 
-        # Create golden design before LEC (apply verilog_diff to baseline)
-        print('🎯 [GOLDEN] Creating golden design for LEC comparison...')
-        golden_result = self.golden_design_builder.create_golden_design(
-            verilog_diff=unified_diff,
-            master_backup=baseline_result,
-            docker_container=None,  # Builder handles this
-        )
-
-        if not golden_result['success']:
-            print(f'❌ [GOLDEN] Golden design creation failed: {golden_result.get("error")}')
-            print('⚠️  [GOLDEN] Continuing with LEC anyway, but results may be incorrect')
-        else:
-            print('✅ [GOLDEN] Golden design created successfully')
-            print(f'   Files modified: {len(golden_result.get("files_modified", []))}')
-            print(f'   Golden directory: {golden_result.get("golden_directory")}')
-
         # Retry loop for LEC failures (1 iteration max)
         lec_retries = 0
-        max_lec_retries = 1
+        max_lec_retries = 0
 
         while lec_retries <= max_lec_retries:
-            # Run LEC verification (compares golden design vs modified Verilog)
-            print('🔍 Running LEC verification...')
             lec_result = self._run_lec_verification(
                 bug_file=bug_file, cpu_profile=cpu_profile, unified_diff=unified_diff, golden_result=golden_result
             )
@@ -818,7 +1062,7 @@ class V2chisel_batch(Step):
                             }
 
                         # Recompile with new diff
-                        compile_result = self._compile_and_generate_verilog(cpu_profile)
+                        compile_result = self._compile_and_generate_verilog(cpu_profile, module_name=module_name)
                         if not compile_result['success']:
                             print(f'❌ LEC retry compilation failed: {compile_result.get("error")}')
                             golden_dir = golden_result.get('golden_directory', '/code/workspace/repo/lec_golden')
@@ -850,8 +1094,8 @@ class V2chisel_batch(Step):
 
                         # Recreate golden design with new diff
                         print('🎯 [GOLDEN] Recreating golden design for LEC retry...')
-                        golden_result = self.golden_design_builder.create_golden_design(
-                            verilog_diff=unified_diff, master_backup=baseline_result, docker_container=None
+                        golden_result = self._create_golden_design_with_elab(
+                            verilog_diff=unified_diff, cpu_profile=cpu_profile, module_name=module_name
                         )
 
                         if not golden_result['success']:
@@ -993,19 +1237,18 @@ class V2chisel_batch(Step):
             'dac_metrics': report.get_dac_report_dict(),
         }
 
-    def _generate_hints_for_bug(self, verilog_diff, bug_description, bug_file='unknown'):
+    def _generate_hints_for_bug(self, verilog_diff, bug_description, bug_file='unknown', verilog_files=None):
         """
         Generate Chisel hints from Verilog diff using multi-strategy approach.
 
-        This method uses HintsGeneratorV2 which combines 3 strategies:
-        1. Direct Module Mapping - Maps Verilog module names to Chisel classes
-        2. Signal-Based Search - Searches for signals mentioned in the diff
-        3. Context-Aware Analysis - Analyzes logic patterns and context
+        For multi-file bugs (xiangshan), verilog_files contains all SV filenames.
+        Hints are run per file and aggregated into one combined block.
 
         Args:
-            verilog_diff: Unified diff of Verilog changes
+            verilog_diff: Unified diff of Verilog changes (may span multiple files)
             bug_description: Description of the bug
-            bug_file: Verilog file name (e.g., 'Control.sv')
+            bug_file: Primary Verilog/Scala file name
+            verilog_files: Optional list of all SV files changed (for multi-file hints)
 
         Returns:
             Dict with success status, hints, and metadata
@@ -1017,26 +1260,14 @@ class V2chisel_batch(Step):
             # Import BugInfo for constructing bug_info object
             from hagent.step.v2chisel_batch.components.bug_info import BugInfo
 
-            # Create BugInfo object expected by HintsGeneratorV2
-            bug_entry = {
-                'file': bug_file,
-                'unified_diff': verilog_diff,
-                'description': bug_description,
-            }
-            bug_info = BugInfo(bug_entry, 0)
-
             # Get all Chisel files from the repository (using Builder's filesystem)
-            # For now, use a simple pattern to find Scala files
             all_files = []
             try:
-                # Use Builder to find Scala files in the repository
                 exit_code, stdout, stderr = self.builder.run_cmd(
                     'find /code/workspace/repo/src/main/scala -name "*.scala" -type f 2>/dev/null || find . -name "*.scala" -type f 2>/dev/null || true'
                 )
                 if exit_code == 0 and stdout:
                     raw_files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
-                    # Prepend docker: prefix for SpanIndex to use Builder for file reading
-                    # Format: docker:container_name:path
                     for f in raw_files:
                         all_files.append(f'docker:hagent:{f}')
             except Exception as e:
@@ -1046,28 +1277,34 @@ class V2chisel_batch(Step):
             if self.debug:
                 print(f'   Found {len(all_files)} Scala files')
 
-            # Call HintsGeneratorV2.find_hints() with proper parameters
-            hints_result = self.hints_generator_v2.find_hints(
-                bug_info=bug_info,
-                all_files=all_files,
-                docker_container='hagent',  # Builder handles docker
-            )
+            # For multi-file bugs (xiangshan): if we already know the scala file, read it
+            # directly from Docker — this is more accurate than per-SV-file strategy lookups
+            # which are indirect (verilog module name → chisel class) and often miss the
+            # actual mutation site inside nested sub-modules.
+            if verilog_files and bug_file.endswith('.scala'):
+                if self.debug:
+                    print(f'   Multi-file xiangshan mode: using scala file directly: {bug_file}')
+                return self._hints_from_scala_file(bug_file, verilog_diff, all_files)
+
+            # For multi-file bugs: run hints per SV file and aggregate results
+            files_to_search = verilog_files if verilog_files else [bug_file]
+
+            if len(files_to_search) > 1:
+                if self.debug:
+                    print(f'   Multi-file mode: running hints for {len(files_to_search)} SV files')
+                return self._aggregate_hints_for_files(files_to_search, verilog_diff, bug_description, all_files)
+
+            # Single-file: standard path
+            bug_entry = {'file': bug_file, 'unified_diff': verilog_diff, 'description': bug_description}
+            bug_info = BugInfo(bug_entry, 0)
+            hints_result = self.hints_generator_v2.find_hints(bug_info=bug_info, all_files=all_files, docker_container='hagent')
 
             if hints_result.get('success'):
-                if self.debug:
-                    print('✅ [HINTS] Multi-strategy hints generation successful')
-                    print(f'   Combined hints length: {len(hints_result.get("hints", ""))} chars')
-
-                # Extract file paths from hints result
-                # HintsGeneratorV2 returns hits with file information
-                chisel_files = []
-                if hints_result.get('hits'):
-                    for hit in hints_result['hits']:
-                        if hasattr(hit, 'file_path'):
-                            chisel_files.append(hit.file_path)
-                        elif isinstance(hit, dict) and 'file_path' in hit:
-                            chisel_files.append(hit['file_path'])
-
+                chisel_files = [
+                    getattr(h, 'file_name', None) or (h.get('file_name') if isinstance(h, dict) else None)
+                    for h in hints_result.get('hits', [])
+                    if getattr(h, 'file_name', None) or (isinstance(h, dict) and h.get('file_name'))
+                ]
                 return {
                     'success': True,
                     'hints': hints_result.get('hints', ''),
@@ -1075,19 +1312,208 @@ class V2chisel_batch(Step):
                     'source': hints_result.get('source', 'unknown'),
                 }
             else:
-                error_msg = hints_result.get('error', 'Unknown error in hints generation')
-                if self.debug:
-                    print(f'❌ [HINTS] Hints generation failed: {error_msg}')
-                return {'success': False, 'error': error_msg}
+                return {'success': False, 'error': hints_result.get('error', 'No candidates found')}
 
         except Exception as e:
             error_msg = f'Exception during hints generation: {str(e)}'
             if self.debug:
-                print(f'❌ [HINTS] {error_msg}')
                 import traceback
 
                 traceback.print_exc()
             return {'success': False, 'error': error_msg}
+
+    def _hints_from_scala_file(self, scala_file: str, verilog_diff: str, all_files) -> dict:
+        """
+        Generate hints by reading the known Chisel scala file directly from Docker.
+
+        Used for xiangshan mutations where the YAML already specifies the scala_file.
+        Reading the file directly avoids the verilog→chisel name-lookup that often
+        finds the wrapper instead of the implementation, and ensures sub-modules (like
+        SubModule inside AluDataModule) are included without truncation.
+        """
+        import re
+
+        MAX_TOTAL_HINTS = 16000
+
+        # Try both workspace and cache-based paths inside the container
+        candidate_paths = [
+            f'/code/workspace/repo/{scala_file}',
+            f'/code/workspace/repo/src/main/scala/{scala_file}',
+            scala_file,
+        ]
+
+        file_content = None
+        used_path = None
+        for docker_path in candidate_paths:
+            try:
+                file_content = self.builder.filesystem.read_text(docker_path)
+                used_path = docker_path
+                break
+            except Exception:
+                continue
+
+        if file_content is None:
+            if self.debug:
+                print(f'   ⚠️  Could not read scala file {scala_file} from Docker, falling back to aggregate mode')
+            from hagent.step.v2chisel_batch.components.bug_info import BugInfo
+
+            # Extract module name from scala_file for single-file fallback
+            module_name = os.path.splitext(os.path.basename(scala_file))[0]
+            bug_entry = {'file': module_name + '.sv', 'unified_diff': verilog_diff, 'description': scala_file}
+            bug_info = BugInfo(bug_entry, 0)
+            result = self.hints_generator_v2.find_hints(bug_info=bug_info, all_files=all_files, docker_container='hagent')
+            if result.get('success'):
+                return {
+                    'success': True,
+                    'hints': result.get('hints', ''),
+                    'chisel_files_found': [scala_file],
+                    'source': 'fallback',
+                }
+            return {'success': False, 'error': f'Could not read {scala_file} and fallback also failed'}
+
+        if self.debug:
+            print(f'   📖 Read {len(file_content)} chars from {used_path}')
+
+        # Build hints: full scala file content + sub-module following
+        hints_parts = [
+            f'// ========== DIRECT SCALA FILE: {scala_file} ==========',
+            f'// Source: {used_path}',
+            '',
+            file_content.strip(),
+            '',
+        ]
+
+        # Sub-module following: find Module(new ClassName) patterns and append those classes too
+        if self.hints_generator_v2.span_index is not None:
+            already_included: set = set()
+            sub_pattern = re.compile(r'Module\s*\(\s*new\s+(\w+)')
+            queue = [file_content]
+            seen_code: list = []
+
+            while queue:
+                code_block = queue.pop(0)
+                if code_block in seen_code:
+                    continue
+                seen_code.append(code_block)
+
+                for match in sub_pattern.finditer(code_block):
+                    class_name = match.group(1)
+                    if class_name in already_included:
+                        continue
+                    already_included.add(class_name)
+
+                    span = next(
+                        (s for s in self.hints_generator_v2.span_index.get_all_modules() if s.name == class_name),
+                        None,
+                    )
+                    if span is None:
+                        continue
+
+                    sub_code = self.hints_generator_v2._extract_code_from_span(span)
+                    if not sub_code:
+                        continue
+
+                    display_file = span.file
+                    if display_file.startswith('docker:'):
+                        parts = display_file.split(':', 2)
+                        if len(parts) == 3:
+                            display_file = parts[2]
+
+                    hints_parts.append(f'// ========== SUB-MODULE: {class_name} ==========')
+                    hints_parts.append(f'// File: {display_file} lines {span.start_line}-{span.end_line}')
+                    hints_parts.append('')
+                    hints_parts.append(sub_code.strip())
+                    hints_parts.append('')
+
+                    if self.debug:
+                        print(f'   ➕ Sub-module: {class_name} ({display_file}:{span.start_line}-{span.end_line})')
+
+                    # Recurse into this sub-module to follow nested instantiations
+                    queue.append(sub_code)
+
+                    # Safety: stop if we've already hit the hint size budget
+                    current_size = sum(len(p) for p in hints_parts)
+                    if current_size > MAX_TOTAL_HINTS:
+                        if self.debug:
+                            print(f'   ⚠️  Sub-module hint budget reached, stopping at {class_name}')
+                        break
+
+        combined = '\n'.join(hints_parts)
+        if len(combined) > MAX_TOTAL_HINTS:
+            combined = combined[:MAX_TOTAL_HINTS] + '\n// ... (truncated)'
+
+        if self.debug:
+            print(f'   📏 Direct scala hints: {len(combined)} chars')
+
+        return {
+            'success': True,
+            'hints': combined,
+            'chisel_files_found': [scala_file],
+            'source': 'direct_scala',
+        }
+
+    def _aggregate_hints_for_files(self, verilog_files, verilog_diff, bug_description, all_files):
+        """
+        Run hints for each SV file and combine into one hints block.
+        Used for xiangshan-style mutations where one chisel change produces N SV changes.
+        """
+        from hagent.step.v2chisel_batch.components.bug_info import BugInfo
+
+        MAX_HINTS_PER_FILE = 4000  # chars — cap each file's hints block
+        MAX_TOTAL_HINTS = 16000  # chars — cap the combined hints sent to LLM
+
+        combined_hints_parts = []
+        all_chisel_files = []
+        any_success = False
+
+        for sv_file in verilog_files:
+            # Stop adding more file hints if we've already hit the total cap
+            current_total = sum(len(p) for p in combined_hints_parts)
+            if current_total >= MAX_TOTAL_HINTS:
+                if self.debug:
+                    print(f'   ⚠️  Total hints cap reached ({MAX_TOTAL_HINTS} chars), skipping {sv_file}')
+                break
+
+            bug_entry = {'file': sv_file, 'unified_diff': verilog_diff, 'description': bug_description}
+            bug_info = BugInfo(bug_entry, 0)
+
+            result = self.hints_generator_v2.find_hints(bug_info=bug_info, all_files=all_files, docker_container='hagent')
+
+            if result.get('success'):
+                any_success = True
+                file_hints = result.get('hints', '')
+                # Truncate this file's hints if too large
+                if len(file_hints) > MAX_HINTS_PER_FILE:
+                    file_hints = file_hints[:MAX_HINTS_PER_FILE] + '\n// ... (truncated)'
+                    if self.debug:
+                        print(f'   ✂️  Hints for {sv_file} truncated to {MAX_HINTS_PER_FILE} chars')
+                combined_hints_parts.append(f'// === Hints for {sv_file} ===')
+                combined_hints_parts.append(file_hints)
+                for h in result.get('hits', []):
+                    fp = getattr(h, 'file_name', None) or (h.get('file_name') if isinstance(h, dict) else None)
+                    if fp and fp not in all_chisel_files:
+                        all_chisel_files.append(fp)
+            else:
+                if self.debug:
+                    print(f'   ⚠️  No hints for {sv_file}: {result.get("error")}')
+
+        if not any_success:
+            return {'success': False, 'error': 'No hints found for any of the SV files'}
+
+        combined = '\n'.join(combined_hints_parts)
+        # Final safety truncation
+        if len(combined) > MAX_TOTAL_HINTS:
+            combined = combined[:MAX_TOTAL_HINTS] + '\n// ... (total hints truncated)'
+
+        if self.debug:
+            print(f'   📏 Combined hints: {len(combined)} chars from {len(all_chisel_files)} Chisel file(s)')
+
+        return {
+            'success': True,
+            'hints': combined,
+            'chisel_files_found': all_chisel_files,
+            'source': 'multi_file',
+        }
 
     def _generate_chisel_diff_with_llm(self, verilog_diff, chisel_hints, bug_description):
         """
@@ -1145,42 +1571,27 @@ class V2chisel_batch(Step):
             Dict with success status and files modified count
         """
         try:
-            if self.debug:
-                print('📝 [APPLIER] Applying Chisel diff to Docker files...')
-
             if not chisel_diff:
                 return {'success': False, 'error': 'Empty Chisel diff provided'}
 
-            # Determine target file path if available from hints
             target_file = chisel_files_found[0] if chisel_files_found else None
 
-            # Apply diff using DockerDiffApplier
             success = self.docker_diff_applier.apply_diff_to_container(
                 diff_content=chisel_diff, target_file_path=target_file, dry_run=False
             )
 
             if success:
-                if self.debug:
-                    print('✅ [APPLIER] Diff applied successfully')
-
                 return {
                     'success': True,
                     'files_modified': len(chisel_files_found) if chisel_files_found else 1,
                     'target_file': target_file,
                 }
-            else:
-                error_msg = 'DockerDiffApplier returned failure'
-                if self.debug:
-                    print(f'❌ [APPLIER] {error_msg}')
-                return {'success': False, 'error': error_msg}
+            return {'success': False, 'error': 'DockerDiffApplier returned failure'}
 
         except Exception as e:
-            error_msg = f'Exception during diff application: {str(e)}'
-            if self.debug:
-                print(f'❌ [APPLIER] {error_msg}')
-            return {'success': False, 'error': error_msg}
+            return {'success': False, 'error': f'Exception during diff application: {str(e)}'}
 
-    def _compile_and_generate_verilog(self, cpu_profile):
+    def _compile_and_generate_verilog(self, cpu_profile, module_name: str = ''):
         """
         Compile modified Chisel code and generate Verilog using MCP profile.
 
@@ -1194,40 +1605,44 @@ class V2chisel_batch(Step):
         Returns:
             Dict with success status, profile info, and Verilog file count
         """
+        _COMPILE_ONLY_PROFILES = ('xiangshan_rtl_dbg', 'xiangshan_rtl_opt')
+
         try:
-            if self.debug:
-                print(f'🔨 [COMPILE] Compiling Chisel and generating Verilog using MCP profile: {cpu_profile}')
-
-            # Use Builder's run_api to call MCP compile command
-            # This executes: sbt "runMain dinocpu.PipelinedDualIssueDebug" (or similar based on profile)
-            exit_code, stdout, stderr = self.builder.run_api(exact_name=cpu_profile, command_name='compile')
-
-            if exit_code == 0:
-                if self.debug:
-                    print('✅ [COMPILE] Compilation and Verilog generation successful')
-
-                # Count generated Verilog files
-                verilog_count = self._count_verilog_files(cpu_profile)
-
+            # Step 1: compile (Chisel → Verilog)
+            exit_code, stdout, stderr = self._run_mcp_build(cpu_profile, 'compile')
+            if exit_code != 0:
                 return {
-                    'success': True,
-                    'profile': cpu_profile,
+                    'success': False,
+                    'error': f'compile failed (exit {exit_code}):\n{stderr}',
                     'exit_code': exit_code,
-                    'stdout': stdout,
-                    'verilog_count': verilog_count,
+                    'stderr': stderr,
                 }
-            else:
-                error_msg = f'Compilation failed with exit code {exit_code}: {stderr}'
-                if self.debug:
-                    print(f'❌ [COMPILE] {error_msg}')
 
-                return {'success': False, 'error': error_msg, 'exit_code': exit_code, 'stderr': stderr}
+            # Step 2: elab --tag gate (skipped for xiangshan which has no elab API)
+            if cpu_profile not in _COMPILE_ONLY_PROFILES:
+                elab_opts = {'tag': 'gate'}
+                if module_name:
+                    elab_opts['top_synth'] = module_name
+                elab_exit_code, _, elab_stderr = self._run_mcp_build(cpu_profile, 'elab', elab_opts)
+                if elab_exit_code != 0:
+                    return {
+                        'success': False,
+                        'error': f'elab gate failed (exit {elab_exit_code}):\n{elab_stderr}',
+                        'exit_code': elab_exit_code,
+                        'stderr': elab_stderr,
+                    }
+
+            verilog_count = self._count_verilog_files(cpu_profile)
+            return {
+                'success': True,
+                'profile': cpu_profile,
+                'exit_code': exit_code,
+                'stdout': stdout,
+                'verilog_count': verilog_count,
+            }
 
         except Exception as e:
-            error_msg = f'Exception during compilation: {str(e)}'
-            if self.debug:
-                print(f'❌ [COMPILE] {error_msg}')
-            return {'success': False, 'error': error_msg}
+            return {'success': False, 'error': f'Exception during compilation: {str(e)}'}
 
     def _count_verilog_files(self, cpu_profile):
         """
@@ -1260,93 +1675,109 @@ class V2chisel_batch(Step):
         except Exception:
             return 0
 
-    def _run_lec_verification(self, bug_file, cpu_profile, unified_diff, golden_result):
+    def _create_golden_design_with_elab(self, verilog_diff: str, cpu_profile: str, module_name: str = ''):
         """
-        Run Logic Equivalence Check (LEC) between golden design and modified Verilog.
+        Create golden design by:
+        1. Applying verilog_diff directly to .sv file in build/build_<cpu_profile>/
+        2. Running mcp_build.py --api elab -o tag=gold
 
-        This compares:
-        - Golden Verilog (baseline + verilog_diff): CORRECT fixed design
-        - Modified Verilog (from Chisel compilation): Design after applying Chisel fix
+        This matches the manual pipeline in run_v2chisel_manual.py / run_lec_benchmark.py.
 
         Args:
-            bug_file: Name of the buggy Verilog file
-            cpu_profile: MCP profile name (determines which Verilog files to compare)
-            unified_diff: Original Verilog diff for reference
-            golden_result: Golden design creation result with file paths
+            verilog_diff: Unified diff to apply to the baseline Verilog file
+            cpu_profile: MCP profile name (e.g., 'singlecyclecpu_d')
 
         Returns:
-            Dict with success status, LEC command, and any counterexample
+            Dict with success status and elab details
         """
         try:
-            if self.debug:
-                print('🔍 [LEC] Starting Logic Equivalence Check...')
-                print(f'   Bug file: {bug_file}')
-                print(f'   CPU profile: {cpu_profile}')
+            # Step 1: Apply verilog_diff to the .sv file in build/build_<cpu_profile>/
+            apply_success = self.docker_diff_applier.apply_diff_to_container(diff_content=verilog_diff, dry_run=False)
 
-            # Use the bug file directly instead of mapping to top-level CPU file
-            # The bug_file already contains the specific Verilog file (e.g., Control.sv, ALU.sv)
-            verilog_filename = bug_file
+            if not apply_success:
+                return {'success': False, 'error': 'Failed to apply verilog_diff to build directory'}
 
-            # Paths to golden and modified Verilog
-            golden_dir = golden_result.get('golden_directory', '/code/workspace/repo/lec_golden')
-            modified_dir = f'/code/workspace/build/build_{cpu_profile}'
+            # Step 2: Run elab with tag=gold via mcp_build.py
+            elab_opts = {'tag': 'gold'}
+            if module_name:
+                elab_opts['top_synth'] = module_name
+            exit_code, stdout, stderr = self._run_mcp_build(cpu_profile, 'elab', elab_opts)
 
-            golden_file = f'{golden_dir}/{verilog_filename}'
-            modified_file = f'{modified_dir}/{verilog_filename}'
+            if exit_code != 0:
+                return {'success': False, 'error': f'elab gold failed (exit {exit_code}):\n{stderr}'}
 
-            # Read both Verilog files
-            print(f'📄 [LEC] Reading GOLDEN Verilog: {golden_file}')
-            golden_verilog = self.builder.filesystem.read_text(golden_file)
-
-            print(f'📄 [LEC] Reading MODIFIED Verilog: {modified_file}')
-            modified_verilog = self.builder.filesystem.read_text(modified_file)
-
-            # Extract module name from bug_file (e.g., "ALU.sv" -> "ALU")
-            module_name = bug_file.replace('.sv', '').replace('.v', '')
-
-            print(f'🎯 [LEC] Comparing module: {module_name}')
-            print(f'   Golden (correct): {golden_file}')
-            print(f'   Modified (from LLM): {modified_file}')
-            print(f'   Module to compare: {module_name}')
-            print('\n📝 [DEBUG] LEC will compare:')
-            print(f'   Gold file: {golden_file}')
-            print(f'   Gate file: {modified_file}')
-            print(f'   Target module: {module_name}')
-
-            # Run LEC using Equiv_check
-            # This will print the exact command and files involved
-            lec_result = self.equiv_check.check_equivalence(
-                gold_code=golden_verilog, gate_code=modified_verilog, desired_top=module_name if module_name else ''
-            )
-
-            if lec_result is True:
-                if self.debug:
-                    print('✅ [LEC] Designs are logically equivalent')
-
-                return {'success': True, 'result': 'equivalent', 'command': 'Printed above by Equiv_check'}
-            elif lec_result is False:
-                counterexample = self.equiv_check.get_counterexample()
-                error_msg = 'Designs are NOT logically equivalent'
-
-                if self.debug:
-                    print(f'❌ [LEC] {error_msg}')
-                    if counterexample:
-                        print(f'   Counterexample:\n{counterexample}')
-
-                return {'success': False, 'error': error_msg, 'counterexample': counterexample, 'result': 'not_equivalent'}
-            else:
-                # None = inconclusive
-                error_msg = f'LEC result inconclusive: {self.equiv_check.get_error()}'
-                if self.debug:
-                    print(f'⚠️  [LEC] {error_msg}')
-
-                return {'success': False, 'error': error_msg, 'result': 'inconclusive'}
+            return {
+                'success': True,
+                'elab_tag': 'gold',
+                'cpu_profile': cpu_profile,
+                'golden_directory': f'/code/workspace/build/build_{cpu_profile}',
+            }
 
         except Exception as e:
-            error_msg = f'Exception during LEC verification: {str(e)}'
+            return {'success': False, 'error': f'Golden design creation failed: {str(e)}'}
+
+    def _run_lec_verification(self, bug_file, cpu_profile, unified_diff, golden_result):
+        """
+        Run Logic Equivalence Check via cli_equiv_check.py subprocess.
+
+        Invokes:
+            uv run --python 3.13 python <HAGENT_ROOT>/hagent/tool/tests/cli_equiv_check.py
+                --dir <HAGENT_BUILD_DIR>/build_<cpu_profile>
+                --ref-tag gold --impl-tag gate
+
+        Exit codes from cli_equiv_check.py:
+            0 = equivalent (pass)
+            1 = not equivalent or error (fail)
+            2 = inconclusive
+
+        Args:
+            bug_file: Verilog file name (display only)
+            cpu_profile: MCP profile name (determines build subdirectory)
+            unified_diff: unused, kept for interface compatibility
+            golden_result: unused, kept for interface compatibility
+        """
+        try:
+            hagent_root = os.environ.get('HAGENT_ROOT', str(Path(__file__).parent.parent.parent.parent))
+            cli_script = Path(hagent_root) / 'hagent' / 'tool' / 'tests' / 'cli_equiv_check.py'
+
+            build_base = os.environ.get('HAGENT_BUILD_DIR', '/code/workspace/build')
+            build_dir = str(Path(build_base) / f'build_{cpu_profile}')
+
+            cmd = [
+                'uv',
+                'run',
+                '--python',
+                '3.13',
+                'python',
+                str(cli_script),
+                '--dir',
+                build_dir,
+                '--ref-tag',
+                'gold',
+                '--impl-tag',
+                'gate',
+            ]
+
             if self.debug:
-                print(f'❌ [LEC] {error_msg}')
-            return {'success': False, 'error': error_msg}
+                print(f'   $ {" ".join(cmd)}')
+
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+
+            if proc.returncode == 0:
+                return {'success': True, 'result': 'equivalent', 'stdout': proc.stdout}
+            elif proc.returncode == 2:
+                return {'success': False, 'error': f'LEC inconclusive: {proc.stdout}', 'result': 'inconclusive'}
+            else:
+                # returncode == 1: not equivalent or setup error
+                return {
+                    'success': False,
+                    'error': 'Designs are NOT logically equivalent',
+                    'counterexample': proc.stdout,
+                    'result': 'not_equivalent',
+                }
+
+        except Exception as e:
+            return {'success': False, 'error': f'Exception during LEC: {str(e)}'}
 
 
 def main():
@@ -1365,9 +1796,17 @@ def main():
     )
     parser.add_argument('--bugs', help='Bug numbers to process (e.g., "1,2,3" or "1-5")')
     parser.add_argument('--llm', help='LLM model to use (e.g., "openai/gpt-4o", "anthropic/claude-sonnet-4-5-20250929")')
-    parser.add_argument('--chisel-diff-only', action='store_true', help='Only generate chisel_diff (skip compile/LEC)')
+    parser.add_argument('--chisel-diff-only', action='store_true', default=True, help='Only generate chisel_diff, skip compile/LEC (default: True)')
+    parser.add_argument('--full-pipeline', action='store_true', help='Run full pipeline including compile and LEC')
     parser.add_argument('--compile-error', help='Compile error from previous attempt (triggers prompt_compile_error)')
     parser.add_argument('--previous-diff-file', help='Path to file containing previous chisel_diff that failed')
+    parser.add_argument('--project', help='Project name (e.g., xiangshan, soomrv, cva6, simplechisel)')
+    parser.add_argument(
+        '--xiangshan-profile',
+        choices=['dbg', 'opt'],
+        default='dbg',
+        help='XiangShan compile profile: dbg (xiangshan_rtl_dbg) or opt (xiangshan_rtl_opt)',
+    )
     parser.add_argument('--debug', action='store_true', default=True, help='Enable debug output')
 
     args = parser.parse_args()
@@ -1378,6 +1817,10 @@ def main():
         input_data = yaml.safe_load(f)
 
     # Add command-line arguments to input_data
+    if args.project:
+        input_data['project'] = args.project
+        print(f'🔧 Project override from --project: {args.project}')
+
     if args.cpu:
         input_data['cpu_type'] = args.cpu
         print(f'🔧 CPU type override from --cpu: {args.cpu}')
@@ -1388,7 +1831,10 @@ def main():
 
     input_data['debug'] = args.debug
     input_data['output_dir'] = args.output
-    input_data['chisel_diff_only'] = args.chisel_diff_only
+    input_data['chisel_diff_only'] = not args.full_pipeline
+
+    # Wire --xiangshan-profile into input_data
+    input_data['xiangshan_profile'] = args.xiangshan_profile
 
     if args.compile_error:
         input_data['compile_error'] = args.compile_error
@@ -1419,8 +1865,9 @@ def main():
         input_data['bugs'] = selected_bugs
         print(f'🎯 Processing {len(selected_bugs)} selected bug(s)')
 
-    # Create output directory
-    os.makedirs(args.output, exist_ok=True)
+    # Create output directory (args.output is a file path, so use its parent dir)
+    output_dir = os.path.dirname(os.path.abspath(args.output))
+    os.makedirs(output_dir, exist_ok=True)
 
     # Run pipeline using Step pattern
     processor = V2chisel_batch()
@@ -1466,10 +1913,31 @@ def main():
             print(f'❌ Pipeline failed: {result.get("error")}')
         print('=' * 80)
 
-    # Write output YAML
-    output_file = os.path.join(args.output, 'output.yaml')
+    # Write output YAML with block scalar style for multiline strings
+    from ruamel.yaml import YAML as _YAML
+    from ruamel.yaml.scalarstring import LiteralScalarString as _LSS
+
+    def _make_literal(obj):
+        if isinstance(obj, dict):
+            return {k: _make_literal(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_make_literal(v) for v in obj]
+        if isinstance(obj, str) and '\n' in obj:
+            return _LSS(obj)
+        return obj
+
+    output_path = Path(args.output)
+    if output_path.suffix in ('.yaml', '.yml'):
+        output_file = str(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        output_path.mkdir(parents=True, exist_ok=True)
+        output_file = str(output_path / 'output.yaml')
+    _ry = _YAML()
+    _ry.default_flow_style = False
+    _ry.width = 120
     with open(output_file, 'w') as f:
-        yaml.dump(result, f, default_flow_style=False)
+        _ry.dump(_make_literal(result), f)
     print(f'\n💾 Output written to: {output_file}')
 
     return 0 if result['success'] else 1

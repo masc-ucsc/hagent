@@ -66,6 +66,32 @@ def read_yaml(input_file: Path) -> dict:
     return data
 
 
+def trace_sidecar_path(yaml_path) -> Path:
+    """Compute the sidecar .trace.json path for a given YAML file path."""
+    p = Path(yaml_path)
+    return p.with_suffix('.trace.json')
+
+
+def load_sidecar_tracing(yaml_path) -> dict:
+    """Load trace_events and history from the sidecar JSON file.
+
+    Returns a dict with keys 'trace_events' and 'history', or empty
+    defaults if the sidecar does not exist.
+    """
+    sidecar = trace_sidecar_path(yaml_path)
+    if sidecar.exists():
+        with open(sidecar, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {'trace_events': [], 'history': []}
+
+
+def write_sidecar_tracing(yaml_path, trace_events: list, history: list):
+    """Write trace_events and history to the sidecar JSON file."""
+    sidecar = trace_sidecar_path(yaml_path)
+    with open(sidecar, 'w', encoding='utf-8') as f:
+        json.dump({'trace_events': trace_events, 'history': history}, f, indent=2, default=str)
+
+
 #####################
 ## TRACER PERFETTO ##
 #####################
@@ -211,15 +237,29 @@ def parse_yaml_files(discovery_dir: Path, yaml_files: List[Path]) -> Tuple[set, 
 
         outputs.add(Path(discovery_dir) / Path(data['tracing']['output']))
         data['tracing']['output'] = Path(discovery_dir) / Path(data['tracing']['output'])
-        # Log the Step itself.
+
+        # Load trace_events and history from sidecar JSON, falling back to
+        # inline YAML data for backward compatibility with old-format files.
+        sidecar_data = load_sidecar_tracing(f)
+        trace_events = sidecar_data.get('trace_events') or data['tracing'].get('trace_events', [])
+        history = sidecar_data.get('history') or data['tracing'].get('history', [])
+
+        # Inject back so downstream consumers (_get_tree_repr, _add_metadata)
+        # that access step.args['data']['tracing'] still find the data.
+        data['tracing']['trace_events'] = trace_events
+        data['tracing']['history'] = history
+
+        if not trace_events:
+            logger.warning('No trace_events found for %s, skipping', f)
+            continue
 
         # Start from the __init__
-        ts = data['tracing']['trace_events'][0]['ts']
+        ts = trace_events[0]['ts']
         additional_dur = data['tracing']['start'] - ts
 
         # Log any LLM calls made by LLM_wrap during the Step.
-        if data['tracing'].get('history', None):
-            for llm_call in data['tracing']['history']:
+        if history:
+            for llm_call in history:
                 Tracer.log(
                     TraceEvent(
                         name=llm_call['id'],
@@ -234,8 +274,8 @@ def parse_yaml_files(discovery_dir: Path, yaml_files: List[Path]) -> Tuple[set, 
                 )
 
         # Log any TraceEvents recorded during the Step.
-        if data['tracing'].get('trace_events', None):
-            for trace_event in data['tracing']['trace_events']:
+        if trace_events:
+            for trace_event in trace_events:
                 trace_event['args']['step_id'] = step_id
                 trace_event['tid'] = HAGENT_TID
                 Tracer.log(TraceEvent(**trace_event))
@@ -457,7 +497,7 @@ class Tracer:
         # Necessary to separate this from above for proper placement in Perfetto UI.
         for step in cls.steps:
             if asynchronous:
-                if len(step.args['data']['tracing']['history']) > 0:
+                if len(step.args['data']['tracing'].get('history', [])) > 0:
                     Tracer.log(
                         TraceEvent(
                             name='thread_name',

@@ -54,10 +54,78 @@ if str(project_root) not in sys.path:
 from hagent.inou.builder import Builder
 
 
+_ANSI_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+_ERROR_PATTERNS = [
+    (r'error[:\]]', 'error'),
+    (r'warning[:\]]', 'warning'),
+    (r'failed', 'failure'),
+    (r'exception', 'exception'),
+]
+
+_LANG_DETECTORS = [
+    # (output_substring_check, suggestion_text, file_regex)
+    (
+        'scala',
+        '🔧 SUGGESTION: There appears to be a Scala compilation error. Please check and fix the Scala source files.',
+        r'(/[^:\s]+\.scala)(?::(\d+))?',
+    ),
+    (
+        '.v',
+        '🔧 SUGGESTION: There appears to be a Verilog error. Please check the Verilog source files.',
+        r'(/[^:\s]+\.v)(?::(\d+))?',
+    ),
+    (
+        '.c',
+        '🔧 SUGGESTION: There appears to be a C/C++ compilation error. Please check the source files.',
+        r'(/[^:\s]+\.(?:c|cpp|h|hpp))(?::(\d+))?',
+    ),
+]
+
+
 def _clean_ansi_codes(text: str) -> str:
     """Remove ANSI escape codes from text for better pattern matching."""
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', text)
+    return _ANSI_RE.sub('', text)
+
+
+def _extract_error_lines(clean_output: str):
+    """Search output for error/warning pattern lines, return summary or None."""
+    found = []
+    for pattern, _ in _ERROR_PATTERNS:
+        for match in re.finditer(pattern, clean_output, re.IGNORECASE):
+            start = max(0, match.start() - 100)
+            end = min(len(clean_output), match.end() + 100)
+            for line in clean_output[start:end].strip().split('\n'):
+                if re.search(pattern, line, re.IGNORECASE):
+                    found.append(line.strip())
+                    break
+    if not found:
+        return None
+    unique = list(dict.fromkeys(found))[:3]
+    return '\n'.join(unique)
+
+
+def _detect_language_hints(clean_output: str):
+    """Return (suggestions, file_refs) based on language detection in output."""
+    suggestions = []
+    file_refs = []
+    lower = clean_output.lower()
+
+    for marker, suggestion, file_re in _LANG_DETECTORS:
+        if marker not in lower and marker not in clean_output:
+            continue
+        suggestions.append(suggestion)
+        matches = re.findall(file_re, clean_output)
+        if matches:
+            file_refs.extend(f'{f}:{ln}' if ln else f for f, ln in matches[:3])
+        # Scala-specific: missing symbols
+        if marker == 'scala':
+            if 'not found: value' in clean_output or 'not found: type' in clean_output:
+                not_found = re.findall(r'not found: (?:value|type) (\w+)', clean_output)
+                if not_found:
+                    suggestions.append(f'❌ MISSING SYMBOLS: {", ".join(not_found[:3])}')
+        break  # only match first language
+    return suggestions, file_refs
 
 
 def _format_error_response(exit_code: int, stdout: str, stderr: str) -> Dict[str, Any]:
@@ -80,98 +148,37 @@ def _format_error_response(exit_code: int, stdout: str, stderr: str) -> Dict[str
     combined_output = stderr + stdout
     clean_output = _clean_ansi_codes(combined_output)
 
-    error_suggestions = []
-    error_summary = None
     files_to_check = []
 
     # Priority 1: Use stderr if it has substantial content
     if stderr and len(stderr.strip()) > 10:
         error_summary = stderr.strip()
-        # Still check for file references in stderr
         file_matches = re.findall(r'(/[^:\s]+\.(scala|v|sv|vhd|c|cpp|py|java))(?::(\d+))?', stderr)
         if file_matches:
             files_to_check = [f'{f}:{line}' if line else f for f, ext, line in file_matches[:3]]
-
-    # Priority 2: Search for error/warning patterns if no stderr or for additional context
     else:
-        # Look for common error patterns (case-insensitive)
-        error_patterns = [
-            (r'error[:\]]', 'error'),
-            (r'warning[:\]]', 'warning'),
-            (r'failed', 'failure'),
-            (r'exception', 'exception'),
-        ]
+        error_summary = _extract_error_lines(clean_output)
 
-        found_errors = []
-        for pattern, error_type in error_patterns:
-            matches = re.finditer(pattern, clean_output, re.IGNORECASE)
-            for match in matches:
-                # Extract the line containing the error
-                start = max(0, match.start() - 100)
-                end = min(len(clean_output), match.end() + 100)
-                context = clean_output[start:end].strip()
-                # Get just the line with the error
-                lines = context.split('\n')
-                for line in lines:
-                    if re.search(pattern, line, re.IGNORECASE):
-                        found_errors.append(line.strip())
-                        break
+    # Detect language-specific suggestions
+    lang_suggestions, lang_files = _detect_language_hints(clean_output)
+    error_suggestions = lang_suggestions
+    files_to_check.extend(lang_files)
 
-        if found_errors:
-            # Use first few unique errors
-            unique_errors = list(dict.fromkeys(found_errors))[:3]
-            error_summary = '\n'.join(unique_errors)
-
-    # Detect language-specific errors and provide suggestions
-    if 'scala' in clean_output.lower() or '.scala' in clean_output:
-        error_suggestions.append(
-            '🔧 SUGGESTION: There appears to be a Scala compilation error. Please check and fix the Scala source files.'
-        )
-
-        # Extract Scala file references
-        scala_matches = re.findall(r'(/[^:\s]+\.scala)(?::(\d+))?', clean_output)
-        if scala_matches:
-            files_to_check.extend([f'{f}:{line}' if line else f for f, line in scala_matches[:3]])
-
-        # Look for specific Scala error patterns
-        if 'not found: value' in clean_output or 'not found: type' in clean_output:
-            not_found = re.findall(r'not found: (?:value|type) (\w+)', clean_output)
-            if not_found:
-                error_suggestions.append(f'❌ MISSING SYMBOLS: {", ".join(not_found[:3])}')
-
-    elif '.v' in clean_output or 'verilog' in clean_output.lower():
-        error_suggestions.append('🔧 SUGGESTION: There appears to be a Verilog error. Please check the Verilog source files.')
-        verilog_matches = re.findall(r'(/[^:\s]+\.v)(?::(\d+))?', clean_output)
-        if verilog_matches:
-            files_to_check.extend([f'{f}:{line}' if line else f for f, line in verilog_matches[:3]])
-
-    elif '.c' in clean_output or '.cpp' in clean_output or 'gcc' in clean_output.lower() or 'g++' in clean_output.lower():
-        error_suggestions.append('🔧 SUGGESTION: There appears to be a C/C++ compilation error. Please check the source files.')
-        c_matches = re.findall(r'(/[^:\s]+\.(?:c|cpp|h|hpp))(?::(\d+))?', clean_output)
-        if c_matches:
-            files_to_check.extend([f'{f}:{line}' if line else f for f, line in c_matches[:3]])
-
-    # Add file references if found
     if files_to_check:
         unique_files = list(dict.fromkeys(files_to_check))[:3]
         error_suggestions.append(f'📁 FILES TO CHECK: {", ".join(unique_files)}')
 
     # Build formatted error message
     error_parts = [f'❌ COMPILATION FAILED (exit code: {exit_code})']
-
-    if error_suggestions:
-        error_parts.extend(error_suggestions)
+    error_parts.extend(error_suggestions)
 
     if error_summary:
-        # Truncate if too long
         if len(error_summary) > 500:
             error_summary = error_summary[:500] + '...'
         error_parts.append(f'\n🔍 ERROR DETAILS:\n{error_summary}')
 
-    formatted_error_message = '\n\n'.join(error_parts)
-
     return {
-        'error_message': formatted_error_message,
+        'error_message': '\n\n'.join(error_parts),
         'has_errors': True,
     }
 

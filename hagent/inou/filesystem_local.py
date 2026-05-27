@@ -87,11 +87,15 @@ class FileSystemLocal(FileSystem):
             if env:
                 full_env.update(env)
 
+            # Expand $VAR in cwd since it's a Python arg (shell=True only
+            # expands vars in the command string, not the cwd parameter)
+            resolved_cwd = os.path.expandvars(cwd) if cwd else cwd
+
             # Always capture output to ensure tests work properly
             result = subprocess.run(
                 command,
                 shell=True,
-                cwd=cwd,
+                cwd=resolved_cwd,
                 env=full_env,
                 capture_output=True,
                 text=True,
