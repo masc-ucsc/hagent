@@ -285,6 +285,142 @@ def _expr_text(n: Any) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# Interface port expansion: flatten SV interface ports into dotted signal names
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _parse_interface_modport(iface_sv_path: str, modport_name: str) -> List[Dict[str, str]]:
+    """Parse a SystemVerilog interface file and return flattened port list for
+    the given modport. Returns list of {name, dir, type, desc} dicts.
+
+    Preserves the actual declared type (e.g. operands_t, logic [43:0]) so the
+    prop-module wrapper gets the correct width and full COI coverage.
+    """
+    try:
+        src = open(iface_sv_path).read()
+    except OSError:
+        return []
+
+    # Strip comments to avoid false matches
+    src_nc = re.sub(r'//[^\n]*', '', src)
+    src_nc = re.sub(r'/\*.*?\*/', '', src_nc, flags=re.DOTALL)
+
+    # Collect interface-level type parameters: "parameter type foo_t = default_type"
+    # These are local to the interface and not visible outside — resolve to default.
+    type_param_defaults: Dict[str, str] = {}
+    for m in re.finditer(
+        r'\bparameter\s+type\s+(\w+)\s*=\s*(\w[\w:\s\[\]]*)',
+        src_nc
+    ):
+        param_name    = m.group(1).strip()
+        default_type  = m.group(2).strip().rstrip(';').strip()
+        type_param_defaults[param_name] = default_type
+
+    # Build signal-name → declared-type map from interface body declarations.
+    # Simpler targeted scan: find lines that look like "  type_expr sig_name;"
+    sig_type_map: Dict[str, str] = {}
+    for m in re.finditer(
+        r'^\s*((?:wire|logic)\s*(?:\[[^\]]+\]\s*)?|(?:\w+_t)\s+)([A-Za-z_]\w*)\s*;',
+        src_nc, re.MULTILINE
+    ):
+        type_part = m.group(1).strip()
+        sig_name  = m.group(2).strip()
+        # Normalise: replace 'wire' with 'logic'
+        type_part = re.sub(r'\bwire\b', 'logic', type_part).strip()
+        # If the type is itself an interface-local type parameter, substitute its default
+        if type_part in type_param_defaults:
+            type_part = type_param_defaults[type_part]
+        if type_part:
+            sig_type_map[sig_name] = type_part
+
+    # Extract the modport block: modport <name> ( ... );
+    mp_m = re.search(
+        r'\bmodport\s+' + re.escape(modport_name) + r'\s*\(([^)]*)\)',
+        src_nc, re.DOTALL
+    )
+    if not mp_m:
+        return []
+
+    ports: List[Dict[str, str]] = []
+    body_txt = mp_m.group(1)
+    # Each item looks like: "input sig1, sig2" or "output sig3"
+    for clause in re.split(r',\s*(?=(?:input|output|inout)\b)', body_txt, flags=re.IGNORECASE):
+        clause = clause.strip().rstrip(',')
+        dm = re.match(r'(input|output|inout)\s+(.*)', clause, re.IGNORECASE | re.DOTALL)
+        if not dm:
+            continue
+        raw_dir = dm.group(1).lower()
+        direction = 'In' if raw_dir == 'input' else ('Out' if raw_dir == 'output' else 'Inout')
+        # remaining: comma-separated signal names (may have more direction keywords mixed in)
+        for sig in re.split(r',', dm.group(2)):
+            sig = sig.strip()
+            # strip inline direction keywords that sometimes appear
+            sig = re.sub(r'^(input|output|inout)\s+', '', sig, flags=re.IGNORECASE).strip()
+            if re.match(r'^[A-Za-z_]\w*$', sig):
+                # Use actual declared type when available; fall back to 'logic'
+                sv_type = sig_type_map.get(sig, 'logic')
+                ports.append({'name': sig, 'dir': direction, 'type': sv_type, 'desc': '-'})
+    return ports
+
+
+def expand_interface_ports(
+    rtl_src: str,
+    interface_search_dirs: List[str],
+    modport_hint: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    """Scan RTL source text for interface port declarations and return a
+    flattened list of {name='ifport.signal', dir, type, desc} ports.
+
+    Example: VX_commit_if.slave commit_if[N]
+    → [{name:'commit_if.valid', dir:'In'}, {name:'commit_if.data', dir:'In'}, ...]
+    """
+    results: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+
+    # Match: IfaceTypeName.modport   portInstanceName  [optional_array]
+    # Group 4 captures the array suffix — if present, skip (can't bind array-of-interface members)
+    iface_pat = re.compile(
+        r'\b(\w+_if)\.(master|slave|monitor)\s+(\w+)(\s*\[.*?\])?\s*[,);]',
+        re.DOTALL
+    )
+
+    for m in iface_pat.finditer(rtl_src):
+        iface_type  = m.group(1)   # e.g. VX_commit_if
+        modport     = m.group(2)   # e.g. slave
+        inst_name   = m.group(3)   # e.g. commit_if
+        array_dims  = m.group(4)   # e.g. '[NUM_EX_UNITS]' or None
+
+        # Skip arrayed interfaces — JasperGold cannot bind VX_commit_prop.commit_if_valid(commit_if.valid)
+        # when commit_if is an array; would need commit_if[0].valid which requires knowing the size
+        if array_dims and array_dims.strip():
+            continue
+
+        # Locate the interface .sv file
+        iface_file: Optional[str] = None
+        for d in interface_search_dirs:
+            candidate = os.path.join(d, iface_type + '.sv')
+            if os.path.isfile(candidate):
+                iface_file = candidate
+                break
+        if iface_file is None:
+            continue
+
+        for p in _parse_interface_modport(iface_file, modport):
+            dut_path  = f'{inst_name}.{p["name"]}'   # hierarchical DUT ref for bind
+            flat_name = f'{inst_name}_{p["name"]}'    # underscore form — valid SV identifier
+            if flat_name not in seen:
+                seen.add(flat_name)
+                results.append({
+                    'name':     flat_name,
+                    'dut_path': dut_path,
+                    'dir':      p['dir'],
+                    'type':     p['type'],
+                    'desc':     f'from {iface_type}.{modport} ({dut_path})',
+                })
+
+    return results
+
+
 # Ports / params from SCOPED bodies
 # ──────────────────────────────────────────────────────────────────────────────
 def extract_ports_from_body(body: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -744,6 +880,34 @@ def build_io_relations(
 
         guard_txt = ' && '.join([g for g in a.guards if g and '/*INVALID*/' not in g]) if a.guards else ''
 
+        # If this is a passthrough assign (e.g. alu_out = alu_out_reg) with no guards,
+        # propagate guards from the internal register's most informative defining assignment
+        # (the functional path, not the reset path) so the LLM knows the real activation
+        # conditions (e.g. core_state == 3'b101, enable).
+        if not guard_txt and internal:
+            best_guards: List[str] = []
+            best_score = -1
+            for intr in internal:
+                for da in def_map.get(intr, []):
+                    clean = [g.strip() for g in da.guards if g and '/*INVALID*/' not in g]
+                    # Score: prefer assignments with more guards and non-trivial conditions.
+                    # Disqualify assignments whose ONLY guard is a bare reset token.
+                    if len(clean) == 1 and re.fullmatch(r'!?\w+', clean[0]):
+                        score = 0  # single bare signal — skip (likely the reset branch)
+                    else:
+                        score = len(clean)
+                    if score > best_score:
+                        best_score = score
+                        best_guards = clean
+            if best_guards and best_score > 1:
+                # Strip bare negated/non-negated reset guards — disable iff handles reset
+                def _is_reset_guard(g: str) -> bool:
+                    tok = re.sub(r'[!()\s]', '', g)
+                    return bool(re.fullmatch(r'reset\w*', tok, re.IGNORECASE))
+                best_guards = [g for g in best_guards if not _is_reset_guard(g)]
+                if best_guards:
+                    guard_txt = ' && '.join(best_guards)
+
         for od in out_defs:
             per_output.append(
                 {
@@ -814,38 +978,40 @@ def build_io_relations(
         return None
 
     seen_hints: set = set()
-    for a in assigns:
-        if '.' not in a.lhs_text:
-            continue
-        base = _base_port(a.lhs_text)
-        if base not in outputs or a.lhs_text.endswith('.valid'):
-            continue
-        rhs = a.rhs_text.strip()
-        # Skip complex or empty RHS (keep named constants and simple literals)
-        if not rhs or len(rhs) > 60 or any(op in rhs for op in ['(', '?', '+', '-', '<<', '>>']):
-            continue
+
+    def _collect_hints_from_assign(a: 'AssignRecord', base: str, lhs_text: str, rhs: str, is_struct: bool) -> None:
+        """Shared logic: extract pre/post hint from one assignment record."""
         input_parts: List[str] = []
         has_internal = False
         for g in a.guards:
             simple = _try_simple_guard(g)
             if simple is not None:
-                # Guard is a single input token, possibly negated — preserve negation
                 input_parts.append(simple)
             else:
-                # Complex guard: extract base identifiers (best-effort, no negation)
+                # Try to preserve equality comparison: (signal == value)
+                g_bare = re.sub(r'[\s()]', '', g or '')
+                eq_m = re.fullmatch(r'(!?)([A-Za-z_]\w*)==(.+)', g_bare)
+                if eq_m and eq_m.group(2) in inputs and not eq_m.group(1):
+                    input_parts.append(f'({eq_m.group(2)} == {eq_m.group(3)})')
+                    continue
                 for tok in re.findall(r'\b[A-Za-z_]\w*\b', g or ''):
                     if tok in inputs:
                         input_parts.append(tok)
                     elif tok and tok not in outputs and not tok[0].isdigit():
                         has_internal = True
         if not input_parts:
-            continue
-        pre_list = sorted(set(input_parts) | ({f'{base}.valid'} if has_internal else set()))
+            return
+        if is_struct:
+            pre_list = sorted(set(input_parts) | ({f'{base}.valid'} if has_internal else set()))
+        else:
+            # scalar output: no .valid proxy; strip redundant reset tokens (disable iff handles reset)
+            filtered = [p for p in input_parts if not re.fullmatch(r'!?\w*reset\w*', p, re.IGNORECASE)]
+            pre_list = sorted(set(filtered))
         pre = ' && '.join(pre_list)
-        post = f'{a.lhs_text} == {rhs}'
+        post = f'{lhs_text} == {rhs}' if is_struct else f'$changed({lhs_text})'
         key = (pre, post)
         if key in seen_hints:
-            continue
+            return
         seen_hints.add(key)
         hints['assert'].append(
             {
@@ -855,6 +1021,45 @@ def build_io_relations(
                 'pattern': 'output_conditioned',
             }
         )
+
+    # Build reverse map: internal_signal → output it drives (via ContinuousAssign)
+    internal_to_output: Dict[str, str] = {}
+    for oa in assigns:
+        if oa.kind == 'ContinuousAssign':
+            ob = _base_port(oa.lhs_text)
+            if ob in outputs:
+                for u in oa.uses:
+                    ub = _base_port(u)
+                    if ub not in inputs and ub not in outputs:
+                        internal_to_output[ub] = ob
+
+    for a in assigns:
+        base = _base_port(a.lhs_text)
+        rhs = a.rhs_text.strip()
+
+        if '.' in a.lhs_text:
+            # struct field assignment (e.g. lsu_exception_o.cause = ST_ACCESS_FAULT)
+            # RHS must be simple enough to embed in post expression
+            if not rhs or len(rhs) > 60 or any(op in rhs for op in ['(', '?', '+', '-', '<<', '>>']):
+                continue
+            if base not in outputs or a.lhs_text.endswith('.valid'):
+                continue
+            _collect_hints_from_assign(a, base, a.lhs_text, rhs, is_struct=True)
+        else:
+            # scalar output / internal-reg-driving-output assignment — use $changed() hint
+            # so RHS complexity doesn't matter
+            if not rhs:
+                continue
+            target_out: Optional[str] = base if base in outputs else internal_to_output.get(base)
+            if target_out is None:
+                continue
+            if not a.guards:
+                continue
+            # Skip reset-branch assignments (only a bare reset guard, nothing else)
+            clean_g = [g.strip() for g in a.guards if g and '/*INVALID*/' not in g]
+            if len(clean_g) <= 1 and all(re.fullmatch(r'!?\s*\w*reset\w*', g, re.IGNORECASE) for g in clean_g):
+                continue
+            _collect_hints_from_assign(a, target_out, target_out, rhs, is_struct=False)
 
     return {
         'hints': hints,
@@ -946,7 +1151,23 @@ def normalize_csv_rows(csv_text: str) -> str:
         cols = [(c or '').replace(',', ' ').strip() for c in cols]
         out_lines.append(','.join(cols))
 
-    return '\n'.join(out_lines) + '\n'
+    # Deduplicate by (pre, post) — keep first occurrence, drop exact duplicates
+    seen_pre_post: set = set()
+    deduped: List[str] = [out_lines[0]]  # always keep header
+    dup_count = 0
+    for ln in out_lines[1:]:
+        cols = _split_csv_line(ln)
+        if len(cols) >= 7:
+            key = (cols[5].strip(), cols[6].strip())
+            if key in seen_pre_post:
+                dup_count += 1
+                continue
+            seen_pre_post.add(key)
+        deduped.append(ln)
+    if dup_count:
+        print(f'[normalize_csv_rows] Removed {dup_count} duplicate (pre, post) rows.')
+
+    return '\n'.join(deduped) + '\n'
 
 
 def _strip_sv_numeric_literals(expr: str) -> str:
@@ -1303,9 +1524,11 @@ class SpecBuilder:
         console.print('[cyan]• Running Slang to emit AST JSON[/cyan]')
         console.print('  ' + ' '.join(cmd))
         res = subprocess.run(cmd)
-        if res.returncode != 0 or not out_json.exists():
+        if not out_json.exists() or out_json.stat().st_size == 0:
             console.print(f'[red]❌ Slang failed (code={res.returncode}); AST not produced: {out_json}[/red]')
             raise SystemExit(2)
+        if res.returncode != 0:
+            console.print(f'[yellow]⚠ Slang exited code={res.returncode} (non-fatal warnings); AST was produced[/yellow]')
         # If scoped AST is empty, --disable-analysis may have prevented scope resolution.
         # Retry without --disable-analysis (slower but handles modules like cva6_icache).
         if self.scope_path and self.disable_analysis and out_json.stat().st_size == 0:
@@ -1461,6 +1684,52 @@ class SpecBuilder:
             console.print('[red]❌ No ports extracted. Check --scope-path (or discovery results).[/red]')
             raise SystemExit(2)
 
+        # Expand SystemVerilog interface ports (e.g. VX_commit_if.slave commit_if)
+        # which slang emits as InterfacePort nodes with no type info.
+        # Scan the RTL source for interface declarations and flatten them.
+        plain_port_names = {p['name'] for p in ports}
+        iface_search_dirs = list(self.include_dirs) + [str(self.rtl_dir)]
+        # Collect RTL files to scan: filelist or all .sv under rtl_dir
+        rtl_sources_to_scan: List[str] = []
+        if self.filelist and self.filelist.exists():
+            for line in self.filelist.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith(('//', '#', '+', '-')):
+                    rtl_sources_to_scan.append(line)
+        else:
+            rtl_sources_to_scan = [str(p) for p in self.rtl_dir.rglob('*.sv')]
+
+        # Build a comprehensive interface search path including common subdir names
+        expanded_iface_dirs: List[str] = []
+        for d in iface_search_dirs:
+            expanded_iface_dirs.append(d)
+            for sub in ('interfaces', 'interface', 'rtl/interfaces'):
+                candidate = os.path.join(d, sub)
+                if os.path.isdir(candidate):
+                    expanded_iface_dirs.append(candidate)
+
+        iface_ports: List[Dict[str, str]] = []
+        for src_path in rtl_sources_to_scan:
+            try:
+                src_txt = open(src_path).read()
+            except OSError:
+                continue
+            # Only scan files that define the top module
+            if f'module {self.top}' not in src_txt:
+                continue
+            extra_dirs = [os.path.dirname(src_path)] + expanded_iface_dirs
+            iface_ports = expand_interface_ports(src_txt, extra_dirs)
+            if iface_ports:
+                console.print(f'[green]✔ Interface ports expanded:[/green] {len(iface_ports)} signals from {os.path.basename(src_path)}')
+            break
+
+        if iface_ports:
+            # Add only signals not already present as plain ports
+            for ip in iface_ports:
+                base = ip['name'].split('.')[0]
+                if base not in plain_port_names:
+                    ports.append(ip)
+
         # Override clk/rst from top-level port names (authoritative)
         clk2, rst2, rst_expr2 = detect_clk_rst_from_ports(ports)
         if clk2 and rst2 and rst_expr2:
@@ -1581,8 +1850,23 @@ class SpecBuilder:
         context['spec_md'] = md_text
 
         # 6) CSV generation + validate + repair (ROBUST)
-        console.print('[cyan]• LLM: sva_row_list_csv[/cyan]')
-        csv_raw = self._llm('sva_row_list_csv', {'context_json': json.dumps(context, ensure_ascii=False)}).strip()
+        # Scale row targets to port count: avoids forcing the model to invent duplicates
+        # for small modules while still generating enough properties for large ones.
+        n_sigs = len(allowed_ports)
+        target_assert = min(100, max(15, n_sigs * 5))
+        target_cover  = min(40,  max(8,  n_sigs * 2))
+        target_assume = min(20,  max(3,  n_sigs))
+        target_rows   = target_assert + target_cover + target_assume
+        console.print(f'[cyan]• LLM: sva_row_list_csv[/cyan] '
+                      f'(ports={n_sigs}, target={target_rows}: '
+                      f'assert={target_assert} cover={target_cover} assume={target_assume})')
+        csv_raw = self._llm('sva_row_list_csv', {
+            'context_json':  json.dumps(context, ensure_ascii=False),
+            'target_rows':   str(target_rows),
+            'target_assert': str(target_assert),
+            'target_cover':  str(target_cover),
+            'target_assume': str(target_assume),
+        }).strip()
         csv_raw = _ensure_csv_header(_strip_code_fences(csv_raw))
         csv_raw = normalize_csv_rows(csv_raw)
 

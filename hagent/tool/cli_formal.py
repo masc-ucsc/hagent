@@ -339,9 +339,17 @@ def normalize_sv_type(type_str: str, sva_top: str, known_type_params: set[str]) 
     return base + dims
 
 
-def port_decls_from_ports_json(ports_json: Path, sva_top: str, known_type_params: Set[str]) -> List[str]:
+def port_decls_from_ports_json(
+    ports_json: Path, sva_top: str, known_type_params: Set[str]
+) -> Tuple[List[str], Dict[str, str]]:
+    """Return (port_decls, dut_path_map).
+
+    dut_path_map maps flat port identifier → hierarchical DUT signal path
+    (non-empty only for expanded interface ports with a 'dut_path' field).
+    """
     data = json.loads(ports_json.read_text())
     decls: List[str] = []
+    dut_path_map: Dict[str, str] = {}
     seen: Set[str] = set()
 
     for p in data:
@@ -351,7 +359,10 @@ def port_decls_from_ports_json(ports_json: Path, sva_top: str, known_type_params
         seen.add(name)
         t = normalize_sv_type(p.get('type') or 'logic', sva_top=sva_top, known_type_params=known_type_params)
         decls.append(f'input {t} {name}')
-    return decls
+        dut_path = (p.get('dut_path') or '').strip()
+        if dut_path:
+            dut_path_map[name] = dut_path
+    return decls, dut_path_map
 
 
 # -----------------------------------------------------------------------------
@@ -395,7 +406,13 @@ def generate_prop_module_min(
     return '\n'.join(lines)
 
 
-def generate_bind(dut_name: str, params_text: str, port_decls: List[str], bind_target: Optional[str]) -> str:
+def generate_bind(
+    dut_name: str,
+    params_text: str,
+    port_decls: List[str],
+    bind_target: Optional[str],
+    port_dut_path_map: Optional[Dict[str, str]] = None,
+) -> str:
     bind_scope = bind_target or dut_name
     sigs: List[str] = []
 
@@ -408,7 +425,8 @@ def generate_bind(dut_name: str, params_text: str, port_decls: List[str], bind_t
             continue
         sigs.append(m_name.group(1))
 
-    assoc = ', '.join(f'.{s}({s})' for s in sigs)
+    pmap = port_dut_path_map or {}
+    assoc = ', '.join(f'.{s}({pmap.get(s, s)})' for s in sigs)
 
     params_inst = ''
     if params_text:
@@ -471,9 +489,10 @@ def emit_prop_and_bind_for_module(
 
     console.print(f'[green]✔ Final package imports: {package_imports}[/green]')
 
+    dut_path_map: Dict[str, str] = {}
     if ports_json and ports_json.is_file():
         console.print(f'[cyan]✔ Using ports.json for wrapper ports:[/cyan] {ports_json}')
-        port_decls = port_decls_from_ports_json(ports_json, sva_top=mod_name, known_type_params=known_type_params)
+        port_decls, dut_path_map = port_decls_from_ports_json(ports_json, sva_top=mod_name, known_type_params=known_type_params)
     else:
         if not m:
             console.print('[red]⚠ No ports.json and no parsable module header; cannot emit wrapper.[/red]')
@@ -534,7 +553,7 @@ def emit_prop_and_bind_for_module(
     bind_path = sva_dir / f'{mod_name}_bind.sv'
 
     prop_sv = generate_prop_module_min(dut_name, params_text, port_decls, include_file, package_imports=package_imports)
-    bind_sv = generate_bind(dut_name, params_text, port_decls, bind_scope)
+    bind_sv = generate_bind(dut_name, params_text, port_decls, bind_scope, port_dut_path_map=dut_path_map)
 
     prop_path.write_text(prop_sv, encoding='utf-8')
     bind_path.write_text(bind_sv, encoding='utf-8')
@@ -632,6 +651,7 @@ def _fix_sva_syntax(text: str) -> tuple[str, int]:
     Fixes applied (no LLM needed):
     1. ``!(A or B)`` → ``!(A || B)`` — 'or' is a sequence op, not boolean-or.
     2. ``!(A and B)`` → ``!(A && B)`` — same issue with 'and'.
+    3. Unbalanced ``(`` inside property bodies — missing closing ``)`` before ``;``.
 
     Returns (fixed_text, n_fixes).
     """
@@ -655,6 +675,33 @@ def _fix_sva_syntax(text: str) -> tuple[str, int]:
             break
         n_fixes += n
         text = new_text
+
+    # Fix unbalanced parentheses: inside property...endproperty blocks, a line
+    # that ends with `;` and has more `(` than `)` is missing closing parens.
+    # Typical LLM error: ``(!x || $past(y);``  → ``(!x || $past(y));``
+    lines = text.splitlines(keepends=True)
+    in_property = False
+    for i, line in enumerate(lines):
+        stripped = line.rstrip('\n')
+        if _re.match(r'\s*property\b', stripped):
+            in_property = True
+        if _re.match(r'\s*endproperty\b', stripped):
+            in_property = False
+        if in_property and stripped.rstrip().endswith(';'):
+            code = stripped.rstrip().rstrip(';')
+            # Strip string literals and comments before counting parens
+            code_stripped = _re.sub(r'//.*', '', code)
+            open_count = code_stripped.count('(')
+            close_count = code_stripped.count(')')
+            missing = open_count - close_count
+            if missing > 0:
+                # Insert missing closing parens before the semicolon
+                fixed_line = stripped.rstrip().rstrip(';') + ')' * missing + ';'
+                # Preserve original newline
+                eol = line[len(stripped):]
+                lines[i] = fixed_line + eol
+                n_fixes += 1
+    text = ''.join(lines)
 
     return text, n_fixes
 
@@ -1516,8 +1563,9 @@ def _emit_whitebox_wrapper(
                 package_imports.append(imp)
                 existing.add(imp)
 
+    dut_path_map_wb: Dict[str, str] = {}
     if ports_json and ports_json.is_file():
-        port_decls = port_decls_from_ports_json(ports_json, sva_top=mod_name, known_type_params=known_type_params)
+        port_decls, dut_path_map_wb = port_decls_from_ports_json(ports_json, sva_top=mod_name, known_type_params=known_type_params)
     else:
         if not m:
             console.print('[red]⚠ No ports.json and no parsable module header for whitebox wrapper.[/red]')
@@ -1578,9 +1626,19 @@ def _emit_whitebox_wrapper(
                     m_n = re.search(r'([A-Za-z_]\w*)\s*(\[[^\]]*\]\s*)*$', d.strip().rstrip(','))
                     if m_n:
                         existing_names.add(m_n.group(1))
+                # Also collect all parameter names from params_text to avoid duplicates
+                param_names = set(re.findall(r'\bparameter\b[^,)]*?\b(\w+)\s*(?:=|,|\))', params_text))
                 added = 0
                 for sig in int_sigs:
-                    if sig and sig not in existing_names:
+                    if not sig:
+                        continue
+                    # Skip localparams / enums: all-uppercase names or names that
+                    # match declared parameters (they can't be bound as RTL signals)
+                    if re.fullmatch(r'[A-Z][A-Z0-9_]*', sig):
+                        continue
+                    if sig in param_names:
+                        continue
+                    if sig not in existing_names:
                         port_decls.append(f'input logic {sig}')
                         existing_names.add(sig)
                         added += 1
@@ -1598,7 +1656,7 @@ def _emit_whitebox_wrapper(
     bind_path = sva_dir / f'{wb_name}_bind.sv'
 
     prop_sv = generate_prop_module_min(f'{dut_name}_wb', params_text, port_decls, include_file, package_imports=package_imports)
-    bind_sv = generate_bind(f'{dut_name}_wb', params_text, port_decls, bind_scope or dut_name)
+    bind_sv = generate_bind(f'{dut_name}_wb', params_text, port_decls, bind_scope or dut_name, port_dut_path_map=dut_path_map_wb)
 
     prop_path.write_text(prop_sv, encoding='utf-8')
     bind_path.write_text(bind_sv, encoding='utf-8')
@@ -2283,6 +2341,15 @@ def main() -> int:
                     user_filelist=user_filelist,
                     fpv_dir=fpv_dir,
                     sva_files=wb_sva_paths,
+                    defines=args.defines,
+                )
+                # The whitebox write_jasper_tcl() may have regenerated files.vc
+                # with only wb files as a side effect — restore it with the full sva_paths.
+                overwrite_files_vc_for_user_filelist(
+                    vc_path=(fpv_dir / 'files.vc'),
+                    user_filelist=user_filelist,
+                    fpv_dir=fpv_dir,
+                    sva_files=sva_paths,
                     defines=args.defines,
                 )
 

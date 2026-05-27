@@ -1,6 +1,6 @@
 default:
   llm:
-    model: openai/gpt-5.1
+    model: openai/gpt-5.4-mini
 #    max_tokens: 4096
     temperature: 0.2
 
@@ -135,7 +135,12 @@ default:
         - Do NOT put commas inside any field values.
         - Do NOT use quotes unless absolutely necessary.
         - No blank lines.
-        - At least 150 rows total (target: assert ~100, cover >= 25, assume = 1 per distinct input signal up to ~20).
+        - Generate EXACTLY {target_rows} rows total:
+            assert: {target_assert} rows   cover: {target_cover} rows   assume: {target_assume} rows
+          Do NOT exceed these counts. Do NOT pad with variants just to hit the number.
+        - DEDUPLICATION (MANDATORY): Every row must have a UNIQUE (pre, post) pair.
+          Do NOT emit two rows with the same pre and post expressions, even under different names.
+          Before writing each row, check: have I already written a row with this exact pre+post? If YES, skip it.
 
         =========================================================
         CRITICAL SIGNAL & SYNTAX RULES (MANDATORY)
@@ -233,13 +238,45 @@ default:
         CONTENT GOALS / WHAT TO GENERATE
         =========================================================
         TARGET COUNTS (strictly enforce):
-          - assert  : ~100  (the majority; cover RTL behavior, output relationships, state transitions)
-          - cover   : >= 25  (reachability witnesses; exercise interesting scenarios)
-          - assume  : minimal — 1 assume per distinct INPUT signal, up to ~15 total MAX.
-                      FEWER assumes is better. Over-constraining inputs causes unreachable states in Jasper.
-                      Only add an assume when it is strictly necessary to constrain the environment
-                      (e.g., protocol handshakes, one-hot encoding, reset polarity).
-                      DO NOT add assume rows for output signals, internal signals, or obvious defaults.
+          - assert  : {target_assert}  (cover RTL behavior, output relationships, state transitions)
+          - cover   : {target_cover}   (reachability witnesses; exercise interesting scenarios)
+          - assume  : {target_assume}  HARD CEILING: NEVER exceed {target_assume}.
+                      Assumes constrain the formal environment to prevent JasperGold from
+                      driving impossible input combinations (spurious CEX in <10 cycles).
+                      Too many assumes → environment over-constrained → assert antecedents
+                      become vacuous → PROVEN=0. Keep assumes minimal but targeted.
+
+                      MANDATORY assume categories (generate AT MOST 3 rows per category,
+                      only if the relevant signal type is present in allowed_signals):
+
+                      1. STATE/FSM INPUTS (max 3 rows total for all state/mode inputs):
+                           * Assume it is within the valid encoding range (1 row):
+                               assume: core_state inside {{3'b000, 3'b001, ...valid states...}}
+                           * Assume it does NOT change while enable is LOW (1 row):
+                               assume: !enable |-> $stable(core_state)
+
+                      2. CONTROL MUX SELECTS (max 1 row per mux, max 3 rows total):
+                           * Assume stability when not in execute/active state (1 row per mux)
+
+                      3. ENABLE/VALID STABILITY (max 2 rows):
+                           * Assume mux selects are $stable while enable is high (1 row)
+
+                      4. HANDSHAKE FAIRNESS (max 2 rows, only if ready/valid interface exists):
+                           * valid eventually de-asserts: $rose(valid) |-> ##[1:$] !valid
+                           * ready responds: valid |-> ##[1:$] ready
+
+                      5. RESET PROTOCOL (max 2 rows):
+                           * reset |-> !enable  (if enable signal exists)
+                           * reset |-> !valid_i (if valid_i signal exists)
+
+                      GUIDANCE:
+                      - QUALITY over QUANTITY. A few well-targeted assumes beat many generic ones.
+                      - Under-constraining (too few) → spurious CEX. Over-constraining (too many)
+                        → vacuous proofs (PROVEN=0). AIM FOR BALANCE: target is {target_assume}.
+                      - NEVER assume output or internal signals.
+                      - NEVER add assumes that conflict with each other.
+                      - COUNT your assume rows before emitting. If you have more than {target_assume}, DELETE
+                        the least important ones until you are at or below {target_assume}.
 
         - BLACKBOX MODE (context_json.whitebox == false):
             Focus on IO behavior only. Do NOT reference internal regs/wires/states —
@@ -250,7 +287,7 @@ default:
             listed in context_json.allowed_signals (ports UNION internal signals).
             Prefer properties that link internal state to output behavior
             (e.g., “when internal FSM state X is active, output Y must be Z”).
-            Generate at least 30 rows that exercise internal signal references.
+            Generate at least {target_assert} rows that exercise internal signal references.
 
         - Use io_relations.hints.assume FIRST for assume ideas.
         - Use io_relations.hints.cover  FIRST for cover ideas.
