@@ -79,7 +79,10 @@ hand-derived study exactly:
 | candidate | regime | emitted | critical path | miter | proof |
 |---|---|---|---|---|---|
 | `a4` | k=0 both outputs | 10,178 nodes / 0 flops | **509.3687 ps** (1.963 GHz, 1.78x) | PROVEN | PROVEN, control failed as required |
-| `p1` | mixed: `branch_res_o` k=0, `result_o` k=1 | 9,162 nodes / 26 flops | **285.6845 ps** (3.500 GHz, 3.17x) | PROVEN (delay-matched golden) | see below |
+| `p1` | mixed: `branch_res_o` k=0, `result_o` k=1 | 9,162 nodes / 26 flops | **285.6845 ps** (3.500 GHz, 3.17x) | PROVEN (delay-matched golden) | PROVEN, control failed as required |
+
+Both critical-path numbers match the hand-derived study to the picosecond, and
+both proofs were *generated* — from the emitted models, not written by hand.
 
 `p1` is the interesting one: it is *mixed latency* by design, and the prover
 derives that per-output from the emitted model rather than being told, producing
