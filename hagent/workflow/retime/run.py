@@ -79,6 +79,8 @@ def main(argv=None) -> int:
     ap.add_argument('--thread', default=None, help='resume key (default: block name)')
     ap.add_argument('--state-dir', default='build/retime')
     ap.add_argument('--max-steps', type=int, default=2000)
+    ap.add_argument('--max-candidates', type=int, default=60,
+                    help='hard cap; backstops a proposer emitting near-duplicates')
     ap.add_argument('--retry', default='',
                     help='comma-separated candidates to re-run despite a ledger entry')
     a = ap.parse_args(argv)
@@ -87,7 +89,7 @@ def main(argv=None) -> int:
     sd = Path(a.state_dir) / blk['block']
     sd.mkdir(parents=True, exist_ok=True)
 
-    ledger = Ledger(sd / 'ledger.jsonl')
+    ledger = Ledger(sd / 'ledger.jsonl', max_candidates=a.max_candidates)
     run = DurableRunner(sd / 'jobs')
 
     if a.candidates:

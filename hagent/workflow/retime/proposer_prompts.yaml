@@ -55,6 +55,14 @@ retime_proposer:
            signals.  Anything the second stage still reads directly from an input
            breaks the proof.
 
+      WRITING THE SCRIPT.  Assert every anchor before replacing -- a silent
+      no-op is worse than a loud failure.  But count carefully: the parent RTL
+      is heavily commented, so a token like `always_ff` or `assign` occurs in
+      COMMENTS as well as code.  A real run failed on
+      `assert src.count("always_ff") == 1` because the file had one such block
+      and one mention of it in a comment.  Assert on the exact multi-line anchor
+      text you are about to replace, not on a bare token count.
+
       HARD CONSTRAINTS.
         * Keep the module's port list and parameters byte-identical.
         * Rename only the module itself, to `<block>_<cand>`.
