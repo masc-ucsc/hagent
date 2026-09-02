@@ -1,0 +1,43 @@
+# Block descriptor.  Adding a block should be DATA, not code -- this file plus a
+# scripts/mk_base.py in the benchmark repo is the whole per-block cost.
+block: alu
+top_prefix: cva6_alu
+bench_blk: /soe/czeng14/projects/retimed-benchmark/cva6/lean_pass/alu
+common:    /soe/czeng14/projects/retimed-benchmark/cva6/lean_pass/common
+
+# Baseline is the reference every candidate is measured and proven against.
+baseline: base
+
+# ABC delay targets to sweep.  A single -D reports the TARGET, not the design:
+# the ALU at -D 1000 reads 969 ps with +31 ps slack, but saturates at 907 ps.
+sta_targets: [800, 600, 450, 300]
+
+prover: lean
+
+# Seeds for the proposer.  Deliberately includes the NEGATIVE results, because
+# they are the most transferable finding of the ALU study: ABC re-derives the
+# AIG, so pure reassociation in RTL does not survive; only transformations ABC
+# cannot itself discover pay off.
+transform_taxonomy:
+  - id: prefix-adder
+    kind: carry-chain
+    note: "ripple carry -> Kogge-Stone. ALU: 849->509 ps. ABC will not find this."
+  - id: prefix-comparator
+    kind: carry-chain
+    note: "64-long borrow chain -> log2(N) prefix tree."
+  - id: algebraic-identity
+    kind: global
+    note: "~|(a-b) -> a==b on the branch path. A global identity, not a local rewrite."
+  - id: flatten-mux-cascade
+    kind: reassociation
+    note: "NEGATIVE: ALU a1 gave only -1.1% and +30um2. ABC already does this."
+  - id: rebalance-reduction
+    kind: reassociation
+    note: "NEGATIVE: ALU a2 was WORSE (916 vs 907). The OR chain was ABC scheduling
+           against a rippling input, not a bad tree."
+  - id: pipeline-rank
+    kind: latency
+    note: "insert one reset-free, always-enabled register rank at a complete cut.
+           ALU p1: 509->286 ps. Registers MUST be reset-free: pass_lean.cpp:1732
+           hardcodes the flop initial value to zero and :1517 folds negreset
+           without inverting it, so a reset-bearing rank is not soundly modeled."
