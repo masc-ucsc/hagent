@@ -89,6 +89,29 @@ derives that per-output from the emitted model rather than being told, producing
 `eq_out_branch_res_o` + `refines_out_result_o` — the same shape as the
 hand-written `Equiv_P1.lean`.
 
+### The proposer, validated live
+
+Given the ledger above, it proposed (289 s):
+
+```
+cand      : b1
+transform : pipeline-rank   parent=p1   k=1
+rationale : p1's measured critical path is the only remaining port-to-port
+            combinational path: operand_a_i[23] -> 6-level comparator prefix
+            tree -> sign-fix mux -> `less` -> opcode branch mux -> branch_res_o
+            (285.7 ps), while the result path is already cut by the rank.  This
+            moves branch resolution to the far side of the existing rank...
+script    : 3936 chars, anchored on exact strings from rtl/alu_p1.sv
+```
+
+Three things that indicate it is using the ledger rather than pattern-matching:
+it chose `p1` (the current best) as parent, not the baseline; it quoted the
+*measured* startpoint/endpoint; and it identified that `branch_res_o` is now the
+only uncut path — which is correct, and is exactly the tradeoff deliberately left
+on the table when `p1` was written by hand.  Note the framework can prove such a
+candidate correct while the *desirability* of a 1-cycle branch resolution remains
+a human microarchitectural call; the ledger records it either way.
+
 ## Status
 
 * `durable.py`, `ledger.py`, `prover.py`, `graph.py`, `run.py` — implemented,
