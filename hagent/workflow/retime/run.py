@@ -24,14 +24,21 @@ from hagent.workflow.retime.graph import build, load_block
 from hagent.workflow.retime.ledger import Ledger
 
 
-def fixed_proposer(names):
+def fixed_proposer(names, retry=()):
     """Phase-1 proposer: a fixed list, so orchestration is validated WITHOUT any
-    LLM in the loop.  Replaced by the LLM proposer once the spine is proven."""
+    LLM in the loop.  Replaced by the LLM proposer once the spine is proven.
+
+    `retry` force-reconsiders candidates already in the ledger.  Needed because a
+    candidate can be recorded as failed for a reason that is evidence about the
+    TOOL rather than the design -- a gate bug once rejected a valid pipelined
+    candidate -- and after the fix the ledger entry would otherwise block it
+    forever."""
     pending = list(names)
+    retry = set(retry)
 
     def propose(state, ledger):
         block = state['blk']['block']
-        done = {c.cand for c in ledger.latest(block)}
+        done = {c.cand for c in ledger.latest(block)} - retry
         while pending:
             n = pending.pop(0)
             if n not in done:
@@ -72,6 +79,8 @@ def main(argv=None) -> int:
     ap.add_argument('--thread', default=None, help='resume key (default: block name)')
     ap.add_argument('--state-dir', default='build/retime')
     ap.add_argument('--max-steps', type=int, default=2000)
+    ap.add_argument('--retry', default='',
+                    help='comma-separated candidates to re-run despite a ledger entry')
     a = ap.parse_args(argv)
 
     blk = load_block(a.block)
@@ -82,7 +91,8 @@ def main(argv=None) -> int:
     run = DurableRunner(sd / 'jobs')
 
     if a.candidates:
-        propose = fixed_proposer([c for c in a.candidates.split(',') if c])
+        propose = fixed_proposer([c for c in a.candidates.split(',') if c],
+                                 retry=[c for c in a.retry.split(',') if c])
     else:
         propose = llm_proposer(blk, ledger)
 
