@@ -34,6 +34,32 @@ def _env(blk: dict) -> dict:
 
 
 # ------------------------------------------------------------------ emit
+def ensure_wrapper(blk: dict, cand: str) -> Optional[str]:
+    """A dynamically-proposed candidate has no instantiation wrapper.
+
+    mk_base.py writes wrappers for a FIXED candidate list, which covers the
+    hand-written ones but not anything the proposer invents at runtime -- and
+    without a wrapper `lhd` has no scalar-port top to elaborate, so emit fails
+    for a reason that has nothing to do with the candidate.  Clone the baseline
+    wrapper, which is per-candidate boilerplate differing only in two names."""
+    bench = Path(blk['bench_blk'])
+    dst = bench / 'rtl' / 'wrappers' / f'{blk["top_prefix"]}_{cand}.sv'
+    if dst.is_file():
+        return None
+    base = blk.get('baseline', 'base')
+    src = bench / 'rtl' / 'wrappers' / f'{blk["top_prefix"]}_{base}.sv'
+    if not src.is_file():
+        return f'no baseline wrapper at {src}'
+    txt = src.read_text()
+    txt = txt.replace(f'module {blk["top_prefix"]}_{base}',
+                      f'module {blk["top_prefix"]}_{cand}')
+    txt = txt.replace(f'  {blk["block"]}_{base} #(', f'  {blk["block"]}_{cand} #(')
+    if f'{blk["block"]}_{cand} #(' not in txt:
+        return f'could not retarget wrapper instantiation for {cand}'
+    dst.write_text(txt)
+    return None
+
+
 def emit(blk: dict, cand: str) -> tuple[bool, dict]:
     """Generate the candidate's RTL and run it through lhd: Lean model + flat
     Verilog from the SAME Lgraph.  That shared origin is the methodological
@@ -44,6 +70,10 @@ def emit(blk: dict, cand: str) -> tuple[bool, dict]:
         r = subprocess.run(['python3', str(mk)], cwd=bench, capture_output=True, text=True)
         if r.returncode != 0:
             return False, {'gates': f'FAIL:generator {r.stderr.strip()[:200]}'}
+
+    werr = ensure_wrapper(blk, cand)
+    if werr:
+        return False, {'gates': f'FAIL:wrapper {werr}'}
 
     r = subprocess.run([str(bench / 'scripts' / 'gen_candidate.sh'), cand],
                        cwd=bench, env=_env(blk), capture_output=True, text=True)
