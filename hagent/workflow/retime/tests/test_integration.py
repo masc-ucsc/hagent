@@ -119,3 +119,20 @@ def test_truncated_source_would_break_regimes():
     src = (BENCH / 'work/p1/lean/cva6_alu_p1_Lgraph.lean').read_text()
     assert output_regimes(src[:400000], 'cva6_alu_p1') == {}      # the trap
     assert output_regimes(src, 'cva6_alu_p1') != {}               # full text works
+
+
+@needs_bench
+def test_proposer_will_not_clobber_an_existing_generator():
+    """A live run proposed the name `a5`, absent from that run's ledger but
+    present on disk, and overwrote a hand-written generator.  Recovered from
+    git -- but nothing should depend on the file happening to be tracked."""
+    from hagent.workflow.retime.proposer import Proposer
+    from hagent.workflow.retime.ledger import Ledger
+    import tempfile, pytest as _pytest
+    blk = load_block(BLOCKS / 'cva6_alu.yaml')
+    with tempfile.TemporaryDirectory() as d:
+        p = Proposer(blk, Ledger(Path(d) / 'l.jsonl'))
+        taken = p.taken_names()
+        assert 'a5' in taken and 'a4' in taken, 'on-disk names not detected'
+        with _pytest.raises(FileExistsError):
+            p.materialize({'cand': 'a5', 'script': 'print(1)'})

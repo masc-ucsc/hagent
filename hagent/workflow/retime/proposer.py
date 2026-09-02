@@ -117,7 +117,8 @@ class Proposer:
 
         tax = '\n'.join(f'  - {t["id"]} ({t["kind"]}): {t["note"].strip()}'
                         for t in blk.get('transform_taxonomy', []))
-        seen = {c.cand for c in led.latest(block)}
+        # Names taken in the ledger AND on disk -- see taken_names().
+        seen = {c.cand for c in led.latest(block)} | self.taken_names()
         pd = {
             'block': block, 'top_prefix': blk['top_prefix'],
             'taxonomy': tax or '  (none given)',
@@ -153,13 +154,38 @@ class Proposer:
             if got['cand'] in seen:
                 # Already explored.  Tell it so on the retry rather than
                 # silently dropping the proposal.
-                pd['ledger'] += f'\n  !! you just proposed {got["cand"]}, which exists. Propose something else.'
+                pd['ledger'] += (f'\n  !! the name {got["cand"]} is already taken '
+                                 f'(ledger or on disk). Choose a different one.')
                 continue
             return got
         return None
 
+    def taken_names(self) -> set[str]:
+        """Candidate names already claimed ON DISK, not just in the ledger.
+
+        The ledger is per-thread and per-block; the benchmark repo may already
+        contain hand-written generators and RTL from earlier work.  A live run
+        proposed the name `a5`, which was absent from that run's ledger but
+        present on disk, and materialize() OVERWROTE a hand-written generator.
+        Recovered from git, but nothing should depend on the file happening to
+        be tracked."""
+        bench = Path(self.blk['bench_blk'])
+        names = set()
+        for p in (bench / 'scripts').glob('mk_*.py'):
+            names.add(p.stem[3:])
+        for p in (bench / 'rtl').glob(f'{self.blk["block"]}_*.sv'):
+            names.add(p.stem.split('_', 1)[1])
+        return names
+
     def materialize(self, got: dict) -> Path:
-        """Write the generator script where the emit node expects it."""
+        """Write the generator script where the emit node expects it.
+
+        Refuses to overwrite: a generator on disk is either prior work or a
+        previous candidate, and clobbering it silently loses both the artifact
+        and the audit trail."""
         p = Path(self.blk['bench_blk']) / 'scripts' / f'mk_{got["cand"]}.py'
+        if p.exists():
+            raise FileExistsError(
+                f'{p} already exists; refusing to overwrite an existing generator')
         p.write_text(got['script'] + '\n')
         return p
