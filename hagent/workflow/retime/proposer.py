@@ -77,6 +77,14 @@ def _fmt_ledger(led: Ledger, block: str) -> str:
 
 
 class Proposer:
+    """Turns the ledger into one new candidate generator script.
+
+    Note on latency: a reasoning model given a few hundred lines of RTL can take
+    many minutes per call, and litellm's default request timeout will cut it off
+    mid-flight.  `timeout_s` is passed through explicitly so an unattended loop
+    fails with a clear reason instead of hanging, and so the caller can trade
+    thinking depth against wall time via `effort`."""
+
     def __init__(self, blk: dict, led: Ledger, conf: Optional[str] = None,
                  log: str = 'retime_proposer.log'):
         self.blk = blk
@@ -88,8 +96,15 @@ class Proposer:
         over = {}
         if os.environ.get('RETIME_PROPOSER_MODEL'):
             over = {'retime_proposer': {'llm': {'model': os.environ['RETIME_PROPOSER_MODEL']}}}
+        # Latency controls, overridable per run without editing the prompt file.
+        llm_over = over.setdefault('retime_proposer', {}).setdefault('llm', {})
+        if os.environ.get('RETIME_PROPOSER_TIMEOUT'):
+            llm_over['timeout'] = int(os.environ['RETIME_PROPOSER_TIMEOUT'])
+        if os.environ.get('RETIME_PROPOSER_EFFORT'):
+            llm_over['reasoning_effort'] = os.environ['RETIME_PROPOSER_EFFORT']
         self.llm = LLM_wrap(name='retime_proposer', conf_file=conf, log_file=log,
                             overwrite_conf=over)
+        self.last_reason = ''
 
     def propose(self, tries: int = 3) -> Optional[dict]:
         blk, led = self.blk, self.led

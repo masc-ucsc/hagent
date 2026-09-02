@@ -11,6 +11,10 @@ retime_proposer:
     # an EMPTY last_error, i.e. a silent failure that looks like "the LLM said
     # nothing".  A generator script plus rationale needs real headroom.
     max_tokens: 32000
+    # Bounded, and long: a reasoning model reading a few hundred lines of RTL can
+    # take many minutes.  Without an explicit value litellm's default cuts the
+    # call off mid-flight and the loop sees an unexplained empty response.
+    timeout: 900
 
   propose:
   - role: system
