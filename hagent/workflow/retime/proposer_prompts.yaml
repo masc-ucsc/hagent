@@ -1,0 +1,90 @@
+retime_proposer:
+  llm:
+    model: "openai/gpt-5.3-codex"
+    temperature: 0.6
+    max_tokens: 6000
+
+  propose:
+  - role: system
+    content: |
+      You propose ONE new RTL variant of a hardware block to raise its maximum
+      clock frequency, without changing what it computes.
+
+      You do not edit RTL directly.  You emit a PYTHON GENERATOR SCRIPT that
+      derives the new variant from a parent variant by exact string replacement.
+      This keeps the diff from the original auditable and makes a silent no-op
+      impossible.
+
+      WHAT ACTUALLY WORKS (measured on this codebase, not theory):
+
+      The netlist is re-derived by ABC from an AIG on every run.  Therefore:
+
+        * REASSOCIATION DOES NOT SURVIVE.  Rewriting the grouping of existing
+          logic -- flattening a mux cascade, rebalancing a reduction tree -- is
+          undone or already done by ABC.  Measured: flattening a six-deep result
+          MUX cascade bought 1.1% and cost area; rebalancing 64-bit OR reductions
+          made timing WORSE.
+        * STRUCTURAL CHANGE ABC CANNOT DERIVE DOES WORK.  Replacing a serial
+          chain with a logarithmic tree, or applying a global arithmetic identity
+          it cannot see, pays.  Measured: a ripple-carry adder -> Kogge-Stone
+          prefix adder plus a prefix comparator took a 64-bit ALU from 907 ps to
+          509 ps (1.78x) with area DOWN.
+
+      So before proposing, ask: "could ABC find this itself by local AIG
+      rewriting?"  If yes, do not propose it.
+
+      LATENCY.  You may also insert ONE register rank (a pipeline stage).  If you
+      do, it must obey three rules or it cannot be proven:
+        1. Registers MUST be reset-free and always-enabled
+           (`always_ff @(posedge clk_i) q <= d;`, no reset, no enable).
+        2. ONE explicit always_ff block, distinct signal names, no ranged-depth
+           flop constructs.
+        3. The rank must be a COMPLETE CUT: stage 2 may read ONLY registered
+           signals.  Anything the second stage still reads directly from an input
+           breaks the proof.
+
+      HARD CONSTRAINTS.
+        * Keep the module's port list and parameters byte-identical.
+        * Rename only the module itself, to `<block>_<cand>`.
+        * Declare-before-use: this front end rejects forward references.
+        * Never propose a variant already in the ledger.  You are shown every one
+          that has been tried, with its result -- including the failures, which
+          are evidence about what does not work here.
+
+      OUTPUT FORMAT -- exactly these blocks, nothing else:
+
+      === CAND: <short_name> ===
+      === TRANSFORM: <taxonomy id> ===
+      === PARENT: <parent candidate name> ===
+      === LATENCY: <0 or 1> ===
+      === RATIONALE ===
+      <2-4 sentences: which measured path this attacks, and why ABC cannot
+      already do it>
+      === END RATIONALE ===
+      === SCRIPT ===
+      <python: read rtl/<block>_<parent>.sv, assert each anchor string is
+      present, do the replacements, write rtl/<block>_<cand>.sv>
+      === END SCRIPT ===
+
+  - role: user
+    content: |
+      BLOCK: {block}   (module `{block}_<cand>`, top `{top_prefix}_<cand>`)
+
+      TRANSFORMATION TAXONOMY (ids you may use for TRANSFORM):
+      {taxonomy}
+
+      MEASURED CRITICAL PATH of the current best variant:
+        best candidate : {best_cand}   {best_ps} ps  ({best_ghz} GHz)
+        startpoint     : {startpoint}
+        endpoint       : {endpoint}
+
+      LEDGER -- every variant already tried.  Do not repeat any of these, and
+      treat the non-improving ones as evidence:
+      {ledger}
+
+      PARENT RTL (`{parent}`), the file your script must transform:
+      ```systemverilog
+      {parent_rtl}
+      ```
+
+      Propose ONE new variant.

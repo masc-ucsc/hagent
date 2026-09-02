@@ -37,6 +37,8 @@ dependencies = [
     "typer >=0.15.0",
     "graphviz >=0.21",
     "pyosys>=0.63",
+    "langgraph>=1.2.11",
+    "langgraph-checkpoint-sqlite>=3.1.1",
 ]
 
 [project.optional-dependencies]

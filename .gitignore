@@ -29,3 +29,9 @@ setup_run
 /repo/
 .DS_Store
 project_env.sh
+
+# retime orchestration: durable job dirs, ledgers, checkpoints (all generated)
+build/jobs/
+build/retime/
+build/retime_dur_*/
+build/led_*/
