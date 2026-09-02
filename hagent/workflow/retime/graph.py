@@ -41,6 +41,7 @@ class RetimeState(TypedDict, total=False):
     phase: str
     stop_reason: str
     trace: list
+    meta: dict           # proposer provenance: rationale, transform, parent
 
 
 def build(blk: dict, ledger: Ledger, run: DurableRunner, propose_fn=None):
@@ -62,9 +63,16 @@ def build(blk: dict, ledger: Ledger, run: DurableRunner, propose_fn=None):
             return {'cand': None, 'stop_reason': 'proposer exhausted',
                     'trace': _log(s, 'STOP proposer exhausted')}
         name, k = nxt
-        return {'cand': name, 'k': k, 'job': None, 'phase': 'emit',
-                'rec': {'block': blk['block'], 'cand': name, 'latency_k': k},
-                'trace': _log(s, f'--- candidate {name} (k={k})')}
+        # The proposer's rationale / transform tag / parent are part of the
+        # record: a ledger that says WHAT was tried but not WHY cannot stop the
+        # proposer repeating an idea in different words.
+        meta = (s.get('meta') or {}).get(name, {})
+        rec = {'block': blk['block'], 'cand': name, 'latency_k': k}
+        for f in ('rationale', 'transform', 'parent'):
+            if meta.get(f):
+                rec[f] = meta[f]
+        return {'cand': name, 'k': k, 'job': None, 'phase': 'emit', 'rec': rec,
+                'trace': _log(s, f'--- candidate {name} (k={k}) {meta.get("transform","")}')}
 
     # --------------------------------------------------------------- emit
     def emit(s: RetimeState) -> dict:

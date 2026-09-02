@@ -54,9 +54,9 @@ def llm_proposer(blk, ledger):
         if not got:
             return None
         prop.materialize(got)
-        # The ledger record is filled in by the graph; stash the provenance so
-        # `record` can attach the rationale and transform tag to the candidate.
-        state.setdefault('pending_meta', {})[got['cand']] = {
+        # Stash provenance where select() picks it up, so the ledger records the
+        # reasoning alongside the result.  `state` is the live graph state dict.
+        state.setdefault('meta', {})[got['cand']] = {
             'rationale': got['rationale'], 'transform': got['transform'],
             'parent': got['parent']}
         return (got['cand'], got['latency'])
