@@ -71,6 +71,21 @@ improvement over 1%, because two different RTLs tying to the exact picosecond
 essentially never happens (the ALU's six candidates gave six distinct values).
 A budget cap backstops a proposer emitting near-duplicates.
 
+## Validated on the CVA6 ALU
+
+Both candidates ran end to end through the loop, unattended, and reproduced the
+hand-derived study exactly:
+
+| candidate | regime | emitted | critical path | miter | proof |
+|---|---|---|---|---|---|
+| `a4` | k=0 both outputs | 10,178 nodes / 0 flops | **509.3687 ps** (1.963 GHz, 1.78x) | PROVEN | PROVEN, control failed as required |
+| `p1` | mixed: `branch_res_o` k=0, `result_o` k=1 | 9,162 nodes / 26 flops | **285.6845 ps** (3.500 GHz, 3.17x) | PROVEN (delay-matched golden) | see below |
+
+`p1` is the interesting one: it is *mixed latency* by design, and the prover
+derives that per-output from the emitted model rather than being told, producing
+`eq_out_branch_res_o` + `refines_out_result_o` — the same shape as the
+hand-written `Equiv_P1.lean`.
+
 ## Status
 
 * `durable.py`, `ledger.py`, `prover.py`, `graph.py`, `run.py` — implemented,
