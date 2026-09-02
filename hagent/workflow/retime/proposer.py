@@ -82,7 +82,14 @@ class Proposer:
         self.blk = blk
         self.led = led
         conf = conf or str(Path(__file__).parent / 'proposer_prompts.yaml')
-        self.llm = LLM_wrap(name='retime_proposer', conf_file=conf, log_file=log)
+        # Model is overridable without editing the prompt file, so a run can be
+        # pointed at whichever provider actually has working credentials.
+        import os
+        over = {}
+        if os.environ.get('RETIME_PROPOSER_MODEL'):
+            over = {'retime_proposer': {'llm': {'model': os.environ['RETIME_PROPOSER_MODEL']}}}
+        self.llm = LLM_wrap(name='retime_proposer', conf_file=conf, log_file=log,
+                            overwrite_conf=over)
 
     def propose(self, tries: int = 3) -> Optional[dict]:
         blk, led = self.blk, self.led
@@ -108,13 +115,26 @@ class Proposer:
             'parent': parent, 'parent_rtl': rtl.read_text(),
         }
 
+        self.last_reason = ''
         for _ in range(tries):
             resp = self.llm.inference(pd, 'propose', n=1)
             if not resp:
+                # LLM_wrap returns [] for BOTH a real API error and a response
+                # that hit max_tokens with no visible content -- and in the
+                # latter case last_error is EMPTY, so an unattended loop that
+                # only checks last_error sees a silent nothing.  Measured: at
+                # max_tokens=6000, Opus 5's adaptive thinking consumed the whole
+                # budget and returned finish_reason=length with zero content.
+                self.last_reason = (f'no response (llm error: {self.llm.last_error})'
+                                    if self.llm.last_error
+                                    else 'empty response -- likely max_tokens exhausted '
+                                         'by thinking; raise llm.max_tokens')
                 continue
             got = parse(resp[0])
             if not got:
+                self.last_reason = 'response did not match the required block format'
                 continue                      # malformed -> retry, never guess
+            self.last_reason = ''
             if got['cand'] in seen:
                 # Already explored.  Tell it so on the retry rather than
                 # silently dropping the proposal.

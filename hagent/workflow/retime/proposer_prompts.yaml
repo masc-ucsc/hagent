@@ -1,8 +1,16 @@
 retime_proposer:
   llm:
-    model: "openai/gpt-5.3-codex"
+    # HAgent is provider-neutral via litellm, so this is just a model string.
+    # Overridable per run with RETIME_PROPOSER_MODEL.
+    model: "anthropic/claude-opus-5"
     temperature: 0.6
-    max_tokens: 6000
+    # NOT lowballed.  Claude Opus 5 runs adaptive thinking BY DEFAULT, and
+    # thinking tokens count against max_tokens.  At 6000 the model spent the
+    # entire budget reasoning and returned finish_reason=length with ZERO
+    # visible content -- which LLM_wrap surfaces as an empty response list and
+    # an EMPTY last_error, i.e. a silent failure that looks like "the LLM said
+    # nothing".  A generator script plus rationale needs real headroom.
+    max_tokens: 32000
 
   propose:
   - role: system
