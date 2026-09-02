@@ -182,7 +182,9 @@ def build(blk: dict, ledger: Ledger, run: DurableRunner, propose_fn=None):
             out[tag] = P.classify(log.read_text() if log.is_file() else '',
                                   jobs[tag].exit_code)
         status, control = P.verdict(out['pos'], out['neg'])
+        poslog = run.jobdir(f'{blk["block"]}-{cand}-lean-pos') / 'job.log'
         rec = {**s['rec'], 'proof': status, 'control': control,
+               'axioms': P.axioms(poslog.read_text() if poslog.is_file() else ''),
                'proof_wall_s': jobs['pos'].wall_s, 'proof_rss_kb': jobs['pos'].peak_rss_kb}
         return {'rec': rec, 'job': None, 'phase': 'record',
                 'trace': _log(s, f'prove {status} control={control or out["neg"]}')}

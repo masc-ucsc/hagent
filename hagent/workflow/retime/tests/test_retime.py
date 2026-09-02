@@ -184,3 +184,22 @@ def test_relative_root_is_resolved(tmp_path, monkeypatch):
     assert r.root.is_absolute()
     r.launch('rel', ['/bin/bash', '-c', 'exit 0'], cwd='/tmp')
     assert r.wait('rel', poll_s=1, timeout_s=90).ok()
+
+
+def test_axioms_records_the_native_bv_decide_axiom():
+    """The trust footprint is a claim, and it is not uniform: a bv_decide proof
+    rests on a native SAT-certificate axiom, so it is NOT purely kernel-reduced.
+    Reporting 'proven' without that qualifier overstates the result."""
+    from hagent.workflow.retime.prover import axioms
+    log = ("'EquivA4Pos.eq_out_result_o' depends on axioms: [propext,\n"
+           " Classical.choice,\n Quot.sound,\n"
+           " EquivA4Pos.eq_out_result_o._native.bv_decide.ax_1_7]")
+    got = axioms(log)
+    assert 'propext' in got and 'Quot.sound' in got
+    assert any('_native.bv_decide' in a for a in got)
+    assert not any('sorryAx' in a for a in got)
+
+
+def test_axioms_would_surface_a_sorry():
+    from hagent.workflow.retime.prover import axioms
+    assert 'sorryAx' in axioms("'X.y' depends on axioms: [propext, sorryAx]")

@@ -156,7 +156,12 @@ def render(block_top: str, base: str, cand: str, k: int,
     body = [f'namespace Equiv{cand.capitalize()}Pos\n', _coercion('toCand', bt, ct, ins, None)]
     for f, _ in outs:
         body.append(ref_thm('toCand', f) if regimes.get(f, k) else eq_thm('toCand', f))
-    body.append(f'end Equiv{cand.capitalize()}Pos\n')
+    # Record the trust footprint: bv_decide proofs rest on a native SAT-certificate
+    # axiom, so 'proven' needs that qualifier to be honest.
+    for f, _ in outs:
+        thm = ('refines_' if regimes.get(f, k) else 'eq_') + f
+        body.append(f'#print axioms Equiv{cand.capitalize()}Pos.{thm}')
+    body.append(f'\nend Equiv{cand.capitalize()}Pos\n')
     proof = head + '\n'.join(body)
 
     # Control.  Per output: a k=0 output gets swapped live operands; a k=1 output
@@ -180,6 +185,27 @@ def render(block_top: str, base: str, cand: str, k: int,
     control = head + '\n'.join(cbody)
 
     return proof, control
+
+
+_AX = re.compile(r"'[\w.]+' depends on axioms: \[([^\]]*)\]", re.S)
+
+
+def axioms(log: str) -> list[str]:
+    """Extract the trust footprint from `#print axioms` output.
+
+    Recorded because it is a real claim about the result and it is NOT uniform:
+    a bv_decide proof rests on `<thm>._native.bv_decide.ax_N`, a native axiom
+    carrying the SAT certificate, so it is not purely kernel-reduced.  Reporting
+    'proven' without that qualifier overstates it.  `sorryAx` appearing here
+    would mean an outright hole."""
+    out: set[str] = set()
+    for m in _AX.finditer(log):
+        for a in m.group(1).split(','):
+            a = a.strip()
+            if a:
+                # collapse per-theorem native axiom names to their family
+                out.add(re.sub(r"^\S+\._native", '_native', a))
+    return sorted(out)
 
 
 def classify(log: str, exit_code: Optional[int]) -> str:
