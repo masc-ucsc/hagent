@@ -77,3 +77,45 @@ def test_selector_reads_livehd_coverage():
 def test_selector_picks_an_eligible_block():
     nxt, ranked = select(LIVEHD, BLOCKS, done=set())
     assert nxt is not None and nxt.proven
+
+
+@needs_bench
+def test_regimes_are_per_output_on_the_real_pipelined_model():
+    """`p1` registers result_o but leaves branch_res_o combinational.  A single
+    module-wide regime would assert something false about one of them."""
+    from hagent.workflow.retime.regimes import output_regimes
+    src = (BENCH / 'work/p1/lean/cva6_alu_p1_Lgraph.lean').read_text()
+    reg = output_regimes(src, 'cva6_alu_p1')
+    assert reg == {'out_branch_res_o': 0, 'out_result_o': 1}
+
+
+@needs_bench
+def test_regimes_flat_for_combinational_model():
+    from hagent.workflow.retime.regimes import output_regimes
+    src = (BENCH / 'work/a4/lean/cva6_alu_a4_Lgraph.lean').read_text()
+    assert set(output_regimes(src, 'cva6_alu_a4').values()) == {0}
+
+
+@needs_bench
+def test_generated_pipelined_proof_matches_handwritten_regimes():
+    """Ground truth is the hand-written Equiv_P1.lean: an equality for the
+    combinational output, a refinement for the registered one."""
+    import re
+    b = (BENCH / 'work/base/lean/cva6_alu_base_Lgraph.lean').read_text()
+    c = (BENCH / 'work/p1/lean/cva6_alu_p1_Lgraph.lean').read_text()
+    proof, control = render('cva6_alu', 'base', 'p1', 1, b, c)
+    names = re.findall(r'theorem (\w+)', proof)
+    assert 'eq_out_branch_res_o' in names, 'branch output must be plain equality'
+    assert 'refines_out_result_o' in names, 'result output must be a refinement'
+    # the control must attack the registered output with the k=0 claim
+    assert 'k0_out_result_o' in re.findall(r'theorem (\w+)', control)
+
+
+@needs_bench
+def test_truncated_source_would_break_regimes():
+    """Regression: p1's _comb record sits ~9k lines into a 2.3 MB file, so a
+    truncated read silently reverts to one module-wide regime."""
+    from hagent.workflow.retime.regimes import output_regimes
+    src = (BENCH / 'work/p1/lean/cva6_alu_p1_Lgraph.lean').read_text()
+    assert output_regimes(src[:400000], 'cva6_alu_p1') == {}      # the trap
+    assert output_regimes(src, 'cva6_alu_p1') != {}               # full text works

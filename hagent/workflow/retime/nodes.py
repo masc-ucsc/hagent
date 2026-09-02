@@ -81,12 +81,19 @@ def gate(blk: dict, cand: str, flops: int, expect_flops: Optional[int]) -> tuple
         return False, f'FAIL:flop count {flops} != expected {expect_flops}'
 
     if flops:
-        # Complete-cut check: stage 2 must read only registered signals, or the
-        # "for ALL later inputs" refinement is simply false.
-        txt = gen[0].read_text()
-        body = txt[txt.find('_comb'):txt.find('_next')] if '_next' in txt else ''
-        if re.search(r'\bi\.in_(operand|operation)', body):
-            return False, 'FAIL:incomplete cut (comb reads raw inputs)'
+        # NOT a completeness check on the whole module.  A pipelined block is
+        # normally MIXED latency -- `p1` registers result_o while deliberately
+        # leaving branch_res_o combinational -- so `_comb` referencing raw inputs
+        # is expected, and rejecting it here wrongly killed a candidate whose
+        # refinement proof passes.  Per-output regimes are computed by
+        # regimes.output_regimes(), and completeness of each registered output's
+        # cut is what the `forall later input` refinement theorem actually
+        # proves.  All this gate checks is that SOME output is registered.
+        from hagent.workflow.retime.regimes import output_regimes
+        top = gen[0].stem.replace('_Lgraph', '')
+        reg = output_regimes(gen[0].read_text(), top)
+        if reg and not any(v for v in reg.values()):
+            return False, f'FAIL:{flops} flops but no output is registered'
     return True, 'PASS'
 
 

@@ -150,11 +150,13 @@ def build(blk: dict, ledger: Ledger, run: DurableRunner, propose_fn=None):
             if not (bsrc.is_file() and csrc.is_file()):
                 return {'rec': {**s['rec'], 'proof': 'TOOL_ERROR'}, 'phase': 'record',
                         'trace': _log(s, 'prove: missing emitted model')}
-            # Pass a large slice, not just the header: pick_swap() counts how
-            # often each input is REFERENCED to avoid building the control from
-            # dangling ports, and a header-only slice shows no references at all.
+            # FULL text, not a slice.  Two analyses need the whole file:
+            # pick_swap() counts input references (to avoid building a control
+            # from dangling ports), and output_regimes() parses the record at the
+            # END of _comb -- which for p1 sits at ~line 9224 of a 2.3 MB file, so
+            # any truncation silently reverts it to a single module-wide regime.
             proof, control = P.render(blk['top_prefix'], base, cand, k,
-                                      bsrc.read_text()[:400000], csrc.read_text()[:400000])
+                                      bsrc.read_text(), csrc.read_text())
             (gendir / f'Equiv_{cand}_gen.lean').write_text(proof)
             (gendir / f'Equiv_{cand}_ctl.lean').write_text(control)
 
