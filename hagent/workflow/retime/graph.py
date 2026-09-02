@@ -136,6 +136,43 @@ def build(blk: dict, ledger: Ledger, run: DurableRunner, propose_fn=None):
                      lambda st: {'miter': N.screen_reap(run, f'{blk["block"]}-{s["cand"]}-lec')},
                      'prove', 'lec')
 
+    # ------------------------------------------------------ model oleans
+    def oleans(s: RetimeState) -> dict:
+        """Compile the two models to .olean before proving.
+
+        A prerequisite the proof step OWNS: a generated proof `import`s both
+        models, so without their oleans it fails in under a second with
+        "unknown module prefix" -- which is a TOOL_ERROR, correctly classified
+        but a wasted cycle.  This was invisible while testing a4, whose olean
+        happened to be pre-built by hand.  Serialized on the `lean` slot with
+        the proofs, because these are the ~5 minute, ~2.4 GB jobs."""
+        cand = s['cand']
+        bench, common = Path(blk['bench_blk']), Path(blk['common'])
+        base = blk.get('baseline', 'base')
+        pending = []
+        for who in (base, cand):
+            src = bench / 'work' / who / 'lean' / f'{blk["top_prefix"]}_{who}_Lgraph.lean'
+            if not src.is_file():
+                return {'rec': {**s['rec'], 'proof': 'TOOL_ERROR'}, 'phase': 'record',
+                        'trace': _log(s, f'olean: missing model for {who}')}
+            if src.with_suffix('.olean').is_file():
+                continue
+            j = f'{blk["block"]}-{who}-olean'
+            run.claim(j, 'lean')
+            run.launch(j, [str(common / 'leanrun.sh'), 'build', str(src)],
+                       cwd=str(bench), env={'BENCH_BLK': str(bench),
+                                            'TOP_PREFIX': blk['top_prefix']},
+                       exclusive='lean')
+            st = run.poll(j)
+            if st.state == LOST:
+                return {'rec': {**s['rec'], 'proof': 'TOOL_ERROR'}, 'phase': 'record',
+                        'trace': _log(s, f'olean build LOST for {who}: {st.detail}')}
+            pending.append(who)
+        if pending:
+            time.sleep(POLL_S)
+            return {'phase': 'oleans'}
+        return {'phase': 'prove', 'trace': _log(s, 'model oleans ready')}
+
     # -------------------------------------------------------------- prove
     def prove(s: RetimeState) -> dict:
         cand, k = s['cand'], s['k']
@@ -201,8 +238,8 @@ def build(blk: dict, ledger: Ledger, run: DurableRunner, propose_fn=None):
     # -------------------------------------------------------------- wiring
     g = StateGraph(RetimeState)
     for name, fn in (('select', select), ('emit', emit), ('gate', gate),
-                     ('measure', measure), ('screen', screen), ('prove', prove),
-                     ('record', record)):
+                     ('measure', measure), ('screen', screen), ('oleans', oleans),
+                     ('prove', prove), ('record', record)):
         g.add_node(name, fn)
     g.add_edge(START, 'select')
     g.add_conditional_edges('select', lambda s: END if not s.get('cand') else 'emit',
@@ -214,7 +251,9 @@ def build(blk: dict, ledger: Ledger, run: DurableRunner, propose_fn=None):
     g.add_conditional_edges('measure', lambda s: s['phase'],
                             {'measure': 'measure', 'screen': 'screen', 'record': 'record'})
     g.add_conditional_edges('screen', lambda s: s['phase'],
-                            {'screen': 'screen', 'prove': 'prove', 'record': 'record'})
+                            {'screen': 'screen', 'prove': 'oleans', 'record': 'record'})
+    g.add_conditional_edges('oleans', lambda s: s['phase'],
+                            {'oleans': 'oleans', 'prove': 'prove', 'record': 'record'})
     g.add_conditional_edges('prove', lambda s: s['phase'],
                             {'prove': 'prove', 'record': 'record'})
     g.add_edge('record', 'select')
